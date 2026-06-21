@@ -1,0 +1,33 @@
+[project]
+name = "comfyui-manager"
+version = "0.1.0"
+description = "ComfyUI 多环境管理工具"
+requires-python = ">=3.9"
+dependencies = [
+    "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+]
+
+[project.scripts]
+comfy-mgr = "comfy_mgr.cli:app"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+]
+
+[tool.poetry]
+package-mode = true
+packages = [
+    { include = "comfy_mgr", from = "src" },
+]  # explicit so poetry-core can find the package without setup.py
