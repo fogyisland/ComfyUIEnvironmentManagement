@@ -192,3 +192,44 @@ def env_status(
     status = services["process"].get_status(env)
     state = "运行中" if status.running else "已停止"
     typer.echo(f"{env.name}: {state} (PID={status.pid}, 端口={status.port})")
+
+
+@catalog_app.command("add")
+def catalog_add(
+    url: str = typer.Argument(..., help="GitHub 仓库 URL"),
+):
+    """添加节点到 catalog。"""
+    services = build_services()
+    result = services["catalog"].add_node(url)
+    if result.ok:
+        typer.echo(f"✓ 节点 {result.value.name} 已添加（ID: {result.value.id}）")
+    else:
+        typer.echo(f"✗ 添加失败: {result.error.message}", err=True)
+        raise typer.Exit(code=1)
+
+
+@catalog_app.command("list")
+def catalog_list():
+    """列出 catalog 中的所有节点。"""
+    services = build_services()
+    nodes = services["catalog"].list_nodes()
+    if not nodes:
+        typer.echo("（catalog 为空）")
+        return
+    typer.echo(f"{'NAME':<30} {'ID':<40} {'URL'}")
+    for n in nodes:
+        typer.echo(f"{n.name:<30} {n.id:<40} {n.repo_url}")
+
+
+@catalog_app.command("remove")
+def catalog_remove(
+    node_id: str = typer.Argument(..., help="节点 ID"),
+):
+    """从 catalog 移除节点。"""
+    services = build_services()
+    result = services["catalog"].remove_node(node_id)
+    if result.ok:
+        typer.echo(f"✓ 节点 {node_id} 已移除")
+    else:
+        typer.echo(f"✗ 移除失败: {result.error.message}", err=True)
+        raise typer.Exit(code=1)
