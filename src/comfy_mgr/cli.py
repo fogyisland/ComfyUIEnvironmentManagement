@@ -139,3 +139,56 @@ def env_clone(
     else:
         typer.echo(f"✗ 克隆失败: {result.error.message}", err=True)
         raise typer.Exit(code=1)
+
+
+@env_app.command("start")
+def env_start(
+    name: str = typer.Argument(...),
+):
+    """启动环境的 ComfyUI 进程。"""
+    services = build_services()
+    env = next((e for e in services["env"].list_all() if e.name == name), None)
+    if not env:
+        typer.echo(f"✗ 环境 {name} 不存在", err=True)
+        raise typer.Exit(code=1)
+    result = services["process"].start(env)
+    if result.ok:
+        h = result.value
+        typer.echo(f"✓ {name} 启动中（PID={h.pid}, 端口={h.port}, 日志={h.log_file.name}）")
+    else:
+        typer.echo(f"✗ 启动失败: {result.error.message}", err=True)
+        raise typer.Exit(code=1)
+
+
+@env_app.command("stop")
+def env_stop(
+    name: str = typer.Argument(...),
+    timeout: float = typer.Option(10.0, "--timeout", help="优雅停止超时（秒）"),
+):
+    """停止环境的 ComfyUI 进程。"""
+    services = build_services()
+    env = next((e for e in services["env"].list_all() if e.name == name), None)
+    if not env:
+        typer.echo(f"✗ 环境 {name} 不存在", err=True)
+        raise typer.Exit(code=1)
+    result = services["process"].stop(env, timeout=timeout)
+    if result.ok:
+        typer.echo(f"✓ {name} 已停止")
+    else:
+        typer.echo(f"✗ 停止失败: {result.error.message}", err=True)
+        raise typer.Exit(code=1)
+
+
+@env_app.command("status")
+def env_status(
+    name: str = typer.Argument(...),
+):
+    """显示环境状态。"""
+    services = build_services()
+    env = next((e for e in services["env"].list_all() if e.name == name), None)
+    if not env:
+        typer.echo(f"✗ 环境 {name} 不存在", err=True)
+        raise typer.Exit(code=1)
+    status = services["process"].get_status(env)
+    state = "运行中" if status.running else "已停止"
+    typer.echo(f"{env.name}: {state} (PID={status.pid}, 端口={status.port})")
