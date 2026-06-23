@@ -27,22 +27,26 @@ def deps(tmp_path):
         return Result.ok(None)
     venv.create.side_effect = _fake_venv_create
 
+    fake_python = tmp_path / "fake_python" / "python.exe"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("")
+
     svc = EnvironmentService(
         conn=conn,
         project_root=project_root,
         fs=fs,
         venv=venv,
     )
-    return svc, venv, project_root, conn
+    return svc, venv, project_root, conn, fake_python
 
 def test_create_shared_env_uses_junction(deps):
-    svc, venv_mock, project_root, _ = deps
+    svc, venv_mock, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
     result = svc.create(
         name="env1",
         layout="shared",
-        python_path=Path("C:/Python310/python.exe"),
+        python_path=fake_python,
         comfyui_source=comfyui_src,
     )
     assert result.ok
@@ -52,18 +56,18 @@ def test_create_shared_env_uses_junction(deps):
     assert (env.root_path / "ComfyUI").exists()  # junction 或 link
     venv_mock.create.assert_called_once()
     args = venv_mock.create.call_args[0]
-    assert Path(args[0]) == Path("C:/Python310/python.exe")
+    assert Path(args[0]) == fake_python
     assert args[1] == env.venv_path
 
 def test_create_independent_env_copies_comfyui(deps):
-    svc, _, project_root, _ = deps
+    svc, _, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
     (comfyui_src / "main.py").write_text("# comfy")
     result = svc.create(
         name="env1",
         layout="independent",
-        python_path=Path("C:/Python310/python.exe"),
+        python_path=fake_python,
         comfyui_source=comfyui_src,
     )
     assert result.ok
@@ -72,61 +76,62 @@ def test_create_independent_env_copies_comfyui(deps):
     assert (env.root_path / "ComfyUI" / "main.py").read_text() == "# comfy"
 
 def test_create_assigns_port_sequentially(deps):
-    svc, _, project_root, _ = deps
+    svc, _, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
 
-    r1 = svc.create("e1", "shared", Path("C:/Python310/python.exe"), comfyui_src)
-    r2 = svc.create("e2", "shared", Path("C:/Python310/python.exe"), comfyui_src)
+    r1 = svc.create("e1", "shared", fake_python, comfyui_src)
+    r2 = svc.create("e2", "shared", fake_python, comfyui_src)
     assert r1.value.port == PORT_BASE
     assert r2.value.port == PORT_BASE + 1
 
 def test_create_fails_on_duplicate_name(deps):
-    svc, _, project_root, _ = deps
+    svc, _, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
-    svc.create("e1", "shared", Path("C:/Python310/python.exe"), comfyui_src)
-    r2 = svc.create("e1", "shared", Path("C:/Python310/python.exe"), comfyui_src)
+    svc.create("e1", "shared", fake_python, comfyui_src)
+    r2 = svc.create("e1", "shared", fake_python, comfyui_src)
     assert not r2.ok
     assert r2.error.code == "ENV_NAME_DUPLICATE"
 
-def test_create_fails_if_python_missing(deps):
-    svc, _, project_root, _ = deps
+def test_create_fails_if_python_missing(deps, tmp_path):
+    svc, _, project_root, _, _ = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
-    result = svc.create("e1", "shared", Path("C:/nonexistent/python.exe"), comfyui_src)
+    nonexistent_python = tmp_path / "nonexistent" / "python.exe"
+    result = svc.create("e1", "shared", nonexistent_python, comfyui_src)
     assert not result.ok
     assert result.error.code == "VENV_PYTHON_MISSING"
 
 def test_create_fails_if_shared_source_missing(deps):
-    svc, _, _, _ = deps
-    result = svc.create("e1", "shared", Path("C:/Python310/python.exe"), None)
+    svc, _, _, _, fake_python = deps
+    result = svc.create("e1", "shared", fake_python, None)
     assert not result.ok
     assert result.error.code == "COMFYUI_SOURCE_MISSING"
 
 def test_list_all_returns_created(deps):
-    svc, _, project_root, _ = deps
+    svc, _, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
-    svc.create("e1", "shared", Path("C:/Python310/python.exe"), comfyui_src)
-    svc.create("e2", "shared", Path("C:/Python310/python.exe"), comfyui_src)
+    svc.create("e1", "shared", fake_python, comfyui_src)
+    svc.create("e2", "shared", fake_python, comfyui_src)
     envs = svc.list_all()
     assert {e.name for e in envs} == {"e1", "e2"}
 
 def test_delete_removes_env(deps):
-    svc, _, project_root, _ = deps
+    svc, _, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
-    svc.create("e1", "shared", Path("C:/Python310/python.exe"), comfyui_src)
+    svc.create("e1", "shared", fake_python, comfyui_src)
     env = svc.list_all()[0]
     assert svc.delete(env.id).ok
     assert svc.list_all() == []
 
 def test_delete_running_requires_force(deps):
-    svc, _, project_root, _ = deps
+    svc, _, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
-    svc.create("e1", "shared", Path("C:/Python310/python.exe"), comfyui_src)
+    svc.create("e1", "shared", fake_python, comfyui_src)
     env = svc.list_all()[0]
     env.status = "running"
     svc.repo.save(env)  # 持久化 running 状态
@@ -136,10 +141,10 @@ def test_delete_running_requires_force(deps):
     assert svc.delete(env.id, force=True).ok
 
 def test_clone_creates_independent_copy(deps):
-    svc, _, project_root, _ = deps
+    svc, _, project_root, _, fake_python = deps
     comfyui_src = project_root.parent / "shared" / "ComfyUI"
     comfyui_src.mkdir(parents=True)
-    svc.create("e1", "shared", Path("C:/Python310/python.exe"), comfyui_src)
+    svc.create("e1", "shared", fake_python, comfyui_src)
     src = svc.list_all()[0]
     result = svc.clone(src.id, "e1-copy")
     assert result.ok
