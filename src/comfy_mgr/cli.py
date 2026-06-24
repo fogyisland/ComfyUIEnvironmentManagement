@@ -233,3 +233,43 @@ def catalog_remove(
     else:
         typer.echo(f"✗ 移除失败: {result.error.message}", err=True)
         raise typer.Exit(code=1)
+
+
+@settings_app.command("show")
+def settings_show():
+    """显示当前所有设置。"""
+    services = build_services()
+    s = services["settings"]
+    for key in ["catalog_db_path", "theme", "language", "log_level", "default_python_path"]:
+        val = s.get(key)
+        if val is None:
+            val = "(默认)"
+        typer.echo(f"{key}: {val}")
+
+
+@settings_app.command("set")
+def settings_set(
+    key: str = typer.Argument(...),
+    value: str = typer.Argument(...),
+):
+    """设置一个配置项。"""
+    services = build_services()
+    s = services["settings"]
+    s.set(key, value)
+    s.save()
+    typer.echo(f"✓ {key} = {value}")
+
+
+@settings_app.command("set-catalog-db-path")
+def settings_set_catalog_db_path(
+    new_path: str = typer.Argument(..., help="新 catalog.db 路径"),
+):
+    """切换 catalog.db 路径（自动迁移）。"""
+    from comfy_mgr.result import ServiceError
+    services = build_services()
+    result = services["settings"].migrate_db_path(Path(new_path))
+    if result.ok:
+        typer.echo(f"✓ catalog.db 已迁移到 {new_path}")
+    else:
+        typer.echo(f"✗ 迁移失败: {result.error.message}", err=True)
+        raise typer.Exit(code=1)

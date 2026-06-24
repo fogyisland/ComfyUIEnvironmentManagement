@@ -52,3 +52,17 @@ class SettingsService:
             return Path(configured)
         from comfy_mgr.paths import get_default_db_path
         return get_default_db_path()
+
+    def migrate_db_path(self, new_path: Path) -> Result[None]:
+        """切换 catalog_db_path：复制当前 db 到新位置。"""
+        from comfy_mgr.result import Result, ServiceError
+        current = self.resolve_db_path()
+        if current == new_path:
+            return Result.ok(None)
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        if current.exists():
+            import shutil
+            shutil.copy2(current, new_path)
+        self.set("catalog_db_path", str(new_path).replace("\\", "/"))
+        self.save()
+        return Result.ok(None)
