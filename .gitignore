@@ -25,8 +25,11 @@ Thumbs.db
 # Debug output
 debug_test_output.txt
 
-# Docs (superpowers methodology scratch)
-docs/
+# Docs (superpowers methodology: track specs/plans, ignore scratch)
+docs/superpowers/sdd/
+docs/superpowers/specs/.tmp/
+docs/notes/
+docs/scratch/
 
 # Poetry
 poetry.lock.bak
