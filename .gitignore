@@ -18,3 +18,15 @@ Thumbs.db
 
 # Local config
 .env
+
+# Claude local
+.claude/
+
+# Debug output
+debug_test_output.txt
+
+# Docs (superpowers methodology scratch)
+docs/
+
+# Poetry
+poetry.lock.bak

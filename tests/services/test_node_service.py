@@ -98,6 +98,15 @@ def test_disable_removes_link_and_id(setup):
 def test_list_enabled_returns_enabled(setup):
     node_svc, env, _ = setup
     node_svc.enable_in_env(env.id, "owner__ComfyUI-X")
-    enabled = node_svc.list_enabled(env.id)
+    result = node_svc.list_enabled(env.id)
+    assert result.ok
+    enabled = result.value
     assert len(enabled) == 1
     assert enabled[0].id == "owner__ComfyUI-X"
+
+
+def test_list_enabled_fails_for_missing_env(setup):
+    node_svc, _, _ = setup
+    result = node_svc.list_enabled("nonexistent-env-id")
+    assert not result.ok
+    assert result.error.code == "ENV_NOT_FOUND"

@@ -1,5 +1,4 @@
 from __future__ import annotations
-import sqlite3
 import typer
 from pathlib import Path
 from comfy_mgr import __version__

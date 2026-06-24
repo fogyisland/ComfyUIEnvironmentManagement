@@ -5,6 +5,7 @@
 - Windows 平台（junction）
 """
 import shutil
+import subprocess
 import time
 import pytest
 from pathlib import Path
@@ -33,7 +34,7 @@ def project_root(tmp_path, monkeypatch):
 
 
 def test_full_m0_flow(project_root, template_python):
-    """完整 M0 流程：settings 初始化 → env create → 启动 → 停止。"""
+    """完整 M0 流程：settings 初始化 → env create → list → delete。"""
 
     # 1. settings 初始化（隐式发生在 build_services）
     result = runner.invoke(app, ["settings", "show"])
@@ -55,7 +56,6 @@ def test_full_m0_flow(project_root, template_python):
     assert venv_python.exists()
 
     # 4. 验证 venv 内 python 可运行
-    import subprocess
     r = subprocess.run([str(venv_python), "--version"], capture_output=True, text=True)
     assert r.returncode == 0
     assert "Python" in r.stdout
