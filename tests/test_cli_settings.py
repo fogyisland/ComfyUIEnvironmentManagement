@@ -27,7 +27,7 @@ def test_settings_show_defaults(isolated):
 def test_settings_set_persists(isolated):
     runner.invoke(app, ["settings", "set", "language", "en_US"])
     settings_path = get_appdata_dir() / "settings.json"
-    data = json.loads(settings_path.read_text())
+    data = json.loads(settings_path.read_text(encoding="utf-8"))
     assert data["language"] == "en_US"
 
 
@@ -41,5 +41,5 @@ def test_settings_set_catalog_db_path_migrates(isolated):
     assert new_path.exists()
 
     settings_path = get_appdata_dir() / "settings.json"
-    data = json.loads(settings_path.read_text())
+    data = json.loads(settings_path.read_text(encoding="utf-8"))
     assert data["catalog_db_path"] == str(new_path).replace("\\", "/")
