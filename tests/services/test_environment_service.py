@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
 from comfy_mgr.db.connection import get_connection, init_schema
+from comfy_mgr.infra.cuda import CudaInfo
 from comfy_mgr.infra.fs import FS
 from comfy_mgr.infra.venv import VenvManager
 from comfy_mgr.models.environment import EnvironmentRepo, PORT_BASE
@@ -152,3 +153,43 @@ def test_clone_creates_independent_copy(deps):
     assert new_env.name == "e1-copy"
     assert new_env.id != src.id
     assert new_env.port != src.port
+
+
+def test_create_with_torch_saves_config_and_calls_installer(deps, mocker):
+    svc, _, project_root, _, fake_python = deps
+    comfyui_src = project_root.parent / "shared" / "ComfyUI"
+    comfyui_src.mkdir(parents=True)
+    mock_installer = MagicMock()
+    mock_installer.install.return_value = Result.ok(None)
+    svc.pytorch = mock_installer
+    mocker.patch("comfy_mgr.services.environment.CudaDetector.detect",
+                 return_value=Result.ok(CudaInfo("596.36", "13.2", "RTX 4060", True)))
+    result = svc.create(
+        name="e1",
+        layout="shared",
+        python_path=fake_python,
+        comfyui_source=comfyui_src,
+        install_torch=True,
+        cu_version="cu124",
+    )
+    assert result.ok
+    cfg_path = result.value.root_path / ".torch-config.yaml"
+    assert cfg_path.exists()
+    mock_installer.install.assert_called_once()
+
+
+def test_create_without_torch_doesnt_install(deps):
+    svc, _, project_root, _, fake_python = deps
+    comfyui_src = project_root.parent / "shared" / "ComfyUI"
+    comfyui_src.mkdir(parents=True)
+    mock_installer = MagicMock()
+    svc.pytorch = mock_installer
+    result = svc.create(
+        name="e1",
+        layout="shared",
+        python_path=fake_python,
+        comfyui_source=comfyui_src,
+        install_torch=False,
+    )
+    assert result.ok
+    mock_installer.install.assert_not_called()

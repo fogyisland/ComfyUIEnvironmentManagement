@@ -3,9 +3,12 @@ import shutil
 import sqlite3
 from pathlib import Path
 from typing import Literal
+from comfy_mgr.infra.cuda import CudaDetector
 from comfy_mgr.infra.fs import FS
+from comfy_mgr.infra.pytorch import PyTorchInstaller
 from comfy_mgr.infra.venv import VenvManager
 from comfy_mgr.models.environment import Environment, EnvironmentRepo, PORT_BASE, generate_env_id
+from comfy_mgr.models.pytorch import TorchConfig
 from comfy_mgr.result import Result, ServiceError
 
 
@@ -16,11 +19,13 @@ class EnvironmentService:
         project_root: Path,
         fs: FS,
         venv: VenvManager,
+        pytorch: PyTorchInstaller | None = None,
     ):
         self.conn = conn
         self.project_root = project_root
         self.fs = fs
         self.venv = venv
+        self.pytorch = pytorch
         self.repo = EnvironmentRepo(conn)
         self.envs_dir = project_root / "envs"
         self.envs_dir.mkdir(parents=True, exist_ok=True)
@@ -32,6 +37,8 @@ class EnvironmentService:
         python_path: Path,
         comfyui_source: Path | None = None,
         port: int | None = None,
+        install_torch: bool = False,
+        cu_version: str | None = None,
     ) -> Result[Environment]:
         # 1. 校验 Python 解释器
         if not python_path.exists():
@@ -101,6 +108,31 @@ class EnvironmentService:
         save_result = self.repo.save(env)
         if not save_result.ok:
             return save_result
+        # 10. 可选：安装 PyTorch 栈
+        torch_config_path = root_path / ".torch-config.yaml"
+        if install_torch:
+            cuda_info_result = CudaDetector.detect()
+            if not cuda_info_result.ok:
+                return cuda_info_result
+            cuda_info = cuda_info_result.value
+            if cu_version is None:
+                if cuda_info.available:
+                    cu_version = "cu124"
+                else:
+                    cu_version = "cpu"
+            ver_result = VenvManager.get_python_version(env.python_executable)
+            py_ver = "3.10"
+            if ver_result.ok:
+                parts = ver_result.value.split()
+                if len(parts) >= 2:
+                    py_short = parts[1].rsplit(".", 1)[0]
+                    py_ver = py_short
+            torch_cfg = TorchConfig.default_for(cu_version, py_ver)
+            torch_cfg.save(torch_config_path)
+            installer = self.pytorch or PyTorchInstaller
+            install_result = installer.install(env.python_executable, torch_cfg)
+            if not install_result.ok:
+                return install_result
         return Result.ok(env)
 
     def list_all(self) -> list[Environment]:

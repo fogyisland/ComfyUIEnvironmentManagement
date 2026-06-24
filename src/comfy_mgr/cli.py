@@ -4,10 +4,12 @@ import typer
 from pathlib import Path
 from comfy_mgr import __version__
 from comfy_mgr.db.connection import get_connection, init_schema
+from comfy_mgr.infra.cuda import CudaDetector
 from comfy_mgr.infra.fs import FS
 from comfy_mgr.infra.git import GitManager
 from comfy_mgr.infra.venv import VenvManager
 from comfy_mgr.infra.process import ProcessService
+from comfy_mgr.models.pytorch import TorchConfig
 from comfy_mgr.settings import SettingsService
 from comfy_mgr.services.catalog import CatalogService
 from comfy_mgr.services.environment import EnvironmentService
@@ -19,9 +21,11 @@ app = typer.Typer(help="ComfyUI Manager CLI")
 env_app = typer.Typer(help="环境管理")
 catalog_app = typer.Typer(help="节点 catalog 管理")
 settings_app = typer.Typer(help="设置管理")
+torch_app = typer.Typer(help="PyTorch 栈管理")
 app.add_typer(env_app, name="env")
 app.add_typer(catalog_app, name="catalog")
 app.add_typer(settings_app, name="settings")
+app.add_typer(torch_app, name="torch")
 
 
 def build_services() -> dict:
@@ -73,18 +77,25 @@ def env_create(
     port: int = typer.Option(8188, "--port", help="ComfyUI 端口"),
     python: str = typer.Option(..., "--python", help="Python 解释器路径"),
     comfyui_source: str | None = typer.Option(None, "--comfyui-source", help="ComfyUI 源码路径（shared 必填）"),
+    with_torch: bool = typer.Option(False, "--with-torch", help="创建 venv 后自动安装 PyTorch 栈"),
+    cu: str | None = typer.Option(None, "--cu", help="PyTorch cu 版本（cu118/cu124/cu126/cpu）；与 --with-torch 配合"),
+    no_torch: bool = typer.Option(False, "--no-torch", help="显式跳过 torch 安装（默认）"),
 ):
     """创建新环境。"""
     services = build_services()
+    install_torch = with_torch and not no_torch
     result = services["env"].create(
         name=name,
         layout=layout,  # type: ignore
         python_path=Path(python),
         comfyui_source=Path(comfyui_source) if comfyui_source else None,
         port=port,
+        install_torch=install_torch,
+        cu_version=cu,
     )
     if result.ok:
-        typer.echo(f"✓ 环境 {name} 创建成功（端口 {port}）")
+        torch_note = "（已装 PyTorch）" if install_torch else ""
+        typer.echo(f"✓ 环境 {name} 创建成功（端口 {port}）{torch_note}")
     else:
         typer.echo(f"✗ 创建失败: {result.error.message}", err=True)
         raise typer.Exit(code=1)
@@ -273,3 +284,61 @@ def settings_set_catalog_db_path(
     else:
         typer.echo(f"✗ 迁移失败: {result.error.message}", err=True)
         raise typer.Exit(code=1)
+
+
+@torch_app.command("detect")
+def torch_detect():
+    """检测当前系统的 CUDA 环境。"""
+    result = CudaDetector.detect()
+    if not result.ok:
+        typer.echo(f"✗ 检测失败: {result.error.message}", err=True)
+        raise typer.Exit(code=1)
+    info = result.value
+    if not info.available:
+        typer.echo("未检测到 NVIDIA GPU（nvidia-smi 不可用）")
+        typer.echo("建议: cu=cpu")
+        return
+    typer.echo(f"GPU: {info.gpu_name}")
+    typer.echo(f"驱动版本: {info.driver_version}")
+    typer.echo(f"最大支持 CUDA: {info.max_cuda_version}")
+    suggestions = CudaDetector.suggest_cu_version(info)
+    typer.echo(f"推荐 cu 版本: {', '.join(suggestions)}")
+
+
+@torch_app.command("init")
+def torch_init(
+    env: str = typer.Option(..., "--env", help="环境名"),
+    cu: str | None = typer.Option(None, "--cu", help="cu 版本（cu118/cu124/cu126/cpu）"),
+    non_interactive: bool = typer.Option(False, "--non-interactive", help="非交互模式"),
+):
+    """为已存在环境生成 torch 配置（写入 envs/<name>/.torch-config.yaml）。"""
+    services = build_services()
+    env_obj = next((e for e in services["env"].list_all() if e.name == env), None)
+    if not env_obj:
+        typer.echo(f"✗ 环境 {env} 不存在", err=True)
+        raise typer.Exit(code=1)
+    cuda_info = CudaDetector.detect()
+    if not cuda_info.ok:
+        typer.echo(f"✗ CUDA 检测失败: {cuda_info.error.message}", err=True)
+        raise typer.Exit(code=1)
+    info = cuda_info.value
+    if cu is None:
+        suggestions = CudaDetector.suggest_cu_version(info)
+        if non_interactive or not info.available:
+            cu = suggestions[0]
+            typer.echo(f"非交互模式选择 cu={cu}")
+        else:
+            typer.echo(f"推荐: {', '.join(suggestions)}")
+            cu = typer.prompt("请选择 cu 版本", default=suggestions[0])
+    ver_result = VenvManager.get_python_version(env_obj.python_executable)
+    py_ver = "3.10"
+    if ver_result.ok:
+        parts = ver_result.value.split()
+        if len(parts) >= 2:
+            py_ver = parts[1].rsplit(".", 1)[0]
+    cfg = TorchConfig.default_for(cu, py_ver)
+    cfg_path = env_obj.root_path / ".torch-config.yaml"
+    cfg.save(cfg_path)
+    typer.echo(f"✓ 配置写入 {cfg_path}")
+    typer.echo(f"  cu={cu} torch={cfg.torch}")
+    typer.echo(f"  安装命令: {cfg.install_command()}")
