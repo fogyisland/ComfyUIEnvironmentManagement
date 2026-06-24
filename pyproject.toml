@@ -5,6 +5,7 @@ description = "ComfyUI 多环境管理工具"
 requires-python = ">=3.9"
 dependencies = [
     "typer>=0.12.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
