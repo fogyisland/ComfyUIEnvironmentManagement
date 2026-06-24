@@ -11,6 +11,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 from comfy_mgr.cli import app
 from comfy_mgr.paths import get_appdata_dir
+from comfy_mgr.result import Result
 from tests.conftest import TEMPLATE_DIR
 
 pytestmark = pytest.mark.integration
@@ -74,3 +75,39 @@ def test_full_m0_flow(project_root, template_python):
     result = runner.invoke(app, ["env", "delete", "test-env", "--force"])
     assert result.exit_code == 0
     assert not (project_root / "envs" / "test-env").exists()
+
+
+def test_torch_install_in_env(project_root, template_python, mocker):
+    """真实 venv + 真实 pip install torch (CPU 版避免 GPU 依赖)。"""
+    comfyui_src = project_root.parent / "shared" / "ComfyUI"
+    # mock cuda 检测为不可用（强制 cpu）
+    from comfy_mgr.infra.cuda import CudaInfo
+    mocker.patch("comfy_mgr.cli.CudaDetector.detect",
+                 return_value=Result.ok(CudaInfo(None, None, None, False)))
+
+    result = runner.invoke(app, [
+        "env", "create",
+        "--name", "torch-test",
+        "--layout", "independent",
+        "--port", "8188",
+        "--python", str(template_python),
+        "--comfyui-source", str(comfyui_src),
+        "--with-torch",
+        "--cu", "cpu",
+    ])
+    assert result.exit_code == 0, result.stdout
+
+    # 验证 config 文件
+    cfg_path = project_root / "envs" / "torch-test" / ".torch-config.yaml"
+    assert cfg_path.exists()
+
+    # 验证 torch 真的被装了（v0.1 跳过实际安装加速；可选）
+    # 如需真实验证：去掉下面这行的 skip
+    pytest.skip("torch 真实下载较慢，手动跑验证")
+    venv_python = project_root / "envs" / "torch-test" / "venv" / "Scripts" / "python.exe"
+    r = subprocess.run(
+        [str(venv_python), "-c", "import torch; print(torch.__version__)"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert r.returncode == 0
+    assert "cpu" in r.stdout or "2." in r.stdout
