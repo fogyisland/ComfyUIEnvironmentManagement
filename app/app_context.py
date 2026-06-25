@@ -1,10 +1,4 @@
-"""AppContext：依赖注入容器（service container + Bridge factory）。
-
-T4 已知偏差（待后续 task 修复）：
-- ``comfy_mgr.services.torch_helper.TorchHelper`` 尚未实现（M0 没有此模块）。
-  本文件提供一个本地轻量替代品，仅保存 cuda / pytorch 句柄以便未来扩展。
-  T14 将引入真正的 ``TorchHelper``，届时替换。
-"""
+"""AppContext：依赖注入容器（service container + Bridge factory）。"""
 from __future__ import annotations
 from pathlib import Path
 from comfy_mgr.db.connection import get_connection, init_schema
@@ -13,7 +7,6 @@ from comfy_mgr.infra.git import GitManager
 from comfy_mgr.infra.venv import VenvManager
 from comfy_mgr.infra.process import ProcessService
 from comfy_mgr.models.process_state import ProcessStateRepo
-from comfy_mgr.infra.cuda import CudaDetector
 from comfy_mgr.infra.pytorch import PyTorchInstaller
 from comfy_mgr.settings import SettingsService
 from comfy_mgr.services.environment import EnvironmentService
@@ -25,18 +18,6 @@ from app.bridge.node_bridge import NodeBridge
 from app.bridge.process_bridge import ProcessBridge
 from app.bridge.settings_bridge import SettingsBridge
 from app.bridge.torch_bridge import TorchBridge
-
-
-class TorchHelper:
-    """T4 桩：组合 CudaDetector + PyTorchInstaller 占位。
-
-    T14 引入真正的 ``comfy_mgr.services.torch_helper.TorchHelper`` 后，
-    AppContext 将直接 import 之并删除本类。
-    """
-
-    def __init__(self, cuda: type, pytorch: type) -> None:
-        self.cuda = cuda
-        self.pytorch = pytorch
 
 
 class AppContext:
@@ -58,9 +39,7 @@ class AppContext:
             log_dir=self.project_root / "logs",
             process_state_repo=ProcessStateRepo(self.conn),
         )
-        self.cuda = CudaDetector
         self.pytorch = PyTorchInstaller
-        self.torch_helper = TorchHelper(cuda=self.cuda, pytorch=self.pytorch)
         self.environment = EnvironmentService(
             conn=self.conn, project_root=self.project_root,
             fs=self.fs, venv=self.venv, pytorch=self.pytorch,
@@ -78,7 +57,9 @@ class AppContext:
         self.node_bridge = NodeBridge(self.node)
         self.process_bridge = ProcessBridge(self.process)
         self.settings_bridge = SettingsBridge(self.settings)
-        self.torch_bridge = TorchBridge(self.torch_helper)
+        self.torch_bridge = TorchBridge(
+            environment=self.environment, pytorch=self.pytorch,
+        )
         # Wire process → process_bridge (Signal forwarder)
         self.process.bridge_sink = self.process_bridge._on_line  # type: ignore[attr-defined]
         # ProcessBridge needs to resolve env_id → Environment
