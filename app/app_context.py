@@ -4,9 +4,6 @@ T4 已知偏差（待后续 task 修复）：
 - ``comfy_mgr.services.torch_helper.TorchHelper`` 尚未实现（M0 没有此模块）。
   本文件提供一个本地轻量替代品，仅保存 cuda / pytorch 句柄以便未来扩展。
   T14 将引入真正的 ``TorchHelper``，届时替换。
-- ``ProcessService`` 的 M0 构造签名是 ``(log_dir)``；T8 会改写为
-  ``(conn, log_dir, bridge_sink)``。T4 暂以 M0 形式构造，然后动态
-  给实例添加 ``bridge_sink`` 属性供 ``process_bridge._on_line`` 接收。
 """
 from __future__ import annotations
 from pathlib import Path
@@ -15,6 +12,7 @@ from comfy_mgr.infra.fs import FS
 from comfy_mgr.infra.git import GitManager
 from comfy_mgr.infra.venv import VenvManager
 from comfy_mgr.infra.process import ProcessService
+from comfy_mgr.models.process_state import ProcessStateRepo
 from comfy_mgr.infra.cuda import CudaDetector
 from comfy_mgr.infra.pytorch import PyTorchInstaller
 from comfy_mgr.settings import SettingsService
@@ -54,12 +52,12 @@ class AppContext:
         self.fs = FS()
         self.git = GitManager()
         self.venv = VenvManager()
-        # M0 签名：ProcessService(log_dir)。T8 会重写为接受 conn / bridge_sink。
+        # T8 签名：ProcessService(conn, log_dir, bridge_sink, process_state_repo)
         self.process = ProcessService(
+            conn=self.conn,
             log_dir=self.project_root / "logs",
+            process_state_repo=ProcessStateRepo(self.conn),
         )
-        # T4 临时给 M0 ProcessService 添加 bridge_sink 槽，T8 后将由构造函数接管。
-        self.process.bridge_sink = None  # type: ignore[attr-defined]
         self.cuda = CudaDetector
         self.pytorch = PyTorchInstaller
         self.torch_helper = TorchHelper(cuda=self.cuda, pytorch=self.pytorch)
