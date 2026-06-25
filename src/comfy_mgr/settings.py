@@ -7,6 +7,7 @@ from comfy_mgr.paths import get_appdata_dir
 DEFAULT_SETTINGS = {
     "catalog_db_path": None,  # None = 使用 get_default_db_path()
     "theme": "material_purple",
+    "theme_mode": "system",      # M1 新增：light / dark / system
     "language": "zh_CN",
     "log_level": "INFO",
     "default_python_path": None,
