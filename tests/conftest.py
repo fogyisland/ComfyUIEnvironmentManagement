@@ -28,3 +28,12 @@ def template_python():
 def platform_mock(monkeypatch):
     """用于在 Windows 上模拟其他平台。"""
     return monkeypatch
+
+# === M1 新增 ===
+
+@pytest.fixture(scope="session")
+def qapp():
+    """pytest-qt 全局 QApplication 实例（M1 Bridge 测试需要）。"""
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    yield app
