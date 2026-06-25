@@ -1,7 +1,6 @@
 """PySide6 入口（M1 最小骨架：只创建 QApplication 并退出）。"""
 from __future__ import annotations
 import sys
-from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 
