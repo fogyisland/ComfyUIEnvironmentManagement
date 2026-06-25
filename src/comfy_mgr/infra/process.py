@@ -84,10 +84,11 @@ class QProcessBackend(QObject):
 
     def _on_finished(self, exit_code: int, _status) -> None:
         # flush 残留 buffer
-        for buf in (self._buf_out, self._buf_err):
+        for attr in ("_buf_out", "_buf_err"):
+            buf = getattr(self, attr)
             if buf:
                 self._emit_line(buf)
-                buf = ""
+                setattr(self, attr, "")
         if self._log_fh:
             self._log_fh.close()
             self._log_fh = None  # type: ignore[assignment]
@@ -148,10 +149,18 @@ class ProcessService:
             started_at=datetime.now(),
             log_file=log_file,
         )
-        self._state_repo.save(ProcessState(
+        save_result = self._state_repo.save(ProcessState(
             env_id=env.id, pid=handle.pid,
             port=env.port, started_at=handle.started_at,
         ))
+        if not save_result.ok:
+            # rollback: stop the backend we just started
+            backend.stop(timeout_ms=3000)
+            self._backends.pop(env.id, None)
+            return Result.fail(ServiceError(
+                code="PROCESS_STATE_SAVE_FAILED",
+                message=f"持久化进程状态失败: {save_result.error.message}",
+            ))
         return Result.ok(handle)
 
     def stop(self, env: Environment, timeout: float = 10.0) -> Result[None]:

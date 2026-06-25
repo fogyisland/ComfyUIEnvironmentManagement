@@ -9,7 +9,7 @@ from comfy_mgr.infra.process import ProcessService, QProcessBackend
 from comfy_mgr.models.environment import Environment
 from comfy_mgr.models.process import ProcessHandle, ProcessStatus
 from comfy_mgr.models.process_state import ProcessState, ProcessStateRepo
-from comfy_mgr.result import Result
+from comfy_mgr.result import Result, ServiceError
 
 
 def make_env(**overrides):
@@ -74,6 +74,26 @@ def test_start_persists_process_state(svc, mocker):
     assert state is not None
     assert state.pid == 9999
     assert state.port == 8188
+
+
+def test_start_fails_when_state_save_fails(svc, mocker):
+    """save() 失败时 start() 必须失败（不静默吞错）。"""
+    mock_backend_cls = mocker.patch("comfy_mgr.infra.process.QProcessBackend")
+    mock_inst = MagicMock()
+    mock_inst.pid.return_value = 1234
+    mock_inst._proc.waitForStarted.return_value = True
+    mock_inst.stop.return_value = True  # rollback stop must succeed
+    mock_backend_cls.return_value = mock_inst
+
+    # 强制 _state_repo.save() 失败
+    svc._state_repo.save = MagicMock(return_value=Result.fail(
+        ServiceError(code="PROCESS_STATE_SAVE_FAILED", message="FK violation")
+    ))
+
+    result = svc.start(make_env())
+    assert not result.ok
+    assert result.error.code == "PROCESS_STATE_SAVE_FAILED"
+    mock_inst.stop.assert_called_once()  # 必须回滚 backend
 
 
 def test_start_returns_fail_if_qprocess_fails_to_start(svc, mocker):
