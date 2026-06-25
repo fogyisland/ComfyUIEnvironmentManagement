@@ -80,3 +80,4 @@ def test_schema_v1_to_v2_migration(tmp_path):
     init_schema(conn)
     row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='process_state'").fetchone()
     assert row is not None
+    assert get_schema_version(conn) == 2
