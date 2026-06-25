@@ -8,6 +8,7 @@ from comfy_mgr.infra.fs import FS
 from comfy_mgr.infra.git import GitManager
 from comfy_mgr.infra.venv import VenvManager
 from comfy_mgr.infra.process import ProcessService
+from comfy_mgr.models.process_state import ProcessStateRepo
 from comfy_mgr.models.pytorch import TorchConfig
 from comfy_mgr.settings import SettingsService
 from comfy_mgr.services.catalog import CatalogService
@@ -41,7 +42,12 @@ def build_services() -> dict:
         "fs": FS(),
         "git": GitManager(),
         "venv": VenvManager(),
-        "process": ProcessService(log_dir=project_root / "logs"),
+        "process": ProcessService(
+            conn=conn,
+            log_dir=project_root / "logs",
+            process_state_repo=ProcessStateRepo(conn),
+        ),
+        "process_state_repo": ProcessStateRepo(conn),
         "env": EnvironmentService(
             conn=conn,
             project_root=project_root,
