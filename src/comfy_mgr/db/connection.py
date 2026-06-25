@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     """打开 SQLite 连接，启用 WAL 模式。"""
@@ -14,7 +14,7 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     return conn
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """初始化 schema（幂等）。"""
+    """初始化 schema（幂等；支持 v1 → v2 migration）。"""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS schema_version (
             version INTEGER PRIMARY KEY,
@@ -67,7 +67,16 @@ def init_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (node_id_a, node_id_b)
         );
 
+        CREATE TABLE IF NOT EXISTS process_state (
+            env_id TEXT PRIMARY KEY,
+            pid INTEGER NOT NULL,
+            port INTEGER NOT NULL,
+            started_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (env_id) REFERENCES environments(id) ON DELETE CASCADE
+        );
+
         INSERT OR IGNORE INTO schema_version (version) VALUES (1);
+        INSERT OR IGNORE INTO schema_version (version) VALUES (2);
     """)
 
 def get_schema_version(conn: sqlite3.Connection) -> int:

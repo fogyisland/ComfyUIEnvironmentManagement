@@ -41,5 +41,42 @@ def test_get_schema_version(tmp_path):
     conn = get_connection(db)
     init_schema(conn)
     ver = get_schema_version(conn)
-    assert ver == 1
+    assert ver == 2
     conn.close()
+
+def test_schema_v2_creates_process_state(tmp_path):
+    from comfy_mgr.db.connection import get_connection, init_schema, get_schema_version
+    db = tmp_path / "test.db"
+    conn = get_connection(db)
+    init_schema(conn)
+    assert get_schema_version(conn) == 2
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='process_state'"
+    ).fetchone()
+    assert row is not None
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(process_state)").fetchall()]
+    assert set(cols) >= {"env_id", "pid", "port", "started_at"}
+
+def test_schema_v1_to_v2_migration(tmp_path):
+    """v1 schema 应能被 init_schema 升级到 v2（process_state 表新增）。"""
+    from comfy_mgr.db.connection import get_connection, init_schema
+    db = tmp_path / "test.db"
+    conn = get_connection(db)
+    # 先建 v1 schema（手工）
+    conn.executescript("""
+        CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+        INSERT INTO schema_version VALUES (1);
+        CREATE TABLE nodes (id TEXT PRIMARY KEY, name TEXT, repo_url TEXT, local_path TEXT);
+        CREATE TABLE environments (id TEXT PRIMARY KEY, name TEXT, root_path TEXT,
+                                   comfyui_layout TEXT, comfyui_source TEXT, venv_path TEXT,
+                                   python_executable TEXT, custom_nodes_path TEXT,
+                                   extra_model_paths_yaml TEXT, port INTEGER,
+                                   enabled_node_ids_json TEXT DEFAULT '[]',
+                                   status TEXT DEFAULT 'stopped', pid INTEGER,
+                                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+    """)
+    # 再 init（应该幂等加 process_state + v2 行）
+    init_schema(conn)
+    row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='process_state'").fetchone()
+    assert row is not None
