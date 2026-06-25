@@ -133,4 +133,26 @@ Item {
         id: createEnvDialog
         envBridge: root.envBridge
     }
+
+    // === Error Banner ===
+    Connections {
+        target: envBridge
+        function onErrorOccurred(code, message) {
+            errorBanner.show(code, message)
+        }
+    }
+    Connections {
+        target: processBridge
+        function onErrorOccurred(code, message) {
+            errorBanner.show(code, message)
+        }
+    }
+
+    ErrorBanner {
+        id: errorBanner
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        z: 1000
+    }
 }
