@@ -25,6 +25,9 @@ Thumbs.db
 # Debug output
 debug_test_output.txt
 
+# App logs (runtime/test artifacts)
+logs/
+
 # Docs (superpowers methodology: track specs/plans, ignore scratch)
 docs/superpowers/sdd/
 docs/superpowers/specs/.tmp/

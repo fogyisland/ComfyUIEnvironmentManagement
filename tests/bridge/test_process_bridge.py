@@ -84,3 +84,14 @@ def test_startEnv_emits_error_on_failure(qapp, qtbot):
 def test_logsFor_unknown_env_returns_empty(qapp):
     bridge = ProcessBridge(MagicMock())
     assert bridge.logsFor("unknown") == []
+
+
+def test_logVersion_increments_on_each_line(qapp, qtbot):
+    """logVersion 必须随每次 _on_line 递增，让 QML binding 重算 logsFor()。"""
+    mock_svc = MagicMock()
+    bridge = ProcessBridge(mock_svc)
+    initial = bridge.logVersion
+    bridge._on_line("env1", "line 1")
+    assert bridge.logVersion == initial + 1
+    bridge._on_line("env1", "line 2")
+    assert bridge.logVersion == initial + 2

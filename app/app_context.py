@@ -33,12 +33,6 @@ class AppContext:
         self.fs = FS()
         self.git = GitManager()
         self.venv = VenvManager()
-        # T8 签名：ProcessService(conn, log_dir, bridge_sink, process_state_repo)
-        self.process = ProcessService(
-            conn=self.conn,
-            log_dir=self.project_root / "logs",
-            process_state_repo=ProcessStateRepo(self.conn),
-        )
         self.pytorch = PyTorchInstaller
         self.environment = EnvironmentService(
             conn=self.conn, project_root=self.project_root,
@@ -51,6 +45,19 @@ class AppContext:
         self.node = NodeService(
             conn=self.conn, fs=self.fs, env_repo=self.environment.repo,
         )
+        # ProcessService → ProcessBridge wiring
+        # Build ProcessService first (without a sink — bridge doesn't exist yet),
+        # then create ProcessBridge(self.process) which captures a reference,
+        # then rebind the sink to the bridge's _on_line. The old code set the
+        # wrong attribute name `bridge_sink` (the constructor stores it under
+        # `_bridge_sink`), so live logs never reached QML. We can't pass
+        # `bridge_sink=self.process_bridge._on_line` to ProcessService here
+        # because ProcessBridge requires `self.process` already to exist.
+        self.process = ProcessService(
+            conn=self.conn,
+            log_dir=self.project_root / "logs",
+            process_state_repo=ProcessStateRepo(self.conn),
+        )
         # Bridges
         self.environment_bridge = EnvironmentBridge(self.environment)
         self.catalog_bridge = CatalogBridge(self.catalog)
@@ -60,8 +67,10 @@ class AppContext:
         self.torch_bridge = TorchBridge(
             environment=self.environment, pytorch=self.pytorch,
         )
-        # Wire process → process_bridge (Signal forwarder)
-        self.process.bridge_sink = self.process_bridge._on_line  # type: ignore[attr-defined]
+        # Wire process → process_bridge (live log line forwarder).
+        # Note: attribute is `_bridge_sink` (private on ProcessService), not
+        # `bridge_sink` — the old bug wrote to the latter and dropped all logs.
+        self.process._bridge_sink = self.process_bridge._on_line
         # ProcessBridge needs to resolve env_id → Environment
         self.process_bridge.set_env_resolver(
             lambda eid: self.environment.get(eid)

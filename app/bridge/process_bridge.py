@@ -16,6 +16,13 @@ class ProcessBridge(BaseBridge):
         super().__init__()
         self._service = service
         self._logs: dict[str, deque] = defaultdict(lambda: deque(maxlen=500))
+        # Bumped on every _on_line() so QML bindings depending on logVersion
+        # re-evaluate `logsFor(env_id)` and pick up fresh lines.
+        self._log_version = 0
+
+    @Property(int, notify=processLogLine)
+    def logVersion(self) -> int:
+        return self._log_version
 
     @Slot(str, result="QVariant")
     def startEnv(self, env_id: str) -> dict:
@@ -73,6 +80,7 @@ class ProcessBridge(BaseBridge):
     def _on_line(self, env_id: str, line: str) -> None:
         """ProcessService → Bridge 推 Signal。"""
         self._logs[env_id].append(line)
+        self._log_version += 1
         self.processLogLine.emit(env_id, line)
 
     def _find_env(self, env_id: str) -> Environment | None:

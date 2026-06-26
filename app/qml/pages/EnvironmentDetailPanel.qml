@@ -82,7 +82,14 @@ Rectangle {
             id: logViewer
             Layout.fillWidth: true
             Layout.fillHeight: true
-            logLines: env ? processBridge.logsFor(env.id) : []
+            // Bind to processBridge.logVersion so QML re-evaluates logsFor()
+            // when processLogLine fires (logsFor is a @Slot, not a notify
+            // property — without this dep the binding only runs once).
+            logLines: {
+                // dummy dependency on processBridge.logVersion
+                processBridge.logVersion
+                return env ? processBridge.logsFor(env.id) : []
+            }
         }
     }
 }
