@@ -77,6 +77,15 @@ M0 + M1 已落地（v0.1.0 已发布到 GitHub）：CLI 内核 104+2 测试 + Py
 - M1 Bridge 接口只增不改（`EnvironmentBridge` / `ProcessBridge` 等）
 - M1 UI 组件不重写，只在 `EnvironmentDetailPanel.qml` 里嵌入新区域
 
+> ⚠️ **M0 已存在 `nodes` 表**(M0 设计:git catalog 模式,`id/name/repo_url/local_path/...`)+ M0 的 `NodeService`(junction enable/disable)。
+> M2 实际命名调整为:
+> - M2 新表 → `scanned_nodes`(避免与 M0 `nodes` 冲突)
+> - M2 新模型 → `ScannedNode`
+> - M2 新服务 → `ScannedNodeService`(避免与 M0 `NodeService` 冲突)
+> - M1 的 `NodeBridge` 在原文件上**扩展**新 slot,不动旧 slot
+>
+> 详见 M2 plan Task 1 + Task 12。
+
 ---
 
 ## 3. App 目录结构（M2 增量）
