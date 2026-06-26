@@ -68,7 +68,12 @@ Drawer {
             }
         }
 
-        Divider { Layout.fillWidth: true }
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            color: Theme.color("outline")
+            opacity: 0.4
+        }
 
         // === 远程区 ===
         Label { text: qsTr("远程信息 (GitHub)"); font.bold: true; font.pixelSize: 14 }

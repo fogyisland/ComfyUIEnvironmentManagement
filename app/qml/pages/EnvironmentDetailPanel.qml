@@ -13,6 +13,7 @@ Rectangle {
     // ============ M2 NEW: node management ============
     property string currentEnvId: env ? env.id : ""
     property var nodeList: []
+    property var conflictList: []
 
     Connections {
         target: appContext.node_bridge
@@ -23,10 +24,29 @@ Rectangle {
         }
     }
 
+    Connections {
+        target: appContext.node_bridge
+        function onConflictListChanged() {
+            if (currentEnvId) {
+                conflictList = appContext.node_bridge.conflictList(currentEnvId);
+            }
+        }
+    }
+
+    function _findNodeById(nodeId) {
+        for (var i = 0; i < nodeList.length; i++) {
+            if (nodeList[i].id === nodeId) {
+                return nodeList[i];
+            }
+        }
+        return null;
+    }
+
     Component.onCompleted: {
         if (currentEnvId) {
             appContext.node_bridge.requestScan(currentEnvId);
             nodeList = appContext.node_bridge.nodeList(currentEnvId);
+            conflictList = appContext.node_bridge.conflictList(currentEnvId);
         }
     }
     // ============ M2 END ============
@@ -94,7 +114,28 @@ Rectangle {
         }
 
         // ============ M2 NEW: 节点管理 ============
-        NodeScanBusy {
+        Comp.ConflictPanel {
+            Layout.fillWidth: true
+            conflicts: conflictList
+            currentEnvId: currentEnvId
+            onResolveClicked: function(conflictId) {
+                appContext.node_bridge.resolveConflict(conflictId);
+            }
+            onIgnoreClicked: function(conflictId) {
+                appContext.node_bridge.ignoreConflict(conflictId);
+            }
+            onDisableNodeClicked: function(nodeId) {
+                appContext.node_bridge.toggleDisabled(nodeId);
+            }
+            onViewNodeClicked: function(nodeId) {
+                var n = _findNodeById(nodeId);
+                if (n) {
+                    nodeDetailPanel.openWith(n);
+                }
+            }
+        }
+
+        Comp.NodeScanBusy {
             Layout.fillWidth: true
             busy: appContext.node_bridge.busy
         }
@@ -119,7 +160,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 280
             model: nodeList
-            delegate: NodeListItem {
+            delegate: Comp.NodeListItem {
                 width: ListView.view.width
                 node: modelData
                 onClicked: nodeDetailPanel.openWith(modelData)
@@ -127,7 +168,7 @@ Rectangle {
             }
         }
 
-        NodeDetailPanel {
+        Comp.NodeDetailPanel {
             id: nodeDetailPanel
             Layout.fillWidth: true
         }

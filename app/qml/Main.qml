@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "pages" as Pages
+import "components" as Comp
 
 ApplicationWindow {
     id: window
@@ -130,7 +131,7 @@ ApplicationWindow {
         function onErrorOccurred(code, message) { globalError.show(code, message) }
     }
 
-    ErrorBanner {
+    Comp.ErrorBanner {
         id: globalError
         anchors.top: parent.top
         anchors.left: parent.left

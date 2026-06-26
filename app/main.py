@@ -69,6 +69,7 @@ def main() -> None:
     engine.rootContext().setContextProperty("nodeBridge", ctx.node_bridge)
     engine.rootContext().setContextProperty("settingsBridge", ctx.settings_bridge)
     engine.rootContext().setContextProperty("torchBridge", ctx.torch_bridge)
+    engine.rootContext().setContextProperty("appContext", ctx)
 
     # 加载 Main.qml
     qml_file = Path(__file__).parent / "qml" / "Main.qml"
