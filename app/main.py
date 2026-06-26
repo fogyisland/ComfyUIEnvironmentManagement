@@ -17,6 +17,16 @@ def main() -> None:
 
     ctx = AppContext()
 
+    # 恢复持久化的 process state
+    for state in ctx.process._state_repo.list_all():
+        env = ctx.environment.get(state.env_id)
+        if env:
+            # 标记 env 状态为 running（M0 status 字段），但不实际启动 backend
+            # UI 会显示 "运行中"，但 stop 操作会因 PROCESS_NOT_RUNNING 失败并提示重启
+            env.status = "running"
+            env.pid = state.pid
+            ctx.environment.repo.save(env)
+
     # i18n
     language = ctx.settings.get("language") or "zh_CN"
     make_translator(app, language)

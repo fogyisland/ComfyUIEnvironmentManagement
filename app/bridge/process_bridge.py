@@ -65,6 +65,11 @@ class ProcessBridge(BaseBridge):
     def logsFor(self, env_id: str) -> list[str]:
         return list(self._logs.get(env_id, []))
 
+    @Slot(result="QVariantList")
+    def runningEnvs(self) -> list[str]:
+        """返回 DB 中所有持久化的 running env_id（GUI 重启后用）。"""
+        return [s.env_id for s in self._service._state_repo.list_all()]
+
     def _on_line(self, env_id: str, line: str) -> None:
         """ProcessService → Bridge 推 Signal。"""
         self._logs[env_id].append(line)
