@@ -10,6 +10,27 @@ Rectangle {
     property var processBridge
     property var envBridge
 
+    // ============ M2 NEW: node management ============
+    property string currentEnvId: env ? env.id : ""
+    property var nodeList: []
+
+    Connections {
+        target: appContext.node_bridge
+        function onNodeListChanged() {
+            if (currentEnvId) {
+                nodeList = appContext.node_bridge.nodeList(currentEnvId);
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        if (currentEnvId) {
+            appContext.node_bridge.requestScan(currentEnvId);
+            nodeList = appContext.node_bridge.nodeList(currentEnvId);
+        }
+    }
+    // ============ M2 END ============
+
     color: Theme.color("surface")
     border.color: Theme.color("outline")
     border.width: 1
@@ -71,6 +92,46 @@ Rectangle {
                 onClicked: envBridge.deleteEnv(env.id, false)
             }
         }
+
+        // ============ M2 NEW: 节点管理 ============
+        NodeScanBusy {
+            Layout.fillWidth: true
+            busy: appContext.node_bridge.busy
+        }
+
+        Label {
+            Layout.fillWidth: true
+            text: qsTr("自定义节点 (%1)").arg(nodeList.length)
+            font.bold: true
+            font.pixelSize: 14
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Button {
+                text: qsTr("重新扫描")
+                onClicked: appContext.node_bridge.requestScan(currentEnvId)
+            }
+            Item { Layout.fillWidth: true }
+        }
+
+        ListView {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 280
+            model: nodeList
+            delegate: NodeListItem {
+                width: ListView.view.width
+                node: modelData
+                onClicked: nodeDetailPanel.openWith(modelData)
+                onToggleDisabledClicked: appContext.node_bridge.toggleDisabled(modelData.id)
+            }
+        }
+
+        NodeDetailPanel {
+            id: nodeDetailPanel
+            Layout.fillWidth: true
+        }
+        // ============ M2 END ============
 
         // === LogSection ===
         Text {
