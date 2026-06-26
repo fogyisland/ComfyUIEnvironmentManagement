@@ -125,10 +125,16 @@ ScrollView {
             label: qsTr("禁用模式")
             Layout.fillWidth: true
             ComboBox {
+                id: nodeDisableModeCombo
                 Layout.fillWidth: true
+                // M2 review Important #1 修复:folder_rename 模式 plumbing
+                // 已在 ScannedNodeService.set_disabled 留 TODO,但实际目录
+                // rename 未实现。UI 不该误导用户能切到这个无效模式 → 把
+                // folder_rename 那一项 disabled,只剩 db_flag(M2 唯一可
+                // 用模式)。M3 完整实现后再 enabled。
                 model: [
-                    {value: "db_flag", text: qsTr("仅标记 (推荐)")},
-                    {value: "folder_rename", text: qsTr("重命名目录 (强制跳过)")},
+                    {value: "db_flag", text: qsTr("仅标记 (推荐)"), enabled: true},
+                    {value: "folder_rename", text: qsTr("重命名目录 (强制跳过) [M3+]"), enabled: false},
                 ]
                 textRole: "text"
                 valueRole: "value"
@@ -138,7 +144,7 @@ ScrollView {
                 }
                 onActivated: settingsBridge.setValue("node_disable_mode", currentValue)
             }
-            helperText: qsTr("folder_rename 模式下，禁用节点会把目录改名为 <pkg>.disabled，ComfyUI 启动时跳过")
+            helperText: qsTr("M2 阶段仅支持「仅标记」模式。folder_rename 模式计划在 M3 完整实现,届时会同步启用此选项。")
         }
 
         // === 默认 Python 路径 ===

@@ -93,8 +93,15 @@ class ScannedNodeService:
     # ---------------- disable / enable (db_flag mode) ----------------
 
     def set_disabled(self, node_id: str, disabled: bool) -> Result[ScannedNode]:
-        """设置节点的 enabled/disabled。M2 阶段只实现 db_flag 模式(更新
-        status 字段),folder_rename 模式留到 T16(Settings 集成)后追加。"""
+        """设置节点的 enabled/disabled。
+
+        M2 plumbing-only:本方法只更新 DB status 字段(db_flag 模式)。
+        folder_rename 模式(同步重命名 <pkg>.disabled 目录)在 M3 实现,
+        计划在 M2 spec §6.3 / M2 plan Task 16.4 追加 `_apply_folder_rename`
+        分支。SettingsPage.qml 已经在 M2 review Important #1 修复里
+        把 folder_rename 选项 disabled,UI 不会触发本方法的 folder_rename
+        路径。
+        """
         node = self.repo.get(node_id)
         if not node:
             return Result.fail(ServiceError(
