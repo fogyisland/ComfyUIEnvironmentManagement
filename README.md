@@ -1,32 +1,36 @@
 # ComfyUI Manager
 
-ComfyUI 多环境管理工具。
+ComfyUI 多环境管理桌面应用。
 
-## M0 状态：CLI 内核
-
-M0 提供 CLI 命令管理 ComfyUI 环境、节点 catalog、设置。
-
-## 安装
+## 快速开始
 
 ```bash
 poetry install
+poetry run comfy-mgr-gui
 ```
 
-## 使用
+或在 Windows 上双击 `start.bat`。
+
+## 文档
+
+- [Master spec](docs/superpowers/specs/2026-06-21-comfyui-manager-design.md)
+- [M1 spec](docs/superpowers/specs/2026-06-24-m1-gui-design.md)
+
+## 打包
 
 ```bash
-poetry run comfy-mgr --help
-poetry run comfy-mgr env create --name my-env --layout shared --port 8188 --python C:/Python310/python.exe
-poetry run comfy-mgr env list
-poetry run comfy-mgr env start my-env
-poetry run comfy-mgr env stop my-env
-poetry run comfy-mgr catalog add https://github.com/ltdrdata/ComfyUI-Impact-Pack
-poetry run comfy-mgr settings show
+python scripts/build_zip.py 0.1.0
 ```
+
+输出：`dist/comfyui-manager-v0.1.0-win64.zip`，解压双击 `start.bat` 即可。
 
 ## 测试
 
 ```bash
-poetry run pytest                    # 单元测试
-poetry run pytest -m integration     # 集成测试（需 template/ 下的真实 Python）
+poetry run pytest -v
 ```
+
+## i18n
+
+翻译源文件：`app/qml/i18n/comfyui_manager_*.ts`。
+更新翻译后跑 `scripts/update_translations.bat` 编译 `.qm`。
