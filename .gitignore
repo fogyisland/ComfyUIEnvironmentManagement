@@ -33,3 +33,6 @@ docs/scratch/
 
 # Poetry
 poetry.lock.bak
+
+# Build output
+dist/
