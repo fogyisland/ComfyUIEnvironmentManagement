@@ -89,3 +89,39 @@ class ScannedNodeService:
         if not row:
             raise ValueError(f"env {self.env_id} 不存在")
         return Path(row[0])
+
+    # ---------------- disable / enable (db_flag mode) ----------------
+
+    def set_disabled(self, node_id: str, disabled: bool) -> Result[ScannedNode]:
+        """设置节点的 enabled/disabled。M2 阶段只实现 db_flag 模式(更新
+        status 字段),folder_rename 模式留到 T16(Settings 集成)后追加。"""
+        node = self.repo.get(node_id)
+        if not node:
+            return Result.fail(ServiceError(
+                code="NODE_NOT_FOUND",
+                message=f"节点 {node_id} 不存在",
+            ))
+        new_status = "disabled" if disabled else "enabled"
+
+        r = self.repo.set_status(node_id, new_status)
+        if not r.ok:
+            return r
+
+        updated = self.repo.get(node_id)
+        if updated is None:
+            return Result.fail(ServiceError(
+                code="NODE_NOT_FOUND",
+                message=f"节点 {node_id} 读取失败"))
+
+        self.bus.emit("nodesChanged", self.env_id)
+        return Result.ok(updated)
+
+    def toggle_disabled(self, node_id: str) -> Result[ScannedNode]:
+        """切换节点的 enabled/disabled 状态。"""
+        node = self.repo.get(node_id)
+        if not node:
+            return Result.fail(ServiceError(
+                code="NODE_NOT_FOUND",
+                message=f"节点 {node_id} 不存在",
+            ))
+        return self.set_disabled(node_id, node.status != "disabled")

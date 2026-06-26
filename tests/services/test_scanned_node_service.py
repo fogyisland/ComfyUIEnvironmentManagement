@@ -134,3 +134,50 @@ def test_scan_idempotent(service, fake_env_with_nodes):
     r2 = service.scan()
     repo = ScannedNodeRepo(fake_env_with_nodes["conn"])
     assert repo.count() == 5
+
+
+# ============ set_disabled tests ============
+
+def test_set_disabled_db_flag_updates_status(service, fake_env_with_nodes):
+    service.scan()
+    node = next(
+        n for n in service.repo.list_by_env(fake_env_with_nodes["env_id"])
+        if n.package == "pkg_clean"
+    )
+    r = service.set_disabled(node.id, True)
+    assert r.ok
+    assert r.value.status == "disabled"
+
+
+def test_set_disabled_emits_nodes_changed(service, fake_env_with_nodes):
+    service.scan()
+    received = []
+    service.bus.on("nodesChanged", lambda eid: received.append(eid))
+    node = service.repo.list_by_env(fake_env_with_nodes["env_id"])[0]
+    service.set_disabled(node.id, True)
+    assert received == [fake_env_with_nodes["env_id"]]
+
+
+def test_set_disabled_re_enable(service, fake_env_with_nodes):
+    service.scan()
+    node = service.repo.list_by_env(fake_env_with_nodes["env_id"])[0]
+    service.set_disabled(node.id, True)
+    service.set_disabled(node.id, False)
+    assert service.repo.get(node.id).status == "enabled"
+
+
+def test_set_disabled_not_found(service):
+    r = service.set_disabled("nope", True)
+    assert not r.ok
+    assert r.error.code == "NODE_NOT_FOUND"
+
+
+def test_toggle_disabled(service, fake_env_with_nodes):
+    service.scan()
+    node = service.repo.list_by_env(fake_env_with_nodes["env_id"])[0]
+    r = service.toggle_disabled(node.id)
+    assert r.ok
+    assert r.value.status == "disabled"
+    r = service.toggle_disabled(node.id)
+    assert r.value.status == "enabled"
+
