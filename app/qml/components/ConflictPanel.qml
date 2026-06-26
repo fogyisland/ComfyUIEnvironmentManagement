@@ -13,7 +13,7 @@ Rectangle {
     signal viewNodeClicked(string nodeId)
 
     visible: conflicts.length > 0
-    color: Theme.color("errorContainer") || "#FCE8E6"
+    color: "#FCE8E6"
     radius: Theme.radius
     implicitHeight: col.implicitHeight + 24
 
@@ -47,7 +47,7 @@ Rectangle {
                         text: {
                             if (modelData.conflict_type === "duplicate_class") {
                                 return qsTr("类 \"%1\" 被 %2 个节点提供")
-                                    .arg(modelData.detail.class)
+                                    .arg(modelData.detail["class"])
                                     .arg(modelData.node_ids.length);
                             }
                             return qsTr("冲突: %1").arg(modelData.conflict_type);
