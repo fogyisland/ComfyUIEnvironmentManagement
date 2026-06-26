@@ -125,3 +125,24 @@ class ScannedNodeService:
                 message=f"节点 {node_id} 不存在",
             ))
         return self.set_disabled(node_id, node.status != "disabled")
+
+    # ---------------- query (M2 bridge 调用) ----------------
+
+    def list_by_env(self) -> Result[list[ScannedNode]]:
+        """返回本 env 下所有节点(含 disabled)。供 NodeBridge.nodeList 用。"""
+        try:
+            rows = self.repo.list_by_env(self.env_id)
+            return Result.ok(rows)
+        except Exception as e:
+            return Result.fail(ServiceError(
+                code="NODE_LIST_FAILED", message=str(e)))
+
+    def get(self, node_id: str) -> Result[ScannedNode]:
+        """按 id 查单个节点。供 NodeBridge.getNodeDetail 用。"""
+        node = self.repo.get(node_id)
+        if not node:
+            return Result.fail(ServiceError(
+                code="NODE_NOT_FOUND",
+                message=f"节点 {node_id} 不存在",
+            ))
+        return Result.ok(node)

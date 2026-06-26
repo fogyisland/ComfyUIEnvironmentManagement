@@ -67,7 +67,6 @@ class AppContext:
         # Bridges
         self.environment_bridge = EnvironmentBridge(self.environment)
         self.catalog_bridge = CatalogBridge(self.catalog)
-        self.node_bridge = NodeBridge(self.node)
         self.process_bridge = ProcessBridge(self.process)
         self.settings_bridge = SettingsBridge(self.settings)
         self.torch_bridge = TorchBridge(
@@ -110,6 +109,18 @@ class AppContext:
         self.node_meta_service = NodeMetaService(
             conn=self.conn, github=self.github_client,
             cache_ttl_seconds=cache_ttl,
+        )
+
+        # NodeBridge (M2):m0_service + per-env scanned + conflict + meta + bus。
+        # scanned_node_service 接受 per-env instance,这里先传 None 占位,AppContext
+        # 暴露 scanned_node_service factory 给 QML 端在切换 env 时调
+        # `node_bridge.scanned = ctx.scanned_node_service(env_id)`。
+        self.node_bridge = NodeBridge(
+            m0_service=self.node,
+            scanned_node_service=None,    # lazy:切换 env 时 set
+            conflict_service=self.conflict_service,
+            node_meta_service=self.node_meta_service,
+            bus=self.bus,
         )
 
         # 一次性 mkdir 迁移:M1 老 env 可能没有 custom_nodes/ 目录,这里补建。
