@@ -8,6 +8,7 @@ __pycache__/
 .coverage
 
 # Virtual envs
+envs/
 envs/*/venv/
 envs/*/Scripts/
 envs/*/Lib/
@@ -39,3 +40,11 @@ poetry.lock.bak
 
 # Build output
 dist/
+
+# Editor / backup
+*.bak
+*.tmp
+*.swp
+*~
+.vscode/
+.idea/
