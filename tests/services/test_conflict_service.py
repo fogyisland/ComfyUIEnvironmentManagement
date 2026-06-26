@@ -140,26 +140,27 @@ def test_detect_soft_deletes_old_on_recompute(services):
     # 再 detect 一次,旧 conflict 软删
     services["conflict_svc"].detect(services["env_id"])
     active = services["conflict_svc"].list_active(services["env_id"])
+    assert active.ok
     # 老的软删后被新写的覆盖,active 列表只有当前的
-    assert len(active) == 1
+    assert len(active.value) == 1
 
 
 def test_resolve_marks_resolved(services):
     services["node_svc"].scan()
     services["conflict_svc"].detect(services["env_id"])
-    cf_id = services["conflict_svc"].list_active(services["env_id"])[0].id
+    cf_id = services["conflict_svc"].list_active(services["env_id"]).value[0].id
     r = services["conflict_svc"].resolve(cf_id)
     assert r.ok
-    assert services["conflict_svc"].list_active(services["env_id"]) == []
+    assert services["conflict_svc"].list_active(services["env_id"]).value == []
 
 
 def test_ignore_marks_ignored(services):
     services["node_svc"].scan()
     services["conflict_svc"].detect(services["env_id"])
-    cf_id = services["conflict_svc"].list_active(services["env_id"])[0].id
+    cf_id = services["conflict_svc"].list_active(services["env_id"]).value[0].id
     r = services["conflict_svc"].ignore(cf_id)
     assert r.ok
-    assert services["conflict_svc"].list_active(services["env_id"]) == []
+    assert services["conflict_svc"].list_active(services["env_id"]).value == []
 
 
 def test_auto_recompute_on_nodes_changed(services):
@@ -171,4 +172,39 @@ def test_auto_recompute_on_nodes_changed(services):
     assert received == [services["env_id"]]
     # 自动重算后,active 列表应该已经有 1 条
     active = services["conflict_svc"].list_active(services["env_id"])
-    assert len(active) == 1
+    assert active.ok
+    assert len(active.value) == 1
+
+
+def test_list_active_returns_result_envelope(services):
+    """M2 review Important #3: list_active 返回 Result[list[Conflict]],
+    跟项目其他 service 一致。空 env 时 ok + value=[];DB 异常时 fail。"""
+    # 空 env:ok + 空列表
+    r = services["conflict_svc"].list_active(services["env_id"])
+    assert r.ok
+    assert r.value == []
+    assert r.error is None
+
+    # 扫出冲突后:ok + 非空列表
+    services["node_svc"].scan()
+    services["conflict_svc"].detect(services["env_id"])
+    r = services["conflict_svc"].list_active(services["env_id"])
+    assert r.ok
+    assert len(r.value) >= 1
+    assert all(hasattr(c, "id") for c in r.value)
+
+
+def test_list_active_returns_fail_on_db_error(services, monkeypatch):
+    """DB 抛异常时,list_active 必须返回 Result.fail(...) 而不是裸抛。"""
+    from comfy_mgr.services.conflict import ConflictService
+
+    def boom(_env_id):
+        raise RuntimeError("simulated DB failure")
+
+    monkeypatch.setattr(services["conflict_svc"].repo, "list_active", boom)
+    r = services["conflict_svc"].list_active(services["env_id"])
+    assert not r.ok
+    assert r.value is None
+    assert r.error is not None
+    assert r.error.code == "CONFLICT_LIST_FAILED"
+    assert "simulated DB failure" in r.error.message

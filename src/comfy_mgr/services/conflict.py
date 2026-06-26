@@ -91,8 +91,20 @@ class ConflictService:
 
     # ---------------- query / state mutation ----------------
 
-    def list_active(self, env_id: str) -> list[Conflict]:
-        return self.repo.list_active(env_id)
+    def list_active(self, env_id: str) -> Result[list[Conflict]]:
+        """返回本 env 当前活跃冲突(未解决、未忽略)。
+
+        M2 review Important #3 修复:之前签名是 `list[Conflict]`,DB 抛异常
+        会直接到 QML → Python AttributeError,破坏项目 Result 约定。改成
+        Result[list[Conflict]];NodeBridge.conflictList 走 _invoke 风格
+        解析 envelope,QML 拿到统一 {"ok": bool, "value"|"error": ...}。
+        """
+        try:
+            rows = self.repo.list_active(env_id)
+            return Result.ok(rows)
+        except Exception as e:
+            return Result.fail(ServiceError(
+                code="CONFLICT_LIST_FAILED", message=str(e)))
 
     def resolve(self, conflict_id: str) -> Result[None]:
         """标记一条冲突已解决(resolved_at = now)。"""

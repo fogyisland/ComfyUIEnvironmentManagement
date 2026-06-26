@@ -78,10 +78,21 @@ def test_conflict_list_property_calls_conflict_service(bridge, mock_deps):
     c = Conflict(id="cf-1", env_id="e1",
                  conflict_type="duplicate_class",
                  node_ids=["sn-a", "sn-b"], detail={"class": "X"})
-    mock_deps["conflict"].list_active.return_value = [c]
+    mock_deps["conflict"].list_active.return_value = Result.ok([c])
     result = bridge.conflictList("e1")
     assert len(result) == 1
     assert result[0]["id"] == "cf-1"
+
+
+def test_conflict_list_returns_empty_on_error(bridge, mock_deps, qtbot):
+    """list_active 返回 Result.fail 时,NodeBridge 必须 emit errorOccurred
+    + 返回空列表,而不是让异常穿透到 QML。"""
+    mock_deps["conflict"].list_active.return_value = Result.fail(
+        ServiceError("CONFLICT_LIST_FAILED", "db boom"))
+    with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as blocker:
+        result = bridge.conflictList("e1")
+    assert result == []
+    assert blocker.args == ["CONFLICT_LIST_FAILED", "db boom"]
 
 
 def test_request_scan_emits_nodes_changed(bridge, mock_deps, qtbot):
