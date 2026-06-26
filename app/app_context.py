@@ -112,12 +112,14 @@ class AppContext:
         )
 
         # NodeBridge (M2):m0_service + per-env scanned + conflict + meta + bus。
-        # scanned_node_service 接受 per-env instance,这里先传 None 占位,AppContext
-        # 暴露 scanned_node_service factory 给 QML 端在切换 env 时调
-        # `node_bridge.scanned = ctx.scanned_node_service(env_id)`。
+        # scanned 是 per-env 实例(env_id 在切换时才知道),这里先传 None 占位。
+        # QML 端在 EnvironmentDetailPanel.Component.onCompleted 调
+        # `appContext.node_bridge.setScannedService(
+        #      appContext.scanned_node_service(currentEnvId))`
+        # 完成 per-env wiring(见 node_bridge.setScannedService Slot)。
         self.node_bridge = NodeBridge(
             m0_service=self.node,
-            scanned_node_service=None,    # lazy:切换 env 时 set
+            scanned_node_service=None,    # lazy:QML 切换 env 时 setScannedService
             conflict_service=self.conflict_service,
             node_meta_service=self.node_meta_service,
             bus=self.bus,

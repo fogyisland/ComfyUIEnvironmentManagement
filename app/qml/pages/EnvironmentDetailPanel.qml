@@ -44,6 +44,11 @@ Rectangle {
 
     Component.onCompleted: {
         if (currentEnvId) {
+            // M2 review Critical 修复:NodeBridge.scanned 是 per-env 实例,
+            // 切到当前 env 时必须先装上,否则 requestScan / nodeList / 等
+            // 全部 AttributeError。
+            appContext.node_bridge.setScannedService(
+                appContext.scanned_node_service(currentEnvId));
             appContext.node_bridge.requestScan(currentEnvId);
             nodeList = appContext.node_bridge.nodeList(currentEnvId);
             conflictList = appContext.node_bridge.conflictList(currentEnvId);

@@ -73,6 +73,20 @@ class NodeBridge(BaseBridge):
 
     # ============ M0/M1 既有 slot (不动) ============
 
+    @Slot("QVariant")
+    def setScannedService(self, scanned_node_service) -> None:
+        """注入 per-env ScannedNodeService 实例。
+
+        M2 review Critical 修复:之前 self.scanned 在 AppContext 构造时
+        传 None,没有任何 caller 设置,导致 requestScan / nodeList /
+        conflictList / setDisabled / toggleDisabled / getNodeDetail 全部
+        AttributeError。QML 端 EnvironmentDetailPanel.Component.onCompleted
+        在切到当前 env 时调本方法:
+            appContext.node_bridge.setScannedService(
+                appContext.scanned_node_service(currentEnvId))
+        """
+        self.scanned = scanned_node_service
+
     @Slot(str, str, result="QVariant")
     def enableInEnv(self, env_id: str, node_id: str) -> dict:
         result = self._invoke(self.m0_service.enable_in_env, env_id, node_id)
@@ -98,8 +112,16 @@ class NodeBridge(BaseBridge):
 
     @Slot(str, result="QVariantList")
     def conflictList(self, env_id: str) -> list:
-        rows = self.conflict.list_active(env_id)
-        return [_conflict_to_dict(c) for c in rows]
+        """返回本 env 当前活跃冲突列表(dict 数组)。
+
+        M2 review Important #3 修复:ConflictService.list_active 已
+        改为 Result[list[Conflict]]。这里解析 envelope,失败时 emit
+        errorOccurred + 返回空列表,跟 nodeList 行为保持一致。
+        """
+        r = self._invoke(self.conflict.list_active, env_id)
+        if not r["ok"]:
+            return []
+        return [_conflict_to_dict(c) for c in r["value"]]
 
     @Slot(str, result="QVariantMap")
     def requestScan(self, env_id: str) -> dict:

@@ -31,6 +31,35 @@ def test_appcontext_has_scanned_node_services(tmp_path: Path, monkeypatch, qapp)
     assert callable(ctx.scanned_node_service)
 
 
+def test_node_bridge_wires_scanned_service_via_factory(
+    tmp_path: Path, monkeypatch, qapp,
+):
+    """AppContext 暴露 scanned_node_service factory,QML 切换 env 时
+    调 setScannedService() 把它装到 NodeBridge.scanned。
+    回归:Critical T20 修复 — 之前 self.scanned 永远为 None,导致
+    requestScan / nodeList / conflictList / toggleDisabled 全部
+    AttributeError。"""
+    fake_appdata = tmp_path / "appdata"
+    monkeypatch.setenv("APPDATA", str(fake_appdata))
+    ctx = AppContext(project_root=tmp_path)
+
+    # 1) 工厂可调用,生成 ScannedNodeService instance
+    from comfy_mgr.services.scanned_node import ScannedNodeService
+    fake_env_id = "env-fake"
+    scanned = ctx.scanned_node_service(fake_env_id)
+    assert isinstance(scanned, ScannedNodeService)
+
+    # 2) 装到 NodeBridge 上
+    assert ctx.node_bridge.scanned is None, (
+        "NodeBridge.scanned 在 QML 装上之前应该是 None"
+    )
+    ctx.node_bridge.setScannedService(scanned)
+    assert ctx.node_bridge.scanned is scanned
+
+    # 3) 装上之后 scanned 不再是 None,后续调用不会 AttributeError
+    assert ctx.node_bridge.scanned is not None
+
+
 def test_appcontext_creates_custom_nodes_dirs(
     tmp_path: Path, monkeypatch, qapp,
 ):
