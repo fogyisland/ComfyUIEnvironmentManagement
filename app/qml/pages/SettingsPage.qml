@@ -120,6 +120,27 @@ ScrollView {
             }
         }
 
+        // === 节点管理 ===
+        Comp.FormField {
+            label: qsTr("禁用模式")
+            Layout.fillWidth: true
+            ComboBox {
+                Layout.fillWidth: true
+                model: [
+                    {value: "db_flag", text: qsTr("仅标记 (推荐)")},
+                    {value: "folder_rename", text: qsTr("重命名目录 (强制跳过)")},
+                ]
+                textRole: "text"
+                valueRole: "value"
+                currentIndex: {
+                    var v = settingsBridge.current.node_disable_mode || "db_flag";
+                    return v === "folder_rename" ? 1 : 0;
+                }
+                onActivated: settingsBridge.setValue("node_disable_mode", currentValue)
+            }
+            helperText: qsTr("folder_rename 模式下，禁用节点会把目录改名为 <pkg>.disabled，ComfyUI 启动时跳过")
+        }
+
         // === 默认 Python 路径 ===
         Comp.FormField {
             label: qsTr("默认 Python 路径")

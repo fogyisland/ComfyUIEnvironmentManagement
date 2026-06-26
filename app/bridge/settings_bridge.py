@@ -22,6 +22,7 @@ class SettingsBridge(BaseBridge):
             "theme_mode": self._service.get("theme_mode"),
             "language": self._service.get("language"),
             "log_level": self._service.get("log_level"),
+            "node_disable_mode": self._service.get("node_disable_mode"),
             "default_python_path": self._service.get("default_python_path"),
         }
 
