@@ -6,12 +6,18 @@ from comfy_mgr.infra.fs import FS
 from comfy_mgr.infra.git import GitManager
 from comfy_mgr.infra.venv import VenvManager
 from comfy_mgr.infra.process import ProcessService
+from comfy_mgr.infra.event_bus import EventBus
+from comfy_mgr.infra.node_scanner import NodeScanner
+from comfy_mgr.infra.github_client import GitHubClient
 from comfy_mgr.models.process_state import ProcessStateRepo
 from comfy_mgr.infra.pytorch import PyTorchInstaller
 from comfy_mgr.settings import SettingsService
 from comfy_mgr.services.environment import EnvironmentService
 from comfy_mgr.services.catalog import CatalogService
 from comfy_mgr.services.node import NodeService
+from comfy_mgr.services.scanned_node import ScannedNodeService
+from comfy_mgr.services.conflict import ConflictService
+from comfy_mgr.services.node_meta import NodeMetaService
 from app.bridge.environment_bridge import EnvironmentBridge
 from app.bridge.catalog_bridge import CatalogBridge
 from app.bridge.node_bridge import NodeBridge
@@ -75,3 +81,57 @@ class AppContext:
         self.process_bridge.set_env_resolver(
             lambda eid: self.environment.get(eid)
         )
+
+        # ============ M2 新增 ============
+        # M1 review Critical #1 教训:新服务必须显式 wiring,且有回归测试覆盖。
+        # 这里只 APPEND,不动 M0/M1 已有属性。
+        self.bus = EventBus()
+        self.scanner = NodeScanner()
+        self.github_client = GitHubClient()
+
+        # per-env ScannedNodeService factory(closure over conn/scanner/bus)。
+        # 不存 instance,需要时由调用方现场建(env_id 在调用时才知道)。
+        def make_scanned_node_service(env_id: str) -> ScannedNodeService:
+            return ScannedNodeService(
+                conn=self.conn, env_id=env_id,
+                scanner=self.scanner, bus=self.bus,
+            )
+        self.scanned_node_service = make_scanned_node_service
+
+        # ConflictService:node_service 懒绑定,detect() 直接走 SQL 不需要。
+        self.conflict_service = ConflictService(
+            conn=self.conn, bus=self.bus, node_service=None,
+        )
+
+        # NodeMetaService:SettingsService.get 不支持默认值,这里手动 fallback。
+        cache_ttl = self.settings.get("meta_cache_ttl")
+        if cache_ttl is None:
+            cache_ttl = 3600
+        self.node_meta_service = NodeMetaService(
+            conn=self.conn, github=self.github_client,
+            cache_ttl_seconds=cache_ttl,
+        )
+
+        # 一次性 mkdir 迁移:M1 老 env 可能没有 custom_nodes/ 目录,这里补建。
+        self._migrate_create_custom_nodes_dirs()
+
+    def _migrate_create_custom_nodes_dirs(self) -> None:
+        """M1 没建 custom_nodes/,M2 启动时补建空目录。
+
+        容错:list_all 失败或单个 mkdir 失败都不阻塞启动,只 log。
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            envs = self.environment.list_all()
+        except Exception as e:
+            logger.warning("migration: list envs failed: %s", e)
+            return
+        for env in envs:
+            try:
+                env.custom_nodes_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.warning(
+                    "migration: mkdir %s failed for env %s: %s",
+                    env.custom_nodes_path, env.id, e,
+                )
