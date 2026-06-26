@@ -49,24 +49,9 @@ class ScannedNodeService:
 
         nodes: list[ScannedNode] = []
         for pkg_dir in pkg_dirs:
-            try:
-                n = self._scan_one_pkg(pkg_dir)
-            except Exception as e:
-                # 单包异常不阻断整次扫描,placeholder 标记
-                n = ScannedNode(
-                    id=f"sn-{uuid.uuid4().hex[:8]}",
-                    env_id=self.env_id,
-                    package=pkg_dir.name,
-                    package_path=pkg_dir,
-                    class_mappings=[],
-                    status="enabled",
-                    scan_meta={
-                        "source": "not_found",
-                        "warnings": [f"scan_failed: {e}"],
-                    },
-                    last_scanned_at=_now_iso(),
-                )
-            nodes.append(n)
+            n = self._scan_one_pkg(pkg_dir)
+            if n is not None:
+                nodes.append(n)
 
         # upsert
         for n in nodes:
