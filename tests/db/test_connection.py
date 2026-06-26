@@ -41,7 +41,7 @@ def test_get_schema_version(tmp_path):
     conn = get_connection(db)
     init_schema(conn)
     ver = get_schema_version(conn)
-    assert ver == 2
+    assert ver == 3
     conn.close()
 
 def test_schema_v2_creates_process_state(tmp_path):
@@ -49,7 +49,7 @@ def test_schema_v2_creates_process_state(tmp_path):
     db = tmp_path / "test.db"
     conn = get_connection(db)
     init_schema(conn)
-    assert get_schema_version(conn) == 2
+    assert get_schema_version(conn) >= 2
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='process_state'"
     ).fetchone()
@@ -80,4 +80,4 @@ def test_schema_v1_to_v2_migration(tmp_path):
     init_schema(conn)
     row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='process_state'").fetchone()
     assert row is not None
-    assert get_schema_version(conn) == 2
+    assert get_schema_version(conn) >= 2

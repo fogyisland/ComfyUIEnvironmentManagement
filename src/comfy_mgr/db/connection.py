@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     """打开 SQLite 连接，启用 WAL 模式。"""
@@ -14,7 +14,7 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     return conn
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """初始化 schema（幂等；支持 v1 → v2 migration）。"""
+    """初始化 schema（幂等；支持 v1 → v2 → v3 migration）。"""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS schema_version (
             version INTEGER PRIMARY KEY,
@@ -75,8 +75,58 @@ def init_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (env_id) REFERENCES environments(id) ON DELETE CASCADE
         );
 
+        -- ========== M2 schema v3 增量 ==========
+        CREATE TABLE IF NOT EXISTS scanned_nodes (
+            id              TEXT PRIMARY KEY,
+            env_id          TEXT NOT NULL
+                            REFERENCES environments(id) ON DELETE CASCADE,
+            package         TEXT NOT NULL,
+            package_path    TEXT NOT NULL,
+            version         TEXT,
+            author          TEXT,
+            description     TEXT,
+            class_mappings  TEXT NOT NULL DEFAULT '[]',
+            status          TEXT NOT NULL DEFAULT 'enabled'
+                            CHECK(status IN ('enabled','disabled')),
+            scan_meta       TEXT NOT NULL DEFAULT '{}',
+            last_scanned_at TEXT,
+            UNIQUE(env_id, package)
+        );
+        CREATE INDEX IF NOT EXISTS idx_scanned_nodes_env
+            ON scanned_nodes(env_id);
+        CREATE INDEX IF NOT EXISTS idx_scanned_nodes_status
+            ON scanned_nodes(env_id, status);
+
+        CREATE TABLE IF NOT EXISTS node_meta_cache (
+            package         TEXT PRIMARY KEY,
+            github_url      TEXT,
+            stars           INTEGER,
+            last_commit     TEXT,
+            homepage        TEXT,
+            fetched_at      TEXT NOT NULL,
+            fetch_error     TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS node_conflicts (
+            id              TEXT PRIMARY KEY,
+            env_id          TEXT NOT NULL
+                            REFERENCES environments(id) ON DELETE CASCADE,
+            conflict_type   TEXT NOT NULL
+                            CHECK(conflict_type IN
+                                  ('duplicate_class','version_mismatch','missing_dep')),
+            node_ids        TEXT NOT NULL,
+            detail          TEXT NOT NULL,
+            detected_at     TEXT NOT NULL,
+            resolved_at     TEXT,
+            ignored         INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_conflicts_active
+            ON node_conflicts(env_id) WHERE resolved_at IS NULL;
+        -- ========== M2 schema v3 增量 END ==========
+
         INSERT OR IGNORE INTO schema_version (version) VALUES (1);
         INSERT OR IGNORE INTO schema_version (version) VALUES (2);
+        INSERT OR IGNORE INTO schema_version (version) VALUES (3);
     """)
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
