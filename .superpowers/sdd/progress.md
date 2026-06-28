@@ -67,6 +67,7 @@ Spec: docs/superpowers/specs/2026-06-26-m2-nodes-design.md
 - T14 (2026-06-28): NodeBridge M3 extension (15 new slots + 5 new signals) (commits b928c77..ea6ed89, b256da0, review clean after 2 Important fixes — (1) deduped `_git_exe_resolver` (was set in both constructor and AppContext post-assign); (2) documented `refreshCatalog` return contract (returns int count per test, not entry list; signal `catalogUpdated` carries count separately); also 3 implementer deviations: AppContext post-assignment of M3 deps (M2 wiring order made brief's one-shot constructor impossible), `_invoke` kwargs bypass for 4 slots (BaseBridge._invoke is `(*args)` only), `refreshCatalog` test-driven count return)
 - T15 (2026-06-28): VersionPanel.qml (节点版本表:refresh + upgrade-all + upgrade/lock/history per row) (commits 4ac9180..75c2c91, review clean — verbatim from brief, 100 lines)
 - T16 (2026-06-28): DepPanel.qml (依赖表 + 本地冲突 + 重新解析/全局检查按钮) (commits 36507ee..3374e0d, review clean — verbatim from brief, 75 lines)
+- T17 (2026-06-28): InstallDialog.qml (catalog 条目确认 + env picker + busy indicator) (commits d5ab231..3bf45b3, review clean — verbatim from brief, 87 lines)
 
 ## Review Findings Ledger
 
