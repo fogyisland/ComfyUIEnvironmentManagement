@@ -50,6 +50,14 @@ class DepRepo:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def list_by_env_and_package(self, env_id: str,
+                                package: str) -> list[DepRecordDict]:
+        rows = self.conn.execute(
+            "SELECT * FROM dep_records WHERE env_id=? AND package=? "
+            "ORDER BY source, dep_name", (env_id, package),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def list_by_env_and_dep(self, env_id: str, dep_name: str) -> list[DepRecordDict]:
         rows = self.conn.execute(
             "SELECT * FROM dep_records WHERE env_id=? AND dep_name=?",
