@@ -89,10 +89,10 @@ class NodeBridge(BaseBridge):
         self.compat = compat_client
         self.install = install_service
         self._project_root = project_root
-        self._git_exe_resolver = (
-            lambda: default_git_resolver(self._project_root)
-            if project_root else lambda: None
-        )
+        # _git_exe_resolver 由 AppContext 在 M3 services 构造完成后注入
+        # (见 app/app_context.py:_git_exe_resolver 赋值)。单一来源,
+        # 避免构造期 + 后注入两层 lambda 包装。
+        self._git_exe_resolver = None
 
         # M2 既有 EventBus 订阅
         bus.on("nodesChanged", lambda env_id: (
@@ -314,6 +314,17 @@ class NodeBridge(BaseBridge):
 
     @Slot(result="QVariant")
     def refreshCatalog(self) -> dict:
+        """强制刷新远程 catalog,返回 envelope `{"ok": True, "value": entry_count}` (int)。
+
+        返回值是条目总数 (int),不是条目列表。QML 消费者如需条目内容,
+        应该在 `catalogUpdated(count)` 信号触发后调用 `searchCatalog()`
+        或 `getCatalogEntry(package)` 获取列表 / 单条。
+
+        失败时:
+          - 发送 `catalogUnavailable(reason_code)` 信号
+          - 发送 `errorOccurred(code, message)` 信号
+          - 返回 envelope `{"ok": False, "error": {code, message}}`
+        """
         # _invoke 不支持 kwargs,这里直接调 service + envelope 构造
         # 返回 value=entry_count(QML 端用),信号 catalogUpdated 也携带 count。
         result = self.catalog.list_remote(force_refresh=True)
