@@ -14,15 +14,24 @@ Page {
     property string staleMessage: ""
 
     function refresh() {
+        // T14 contract: refreshCatalog returns {"ok": bool, "value": int count}.
+        // Bridge also emits catalogUpdated(count). For the entry list we must
+        // call searchCatalog("", 1) (returns from cache including stale on offline).
         var r = appContext.node_bridge.refreshCatalog();
         if (r.ok) {
-            root.entries = r.value;
             root.isStale = false;
+            root.staleMessage = "";
         } else {
-            // 离线模式已经在 bridge 里降级:entries 仍可用 + stale 标记
-            root.entries = r.value || [];
+            // 离线降级:HTTP 失败但 cache 可能非空(stale 标记由 search_substring 返回)
             root.isStale = true;
             root.staleMessage = r.error ? r.error.code : "";
+        }
+        // 不论成功/失败,都拉一次 cache 中的条目列表。
+        var sr = appContext.node_bridge.searchCatalog("", 1);
+        if (sr.ok) {
+            root.entries = sr.value || [];
+        } else {
+            root.entries = [];
         }
     }
 
