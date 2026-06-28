@@ -70,6 +70,7 @@ Spec: docs/superpowers/specs/2026-06-26-m2-nodes-design.md
 - T17 (2026-06-28): InstallDialog.qml (catalog 条目确认 + env picker + busy indicator) (commits d5ab231..3bf45b3, review clean — verbatim from brief, 87 lines)
 - T18 (2026-06-28): HistoryDialog.qml (版本历史表 + 每行 rollback 按钮) (commits 9dbabdc..6c2f679, review clean — verbatim from brief)
 - T19 (2026-06-28): CatalogPage.qml (全局节点目录页:grid + search + refresh + install) (commits b4d72f4..8745373, e5f930a, review clean after 2 Critical fixes — `refresh()` was assigning int count to array property (T14 contract drift); fixed by calling `searchCatalog("")` after `refreshCatalog` to populate entries; offline banner derived from entry-level stale flag)
+- T20 (2026-06-28): Main.qml — wire new CatalogPage (envList from envBridge) (commits fd55a22..bec1f63, review clean — 3 brief deviations adjudicated: brief path was wrong (`pages/Main.qml` vs `Main.qml`); brief assumed no catalog item exists (M2 already added it); brief used `appContext.environment_bridge.envListForQml` (actual: `envBridge.envList` context property); 1-line change replaced obsolete `catalogBridge: catalogBridge` with `envList: envBridge.envList`)
 
 ## Review Findings Ledger
 
