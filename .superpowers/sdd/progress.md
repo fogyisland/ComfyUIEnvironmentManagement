@@ -69,6 +69,7 @@ Spec: docs/superpowers/specs/2026-06-26-m2-nodes-design.md
 - T16 (2026-06-28): DepPanel.qml (依赖表 + 本地冲突 + 重新解析/全局检查按钮) (commits 36507ee..3374e0d, review clean — verbatim from brief, 75 lines)
 - T17 (2026-06-28): InstallDialog.qml (catalog 条目确认 + env picker + busy indicator) (commits d5ab231..3bf45b3, review clean — verbatim from brief, 87 lines)
 - T18 (2026-06-28): HistoryDialog.qml (版本历史表 + 每行 rollback 按钮) (commits 9dbabdc..6c2f679, review clean — verbatim from brief)
+- T19 (2026-06-28): CatalogPage.qml (全局节点目录页:grid + search + refresh + install) (commits b4d72f4..8745373, e5f930a, review clean after 2 Critical fixes — `refresh()` was assigning int count to array property (T14 contract drift); fixed by calling `searchCatalog("")` after `refreshCatalog` to populate entries; offline banner derived from entry-level stale flag)
 
 ## Review Findings Ledger
 
