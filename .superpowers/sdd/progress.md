@@ -75,8 +75,22 @@ Spec: docs/superpowers/specs/2026-06-26-m2-nodes-design.md
 - T22 (2026-06-28): M3 i18n (35 new strings extracted + 65 en_US translations filled + .qm compiled) (commits dcbfaae..f6c6146, review clean — 36 new M3 strings across 5 components, all 65 unfinished entries filled (35 M3 + 30 M2 carryover), zh_CN.ts structurally intact)
 - T23 (2026-06-28): M3 round-trip integration test (real git upgrade + list_status + catalog offline degrade) (commits 28c38e6..b654db5, review clean — 3 tests, 2 with Windows-specific git env fixes: `git -c init.defaultBranch=main init` (Windows default is `master`); `git symbolic-ref HEAD refs/heads/main` on bare remote so `origin/HEAD` is resolvable for `reset --hard origin/HEAD`; 350 + 2 skipped full suite)
 - T24 (2026-06-28): 手动冒烟测试 — automated checks PASS, manual GUI PENDING (350 + 2 skipped, no whitespace regressions, no untracked files; 10-item GUI checklist from spec §10.1 documented in task-24-report.md for user walkthrough; no commit needed unless a manual fix surfaces)
+- T25 (2026-06-28): 整分支 review + tag v0.3.0 — APPROVED FOR MERGE (1 Important finding: `python_portable.py` YAGNI in M3 — defer to M4 per user 2026-06-28 instruction; 8 Minor findings logged; tagged v0.3.0, M3 ledger archived to docs/superpowers/M3-LEDGER.md; commit 54c17c0)
 
 ## Review Findings Ledger
+
+(Minor findings get logged here; Critical/Important get fixed before next task)
+
+## M3 Minor Findings (T25 whole-branch review, non-blocking)
+
+- T14: `_invoke` doesn't accept kwargs — 4 slots (`upgradeNode`, `listVersionHistory`, `searchCatalog`, `refreshCatalog`) call services directly with inline envelope construction. Consider refactoring `_invoke(self, fn, *args, **kwargs)` in M4 to reduce inline envelope boilerplate.
+- T19: `refreshCatalog` return-shape contract drift (returns int count per T14 test contract, not entry list). QML consumers should use `catalogUpdated` signal for count and `searchCatalog` for the list. Documented in `task-14-report.md` and at `node_bridge.py:checkGitPortable` docstring.
+- T21: brief had 5+ QML bugs (fictional `scannedNodeList` id, undeclared `root.versionList`, unbound `list` identifier, imagined `item.package` accessor, missing rescan-triggered M3 refresh). All fixed by implementer; brief author may want to update for future M4+ embed tasks.
+- T22: 3 obsolete `<message>` entries retained in .ts files (harmless — lrelease skips them). Harmless.
+- T22: zh_CN.qm has 63 untranslated + 47 finished + 2 unfinished (zh_CN.ts was untouched per hard rule). Expected runtime fallback to source string.
+- T23: 2 Windows-specific git env fixes in test code (`-c init.defaultBranch=main init` and `git symbolic-ref HEAD refs/heads/main` on bare remote). Brief may want to include for cross-platform portability.
+- T11: `_is_incompatible` algorithm uses probe set including 0.0.0/9999.9999.9999 — works for SpecifierSet intersection checks but may misclassify unusual specs (e.g., `!=1.0`). Not a real-world issue but worth knowing.
+- T13: `SettingsService.get(key)` doesn't support default arg — implementer used M2 None-check fallback pattern 5 times. Consider adding default support in M4 to clean this up.
 
 - T1 Minor: `to_row` / `from_row` in `src/comfy_mgr/models/conflict.py` don't validate `conflict_type` against the new Literal (5 values). M2 callers that hardcode the 3-value set would silently pass unknown values through to DB. Consistent with YAGNI stance (no migration script, no enum table) but worth flagging in M4 if M2 code paths persist.
 - T2 Minor: `list_by_env` in `src/comfy_mgr/db/version_repo.py` reassigns `params` rather than building conditionally. Current code is correct, just slightly redundant. Low priority.
