@@ -41,7 +41,7 @@ def test_get_schema_version(tmp_path):
     conn = get_connection(db)
     init_schema(conn)
     ver = get_schema_version(conn)
-    assert ver == 3
+    assert ver == 4
     conn.close()
 
 def test_schema_v2_creates_process_state(tmp_path):

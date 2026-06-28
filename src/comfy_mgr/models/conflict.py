@@ -10,7 +10,10 @@ from typing import Literal
 class Conflict:
     id: str = field(default_factory=lambda: f"cf-{uuid.uuid4().hex[:8]}")
     env_id: str = ""
-    conflict_type: Literal["duplicate_class", "version_mismatch", "missing_dep"] = "duplicate_class"
+    conflict_type: Literal[
+        "duplicate_class", "version_mismatch", "missing_dep",
+        "local_dep_version", "global_dep_known_incompat",
+    ] = "duplicate_class"
     node_ids: list[str] = field(default_factory=list)
     detail: dict = field(default_factory=dict)
     detected_at: str = ""

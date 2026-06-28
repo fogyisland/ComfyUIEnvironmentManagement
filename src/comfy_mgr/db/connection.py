@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     """打开 SQLite 连接，启用 WAL 模式。"""
@@ -14,7 +14,7 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     return conn
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """初始化 schema（幂等；支持 v1 → v2 → v3 migration）。"""
+    """初始化 schema（幂等；支持 v1 → v4 migration）。"""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS schema_version (
             version INTEGER PRIMARY KEY,
@@ -111,9 +111,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
             id              TEXT PRIMARY KEY,
             env_id          TEXT NOT NULL
                             REFERENCES environments(id) ON DELETE CASCADE,
-            conflict_type   TEXT NOT NULL
-                            CHECK(conflict_type IN
-                                  ('duplicate_class','version_mismatch','missing_dep')),
+            conflict_type   TEXT NOT NULL,
             node_ids        TEXT NOT NULL,
             detail          TEXT NOT NULL,
             detected_at     TEXT NOT NULL,
@@ -124,10 +122,79 @@ def init_schema(conn: sqlite3.Connection) -> None:
             ON node_conflicts(env_id) WHERE resolved_at IS NULL;
         -- ========== M2 schema v3 增量 END ==========
 
+        -- ========== M3 schema v4 增量 ==========
+        CREATE TABLE IF NOT EXISTS version_history (
+            id              TEXT PRIMARY KEY,
+            env_id          TEXT NOT NULL
+                            REFERENCES environments(id) ON DELETE CASCADE,
+            package         TEXT NOT NULL,
+            action          TEXT NOT NULL
+                            CHECK(action IN
+                                  ('upgrade','downgrade','lock','unlock',
+                                   'install','uninstall')),
+            version_before  TEXT,
+            version_after   TEXT,
+            result          TEXT NOT NULL
+                            CHECK(result IN ('success','failed','rolled_back')),
+            error_message   TEXT,
+            performed_at    TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_version_history_env
+            ON version_history(env_id);
+        CREATE INDEX IF NOT EXISTS idx_version_history_package
+            ON version_history(env_id, package);
+        CREATE INDEX IF NOT EXISTS idx_version_history_performed_at
+            ON version_history(performed_at);
+
+        CREATE TABLE IF NOT EXISTS dep_records (
+            id              TEXT PRIMARY KEY,
+            env_id          TEXT NOT NULL
+                            REFERENCES environments(id) ON DELETE CASCADE,
+            package         TEXT NOT NULL,
+            source          TEXT NOT NULL
+                            CHECK(source IN
+                                  ('requirements_txt','pyproject_toml','install_py')),
+            dep_name        TEXT NOT NULL,
+            dep_version_spec TEXT,
+            scanned_at      TEXT NOT NULL,
+            UNIQUE(env_id, package, source, dep_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_dep_records_env
+            ON dep_records(env_id);
+        CREATE INDEX IF NOT EXISTS idx_dep_records_dep
+            ON dep_records(env_id, dep_name);
+
+        CREATE TABLE IF NOT EXISTS catalog_cache (
+            id              TEXT PRIMARY KEY,
+            source_url      TEXT NOT NULL,
+            package         TEXT NOT NULL,
+            raw_metadata    TEXT NOT NULL,
+            cached_at       TEXT NOT NULL,
+            expires_at      TEXT NOT NULL,
+            UNIQUE(source_url, package)
+        );
+        CREATE INDEX IF NOT EXISTS idx_catalog_cache_source
+            ON catalog_cache(source_url, package);
+        CREATE INDEX IF NOT EXISTS idx_catalog_cache_expires
+            ON catalog_cache(expires_at);
+        -- ========== M3 schema v4 增量 END ==========
+
         INSERT OR IGNORE INTO schema_version (version) VALUES (1);
         INSERT OR IGNORE INTO schema_version (version) VALUES (2);
         INSERT OR IGNORE INTO schema_version (version) VALUES (3);
+        INSERT OR IGNORE INTO schema_version (version) VALUES (4);
     """)
+
+    # M3 增量:scanned_nodes 加 locked 列(SQLite 没 IF NOT EXISTS for column)。
+    cols = {
+        row[1] for row in
+        conn.execute("PRAGMA table_info(scanned_nodes)").fetchall()
+    }
+    if "locked" not in cols:
+        conn.execute(
+            "ALTER TABLE scanned_nodes "
+            "ADD COLUMN locked INTEGER NOT NULL DEFAULT 0"
+        )
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
     row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
