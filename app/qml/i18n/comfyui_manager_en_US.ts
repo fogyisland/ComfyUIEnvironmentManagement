@@ -4,19 +4,51 @@
 <context>
     <name>CatalogPage</name>
     <message>
-        <location filename="../pages/CatalogPage.qml" line="24"/>
         <source>GitHub 仓库 URL (例如 https://github.com/owner/repo)</source>
-        <translation>GitHub repo URL (e.g. https://github.com/owner/repo)</translation>
+        <translation type="vanished">GitHub repo URL (e.g. https://github.com/owner/repo)</translation>
     </message>
     <message>
-        <location filename="../pages/CatalogPage.qml" line="29"/>
         <source>添加</source>
-        <translation>Add</translation>
+        <translation type="vanished">Add</translation>
     </message>
     <message>
-        <location filename="../pages/CatalogPage.qml" line="92"/>
         <source>删除</source>
-        <translation>Delete</translation>
+        <translation type="vanished">Delete</translation>
+    </message>
+    <message>
+        <location filename="../pages/CatalogPage.qml" line="9"/>
+        <source>节点目录</source>
+        <translation>Node Catalog</translation>
+    </message>
+    <message>
+        <location filename="../pages/CatalogPage.qml" line="57"/>
+        <source>搜索节点 (e.g. impact, manager)...</source>
+        <translation>Search nodes (e.g. impact, manager)...</translation>
+    </message>
+    <message>
+        <location filename="../pages/CatalogPage.qml" line="61"/>
+        <source>刷新</source>
+        <translation>Refresh</translation>
+    </message>
+    <message>
+        <location filename="../pages/CatalogPage.qml" line="79"/>
+        <source>⚠ 离线 — 显示缓存数据 (%1)</source>
+        <translation>⚠ Offline — showing cached data (%1)</translation>
+    </message>
+    <message>
+        <location filename="../pages/CatalogPage.qml" line="118"/>
+        <source>⭐ %1</source>
+        <translation>⭐ %1</translation>
+    </message>
+    <message>
+        <location filename="../pages/CatalogPage.qml" line="131"/>
+        <source>安装</source>
+        <translation>Install</translation>
+    </message>
+    <message>
+        <location filename="../pages/CatalogPage.qml" line="142"/>
+        <source>(无数据 — 点刷新按钮)</source>
+        <translation>(No data — click the Refresh button)</translation>
     </message>
 </context>
 <context>
@@ -42,32 +74,32 @@
     <message>
         <location filename="../components/ConflictPanel.qml" line="27"/>
         <source>⚠ %1 个冲突</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ %1 conflict(s)</translation>
     </message>
     <message>
         <location filename="../components/ConflictPanel.qml" line="49"/>
         <source>类 &quot;%1&quot; 被 %2 个节点提供</source>
-        <translation type="unfinished"></translation>
+        <translation>Class &quot;%1&quot; is provided by %2 node(s)</translation>
     </message>
     <message>
         <location filename="../components/ConflictPanel.qml" line="53"/>
         <source>冲突: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Conflict: %1</translation>
     </message>
     <message>
         <location filename="../components/ConflictPanel.qml" line="59"/>
         <source>禁用其一</source>
-        <translation type="unfinished"></translation>
+        <translation>Disable one</translation>
     </message>
     <message>
         <location filename="../components/ConflictPanel.qml" line="66"/>
         <source>查看详情</source>
-        <translation type="unfinished"></translation>
+        <translation>View Details</translation>
     </message>
     <message>
         <location filename="../components/ConflictPanel.qml" line="70"/>
         <source>忽略</source>
-        <translation type="unfinished"></translation>
+        <translation>Ignore</translation>
     </message>
 </context>
 <context>
@@ -145,54 +177,87 @@
     </message>
 </context>
 <context>
+    <name>DepPanel</name>
+    <message>
+        <location filename="../components/DepPanel.qml" line="7"/>
+        <source>依赖分析 (%1 个冲突)</source>
+        <translation>Dependency Analysis (%1 conflict(s))</translation>
+    </message>
+    <message>
+        <location filename="../components/DepPanel.qml" line="26"/>
+        <source>重新解析依赖</source>
+        <translation>Re-scan Dependencies</translation>
+    </message>
+    <message>
+        <location filename="../components/DepPanel.qml" line="30"/>
+        <source>检查全局已知冲突</source>
+        <translation>Check globally known conflicts</translation>
+    </message>
+    <message>
+        <location filename="../components/DepPanel.qml" line="39"/>
+        <source>(尚无依赖记录 — 点上面的按钮解析)</source>
+        <translation>(No dependency records — click the button above to scan)</translation>
+    </message>
+    <message>
+        <location filename="../components/DepPanel.qml" line="56"/>
+        <source>⚠ %1 个冲突</source>
+        <translation>⚠ %1 conflict(s)</translation>
+    </message>
+    <message>
+        <location filename="../components/DepPanel.qml" line="68"/>
+        <source>冲突: %1 (%2)</source>
+        <translation>Conflict: %1 (%2)</translation>
+    </message>
+</context>
+<context>
     <name>EnvironmentDetailPanel</name>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="58"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="94"/>
         <source>运行中</source>
         <translation>Running</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="58"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="94"/>
         <source>已停止</source>
         <translation>Stopped</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="63"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="99"/>
         <source>端口: %1</source>
         <translation>Port: %1</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="67"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="103"/>
         <source>Python: %1</source>
         <translation>Python: %1</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="79"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="115"/>
         <source>启动</source>
         <translation>Start</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="86"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="122"/>
         <source>停止</source>
         <translation>Stop</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="91"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="127"/>
         <source>删除</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="104"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="161"/>
         <source>自定义节点 (%1)</source>
-        <translation type="unfinished"></translation>
+        <translation>Custom Nodes (%1)</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="112"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="169"/>
         <source>重新扫描</source>
-        <translation type="unfinished"></translation>
+        <translation>Re-scan</translation>
     </message>
     <message>
-        <location filename="../pages/EnvironmentDetailPanel.qml" line="138"/>
+        <location filename="../pages/EnvironmentDetailPanel.qml" line="284"/>
         <source>实时日志</source>
         <translation>Live Log</translation>
     </message>
@@ -216,25 +281,81 @@
     </message>
 </context>
 <context>
+    <name>HistoryDialog</name>
+    <message>
+        <location filename="../components/HistoryDialog.qml" line="8"/>
+        <source>版本历史 — %1</source>
+        <translation>Version History — %1</translation>
+    </message>
+    <message>
+        <location filename="../components/HistoryDialog.qml" line="30"/>
+        <source>%1 条历史记录</source>
+        <translation>%1 history record(s)</translation>
+    </message>
+    <message>
+        <location filename="../components/HistoryDialog.qml" line="61"/>
+        <source>回滚</source>
+        <translation>Rollback</translation>
+    </message>
+    <message>
+        <location filename="../components/HistoryDialog.qml" line="73"/>
+        <source>关闭</source>
+        <translation>Close</translation>
+    </message>
+</context>
+<context>
+    <name>InstallDialog</name>
+    <message>
+        <location filename="../components/InstallDialog.qml" line="9"/>
+        <source>安装节点</source>
+        <translation>Install Node</translation>
+    </message>
+    <message>
+        <location filename="../components/InstallDialog.qml" line="30"/>
+        <source>作者: %1</source>
+        <translation>Author: %1</translation>
+    </message>
+    <message>
+        <location filename="../components/InstallDialog.qml" line="35"/>
+        <source>⭐ %1</source>
+        <translation>⭐ %1</translation>
+    </message>
+    <message>
+        <location filename="../components/InstallDialog.qml" line="51"/>
+        <source>目标 env:</source>
+        <translation>Target env:</translation>
+    </message>
+    <message>
+        <location filename="../components/InstallDialog.qml" line="70"/>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <location filename="../components/InstallDialog.qml" line="75"/>
+        <source>安装</source>
+        <translation>Install</translation>
+    </message>
+</context>
+<context>
     <name>Main</name>
     <message>
-        <location filename="../Main.qml" line="12"/>
-        <location filename="../Main.qml" line="30"/>
+        <location filename="../Main.qml" line="13"/>
+        <location filename="../Main.qml" line="31"/>
         <source>ComfyUI Manager</source>
         <translation>ComfyUI Manager</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="65"/>
+        <location filename="../Main.qml" line="66"/>
         <source>环境管理</source>
         <translation>Environments</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="66"/>
+        <location filename="../Main.qml" line="67"/>
         <source>节点目录</source>
         <translation>Catalog</translation>
     </message>
     <message>
-        <location filename="../Main.qml" line="67"/>
+        <location filename="../Main.qml" line="68"/>
         <source>设置</source>
         <translation>Settings</translation>
     </message>
@@ -244,82 +365,82 @@
     <message>
         <location filename="../components/NodeDetailPanel.qml" line="40"/>
         <source>本地信息</source>
-        <translation type="unfinished"></translation>
+        <translation>Local Info</translation>
     </message>
     <message>
         <location filename="../components/NodeDetailPanel.qml" line="45"/>
         <source>版本:</source>
-        <translation type="unfinished"></translation>
+        <translation>Version:</translation>
     </message>
     <message>
         <location filename="../components/NodeDetailPanel.qml" line="46"/>
         <location filename="../components/NodeDetailPanel.qml" line="48"/>
-        <location filename="../components/NodeDetailPanel.qml" line="101"/>
-        <location filename="../components/NodeDetailPanel.qml" line="103"/>
+        <location filename="../components/NodeDetailPanel.qml" line="106"/>
+        <location filename="../components/NodeDetailPanel.qml" line="108"/>
         <source>未知</source>
-        <translation type="unfinished"></translation>
+        <translation>Unknown</translation>
     </message>
     <message>
         <location filename="../components/NodeDetailPanel.qml" line="47"/>
         <source>作者:</source>
-        <translation type="unfinished"></translation>
+        <translation>Author:</translation>
     </message>
     <message>
         <location filename="../components/NodeDetailPanel.qml" line="49"/>
         <source>描述:</source>
-        <translation type="unfinished"></translation>
+        <translation>Description:</translation>
     </message>
     <message>
         <location filename="../components/NodeDetailPanel.qml" line="50"/>
         <location filename="../components/NodeDetailPanel.qml" line="53"/>
-        <location filename="../components/NodeDetailPanel.qml" line="106"/>
+        <location filename="../components/NodeDetailPanel.qml" line="111"/>
         <source>无</source>
-        <translation type="unfinished"></translation>
+        <translation>None</translation>
     </message>
     <message>
         <location filename="../components/NodeDetailPanel.qml" line="51"/>
         <source>类映射:</source>
-        <translation type="unfinished"></translation>
+        <translation>Class mappings:</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="74"/>
+        <location filename="../components/NodeDetailPanel.qml" line="79"/>
         <source>远程信息 (GitHub)</source>
-        <translation type="unfinished"></translation>
+        <translation>Remote Info (GitHub)</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="78"/>
+        <location filename="../components/NodeDetailPanel.qml" line="83"/>
         <source>获取中…</source>
-        <translation type="unfinished"></translation>
+        <translation>Loading…</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="78"/>
+        <location filename="../components/NodeDetailPanel.qml" line="83"/>
         <source>查看远程信息</source>
-        <translation type="unfinished"></translation>
+        <translation>View Remote Info</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="100"/>
+        <location filename="../components/NodeDetailPanel.qml" line="105"/>
         <source>Stars:</source>
-        <translation type="unfinished"></translation>
+        <translation>Stars:</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="102"/>
+        <location filename="../components/NodeDetailPanel.qml" line="107"/>
         <source>最后提交:</source>
-        <translation type="unfinished"></translation>
+        <translation>Last commit:</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="104"/>
+        <location filename="../components/NodeDetailPanel.qml" line="109"/>
         <source>主页:</source>
-        <translation type="unfinished"></translation>
+        <translation>Homepage:</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="113"/>
+        <location filename="../components/NodeDetailPanel.qml" line="118"/>
         <source>⚠ 无法获取远程信息: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ Cannot fetch remote info: %1</translation>
     </message>
     <message>
-        <location filename="../components/NodeDetailPanel.qml" line="123"/>
+        <location filename="../components/NodeDetailPanel.qml" line="128"/>
         <source>关闭</source>
-        <translation type="unfinished"></translation>
+        <translation>Close</translation>
     </message>
 </context>
 <context>
@@ -327,22 +448,22 @@
     <message>
         <location filename="../components/NodeListItem.qml" line="54"/>
         <source>已禁用</source>
-        <translation type="unfinished"></translation>
+        <translation>Disabled</translation>
     </message>
     <message>
         <location filename="../components/NodeListItem.qml" line="54"/>
         <source>启用中</source>
-        <translation type="unfinished"></translation>
+        <translation>Enabling</translation>
     </message>
     <message>
         <location filename="../components/NodeListItem.qml" line="63"/>
         <source>启用</source>
-        <translation type="unfinished"></translation>
+        <translation>Enable</translation>
     </message>
     <message>
         <location filename="../components/NodeListItem.qml" line="63"/>
         <source>禁用</source>
-        <translation type="unfinished"></translation>
+        <translation>Disable</translation>
     </message>
 </context>
 <context>
@@ -350,7 +471,7 @@
     <message>
         <location filename="../components/NodeScanBusy.qml" line="24"/>
         <source>正在扫描节点…</source>
-        <translation type="unfinished"></translation>
+        <translation>Scanning nodes…</translation>
     </message>
 </context>
 <context>
@@ -431,27 +552,80 @@
     <message>
         <location filename="../pages/SettingsPage.qml" line="125"/>
         <source>禁用模式</source>
-        <translation type="unfinished"></translation>
+        <translation>Disable mode</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="130"/>
+        <location filename="../pages/SettingsPage.qml" line="136"/>
         <source>仅标记 (推荐)</source>
-        <translation type="unfinished"></translation>
+        <translation>Mark only (recommended)</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="131"/>
-        <source>重命名目录 (强制跳过)</source>
-        <translation type="unfinished"></translation>
+        <location filename="../pages/SettingsPage.qml" line="137"/>
+        <source>重命名目录 (强制跳过) [M3+]</source>
+        <translation>Rename folder (force skip) [M3+]</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="141"/>
-        <source>folder_rename 模式下，禁用节点会把目录改名为 &lt;pkg&gt;.disabled，ComfyUI 启动时跳过</source>
-        <translation type="unfinished"></translation>
+        <location filename="../pages/SettingsPage.qml" line="147"/>
+        <source>M2 阶段仅支持「仅标记」模式。folder_rename 模式计划在 M3 完整实现,届时会同步启用此选项。</source>
+        <translation>M2 phase supports only the "mark only" mode. The folder_rename mode will be fully implemented in M3, and this option will be enabled at that time.</translation>
     </message>
     <message>
-        <location filename="../pages/SettingsPage.qml" line="146"/>
+        <location filename="../pages/SettingsPage.qml" line="152"/>
         <source>默认 Python 路径</source>
         <translation>Default Python Path</translation>
+    </message>
+</context>
+<context>
+    <name>VersionPanel</name>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="7"/>
+        <source>节点版本 (%1)</source>
+        <translation>Node Versions (%1)</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="28"/>
+        <source>刷新版本状态</source>
+        <translation>Refresh version status</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="32"/>
+        <source>全部升级</source>
+        <translation>Upgrade All</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="60"/>
+        <source>🔒 锁定</source>
+        <translation>🔒 Locked</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="65"/>
+        <source>有更新</source>
+        <translation>Update available</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="69"/>
+        <source>升级</source>
+        <translation>Upgrade</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="75"/>
+        <source>解锁</source>
+        <translation>Unlock</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="75"/>
+        <source>锁定</source>
+        <translation>Lock</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="87"/>
+        <source>历史</source>
+        <translation>History</translation>
+    </message>
+    <message>
+        <location filename="../components/VersionPanel.qml" line="96"/>
+        <source>(尚无节点 — 请先扫描)</source>
+        <translation>(No nodes yet — please scan first)</translation>
     </message>
 </context>
 </TS>
