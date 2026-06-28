@@ -98,7 +98,7 @@ ApplicationWindow {
             processBridge: processBridge
         }
         Pages.CatalogPage {
-            catalogBridge: catalogBridge
+            envList: envBridge.envList
         }
         Pages.SettingsPage {
             settingsBridge: settingsBridge
