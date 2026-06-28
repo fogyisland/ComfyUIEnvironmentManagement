@@ -125,6 +125,7 @@ class HTTPClient:
                     if attempt < self.max_retries:
                         time.sleep(self.backoff_base * (2 ** attempt))
                         continue
+                    break
             except URLError as e:
                 # timeout / DNS / connection refused
                 reason = str(e.reason) if hasattr(e, "reason") else str(e)
