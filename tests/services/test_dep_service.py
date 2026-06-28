@@ -1,10 +1,12 @@
 """DepService:解析 requirements.txt + pyproject.toml + 本地冲突检测。"""
 from pathlib import Path
 import uuid
+from unittest.mock import MagicMock
 from comfy_mgr.db.connection import get_connection, init_schema
 from comfy_mgr.db.dep_repo import DepRepo
 from comfy_mgr.db.scanned_node_repo import ScannedNodeRepo
 from comfy_mgr.infra.event_bus import EventBus
+from comfy_mgr.result import Result
 from comfy_mgr.services.dependency import DepService
 
 
@@ -241,3 +243,50 @@ def test_detect_ignores_unparseable_specs(tmp_path: Path):
     r = svc.detect_conflicts("env-1")
     assert r.ok
     assert r.value == []
+
+
+# ---------- _is_incompatible edge cases ----------
+
+def test_is_incompatible_upper_bound_compatible():
+    # <2.0 和 <3.0 共享 [0.0.0, 2.0) 区间 → 不应判为不兼容
+    assert DepService._is_incompatible("<2.0", "<3.0") is False
+
+
+def test_is_incompatible_upper_lower_incompatible():
+    # >=3.0 和 <2.0 没有交集 → 应判为不兼容
+    assert DepService._is_incompatible(">=3.0", "<2.0") is True
+
+
+# ---------- check_global ----------
+
+def test_check_global_returns_empty_when_no_client(tmp_path: Path):
+    conn = _bootstrap(tmp_path)
+    svc = DepService(
+        dep_repo=DepRepo(conn), scanned_repo=ScannedNodeRepo(conn),
+        conn=conn, bus=EventBus(), compat_client=None,
+    )
+    r = svc.check_global("env-1")
+    assert r.ok
+    assert r.value == []
+
+
+def test_check_global_translates_incompat(tmp_path: Path):
+    conn = _bootstrap(tmp_path)
+    repo = DepRepo(conn)
+    now = "2026-06-28T00:00:00"
+    repo.upsert({"id": "dr-1", "env_id": "env-1", "package": "pkg-a",
+                 "source": "requirements_txt", "dep_name": "torch",
+                 "dep_version_spec": ">=2.0", "scanned_at": now})
+    mock = MagicMock()
+    mock.check_known_incompat.return_value = Result.ok([
+        {"node_ids": ["pkg-a"], "detail": "incompat with cuda 11"}
+    ])
+    svc = DepService(
+        dep_repo=repo, scanned_repo=ScannedNodeRepo(conn),
+        conn=conn, bus=EventBus(), compat_client=mock,
+    )
+    r = svc.check_global("env-1")
+    assert r.ok
+    assert len(r.value) == 1
+    assert r.value[0]["conflict_type"] == "global_dep_known_incompat"
+    mock.check_known_incompat.assert_called_once()

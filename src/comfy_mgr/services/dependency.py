@@ -19,6 +19,7 @@ else:
 
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
+from packaging.version import Version
 
 from comfy_mgr.db.dep_repo import DepRepo
 from comfy_mgr.db.scanned_node_repo import ScannedNodeRepo
@@ -231,17 +232,17 @@ class DepService:
             b = SpecifierSet(spec_b)
         except Exception:
             return False
-        # 简单判定:两个 spec 集是否有交集(没有 = 不兼容)
-        # SpecifierSet 没原生 intersection API,用 candidate 探针
-        # 取 a 的第一个 spec 的 op + version 做 test
-        probe_versions = []
-        for s in list(a) + list(b):
-            probe_versions.append(s.version)
-        if not probe_versions:
+        if not a and not b:
             return False
-        # 检查:存在一个 version 同时满足 a 和 b
-        for v in probe_versions:
-            if v in a and v in b:
-                return False
-        # 没有公共版本 → 不兼容
+        # 探测多个候选版本:边界版本 + 极值 (0.0.0 / 9999...)
+        # 单一边界版本无法捕捉 "<2.0" vs "<3.0" 这类上界范围
+        probes = {"0.0.0", "9999.9999.9999"}
+        for s in list(a) + list(b):
+            probes.add(s.version)
+        for v in probes:
+            try:
+                if Version(v) in a and Version(v) in b:
+                    return False
+            except Exception:
+                continue
         return True
