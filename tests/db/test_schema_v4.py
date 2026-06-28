@@ -75,9 +75,12 @@ def test_v4_indexes_exist(tmp_path: Path):
         conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
     }
     assert "idx_version_history_env" in idx
+    assert "idx_version_history_package" in idx
+    assert "idx_version_history_performed_at" in idx
     assert "idx_dep_records_env" in idx
     assert "idx_dep_records_dep" in idx
     assert "idx_catalog_cache_source" in idx
+    assert "idx_catalog_cache_expires" in idx
 
 
 def test_v4_cascade_delete_env_clears_version_history(tmp_path: Path):
