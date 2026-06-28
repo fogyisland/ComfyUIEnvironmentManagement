@@ -41,6 +41,10 @@ poetry.lock.bak
 # Build output
 dist/
 
+# M3 portable runtime (git + python base)
+bin/
+python/
+
 # Editor / backup
 *.bak
 *.tmp
