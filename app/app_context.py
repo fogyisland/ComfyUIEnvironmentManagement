@@ -125,6 +125,79 @@ class AppContext:
             bus=self.bus,
         )
 
+        # ============ M3 新增 ============
+        # M3 review Critical 教训(沿用 M2):新服务必须显式 wiring + 回归测试。
+        # 这里只 APPEND,不动 M0/M1/M2 已有属性。
+        from comfy_mgr.db.scanned_node_repo import ScannedNodeRepo
+        from comfy_mgr.infra.http_client import HTTPClient
+        from comfy_mgr.infra.catalog_http_client import CatalogHTTPClient
+        from comfy_mgr.infra.compat_http_client import CompatHTTPClient
+        from comfy_mgr.infra.git_portable import default_git_resolver
+        from comfy_mgr.infra.python_portable import default_python_resolver
+        from comfy_mgr.db.version_repo import VersionRepo
+        from comfy_mgr.db.dep_repo import DepRepo
+        from comfy_mgr.db.catalog_repo import CatalogCacheRepo
+        from comfy_mgr.services.version import VersionService
+        from comfy_mgr.services.dependency import DepService
+        from comfy_mgr.services.install import InstallService
+
+        # SettingsService.get 不支持默认值,这里手动 fallback(沿用 M2 node_meta 模式)。
+        _http_timeout = self.settings.get("http_timeout")
+        if _http_timeout is None:
+            _http_timeout = 10.0
+        _http_max_retries = self.settings.get("http_max_retries")
+        if _http_max_retries is None:
+            _http_max_retries = 3
+        _catalog_api_base_url = self.settings.get("catalog_api_base_url")
+        if _catalog_api_base_url is None:
+            _catalog_api_base_url = "https://api.comfy.org"
+        _catalog_cache_ttl = self.settings.get("catalog_cache_ttl")
+        if _catalog_cache_ttl is None:
+            _catalog_cache_ttl = 3600
+        _compat_api_base_url = self.settings.get("compat_api_base_url")
+        if _compat_api_base_url is None:
+            _compat_api_base_url = ""
+
+        self.http_client = HTTPClient(
+            timeout=_http_timeout,
+            max_retries=_http_max_retries,
+        )
+        self.catalog_client = CatalogHTTPClient(
+            catalog_repo=CatalogCacheRepo(self.conn),
+            http_client=self.http_client,
+            base_url=_catalog_api_base_url,
+            cache_ttl_seconds=_catalog_cache_ttl,
+        )
+        self.compat_client = CompatHTTPClient(
+            base_url=_compat_api_base_url,
+            http_client=self.http_client,
+        )
+        # git resolver closure over project_root
+        self._git_exe_resolver = lambda: default_git_resolver(self.project_root)
+        # python resolver closure over project_root (M3 新加)
+        self._python_exe_resolver = (
+            lambda: default_python_resolver(self.project_root)
+        )
+
+        self.version_service = VersionService(
+            version_repo=VersionRepo(self.conn),
+            scanned_repo=ScannedNodeRepo(self.conn),
+            conn=self.conn, event_bus=self.bus,
+            git_exe_resolver=self._git_exe_resolver,
+        )
+        self.dep_service = DepService(
+            dep_repo=DepRepo(self.conn),
+            scanned_repo=ScannedNodeRepo(self.conn),
+            conn=self.conn, bus=self.bus,
+            compat_client=self.compat_client,
+        )
+        self.install_service = InstallService(
+            scanned_repo=ScannedNodeRepo(self.conn),
+            version_repo=VersionRepo(self.conn),
+            conn=self.conn, bus=self.bus,
+            git_exe_resolver=self._git_exe_resolver,
+        )
+
         # 一次性 mkdir 迁移:M1 老 env 可能没有 custom_nodes/ 目录,这里补建。
         self._migrate_create_custom_nodes_dirs()
 
