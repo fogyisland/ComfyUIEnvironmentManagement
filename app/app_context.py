@@ -117,6 +117,7 @@ class AppContext:
         # `appContext.node_bridge.setScannedService(
         #      appContext.scanned_node_service(currentEnvId))`
         # 完成 per-env wiring(见 node_bridge.setScannedService Slot)。
+        # 注意:此处先用 None 占位,M3 服务创建完毕后会在下方统一注入。
         self.node_bridge = NodeBridge(
             m0_service=self.node,
             scanned_node_service=None,    # lazy:QML 切换 env 时 setScannedService
@@ -196,6 +197,17 @@ class AppContext:
             version_repo=VersionRepo(self.conn),
             conn=self.conn, bus=self.bus,
             git_exe_resolver=self._git_exe_resolver,
+        )
+
+        # M3 注入到 NodeBridge(NodeBridge 在 M2 段已建,这里补 M3 deps)
+        self.node_bridge.version = self.version_service
+        self.node_bridge.dep = self.dep_service
+        self.node_bridge.catalog = self.catalog_client
+        self.node_bridge.compat = self.compat_client
+        self.node_bridge.install = self.install_service
+        self.node_bridge._project_root = self.project_root
+        self.node_bridge._git_exe_resolver = (
+            lambda: default_git_resolver(self.project_root)
         )
 
         # 一次性 mkdir 迁移:M1 老 env 可能没有 custom_nodes/ 目录,这里补建。

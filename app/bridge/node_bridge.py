@@ -1,9 +1,10 @@
-"""NodeBridge：M0 节点 catalog + M1 启停 + M2 扫描/冲突/详情。
+"""NodeBridge:M0 节点 catalog + M1 启停 + M2 扫描/冲突/详情 + M3 版本/依赖/目录。
 
 历史:
   M0: enable_in_env / disable_in_env (junction, catalog 模式)
   M1: 透传 M0 NodeService 给 QML
-  M2: 加 scanned_node / conflict / meta slot
+  M2: scanned_node / conflict / meta slot
+  M3: version / dep / catalog / install slot (本文件扩展)
 """
 from __future__ import annotations
 from PySide6.QtCore import Signal, Slot, Property
@@ -11,6 +12,7 @@ from app.bridge.base import BaseBridge
 from comfy_mgr.models.scanned_node import ScannedNode
 from comfy_mgr.models.conflict import Conflict
 from comfy_mgr.models.node_meta import NodeMeta
+from comfy_mgr.infra.git_portable import default_git_resolver
 
 
 def _scanned_to_dict(n: ScannedNode) -> dict:
@@ -51,6 +53,13 @@ class NodeBridge(BaseBridge):
     conflictListChanged = Signal()
     busyChanged = Signal()
 
+    # M3 新增
+    versionChanged = Signal(str, str)            # env_id, package
+    depsChanged = Signal(str, str)               # env_id, package
+    catalogUpdated = Signal(int)                 # entry_count
+    catalogUnavailable = Signal(str)             # reason
+    installProgress = Signal(str, str, int, str) # env_id, package, percent, message
+
     def __init__(
         self,
         m0_service,                       # M0 NodeService
@@ -58,6 +67,13 @@ class NodeBridge(BaseBridge):
         conflict_service,                 # M2 ConflictService
         node_meta_service,                # M2 NodeMetaService
         bus,                              # M2 EventBus
+        # M3 新增参数(都有默认 None,保持 M2 调用兼容)
+        version_service=None,
+        dep_service=None,
+        catalog_client=None,
+        compat_client=None,
+        install_service=None,
+        project_root=None,            # M3 新增,给 checkGitPortable 用
     ):
         super().__init__()
         self.m0_service = m0_service
@@ -66,10 +82,30 @@ class NodeBridge(BaseBridge):
         self.meta = node_meta_service
         self.bus = bus
         self._busy = False
+        # M3
+        self.version = version_service
+        self.dep = dep_service
+        self.catalog = catalog_client
+        self.compat = compat_client
+        self.install = install_service
+        self._project_root = project_root
+        self._git_exe_resolver = (
+            lambda: default_git_resolver(self._project_root)
+            if project_root else lambda: None
+        )
 
-        # 订阅 EventBus：其他 service 发 nodesChanged 时同步通知 QML
+        # M2 既有 EventBus 订阅
         bus.on("nodesChanged", lambda env_id: (
             self.nodeListChanged.emit(), self.conflictListChanged.emit()))
+        # M3 订阅
+        bus.on("versionChanged", lambda env_id, package:
+               self.versionChanged.emit(env_id, package))
+        bus.on("depsChanged", lambda env_id, package:
+               self.depsChanged.emit(env_id, package))
+        bus.on("nodeInstalled", lambda env_id, package:
+               self.nodeListChanged.emit())
+        bus.on("nodeUninstalled", lambda env_id, package:
+               self.nodeListChanged.emit())
 
     # ============ M0/M1 既有 slot (不动) ============
 
@@ -191,3 +227,133 @@ class NodeBridge(BaseBridge):
             self.busyChanged.emit()
 
     busy = Property(bool, _get_busy, notify=busyChanged)
+
+    # ============ M3 新增 slot:版本管理 ============
+
+    @Slot(str, str, result="QVariant")
+    def listVersions(self, env_id: str, package: str) -> dict:
+        return self._invoke(self.version.list_status, env_id, package)
+
+    @Slot(str, str, str, result="QVariant")
+    def upgradeNode(self, env_id: str, package: str, target: str) -> dict:
+        # _invoke 不支持 kwargs,这里直接调 service + envelope 构造
+        kw = {"target": target} if target else {"target": None}
+        result = self.version.upgrade(env_id, package, **kw)
+        if result.ok:
+            return {"ok": True, "value": getattr(result, "value", None)}
+        msg = self._tr(result.error.message)
+        self.errorOccurred.emit(result.error.code, msg)
+        return {"ok": False, "error": {"code": result.error.code, "message": msg}}
+
+    @Slot(str, str, str, result="QVariant")
+    def downgradeNode(self, env_id: str, package: str, target: str) -> dict:
+        return self._invoke(self.version.downgrade, env_id, package, target)
+
+    @Slot(str, str, result="QVariant")
+    def lockVersion(self, env_id: str, package: str) -> dict:
+        return self._invoke(self.version.lock, env_id, package)
+
+    @Slot(str, str, result="QVariant")
+    def unlockVersion(self, env_id: str, package: str) -> dict:
+        return self._invoke(self.version.unlock, env_id, package)
+
+    @Slot(str, str, str, result="QVariant")
+    def rollbackVersion(self, env_id: str, package: str,
+                        history_id: str) -> dict:
+        return self._invoke(self.version.rollback, env_id, package, history_id)
+
+    @Slot(str, str, int, result="QVariant")
+    def listVersionHistory(self, env_id: str, package: str,
+                           limit: int = 50) -> dict:
+        # _invoke 不支持 kwargs,这里直接调 service + envelope 构造
+        result = self.version.list_history(env_id, package, limit=limit)
+        if result.ok:
+            return {"ok": True, "value": getattr(result, "value", None)}
+        msg = self._tr(result.error.message)
+        self.errorOccurred.emit(result.error.code, msg)
+        return {"ok": False, "error": {"code": result.error.code, "message": msg}}
+
+    # ============ M3 新增 slot:依赖 ============
+
+    @Slot(str, str, result="QVariant")
+    def scanDeps(self, env_id: str, package: str) -> dict:
+        r = self._invoke(self.dep.scan_deps, env_id, package)
+        if r["ok"]:
+            self.depsChanged.emit(env_id, package)
+        return r
+
+    @Slot(str, str, result="QVariant")
+    def listDeps(self, env_id: str, package: str) -> dict:
+        return self._invoke(self.dep.list_deps, env_id,
+                            package if package else None)
+
+    @Slot(str, result="QVariant")
+    def detectDepConflicts(self, env_id: str) -> dict:
+        return self._invoke(self.dep.detect_conflicts, env_id)
+
+    @Slot(str, result="QVariant")
+    def checkGlobalCompat(self, env_id: str) -> dict:
+        return self._invoke(self.dep.check_global, env_id)
+
+    # ============ M3 新增 slot:目录 ============
+
+    @Slot(str, int, result="QVariant")
+    def searchCatalog(self, query: str, page: int = 1) -> dict:
+        # _invoke 不支持 kwargs,这里直接调 service + envelope 构造
+        # M3 简化:page 参数忽略
+        result = self.catalog.search_remote(query, limit=20)
+        if result.ok:
+            return {"ok": True, "value": getattr(result, "value", None)}
+        msg = self._tr(result.error.message)
+        self.errorOccurred.emit(result.error.code, msg)
+        return {"ok": False, "error": {"code": result.error.code, "message": msg}}
+
+    @Slot(str, result="QVariant")
+    def getCatalogEntry(self, package: str) -> dict:
+        return self._invoke(self.catalog.get_remote, package)
+
+    @Slot(result="QVariant")
+    def refreshCatalog(self) -> dict:
+        # _invoke 不支持 kwargs,这里直接调 service + envelope 构造
+        # 返回 value=entry_count(QML 端用),信号 catalogUpdated 也携带 count。
+        result = self.catalog.list_remote(force_refresh=True)
+        if result.ok:
+            value = getattr(result, "value", None)
+            count = len(value) if value else 0
+            self.catalogUpdated.emit(count)
+            return {"ok": True, "value": count}
+        msg = self._tr(result.error.message)
+        self.catalogUnavailable.emit(result.error.code)
+        self.errorOccurred.emit(result.error.code, msg)
+        return {"ok": False, "error": {"code": result.error.code, "message": msg}}
+
+    @Slot(str, str, result="QVariant")
+    def installFromCatalog(self, package: str, target_env_id: str) -> dict:
+        # 先查 catalog_entry,再 install_from_catalog
+        r = self._invoke(self.catalog.get_remote, package)
+        if not r["ok"]:
+            return r
+        return self._invoke(self.install.install_from_catalog,
+                            target_env_id, r["value"])
+
+    @Slot(str, str, result="QVariant")
+    def uninstallNode(self, env_id: str, package: str) -> dict:
+        return self._invoke(self.install.uninstall, env_id, package)
+
+    @Slot(result="QVariant")
+    def checkGitPortable(self) -> dict:
+        """UI 启动时调一次,显示 git 可用性。"""
+        from comfy_mgr.infra.git_portable import git_portable_version
+        git_exe = self._git_exe_resolver()
+        if git_exe is None:
+            return {"ok": True, "value": {
+                "available": False, "version": "",
+                "source": "missing",
+            }}
+        version = ""
+        if self._project_root:
+            version = git_portable_version(self._project_root) or ""
+        source = "portable" if "bin/git-portable" in str(git_exe) else "system"
+        return {"ok": True, "value": {
+            "available": True, "version": version, "source": source,
+        }}
