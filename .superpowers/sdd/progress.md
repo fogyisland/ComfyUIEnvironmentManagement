@@ -68,6 +68,7 @@ Spec: docs/superpowers/specs/2026-06-26-m2-nodes-design.md
 - T15 (2026-06-28): VersionPanel.qml (节点版本表:refresh + upgrade-all + upgrade/lock/history per row) (commits 4ac9180..75c2c91, review clean — verbatim from brief, 100 lines)
 - T16 (2026-06-28): DepPanel.qml (依赖表 + 本地冲突 + 重新解析/全局检查按钮) (commits 36507ee..3374e0d, review clean — verbatim from brief, 75 lines)
 - T17 (2026-06-28): InstallDialog.qml (catalog 条目确认 + env picker + busy indicator) (commits d5ab231..3bf45b3, review clean — verbatim from brief, 87 lines)
+- T18 (2026-06-28): HistoryDialog.qml (版本历史表 + 每行 rollback 按钮) (commits 9dbabdc..6c2f679, review clean — verbatim from brief)
 
 ## Review Findings Ledger
 
