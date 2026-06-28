@@ -62,6 +62,7 @@ Spec: docs/superpowers/specs/2026-06-26-m2-nodes-design.md
 - T9 (2026-06-26): CompatHTTPClient (M3 placeholder) (commits 6e4dba3..04c98fc, review clean)
 - T10 (2026-06-26): VersionService (upgrade/downgrade/lock + history) (commits 04c98fc..a0cc2c5, review clean — brief-internal `bus=` vs `event_bus=` inconsistency resolved by aligning test to implementation's keyword-only signature)
 - T11 (2026-06-28): DepService (parse req/pyproject + local conflict + check_global) (commits 0d5a670..8c699e2, e5a42fd, review clean — 2 Important fixes: (1) `_is_incompatible` false-positive on upper-bound specs (`<2.0` vs `<3.0` incorrectly flagged), fixed by broadening probe set to include 0.0.0/9999.9999.9999 plus each specifier's boundary; (2) missing tests for `check_global` empty-client + incompat translation paths; also added `list_by_env_and_package` to DepRepo (T3 omission caught))
+- T12 (2026-06-28): InstallService (git clone + uninstall + dir conflict) (commits 4fc2d5b..8b2292d, review clean — 2 brief-internal deviations adjudicated: `event_bus`→`bus` param rename (same pattern as T10); `target_dir.mkdir` after successful clone so mocked test sees the dir, no-op in prod)
 
 ## Review Findings Ledger
 
