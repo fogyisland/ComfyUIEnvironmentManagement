@@ -64,13 +64,18 @@ class AppContext:
             log_dir=self.project_root / "logs",
             process_state_repo=ProcessStateRepo(self.conn),
         )
+        # EventBus: must be created before any bridge construction, since every
+        # bridge requires `bus: EventBus` as a kwarg (T1 refactor removed PySide6).
+        # Later tasks (T10 server lifespan) can subscribe without re-allocating.
+        self.bus = EventBus()
         # Bridges
-        self.environment_bridge = EnvironmentBridge(self.environment)
-        self.catalog_bridge = CatalogBridge(self.catalog)
-        self.process_bridge = ProcessBridge(self.process)
-        self.settings_bridge = SettingsBridge(self.settings)
+        self.environment_bridge = EnvironmentBridge(self.environment, bus=self.bus)
+        self.catalog_bridge = CatalogBridge(self.catalog, bus=self.bus)
+        self.process_bridge = ProcessBridge(self.process, bus=self.bus)
+        self.settings_bridge = SettingsBridge(self.settings, bus=self.bus)
         self.torch_bridge = TorchBridge(
             environment=self.environment, pytorch=self.pytorch,
+            bus=self.bus,
         )
         # Wire process → process_bridge (live log line forwarder).
         # Note: attribute is `_bridge_sink` (private on ProcessService), not
@@ -84,7 +89,8 @@ class AppContext:
         # ============ M2 新增 ============
         # M1 review Critical #1 教训:新服务必须显式 wiring,且有回归测试覆盖。
         # 这里只 APPEND,不动 M0/M1 已有属性。
-        self.bus = EventBus()
+        # 注意:self.bus 已在 bridges 段之前创建(T1 refactor 后 bridges 必须
+        # 接受 bus kwarg),这里不再重复赋值。
         self.scanner = NodeScanner()
         self.github_client = GitHubClient()
 
