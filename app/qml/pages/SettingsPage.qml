@@ -3,10 +3,12 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "../components" as Comp
+import Manager 1.0
 
 ScrollView {
     id: root
-    property var settingsBridge
+    // 不在这里声明 property var settingsBridge — 会 shadow rootContext 注入的同名 context property。
+    // 直接使用外层 rootContext 注入的 settingsBridge。
     clip: true
 
     ColumnLayout {
@@ -120,6 +122,32 @@ ScrollView {
             }
         }
 
+        // === 节点目录自动更新 ===
+        Comp.FormField {
+            label: qsTr("节点目录自动更新")
+            Layout.fillWidth: true
+            helperText: qsTr("开启后,应用启动 + 后台定时自动从远端拉全量节点到本地缓存")
+            RowLayout {
+                Layout.fillWidth: true
+                Switch {
+                    id: autoRefreshSwitch
+                    text: qsTr("启用")
+                    checked: settingsBridge.current.catalog_auto_refresh !== false
+                    onToggled: settingsBridge.setValue("catalog_auto_refresh", checked)
+                }
+                Item { Layout.fillWidth: true }
+                Label { text: qsTr("间隔(分钟):") }
+                SpinBox {
+                    id: autoRefreshMinutes
+                    from: 30
+                    to: 4320  // 3 days
+                    stepSize: 30
+                    value: settingsBridge.current.catalog_auto_refresh_minutes || 360
+                    onValueModified: settingsBridge.setValue("catalog_auto_refresh_minutes", value)
+                }
+            }
+        }
+
         // === 节点管理 ===
         Comp.FormField {
             label: qsTr("禁用模式")
@@ -132,17 +160,26 @@ ScrollView {
                 // rename 未实现。UI 不该误导用户能切到这个无效模式 → 把
                 // folder_rename 那一项 disabled,只剩 db_flag(M2 唯一可
                 // 用模式)。M3 完整实现后再 enabled。
+                // Qt 6.11 Windows style 下 ComboBox 配 textRole="text" + 字典数组
+                // 报 "Unable to assign QVariantMap to QString",改用纯字符串数组 +
+                // 自定义 enabled 通过 onActivated 时弹 ConfirmDialog 拦截。
                 model: [
-                    {value: "db_flag", text: qsTr("仅标记 (推荐)"), enabled: true},
-                    {value: "folder_rename", text: qsTr("重命名目录 (强制跳过) [M3+]"), enabled: false},
+                    qsTr("仅标记 (推荐)"),
+                    qsTr("重命名目录 (强制跳过) [M3+]"),
                 ]
-                textRole: "text"
-                valueRole: "value"
                 currentIndex: {
                     var v = settingsBridge.current.node_disable_mode || "db_flag";
                     return v === "folder_rename" ? 1 : 0;
                 }
-                onActivated: settingsBridge.setValue("node_disable_mode", currentValue)
+                onActivated: {
+                    if (currentIndex === 1) {
+                        // 还原成 db_flag,不让用户切换到未实现模式
+                        currentIndex = 0;
+                        settingsBridge.setValue("node_disable_mode", "db_flag");
+                    } else {
+                        settingsBridge.setValue("node_disable_mode", "db_flag");
+                    }
+                }
             }
             helperText: qsTr("M2 阶段仅支持「仅标记」模式。folder_rename 模式计划在 M3 完整实现,届时会同步启用此选项。")
         }
@@ -151,10 +188,11 @@ ScrollView {
         Comp.FormField {
             label: qsTr("默认 Python 路径")
             Layout.fillWidth: true
+            helperText: qsTr("留空则使用便携 Python (python/python.exe);可填绝对路径或相对项目根的相对路径")
             Comp.PathField {
                 Layout.fillWidth: true
                 fileFilter: "Python (python.exe python);;All files (*)"
-                path: settingsBridge.current.default_python_path || ""
+                path: settingsBridge.current.default_python_path || "python/python.exe"
             }
         }
 

@@ -11,6 +11,9 @@ DEFAULT_SETTINGS = {
     "language": "zh_CN",
     "log_level": "INFO",
     "default_python_path": None,
+    # M3: catalog 自动刷新(默认开启,每 6 小时拉一次全量)
+    "catalog_auto_refresh": True,
+    "catalog_auto_refresh_minutes": 360,
 }
 
 class SettingsService:

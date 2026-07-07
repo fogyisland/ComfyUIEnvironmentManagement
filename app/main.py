@@ -63,6 +63,11 @@ def main() -> None:
 
     # 注册 Bridge 到 QML
     engine = QQmlApplicationEngine()
+    # QML 模块路径必须包含 app/qml/,这样 qmldir 里声明的 module Manager 才能解析
+    engine.addImportPath(str(Path(__file__).parent / "qml"))
+    # PySide6 注入说明:setContextProperty 只暴露对象本身作为全局变量,QML 不能
+    # 通过 `.` 访问注入 QObject 的 Python 属性(例如 appContext.node_bridge 是
+    # undefined)。QML 必须直接使用下面注入的 camelCase 名字。
     engine.rootContext().setContextProperty("envBridge", ctx.environment_bridge)
     engine.rootContext().setContextProperty("processBridge", ctx.process_bridge)
     engine.rootContext().setContextProperty("catalogBridge", ctx.catalog_bridge)
@@ -70,6 +75,11 @@ def main() -> None:
     engine.rootContext().setContextProperty("settingsBridge", ctx.settings_bridge)
     engine.rootContext().setContextProperty("torchBridge", ctx.torch_bridge)
     engine.rootContext().setContextProperty("appContext", ctx)
+    # per-env ScannedNodeService 工厂:原 QML 写 appContext.scanned_node_service(envId),
+    # PySide6 不允许点访问,这里包装成 QObject 注入。
+    from app.bridge.scanned_service_factory import ScannedServiceFactory
+    scanned_factory = ScannedServiceFactory(ctx)
+    engine.rootContext().setContextProperty("scannedServiceFactory", scanned_factory)
 
     # 加载 Main.qml
     qml_file = Path(__file__).parent / "qml" / "Main.qml"

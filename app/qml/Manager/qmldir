@@ -1,2 +1,2 @@
-module ComfyUI.Manager
+module Manager
 singleton Theme 1.0 Theme.qml

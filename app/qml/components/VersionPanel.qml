@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Manager 1.0
 
 GroupBox {
     id: root
@@ -12,7 +13,7 @@ GroupBox {
 
     signal refreshRequested()
     signal upgradeAllRequested()
-    signal historyRequested(string package)
+    signal historyRequested(string packageName)
 
     function refresh() {
         root.refreshRequested();
@@ -68,17 +69,17 @@ GroupBox {
                     Button {
                         text: qsTr("升级")
                         enabled: !modelData.locked && modelData.has_remote
-                        onClicked: appContext.node_bridge.upgradeNode(
+                        onClicked: nodeBridge.upgradeNode(
                             root.currentEnvId, modelData.package, "")
                     }
                     Button {
                         text: modelData.locked ? qsTr("解锁") : qsTr("锁定")
                         onClicked: {
                             if (modelData.locked) {
-                                appContext.node_bridge.unlockVersion(
+                                nodeBridge.unlockVersion(
                                     root.currentEnvId, modelData.package);
                             } else {
-                                appContext.node_bridge.lockVersion(
+                                nodeBridge.lockVersion(
                                     root.currentEnvId, modelData.package);
                             }
                         }

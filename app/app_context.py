@@ -213,6 +213,36 @@ class AppContext:
         # 一次性 mkdir 迁移:M1 老 env 可能没有 custom_nodes/ 目录,这里补建。
         self._migrate_create_custom_nodes_dirs()
 
+        # M3+:节点目录自动刷新。如果用户开启(catalog_auto_refresh=True),
+        # 启动时启动一个 QTimer 后台定时拉全量 catalog 写本地 cache。
+        self._catalog_auto_refresh_timer = None
+        if self.settings.get("catalog_auto_refresh") is not False:
+            self._start_catalog_auto_refresh()
+
+    def _start_catalog_auto_refresh(self) -> None:
+        """启动 catalog 后台自动刷新:首次延迟 5s 触发(让 UI 先起来),
+        之后按 catalog_auto_refresh_minutes 间隔循环。"""
+        from PySide6.QtCore import QTimer
+        minutes = self.settings.get("catalog_auto_refresh_minutes") or 360
+        # 启动后立即在后台拉一次(force_refresh=True,绕过 TTL 缓存)
+        QTimer.singleShot(5_000, self._refresh_catalog_now)
+        # 之后按 minutes 间隔循环
+        timer = QTimer()
+        timer.setInterval(max(1, minutes) * 60 * 1000)
+        timer.timeout.connect(self._refresh_catalog_now)
+        timer.start()
+        self._catalog_auto_refresh_timer = timer
+
+    def _refresh_catalog_now(self) -> None:
+        """后台拉一次全量 catalog,失败不报错(走 stale 降级)。"""
+        try:
+            r = self.catalog_client.list_remote(force_refresh=True)
+            if r.ok:
+                self.bus.emit("catalogUpdated", len(r.value))
+        except Exception:
+            # 后台任务,任何异常都吞掉,不污染主流程
+            pass
+
     def _migrate_create_custom_nodes_dirs(self) -> None:
         """M1 没建 custom_nodes/,M2 启动时补建空目录。
 

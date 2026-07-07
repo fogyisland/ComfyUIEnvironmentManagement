@@ -1,23 +1,24 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Manager 1.0
 
 Dialog {
     id: root
     modal: true
-    title: qsTr("版本历史 — %1").arg(package)
+    title: qsTr("版本历史 — %1").arg(packageName)
     width: 600
     height: 400
 
-    property string package: ""
+    property string packageName: ""
     property string currentEnvId: ""
     property var history: []
     signal rollbackRequested(string historyId)
 
     function load(envId, pkg) {
         root.currentEnvId = envId;
-        root.package = pkg;
-        var r = appContext.node_bridge.listVersionHistory(envId, pkg, 50);
+        root.packageName = pkg;
+        var r = nodeBridge.listVersionHistory(envId, pkg, 50);
         if (r.ok) {
             root.history = r.value;
         } else {

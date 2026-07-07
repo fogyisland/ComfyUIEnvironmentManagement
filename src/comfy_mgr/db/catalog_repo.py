@@ -50,6 +50,17 @@ class CatalogCacheRepo:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def delete_all_for_source(self, source_url: str) -> Result[None]:
+        try:
+            self.conn.execute(
+                "DELETE FROM catalog_cache WHERE source_url = ?",
+                (source_url,),
+            )
+            return Result.ok(None)
+        except Exception as e:
+            return Result.fail(ServiceError(
+                code="CACHE_DELETE_FAILED", message=str(e)))
+
     def list_non_expired(self, now_iso: str | None = None) -> list[CatalogEntryDict]:
         now = now_iso or datetime.now().isoformat(timespec="seconds")
         rows = self.conn.execute(

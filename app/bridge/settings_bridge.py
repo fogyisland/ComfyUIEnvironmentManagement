@@ -13,7 +13,7 @@ class SettingsBridge(BaseBridge):
         super().__init__()
         self._service = service
 
-    @Property("QVariant")
+    @Property("QVariant", notify=settingsChanged)
     def current(self) -> dict:
         """所有当前设置（dict）。"""
         return {

@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Manager 1.0
 
 Dialog {
     id: root
@@ -12,10 +13,15 @@ Dialog {
     property var catalogEntry: ({})
     property var envList: []
     property int selectedEnvIndex: 0
+    property bool busyIndicatorRunning: false
     signal installRequested(string envId)
 
+    onBusyIndicatorRunningChanged: {
+        busyIndicator.running = root.busyIndicatorRunning;
+    }
+
     onOpened: {
-        busyIndicator.running = false;
+        root.busyIndicatorRunning = false;
     }
 
     contentItem: ColumnLayout {

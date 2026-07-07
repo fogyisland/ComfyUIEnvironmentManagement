@@ -4,6 +4,7 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "pages" as Pages
 import "components" as Comp
+import Manager 1.0
 
 ApplicationWindow {
     id: window
@@ -94,14 +95,13 @@ ApplicationWindow {
         currentIndex: navList.currentIndex
 
         Pages.EnvironmentPage {
-            envBridge: envBridge
-            processBridge: processBridge
+            // envBridge / processBridge 来自 rootContext,直接用全局名字
         }
         Pages.CatalogPage {
             envList: envBridge.envList
         }
         Pages.SettingsPage {
-            settingsBridge: settingsBridge
+            // 不再传 settingsBridge — SettingsPage 直接用 rootContext 注入
         }
     }
 

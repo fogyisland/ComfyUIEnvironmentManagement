@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "../components" as Comp
+import Manager 1.0
 
 Dialog {
     id: root

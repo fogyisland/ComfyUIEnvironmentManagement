@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Manager 1.0
 
 Rectangle {
     id: root
@@ -14,7 +15,7 @@ Rectangle {
     signal toggleDisabledClicked()
 
     height: 56
-    color: hovered ? Qt.darker(Theme.color("surface"), 1.05) : "transparent"
+    color: mouseArea.containsMouse ? Qt.darker(Theme.color("surface"), 1.05) : "transparent"
     border.color: Theme.color("outline") || "#79747E"
     border.width: 1
     radius: Theme.radius
@@ -66,6 +67,7 @@ Rectangle {
     }
 
     MouseArea {
+        id: mouseArea
         anchors.fill: parent
         onClicked: root.clicked()
         hoverEnabled: true

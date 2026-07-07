@@ -3,12 +3,13 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "../components" as Comp
+import Manager 1.0
 
 Rectangle {
     id: root
     property var env  // dict from EnvironmentBridge
-    property var processBridge
-    property var envBridge
+    // processBridge / envBridge 来自 rootContext,直接用全局名字 — 不要声明同名
+    // property var,会 shadow rootContext 导致 binding 取到 undefined。
 
     // ============ M2 NEW: node management ============
     property string currentEnvId: env ? env.id : ""
@@ -20,10 +21,10 @@ Rectangle {
     property var depList: []
 
     Connections {
-        target: appContext.node_bridge
+        target: nodeBridge
         function onNodeListChanged() {
             if (currentEnvId) {
-                nodeList = appContext.node_bridge.nodeList(currentEnvId);
+                nodeList = nodeBridge.nodeList(currentEnvId);
                 // M3: rescan 完成后 nodeList 变化,自动刷新版本/依赖视图
                 if (typeof versionPanel !== "undefined" && versionPanel) {
                     versionPanel.refresh();
@@ -36,10 +37,10 @@ Rectangle {
     }
 
     Connections {
-        target: appContext.node_bridge
+        target: nodeBridge
         function onConflictListChanged() {
             if (currentEnvId) {
-                conflictList = appContext.node_bridge.conflictList(currentEnvId);
+                conflictList = nodeBridge.conflictList(currentEnvId);
             }
         }
     }
@@ -58,11 +59,11 @@ Rectangle {
             // M2 review Critical 修复:NodeBridge.scanned 是 per-env 实例,
             // 切到当前 env 时必须先装上,否则 requestScan / nodeList / 等
             // 全部 AttributeError。
-            appContext.node_bridge.setScannedService(
-                appContext.scanned_node_service(currentEnvId));
-            appContext.node_bridge.requestScan(currentEnvId);
-            nodeList = appContext.node_bridge.nodeList(currentEnvId);
-            conflictList = appContext.node_bridge.conflictList(currentEnvId);
+            nodeBridge.setScannedService(
+                scannedServiceFactory.make(currentEnvId));
+            nodeBridge.requestScan(currentEnvId);
+            nodeList = nodeBridge.nodeList(currentEnvId);
+            conflictList = nodeBridge.conflictList(currentEnvId);
         }
     }
     // ============ M2 END ============
@@ -135,13 +136,13 @@ Rectangle {
             conflicts: conflictList
             currentEnvId: currentEnvId
             onResolveClicked: function(conflictId) {
-                appContext.node_bridge.resolveConflict(conflictId);
+                nodeBridge.resolveConflict(conflictId);
             }
             onIgnoreClicked: function(conflictId) {
-                appContext.node_bridge.ignoreConflict(conflictId);
+                nodeBridge.ignoreConflict(conflictId);
             }
             onDisableNodeClicked: function(nodeId) {
-                appContext.node_bridge.toggleDisabled(nodeId);
+                nodeBridge.toggleDisabled(nodeId);
             }
             onViewNodeClicked: function(nodeId) {
                 var n = _findNodeById(nodeId);
@@ -153,7 +154,7 @@ Rectangle {
 
         Comp.NodeScanBusy {
             Layout.fillWidth: true
-            busy: appContext.node_bridge.busy
+            busy: nodeBridge.busy
         }
 
         Label {
@@ -167,7 +168,7 @@ Rectangle {
             Layout.fillWidth: true
             Button {
                 text: qsTr("重新扫描")
-                onClicked: appContext.node_bridge.requestScan(currentEnvId)
+                onClicked: nodeBridge.requestScan(currentEnvId)
             }
             Item { Layout.fillWidth: true }
         }
@@ -180,7 +181,7 @@ Rectangle {
                 width: ListView.view.width
                 node: modelData
                 onClicked: nodeDetailPanel.openWith(modelData)
-                onToggleDisabledClicked: appContext.node_bridge.toggleDisabled(modelData.id)
+                onToggleDisabledClicked: nodeBridge.toggleDisabled(modelData.id)
             }
         }
 
@@ -203,7 +204,7 @@ Rectangle {
                 for (var i = 0; i < root.nodeList.length; i++) {
                     var pkg = root.nodeList[i].package || "";
                     if (!pkg) continue;
-                    var s = appContext.node_bridge.listVersions(root.currentEnvId, pkg);
+                    var s = nodeBridge.listVersions(root.currentEnvId, pkg);
                     if (s.ok && s.value.length > 0) {
                         list.push(s.value[0]);
                     }
@@ -221,8 +222,8 @@ Rectangle {
             }
 
             onRefreshRequested: refresh()
-            onHistoryRequested: function(pkg) {
-                historyDialog.load(root.currentEnvId, pkg);
+            onHistoryRequested: function(packageName) {
+                historyDialog.load(root.currentEnvId, packageName);
                 historyDialog.open();
             }
 
@@ -238,9 +239,9 @@ Rectangle {
             conflictList: root.conflictList
 
             function refreshDeps() {
-                var r = appContext.node_bridge.listDeps(root.currentEnvId, "");
+                var r = nodeBridge.listDeps(root.currentEnvId, "");
                 if (r.ok) root.depList = r.value;
-                var c = appContext.node_bridge.detectDepConflicts(root.currentEnvId);
+                var c = nodeBridge.detectDepConflicts(root.currentEnvId);
                 if (c.ok) root.conflictList = c.value;
             }
 
@@ -248,7 +249,7 @@ Rectangle {
                 for (var i = 0; i < root.nodeList.length; i++) {
                     var pkg = root.nodeList[i].package || "";
                     if (pkg) {
-                        appContext.node_bridge.scanDeps(root.currentEnvId, pkg);
+                        nodeBridge.scanDeps(root.currentEnvId, pkg);
                     }
                 }
                 refreshDeps();
@@ -262,14 +263,14 @@ Rectangle {
         Comp.HistoryDialog {
             id: historyDialog
             onRollbackRequested: function(historyId) {
-                var r = appContext.node_bridge.rollbackVersion(
-                    root.currentEnvId, historyDialog.package, historyId);
+                var r = nodeBridge.rollbackVersion(
+                    root.currentEnvId, historyDialog.packageName, historyId);
                 if (r.ok) historyDialog.close();
             }
         }
 
         Connections {
-            target: appContext.node_bridge
+            target: nodeBridge
             function onVersionChanged(envId, pkg) {
                 if (envId === root.currentEnvId) versionPanel.refresh();
             }

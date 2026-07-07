@@ -4,13 +4,20 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "../components" as Comp
 import "."
+import Manager 1.0
 
 Item {
     id: root
-    property var envBridge
-    property var processBridge
+    // envBridge / processBridge 来自 rootContext,直接用全局名字 — 不要在这里
+    // 声明同名 property var,会 shadow rootContext 导致 binding 取到 undefined。
+    property var envList: envBridge ? envBridge.envList : []
 
-    Component.onCompleted: envBridge.envListChanged
+    Connections {
+        target: envBridge
+        function onEnvListChanged() {
+            root.envList = envBridge.envList;
+        }
+    }
 
     SplitView {
         anchors.fill: parent
@@ -37,7 +44,7 @@ Item {
                     id: envListView
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    model: envBridge.envList
+                    model: root.envList
                     clip: true
                     spacing: 1
 
@@ -111,8 +118,7 @@ Item {
                 // DetailPanel
                 EnvironmentDetailPanel {
                     env: envListView.currentIndex >= 0 ? envBridge.envList[envListView.currentIndex] : null
-                    processBridge: root.processBridge
-                    envBridge: root.envBridge
+                    // processBridge / envBridge 来自 rootContext,直接用全局名字
                 }
             }
         }

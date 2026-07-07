@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Manager 1.0
 
 Drawer {
     id: root
@@ -12,7 +13,7 @@ Drawer {
     function openWith(nodeData) {
         node = nodeData;
         // 触发本地详情查(走 bridge)
-        var r = appContext.node_bridge.getNodeDetail(nodeData.id);
+        var r = nodeBridge.getNodeDetail(nodeData.id);
         if (r.ok) {
             localDetail = r.value.local;
             remoteDetail = r.value.remote;
@@ -85,7 +86,7 @@ Drawer {
                 onClicked: {
                     fetchingRemote = true;
                     // M2: 暂时用占位 owner/repo,实际 M3+ 让用户填或从 pyproject 提
-                    var r = appContext.node_bridge.fetchRemoteMeta(
+                    var r = nodeBridge.fetchRemoteMeta(
                         node.package, "unknown-owner", node.package);
                     fetchingRemote = false;
                     if (r.ok) {

@@ -3,6 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
 import "../components" as Comp
+import Manager 1.0
 
 Page {
     id: root
@@ -17,7 +18,7 @@ Page {
         // T14 contract: refreshCatalog returns {"ok": bool, "value": int count}.
         // Bridge also emits catalogUpdated(count). For the entry list we must
         // call searchCatalog("", 1) (returns from cache including stale on offline).
-        var r = appContext.node_bridge.refreshCatalog();
+        var r = nodeBridge.refreshCatalog();
         if (r.ok) {
             root.isStale = false;
             root.staleMessage = "";
@@ -27,7 +28,7 @@ Page {
             root.staleMessage = r.error ? r.error.code : "";
         }
         // 不论成功/失败,都拉一次 cache 中的条目列表。
-        var sr = appContext.node_bridge.searchCatalog("", 1);
+        var sr = nodeBridge.searchCatalog("", 1);
         if (sr.ok) {
             root.entries = sr.value || [];
         } else {
@@ -36,7 +37,7 @@ Page {
     }
 
     function search(q) {
-        var r = appContext.node_bridge.searchCatalog(q, 1);
+        var r = nodeBridge.searchCatalog(q, 1);
         if (r.ok) root.entries = r.value;
     }
 
@@ -149,13 +150,12 @@ Page {
         id: installDialog
         onInstallRequested: function(envId) {
             installDialog.busyIndicatorRunning = true;
-            var r = appContext.node_bridge.installFromCatalog(
+            var r = nodeBridge.installFromCatalog(
                 installDialog.catalogEntry.id, envId);
             installDialog.busyIndicatorRunning = false;
             if (r.ok) {
                 installDialog.close();
             }
         }
-        property alias busyIndicatorRunning: installDialog.busyIndicator.running
     }
 }
