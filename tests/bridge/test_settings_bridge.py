@@ -1,45 +1,59 @@
-"""SettingsBridge 测试。"""
+"""SettingsBridge 测试 — 无 Qt。"""
+from __future__ import annotations
 from pathlib import Path
+from unittest.mock import MagicMock
+import pytest
 from app.bridge.settings_bridge import SettingsBridge
 from comfy_mgr.settings import SettingsService
 
 
-def test_current_returns_all_settings(qapp, tmp_appdata):
+@pytest.fixture
+def bridge(mock_bus, tmp_appdata):
+    """SettingsBridge:service + bus,tmp_appdata 隔离 APPDATA。"""
     svc = SettingsService()
-    bridge = SettingsBridge(svc)
-    cur = bridge.current
+    return SettingsBridge(service=svc, bus=mock_bus), svc
+
+
+def test_current_returns_all_settings(bridge):
+    b, _ = bridge
+    cur = b.current
     assert cur["theme"] == "material_purple"
     assert cur["theme_mode"] == "system"
     assert cur["language"] == "zh_CN"
 
 
-def test_setValue_persists_and_emits_signal(qapp, tmp_appdata, qtbot):
-    svc = SettingsService()
-    bridge = SettingsBridge(svc)
-    with qtbot.waitSignal(bridge.settingsChanged, timeout=1000) as blocker:
-        result = bridge.setValue("theme_mode", "dark")
+def test_set_value_persists_and_emits_settings_changed(bridge, mock_bus):
+    b, svc = bridge
+    result = b.set_value("theme_mode", "dark")
     assert result["ok"]
-    assert blocker.args == ["theme_mode"]
+    assert ("ws.push", "settingsChanged", "theme_mode") in mock_bus.emit_calls
     assert svc.get("theme_mode") == "dark"
 
 
-def test_setValue_theme_mode_emits_themeModeChanged(qapp, tmp_appdata, qtbot):
-    svc = SettingsService()
-    bridge = SettingsBridge(svc)
-    with qtbot.waitSignal(bridge.themeModeChanged, timeout=1000) as blocker:
-        bridge.setValue("theme_mode", "dark")
-    assert blocker.args == ["dark"]
+def test_set_value_emits_error_on_failure(bridge, mock_bus):
+    b, svc = bridge
+    # 模拟 set() 内部抛异常 → SET_FAILED
+    svc.set = MagicMock(side_effect=RuntimeError("disk full"))
+    result = b.set_value("theme_mode", "dark")
+    assert not result["ok"]
+    assert result["error"]["code"] == "SET_FAILED"
+    assert ("ws.push", "errorOccurred", "SET_FAILED", "disk full") in mock_bus.emit_calls
 
 
-def test_migrateDbPath_copies_file(qapp, tmp_appdata, qtbot):
+def test_migrate_db_path_copies_file(bridge):
     import json
-    svc = SettingsService()
-    # 写一个 fake db
+    b, svc = bridge
     old_db = svc.resolve_db_path()
     old_db.parent.mkdir(parents=True, exist_ok=True)
     old_db.write_text("FAKE", encoding="utf-8")
-    bridge = SettingsBridge(svc)
-    new_path = Path(tmp_appdata) / "new_catalog.db"
-    result = bridge.migrateDbPath(str(new_path))
+    new_path = Path(str(old_db.parent)).parent / "new_catalog.db"
+    result = b.migrate_db_path(str(new_path))
     assert result["ok"]
     assert new_path.exists()
+
+
+def test_reload_emits_settings_changed(bridge, mock_bus):
+    b, _ = bridge
+    result = b.reload()
+    assert result["ok"]
+    assert ("ws.push", "settingsChanged", "*") in mock_bus.emit_calls

@@ -1,6 +1,8 @@
-"""CatalogBridge 测试。"""
+"""CatalogBridge 测试 — 无 Qt。"""
+from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
+import pytest
 from comfy_mgr.result import Result, ServiceError
 from comfy_mgr.models.node import Node
 from app.bridge.catalog_bridge import CatalogBridge
@@ -14,44 +16,42 @@ def _node(node_id="ltdrdata__ComfyUI-Impact-Pack"):
     )
 
 
-def test_nodeList_returns_dicts(qapp):
+@pytest.fixture
+def bridge(mock_bus):
     mock_svc = MagicMock()
+    return CatalogBridge(service=mock_svc, bus=mock_bus), mock_svc
+
+
+def test_list_nodes_returns_dicts(bridge):
+    b, mock_svc = bridge
     mock_svc.list_nodes.return_value = [_node()]
-    bridge = CatalogBridge(mock_svc)
-    result = bridge.nodeList
-    assert len(result) == 1
-    assert result[0]["name"] == "ComfyUI-Impact-Pack"
-    assert result[0]["repoUrl"].startswith("https://")
+    result = b.list_nodes()
+    assert result["ok"] is True
+    assert len(result["value"]) == 1
+    assert result["value"][0]["name"] == "ComfyUI-Impact-Pack"
+    assert result["value"][0]["url"].startswith("https://")
 
 
-def test_addNode_returns_ok_and_emits_nodeAdded(qapp, qtbot):
-    mock_svc = MagicMock()
+def test_add_node_returns_ok_and_emits_node_list_changed(bridge, mock_bus):
+    b, mock_svc = bridge
     mock_svc.add_node.return_value = Result.ok(_node())
-    bridge = CatalogBridge(mock_svc)
-    with qtbot.waitSignal(bridge.nodeAdded, timeout=1000) as blocker, \
-         qtbot.waitSignal(bridge.nodeListChanged, timeout=1000):
-        result = bridge.addNode("https://github.com/ltdrdata/ComfyUI-Impact-Pack")
-    assert result["ok"]
-    assert blocker.args == ["ltdrdata__ComfyUI-Impact-Pack"]
+    result = b.add_node("https://github.com/ltdrdata/ComfyUI-Impact-Pack")
+    assert result["ok"] is True
+    assert ("ws.push", "nodeListChanged") in mock_bus.emit_calls
 
 
-def test_removeNode_emits_nodeRemoved(qapp, qtbot):
-    mock_svc = MagicMock()
+def test_remove_node_emits_node_list_changed(bridge, mock_bus):
+    b, mock_svc = bridge
     mock_svc.remove_node.return_value = Result.ok(None)
-    bridge = CatalogBridge(mock_svc)
-    with qtbot.waitSignal(bridge.nodeRemoved, timeout=1000) as blocker, \
-         qtbot.waitSignal(bridge.nodeListChanged, timeout=1000):
-        result = bridge.removeNode("ltdrdata__ComfyUI-Impact-Pack")
-    assert result["ok"]
-    assert blocker.args == ["ltdrdata__ComfyUI-Impact-Pack"]
+    result = b.remove_node("ltdrdata__ComfyUI-Impact-Pack")
+    assert result["ok"] is True
+    assert ("ws.push", "nodeListChanged") in mock_bus.emit_calls
 
 
-def test_addNode_emits_error_on_duplicate(qapp, qtbot):
-    mock_svc = MagicMock()
+def test_add_node_emits_error_on_duplicate(bridge, mock_bus):
+    b, mock_svc = bridge
     mock_svc.add_node.return_value = Result.fail(
         ServiceError("NODE_ALREADY_EXISTS", "节点已存在"))
-    bridge = CatalogBridge(mock_svc)
-    with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as blocker:
-        result = bridge.addNode("https://github.com/ltdrdata/ComfyUI-Impact-Pack")
+    result = b.add_node("https://github.com/ltdrdata/ComfyUI-Impact-Pack")
     assert not result["ok"]
-    assert blocker.args == ["NODE_ALREADY_EXISTS", "节点已存在"]
+    assert ("ws.push", "errorOccurred", "NODE_ALREADY_EXISTS", "节点已存在") in mock_bus.emit_calls

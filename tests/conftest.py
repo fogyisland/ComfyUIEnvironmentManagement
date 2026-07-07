@@ -42,6 +42,26 @@ def qapp():
     yield app
 
 
+# === M4 新增（无 Qt bridge 测试用）===
+
+@pytest.fixture
+def mock_bus():
+    """记录所有 emit 调用的 EventBus mock。"""
+    from comfy_mgr.infra.event_bus import EventBus
+    bus = EventBus()
+    emit_calls: list = []
+
+    real_emit = bus.emit
+
+    def recording_emit(channel: str, *args):
+        emit_calls.append((channel, *args))
+        return real_emit(channel, *args)
+
+    bus.emit = recording_emit
+    bus.emit_calls = emit_calls
+    return bus
+
+
 # === M2 新增 ===
 
 @pytest.fixture
