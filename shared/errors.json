@@ -1,0 +1,165 @@
+{
+  "_version": "0.4.0",
+  "BAD_REQUEST": {
+    "http_status": 400,
+    "severity": "info",
+    "i18n_zh_CN": "请求格式错误",
+    "i18n_en_US": "Bad request format"
+  },
+  "BAD_PAYLOAD": {
+    "http_status": 400,
+    "severity": "info",
+    "i18n_zh_CN": "请求体无法解析",
+    "i18n_en_US": "Payload could not be parsed"
+  },
+  "ENV_NOT_FOUND": {
+    "http_status": 404,
+    "severity": "warn",
+    "i18n_zh_CN": "环境 {env_id} 不存在",
+    "i18n_en_US": "Environment {env_id} not found"
+  },
+  "NODE_NOT_FOUND": {
+    "http_status": 404,
+    "severity": "warn",
+    "i18n_zh_CN": "节点 {node_id} 不存在",
+    "i18n_en_US": "Node {node_id} not found"
+  },
+  "CONFLICT_NOT_FOUND": {
+    "http_status": 404,
+    "severity": "warn",
+    "i18n_zh_CN": "冲突记录 {conflict_id} 不存在",
+    "i18n_en_US": "Conflict {conflict_id} not found"
+  },
+  "CATALOG_FETCH_FAILED": {
+    "http_status": 502,
+    "severity": "warn",
+    "i18n_zh_CN": "远端节点目录拉取失败",
+    "i18n_en_US": "Remote catalog fetch failed"
+  },
+  "ENV_ALREADY_RUNNING": {
+    "http_status": 409,
+    "severity": "warn",
+    "i18n_zh_CN": "环境 {env_id} 已在运行",
+    "i18n_en_US": "Environment {env_id} is already running"
+  },
+  "NODE_ALREADY_EXISTS": {
+    "http_status": 409,
+    "severity": "warn",
+    "i18n_zh_CN": "节点 {package} 已存在",
+    "i18n_en_US": "Node {package} already exists"
+  },
+  "LOCKED_VERSION": {
+    "http_status": 409,
+    "severity": "warn",
+    "i18n_zh_CN": "节点 {package} 已锁定,无法 {action}",
+    "i18n_en_US": "Node {package} is locked, cannot {action}"
+  },
+  "PORT_IN_USE": {
+    "http_status": 409,
+    "severity": "error",
+    "i18n_zh_CN": "端口 {port} 已被占用",
+    "i18n_en_US": "Port {port} is already in use"
+  },
+  "GIT_CLONE_FAILED": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "Git 克隆失败: {message}",
+    "i18n_en_US": "Git clone failed: {message}"
+  },
+  "GIT_CHECKOUT_FAILED": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "Git checkout 失败: {message}",
+    "i18n_en_US": "Git checkout failed: {message}"
+  },
+  "GIT_REMOTE_UNREACHABLE": {
+    "http_status": 502,
+    "severity": "warn",
+    "i18n_zh_CN": "Git 远端 {url} 不可达",
+    "i18n_en_US": "Git remote {url} unreachable"
+  },
+  "DB_WRITE_FAILED": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "数据库写入失败",
+    "i18n_en_US": "Database write failed"
+  },
+  "DB_READ_FAILED": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "数据库读取失败",
+    "i18n_en_US": "Database read failed"
+  },
+  "DB_CORRUPTED": {
+    "http_status": 500,
+    "severity": "critical",
+    "i18n_zh_CN": "数据库已损坏,请检查磁盘",
+    "i18n_en_US": "Database corrupted, please check disk"
+  },
+  "IO_PERMISSION_DENIED": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "文件 {path} 无访问权限",
+    "i18n_en_US": "No permission to access {path}"
+  },
+  "IO_DISK_FULL": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "磁盘已满",
+    "i18n_en_US": "Disk is full"
+  },
+  "PROC_LAUNCH_FAILED": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "进程启动失败: {message}",
+    "i18n_en_US": "Process launch failed: {message}"
+  },
+  "PROC_TIMEOUT": {
+    "http_status": 500,
+    "severity": "error",
+    "i18n_zh_CN": "进程 {env_id} 停止超时",
+    "i18n_en_US": "Process {env_id} stop timed out"
+  },
+  "PROC_NOT_RUNNING": {
+    "http_status": 409,
+    "severity": "warn",
+    "i18n_zh_CN": "环境 {env_id} 未运行",
+    "i18n_en_US": "Environment {env_id} is not running"
+  },
+  "INTERNAL": {
+    "http_status": 500,
+    "severity": "critical",
+    "i18n_zh_CN": "服务内部错误: {message}",
+    "i18n_en_US": "Internal server error: {message}"
+  },
+  "HTTP_CONNECTION_REFUSED": {
+    "http_status": 502,
+    "severity": "warn",
+    "i18n_zh_CN": "无法连接服务 {url}",
+    "i18n_en_US": "Cannot connect to {url}"
+  },
+  "HTTP_TIMEOUT": {
+    "http_status": 502,
+    "severity": "warn",
+    "i18n_zh_CN": "请求超时 {url}",
+    "i18n_en_US": "Request timed out: {url}"
+  },
+  "SET_FAILED": {
+    "http_status": 500,
+    "severity": "warn",
+    "i18n_zh_CN": "设置失败: {message}",
+    "i18n_en_US": "Setting update failed: {message}"
+  },
+  "RELOAD_FAILED": {
+    "http_status": 500,
+    "severity": "warn",
+    "i18n_zh_CN": "设置重新加载失败",
+    "i18n_en_US": "Settings reload failed"
+  },
+  "ROUTE_NOT_FOUND": {
+    "http_status": 404,
+    "severity": "info",
+    "i18n_zh_CN": "路径不存在",
+    "i18n_en_US": "Route not found"
+  }
+}
