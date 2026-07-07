@@ -161,6 +161,7 @@ class NodeBridge(BaseBridge):
 
     @property
     def busy(self) -> bool:
+        """Re-read after ws.push("busyChanged") — emitted by `_set_busy`."""
         return self._busy
 
     def _set_busy(self, val: bool) -> None:

@@ -18,10 +18,12 @@ class ProcessBridge(BaseBridge):
 
     @property
     def log_version(self) -> int:
+        """Re-read after ws.push("logLine", ...) — emitted by `_on_line`."""
         return self._log_version
 
     @property
     def log_lines(self) -> list:
+        """Re-read after ws.push("logLine", ...) — emitted by `_on_line`."""
         all_lines = []
         for dq in self._logs.values():
             all_lines.extend(dq)
