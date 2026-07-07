@@ -347,3 +347,17 @@ def torch_init(
     typer.echo(f"✓ 配置写入 {cfg_path}")
     typer.echo(f"  cu={cu} torch={cfg.torch}")
     typer.echo(f"  安装命令: {cfg.install_command()}")
+
+
+@app.command()
+def serve(
+    port: int = typer.Option(7800, "--port", "-p", help="监听端口"),
+    bind: str = typer.Option("127.0.0.1", "--bind", "-b", help="绑定地址（默认 loopback）"),
+):
+    """启动 FastAPI service（WPF 通过该端口访问）。"""
+    import uvicorn
+    from comfy_mgr.app_context import AppContext
+    from comfy_mgr.server.app import build_app
+    ctx = AppContext()
+    app = build_app(ctx)
+    uvicorn.run(app, host=bind, port=port, log_level="info", access_log=False)
