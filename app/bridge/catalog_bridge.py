@@ -1,53 +1,39 @@
-"""CatalogBridge：把 CatalogService 暴露给 QML。"""
+"""CatalogBridge：节点注册表 CRUD（无 PySide6 依赖）。"""
 from __future__ import annotations
-from PySide6.QtCore import Property, Signal, Slot
+from comfy_mgr.infra.event_bus import EventBus
 from app.bridge.base import BaseBridge
 from comfy_mgr.services.catalog import CatalogService
-from comfy_mgr.models.node import Node
-
-
-def _node_to_dict(node: Node) -> dict:
-    return {
-        "id": node.id,
-        "name": node.name,
-        "repoUrl": node.repo_url,
-        "localPath": str(node.local_path),
-        "currentVersion": node.current_version or "",
-        "description": node.description or "",
-        "author": node.author or "",
-    }
 
 
 class CatalogBridge(BaseBridge):
-    nodeAdded = Signal(str)
-    nodeRemoved = Signal(str)
-    nodeListChanged = Signal()
 
-    def __init__(self, service: CatalogService):
-        super().__init__()
+    def __init__(self, service: CatalogService, bus: EventBus):
+        super().__init__(bus)
         self._service = service
+        bus.on("nodeListChanged", lambda: self.bus.emit("ws.push", "nodeListChanged"))
 
-    @Property("QVariantList", notify=nodeListChanged)
-    def nodeList(self) -> list[dict]:
-        return [_node_to_dict(n) for n in self._service.list_nodes()]
+    def list_nodes(self) -> dict:
+        nodes = self._service.list_nodes()
+        return {"ok": True, "value": [
+            {"id": n.id, "url": n.repo_url, "name": n.name} for n in nodes
+        ]}
 
-    @Slot(str, result="QVariant")
-    def addNode(self, url: str) -> dict:
-        result = self._invoke(self._service.add_node, url)
-        if result["ok"]:
-            node = result["value"]
-            self.nodeAdded.emit(node.id)
-            self.nodeListChanged.emit()
-        return result
+    def add_node(self, url: str) -> dict:
+        result = self._service.add_node(url)
+        if not result.ok:
+            self.bus.emit("ws.push", "errorOccurred", result.error.code, result.error.message)
+        else:
+            self.bus.emit("ws.push", "nodeListChanged")
+        return {"ok": result.ok,
+                "value": {"id": result.value.id} if result.ok else None,
+                "error": {"code": result.error.code, "message": result.error.message} if not result.ok else None}
 
-    @Slot(str, result="QVariant")
-    def removeNode(self, node_id: str) -> dict:
-        result = self._invoke(self._service.remove_node, node_id)
-        if result["ok"]:
-            self.nodeRemoved.emit(node_id)
-            self.nodeListChanged.emit()
-        return result
-
-    @Slot(result="QVariantList")
-    def listNodes(self) -> list[dict]:
-        return [_node_to_dict(n) for n in self._service.list_nodes()]
+    def remove_node(self, node_id: str) -> dict:
+        result = self._service.remove_node(node_id)
+        if not result.ok:
+            self.bus.emit("ws.push", "errorOccurred", result.error.code, result.error.message)
+        else:
+            self.bus.emit("ws.push", "nodeListChanged")
+        return {"ok": result.ok,
+                "value": None,
+                "error": {"code": result.error.code, "message": result.error.message} if not result.ok else None}
