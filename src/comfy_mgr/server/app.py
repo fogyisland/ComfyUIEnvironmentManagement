@@ -53,12 +53,20 @@ def build_app(ctx: AppContext) -> FastAPI:
 
     app = FastAPI(title="ComfyUI Manager", lifespan=lifespan)
 
-    # 注册 routes(T8 才会创建)— 缺则跳过,保留骨架可构造
-    _route_modules = ("health", "env", "catalog", "node", "process", "settings", "torch")
-    for name in _route_modules:
+    # 注册 routes — health 走根路径,其余按 /api/v1/<name> 命名空间。
+    _route_prefixes = {
+        "health": "",
+        "env": "/api/v1/env",
+        "catalog": "/api/v1/catalog",
+        "node": "/api/v1/node",
+        "process": "/api/v1/process",
+        "settings": "/api/v1/settings",
+        "torch": "/api/v1/torch",
+    }
+    for name, prefix in _route_prefixes.items():
         try:
             module = __import__(f"comfy_mgr.server.routes.{name}", fromlist=["router"])
-            app.include_router(module.router)
+            app.include_router(module.router, prefix=prefix)
         except ImportError:
             logger.warning("route %s 尚未实现(T8),跳过", name)
 
@@ -68,8 +76,5 @@ def build_app(ctx: AppContext) -> FastAPI:
         app.include_router(ws_route.router)
     except ImportError:
         logger.warning("ws route 尚未实现(T8),跳过")
-
-    # 显式 prefix 给那些已有 router 的 module(只为后面 T8 落地时行为正确保留)
-    # 暂不强制 — T8 来时再确认 prefix 是否需要在 include 时指定。
 
     return app
