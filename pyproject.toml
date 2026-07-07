@@ -38,3 +38,8 @@ packages = [
     { include = "comfy_mgr", from = "src" },
     { include = "app" },
 ]  # explicit so poetry-core can find the package without setup.py
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio (>=1.4.0,<2.0.0)"
+]
