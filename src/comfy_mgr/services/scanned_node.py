@@ -92,16 +92,20 @@ class ScannedNodeService:
 
     # ---------------- disable / enable (db_flag mode) ----------------
 
-    def set_disabled(self, node_id: str, disabled: bool) -> Result[ScannedNode]:
-        """设置节点的 enabled/disabled。
+    def set_disabled(
+        self, node_id: str, disabled: bool, *, mode: str = "db_flag",
+    ) -> Result[ScannedNode]:
+        """设置节点 enabled/disabled。
 
-        M2 plumbing-only:本方法只更新 DB status 字段(db_flag 模式)。
-        folder_rename 模式(同步重命名 <pkg>.disabled 目录)在 M3 实现,
-        计划在 M2 spec §6.3 / M2 plan Task 16.4 追加 `_apply_folder_rename`
-        分支。SettingsPage.qml 已经在 M2 review Important #1 修复里
-        把 folder_rename 选项 disabled,UI 不会触发本方法的 folder_rename
-        路径。
+        mode:
+          - "db_flag": 仅更新 DB status(M2 行为)
+          - "folder_rename": 同步重命名 <pkg> ↔ <pkg>.disabled(M4 新增)
         """
+        if mode not in ("db_flag", "folder_rename"):
+            return Result.fail(ServiceError(
+                code="BAD_PAYLOAD",
+                message=f"未知 disable_mode: {mode}",
+            ))
         node = self.repo.get(node_id)
         if not node:
             return Result.fail(ServiceError(
@@ -109,29 +113,84 @@ class ScannedNodeService:
                 message=f"节点 {node_id} 不存在",
             ))
         new_status = "disabled" if disabled else "enabled"
-
         r = self.repo.set_status(node_id, new_status)
         if not r.ok:
             return r
+
+        if mode == "folder_rename":
+            r = self._apply_folder_rename(node.package_path, disabled, node.package)
+            if not r.ok:
+                # 回滚 DB status
+                self.repo.set_status(node_id, node.status)
+                return r
+
+        # 写 disable_mode
+        self.conn.execute(
+            "UPDATE scanned_nodes SET disable_mode=? WHERE id=?",
+            (mode, node_id),
+        )
 
         updated = self.repo.get(node_id)
         if updated is None:
             return Result.fail(ServiceError(
                 code="NODE_NOT_FOUND",
-                message=f"节点 {node_id} 读取失败"))
-
+                message=f"节点 {node_id} 读取失败",
+            ))
         self.bus.emit("nodesChanged", self.env_id)
         return Result.ok(updated)
 
-    def toggle_disabled(self, node_id: str) -> Result[ScannedNode]:
-        """切换节点的 enabled/disabled 状态。"""
+    def _apply_folder_rename(
+        self, pkg_path: Path, disabled: bool, package_name: str,
+    ) -> Result[None]:
+        """同步重命名 <pkg> ↔ <pkg>.disabled。失败回滚。"""
+        if disabled:
+            target = pkg_path.with_suffix(".disabled")
+            if target.exists():
+                return Result.fail(ServiceError(
+                    code="FOLDER_RENAME_CONFLICT",
+                    message=f"目标目录已存在: {target}",
+                ))
+            if not pkg_path.exists():
+                return Result.fail(ServiceError(
+                    code="NODE_NOT_FOUND",
+                    message=f"包目录不存在: {pkg_path}",
+                ))
+            pkg_path.rename(target)
+            self.conn.execute(
+                "UPDATE scanned_nodes SET package_path=? "
+                "WHERE env_id=? AND package=?",
+                (str(target).replace("\\", "/"), self.env_id, package_name),
+            )
+        else:
+            if not pkg_path.name.endswith(".disabled"):
+                return Result.fail(ServiceError(
+                    code="FOLDER_RENAME_BAD_STATE",
+                    message=f"目录不是 .disabled 结尾: {pkg_path}",
+                ))
+            target = pkg_path.parent / pkg_path.name[:-len(".disabled")]
+            if target.exists():
+                return Result.fail(ServiceError(
+                    code="FOLDER_RENAME_CONFLICT",
+                    message=f"目标目录已存在: {target}",
+                ))
+            pkg_path.rename(target)
+            self.conn.execute(
+                "UPDATE scanned_nodes SET package_path=? "
+                "WHERE env_id=? AND package=?",
+                (str(target).replace("\\", "/"), self.env_id, package_name),
+            )
+        return Result.ok(None)
+
+    def toggle_disabled(self, node_id: str,
+                        *, mode: str = "db_flag") -> Result[ScannedNode]:
         node = self.repo.get(node_id)
         if not node:
             return Result.fail(ServiceError(
                 code="NODE_NOT_FOUND",
                 message=f"节点 {node_id} 不存在",
             ))
-        return self.set_disabled(node_id, node.status != "disabled")
+        return self.set_disabled(
+            node_id, node.status != "disabled", mode=mode)
 
     # ---------------- query (M2 bridge 调用) ----------------
 
