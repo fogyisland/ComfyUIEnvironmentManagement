@@ -14,6 +14,11 @@ DEFAULT_SETTINGS = {
     # M3: catalog 自动刷新(默认开启,每 6 小时拉一次全量)
     "catalog_auto_refresh": True,
     "catalog_auto_refresh_minutes": 360,
+    # M4: 外部冲突知识库激活(M3 占位),默认指向占位服务
+    # 用户可在 Settings UI 改,留空字符串则 DepService.check_global 直接跳过
+    "compat_api_base_url": "https://api.comfyregistry.org",
+    # M4: catalog cache TTL(分钟),默认 60
+    "catalog_cache_ttl_minutes": 60,
 }
 
 class SettingsService:

@@ -161,9 +161,7 @@ class AppContext:
         _catalog_cache_ttl = self.settings.get("catalog_cache_ttl")
         if _catalog_cache_ttl is None:
             _catalog_cache_ttl = 3600
-        _compat_api_base_url = self.settings.get("compat_api_base_url")
-        if _compat_api_base_url is None:
-            _compat_api_base_url = ""
+        _compat_api_base_url = self.settings.get("compat_api_base_url") or ""
 
         self.http_client = HTTPClient(
             timeout=_http_timeout,
@@ -175,10 +173,7 @@ class AppContext:
             base_url=_catalog_api_base_url,
             cache_ttl_seconds=_catalog_cache_ttl,
         )
-        self.compat_client = CompatHTTPClient(
-            base_url=_compat_api_base_url,
-            http_client=self.http_client,
-        )
+        self.compat_client = self._build_compat_client()
         # git resolver closure over project_root
         self._git_exe_resolver = lambda: default_git_resolver(self.project_root)
         # python resolver closure over project_root (M3 新加)
@@ -224,6 +219,13 @@ class AppContext:
         self._catalog_auto_refresh_timer = None
         if self.settings.get("catalog_auto_refresh") is not False:
             self._start_catalog_auto_refresh()
+
+    def _build_compat_client(self) -> CompatHTTPClient:
+        base_url = self.settings.get("compat_api_base_url") or ""
+        return CompatHTTPClient(
+            base_url=base_url,
+            http_client=self.http_client,
+        )
 
     def _start_catalog_auto_refresh(self) -> None:
         """启动 catalog 后台自动刷新:首次延迟 5s 触发(让 UI 先起来),

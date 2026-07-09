@@ -140,7 +140,7 @@ class DepService:
     # ----- check_global (外部 hook,M3 base_url 空时跳过) -----
 
     def check_global(self, env_id: str) -> Result[list[dict]]:
-        if not self.compat_client:
+        if not self.compat_client or not self.compat_client.base_url:
             return Result.ok([])
         rows = self.dep_repo.list_by_env(env_id)
         deps = [
@@ -151,7 +151,8 @@ class DepService:
             return Result.ok([])
         r = self.compat_client.check_known_incompat(deps)
         if not r.ok:
-            return r
+            # 外部 API 不可达 → 降级,返回空列表(不抛错给 UI)
+            return Result.ok([])
         # 把 API 返回的 incompat 转成 conflict dict
         conflicts = []
         for inc in r.value:
