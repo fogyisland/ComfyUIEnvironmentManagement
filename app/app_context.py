@@ -158,9 +158,8 @@ class AppContext:
         _catalog_api_base_url = self.settings.get("catalog_api_base_url")
         if _catalog_api_base_url is None:
             _catalog_api_base_url = "https://api.comfy.org"
-        _catalog_cache_ttl = self.settings.get("catalog_cache_ttl")
-        if _catalog_cache_ttl is None:
-            _catalog_cache_ttl = 3600
+        ttl_min = self.settings.get("catalog_cache_ttl_minutes") or 60
+        _catalog_cache_ttl = int(ttl_min) * 60
         _compat_api_base_url = self.settings.get("compat_api_base_url") or ""
 
         self.http_client = HTTPClient(
