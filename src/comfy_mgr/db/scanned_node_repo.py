@@ -1,4 +1,4 @@
-"""ScannedNodeRepo:scanned_nodes 表的 CRUD。"""
+"""ScannedNodeRepo：scanned_nodes 表的 CRUD。"""
 from __future__ import annotations
 import sqlite3
 from comfy_mgr.models.scanned_node import ScannedNode
@@ -12,12 +12,17 @@ class ScannedNodeRepo:
     def upsert(self, node: ScannedNode) -> Result[None]:
         try:
             r = node.to_row()
+            # Defensive defaults: older to_row() mocks may not include M4 fields.
+            r.setdefault("locked", 0)
+            r.setdefault("disable_mode", "db_flag")
             self.conn.execute("""
                 INSERT INTO scanned_nodes
                     (id, env_id, package, package_path, version, author,
-                     description, class_mappings, status, scan_meta, last_scanned_at)
+                     description, class_mappings, status, locked, disable_mode,
+                     scan_meta, last_scanned_at)
                 VALUES (:id, :env_id, :package, :package_path, :version, :author,
-                        :description, :class_mappings, :status, :scan_meta, :last_scanned_at)
+                        :description, :class_mappings, :status, :locked, :disable_mode,
+                        :scan_meta, :last_scanned_at)
                 ON CONFLICT(env_id, package) DO UPDATE SET
                     package_path=excluded.package_path,
                     version=excluded.version,
@@ -25,6 +30,8 @@ class ScannedNodeRepo:
                     description=excluded.description,
                     class_mappings=excluded.class_mappings,
                     status=excluded.status,
+                    locked=excluded.locked,
+                    disable_mode=excluded.disable_mode,
                     scan_meta=excluded.scan_meta,
                     last_scanned_at=excluded.last_scanned_at
             """, r)
@@ -35,7 +42,7 @@ class ScannedNodeRepo:
 
     def get(self, node_id: str) -> ScannedNode | None:
         row = self.conn.execute(
-            "SELECT * FROM scanned_nodes WHERE id=?", (node_id,)
+            "SELECT *, locked FROM scanned_nodes WHERE id=?", (node_id,)
         ).fetchone()
         return ScannedNode.from_row(row) if row else None
 
@@ -50,13 +57,13 @@ class ScannedNodeRepo:
                     include_disabled: bool = True) -> list[ScannedNode]:
         if include_disabled:
             rows = self.conn.execute(
-                "SELECT * FROM scanned_nodes WHERE env_id=? ORDER BY package",
+                "SELECT *, locked FROM scanned_nodes WHERE env_id=? ORDER BY package",
                 (env_id,),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT * FROM scanned_nodes WHERE env_id=? AND status='enabled' "
-                "ORDER BY package",
+                "SELECT *, locked FROM scanned_nodes WHERE env_id=? "
+                "AND status='enabled' ORDER BY package",
                 (env_id,),
             ).fetchall()
         return [ScannedNode.from_row(r) for r in rows]

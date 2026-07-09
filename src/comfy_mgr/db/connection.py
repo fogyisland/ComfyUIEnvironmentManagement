@@ -186,6 +186,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     """)
 
     # M3 增量:scanned_nodes 加 locked 列(SQLite 没 IF NOT EXISTS for column)。
+    # M4 增量:scanned_nodes 加 disable_mode 列(T19/T21 共享前置)。
     cols = {
         row[1] for row in
         conn.execute("PRAGMA table_info(scanned_nodes)").fetchall()
@@ -194,6 +195,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE scanned_nodes "
             "ADD COLUMN locked INTEGER NOT NULL DEFAULT 0"
+        )
+    if "disable_mode" not in cols:
+        conn.execute(
+            "ALTER TABLE scanned_nodes "
+            "ADD COLUMN disable_mode TEXT NOT NULL DEFAULT 'db_flag'"
         )
 
 def get_schema_version(conn: sqlite3.Connection) -> int:

@@ -18,6 +18,8 @@ class ScannedNode:
     description: str | None = None
     class_mappings: list[str] = field(default_factory=list)
     status: Literal["enabled", "disabled"] = "enabled"
+    locked: bool = False  # M4 新增：版本锁
+    disable_mode: str = "db_flag"  # M4 新增："db_flag" | "folder_rename"
     scan_meta: dict = field(default_factory=dict)
     last_scanned_at: str | None = None
 
@@ -32,6 +34,8 @@ class ScannedNode:
             "description": self.description,
             "class_mappings": json.dumps(self.class_mappings),
             "status": self.status,
+            "locked": 1 if self.locked else 0,
+            "disable_mode": self.disable_mode,
             "scan_meta": json.dumps(self.scan_meta),
             "last_scanned_at": self.last_scanned_at,
         }
@@ -39,6 +43,7 @@ class ScannedNode:
     @classmethod
     def from_row(cls, row) -> "ScannedNode":
         d = dict(row)
+        keys = row.keys() if hasattr(row, "keys") else []
         return cls(
             id=d["id"],
             env_id=d["env_id"],
@@ -49,6 +54,8 @@ class ScannedNode:
             description=d["description"],
             class_mappings=json.loads(d["class_mappings"] or "[]"),
             status=d["status"],
+            locked=bool(d["locked"]) if "locked" in keys else False,
+            disable_mode=d["disable_mode"] if "disable_mode" in keys else "db_flag",
             scan_meta=json.loads(d["scan_meta"] or "{}"),
             last_scanned_at=d["last_scanned_at"],
         )
