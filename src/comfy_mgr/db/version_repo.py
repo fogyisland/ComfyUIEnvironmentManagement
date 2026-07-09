@@ -12,6 +12,7 @@ class VersionRecordDict(TypedDict, total=False):
     action: str
     version_before: str | None
     version_after: str | None
+    pkg_version: str | None  # M4 新增:Semver 解析后的版本号
     result: str
     error_message: str | None
     performed_at: str
@@ -26,9 +27,11 @@ class VersionRepo:
             self.conn.execute("""
                 INSERT INTO version_history
                     (id, env_id, package, action, version_before,
-                     version_after, result, error_message, performed_at)
+                     version_after, pkg_version, result,
+                     error_message, performed_at)
                 VALUES (:id, :env_id, :package, :action, :version_before,
-                        :version_after, :result, :error_message, :performed_at)
+                        :version_after, :pkg_version, :result,
+                        :error_message, :performed_at)
             """, rec)
             return Result.ok(None)
         except Exception as e:

@@ -101,8 +101,8 @@ class InstallService:
             "id": f"vh-{uuid.uuid4().hex[:8]}",
             "env_id": env_id, "package": dir_name,
             "action": "install", "version_before": None,
-            "version_after": None, "result": "success",
-            "error_message": None,
+            "version_after": None, "pkg_version": None,
+            "result": "success", "error_message": None,
             "performed_at": datetime.now().isoformat(timespec="seconds"),
         }
         self.version_repo.insert(rec)
@@ -142,8 +142,8 @@ class InstallService:
             "id": f"vh-{uuid.uuid4().hex[:8]}",
             "env_id": env_id, "package": package,
             "action": "uninstall", "version_before": None,
-            "version_after": None, "result": "success",
-            "error_message": None,
+            "version_after": None, "pkg_version": None,
+            "result": "success", "error_message": None,
             "performed_at": datetime.now().isoformat(timespec="seconds"),
         }
         self.version_repo.insert(rec)

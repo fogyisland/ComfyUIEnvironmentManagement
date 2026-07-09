@@ -19,13 +19,30 @@ def _init(tmp_path: Path):
     return conn
 
 
-def test_current_schema_version_is_4():
-    assert CURRENT_SCHEMA_VERSION == 4
+def test_current_schema_version_is_5():
+    """M4 T21:CURRENT_SCHEMA_VERSION 从 4 升到 5。"""
+    assert CURRENT_SCHEMA_VERSION == 5
 
 
-def test_schema_version_record_is_4(tmp_path: Path):
+def test_schema_version_record_is_5(tmp_path: Path):
     conn = _init(tmp_path)
-    assert get_schema_version(conn) == 4
+    assert get_schema_version(conn) == 5
+
+
+def test_v5_adds_version_history_pkg_version(tmp_path: Path):
+    """M4 T21:version_history 表加 pkg_version 列(可空)。"""
+    conn = _init(tmp_path)
+    cols = {row[1] for row in
+            conn.execute("PRAGMA table_info(version_history)").fetchall()}
+    assert "pkg_version" in cols
+
+
+def test_v5_scanned_nodes_has_disable_mode(tmp_path: Path):
+    """M4 T19/T21:scanned_nodes 表加 disable_mode 列(默认 db_flag)。"""
+    conn = _init(tmp_path)
+    cols = {row[1] for row in
+            conn.execute("PRAGMA table_info(scanned_nodes)").fetchall()}
+    assert "disable_mode" in cols
 
 
 def test_v4_creates_version_history_table(tmp_path: Path):

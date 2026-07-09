@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
     """打开 SQLite 连接，启用 WAL 模式。"""
@@ -183,6 +183,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
         INSERT OR IGNORE INTO schema_version (version) VALUES (2);
         INSERT OR IGNORE INTO schema_version (version) VALUES (3);
         INSERT OR IGNORE INTO schema_version (version) VALUES (4);
+        INSERT OR IGNORE INTO schema_version (version) VALUES (5);
     """)
 
     # M3 增量:scanned_nodes 加 locked 列(SQLite 没 IF NOT EXISTS for column)。
@@ -200,6 +201,17 @@ def init_schema(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE scanned_nodes "
             "ADD COLUMN disable_mode TEXT NOT NULL DEFAULT 'db_flag'"
+        )
+
+    # M4 增量:version_history 加 pkg_version 列(Semver 解析后版本号)。
+    vh_cols = {
+        row[1] for row in
+        conn.execute("PRAGMA table_info(version_history)").fetchall()
+    }
+    if "pkg_version" not in vh_cols:
+        conn.execute(
+            "ALTER TABLE version_history "
+            "ADD COLUMN pkg_version TEXT"
         )
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
