@@ -1,0 +1,39 @@
+<UserControl x:Class="ComfyUI.Manager.Views.EnvironmentListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
+            <Button Content="刷新" Command="{Binding RefreshCommand}"
+                    Style="{StaticResource MaterialButton}" />
+        </StackPanel>
+        <DataGrid ItemsSource="{Binding Environments}"
+                  SelectedItem="{Binding Selected}"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  Margin="8">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="120" />
+                <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="*" />
+                <DataGridTextColumn Header="端口" Binding="{Binding Port}" Width="60" />
+                <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
+                <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
+                <DataGridTemplateColumn Header="操作" Width="160">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="启动" Margin="2"
+                                        Command="{Binding DataContext.StartCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="停止" Margin="2"
+                                        Command="{Binding DataContext.StopCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>
