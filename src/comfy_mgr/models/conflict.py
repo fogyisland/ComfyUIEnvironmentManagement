@@ -21,6 +21,10 @@ class Conflict:
     ignored: int = 0
 
     def to_row(self) -> dict:
+        assert self.conflict_type in (
+            "duplicate_class", "version_mismatch", "missing_dep",
+            "local_dep_version", "global_dep_known_incompat",
+        ), f"未知 conflict_type: {self.conflict_type}"
         return {
             "id": self.id,
             "env_id": self.env_id,

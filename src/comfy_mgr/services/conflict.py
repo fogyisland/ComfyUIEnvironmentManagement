@@ -28,8 +28,8 @@ class ConflictService:
     def __init__(
         self,
         conn: sqlite3.Connection,
-        node_service,  # ScannedNodeService(duck type,避免循环 import)
         bus: EventBus,
+        node_service=None,  # ScannedNodeService(duck type,避免循环 import);默认 None
     ):
         self.conn = conn
         self.node_service = node_service

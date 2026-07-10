@@ -7,7 +7,6 @@ from __future__ import annotations
 import subprocess
 import sys
 import urllib.request
-import zipfile
 from pathlib import Path
 
 GIT_VERSION = "2.47.0"

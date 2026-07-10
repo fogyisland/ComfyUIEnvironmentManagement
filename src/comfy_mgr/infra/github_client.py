@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import urllib.request
 import urllib.error
-from typing import Optional
 
 from comfy_mgr.result import Result, ServiceError
 

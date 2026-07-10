@@ -2,7 +2,6 @@
 from pathlib import Path
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
 from comfy_mgr.db.connection import get_connection, init_schema
 from comfy_mgr.db.catalog_repo import CatalogCacheRepo
 from comfy_mgr.infra.catalog_http_client import CatalogHTTPClient

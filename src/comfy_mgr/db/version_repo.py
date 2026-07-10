@@ -45,10 +45,13 @@ class VersionRepo:
         return dict(row) if row else None
 
     def list_by_env(self, env_id: str, *, limit: int | None = None) -> list[VersionRecordDict]:
-        sql = "SELECT * FROM version_history WHERE env_id=? ORDER BY performed_at DESC"
-        params: tuple = (env_id,)
-        if limit is not None:
-            sql += " LIMIT ?"
+        if limit is None:
+            sql = ("SELECT * FROM version_history WHERE env_id=? "
+                   "ORDER BY performed_at DESC")
+            params: tuple = (env_id,)
+        else:
+            sql = ("SELECT * FROM version_history WHERE env_id=? "
+                   "ORDER BY performed_at DESC LIMIT ?")
             params = (env_id, limit)
         rows = self.conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]

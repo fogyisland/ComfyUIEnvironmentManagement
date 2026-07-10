@@ -62,6 +62,13 @@ class CatalogCacheRepo:
                 code="CACHE_DELETE_FAILED", message=str(e)))
 
     def list_non_expired(self, now_iso: str | None = None) -> list[CatalogEntryDict]:
+        """返回未过期的 cache 行。
+
+        时间约定:`expires_at` 存的是 naive UTC ISO 字符串,`datetime.now()` 返回
+        naive local time — 两者在调用层负责确保一致(写入层用
+        `datetime.now().isoformat()` 本地,比较时 `expires_at > datetime.now().isoformat()`
+        也是本地,故 naive 内部一致)。不要混合 UTC 和 local 写入。
+        """
         now = now_iso or datetime.now().isoformat(timespec="seconds")
         rows = self.conn.execute(
             "SELECT * FROM catalog_cache WHERE expires_at > ? "
@@ -70,9 +77,11 @@ class CatalogCacheRepo:
         return [dict(r) for r in rows]
 
     def search_substring(self, query: str) -> list[CatalogEntryDict]:
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         rows = self.conn.execute(
-            "SELECT * FROM catalog_cache WHERE LOWER(package) LIKE ? "
+            "SELECT * FROM catalog_cache "
+            "WHERE LOWER(package) LIKE ? ESCAPE '\\' "
             "ORDER BY package",
-            (f"%{query.lower()}%",),
+            (f"%{escaped.lower()}%",),
         ).fetchall()
         return [dict(r) for r in rows]

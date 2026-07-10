@@ -157,7 +157,10 @@ class CatalogHTTPClient:
 
     @staticmethod
     def _to_dict(row: dict, *, stale: bool = False) -> dict:
-        d = json.loads(row.get("raw_metadata", "{}"))
+        try:
+            d = json.loads(row.get("raw_metadata", "{}"))
+        except json.JSONDecodeError:
+            d = {}
         if stale:
             d["stale"] = True
             d["cached_at"] = row.get("cached_at")

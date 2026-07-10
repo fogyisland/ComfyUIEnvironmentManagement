@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 
-def default_python_resolver(project_root: Path) -> "Path | None":
+def default_python_resolver(project_root: Path) -> Path | None:
     """默认实现:portable > 系统 python。"""
     if sys.platform == "win32":
         portable = project_root / "python" / "python.exe"

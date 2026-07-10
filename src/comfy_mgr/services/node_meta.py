@@ -8,7 +8,7 @@ from comfy_mgr.db.node_meta_repo import NodeMetaRepo
 from comfy_mgr.infra.github_client import GitHubClient
 from comfy_mgr.infra.pkg_meta import _now_iso
 from comfy_mgr.models.node_meta import NodeMeta
-from comfy_mgr.result import Result, ServiceError
+from comfy_mgr.result import Result
 
 
 class NodeMetaService:

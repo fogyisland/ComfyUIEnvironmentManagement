@@ -1,7 +1,6 @@
 """NodeMetaService:GitHub 元数据本地缓存 + 1h TTL。"""
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
 from comfy_mgr.db.connection import get_connection, init_schema
