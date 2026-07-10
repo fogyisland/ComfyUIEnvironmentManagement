@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CatalogPage_节点目录" xml:space="preserve">
+    <value>节点目录</value>
+  </data>
+  <data name="ConfirmDialog_确认" xml:space="preserve">
+    <value>确认</value>
+  </data>
+  <data name="ConfirmDialog_取消" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ConfirmDialog_请确认" xml:space="preserve">
+    <value>请确认</value>
+  </data>
+  <data name="CreateEnvDialog_新建环境" xml:space="preserve">
+    <value>新建环境</value>
+  </data>
+  <data name="CreateEnvDialog_请输入环境名" xml:space="preserve">
+    <value>请输入环境名</value>
+  </data>
+  <data name="CreateEnvDialog_请选择_Python_解释器" xml:space="preserve">
+    <value>请选择 Python 解释器</value>
+  </data>
+  <data name="CreateEnvDialog_共享_ComfyUI" xml:space="preserve">
+    <value>共享 ComfyUI</value>
+  </data>
+  <data name="CreateEnvDialog_共享布局必须指定_ComfyUI_源" xml:space="preserve">
+    <value>共享布局必须指定 ComfyUI 源</value>
+  </data>
+  <data name="CreateEnvDialog_环境名" xml:space="preserve">
+    <value>环境名</value>
+  </data>
+  <data name="CreateEnvDialog_例如_my-env" xml:space="preserve">
+    <value>例如: my-env</value>
+  </data>
+  <data name="CreateEnvDialog_布局" xml:space="preserve">
+    <value>布局</value>
+  </data>
+  <data name="CreateEnvDialog_独立_ComfyUI" xml:space="preserve">
+    <value>独立 ComfyUI</value>
+  </data>
+  <data name="CreateEnvDialog_Python_解释器" xml:space="preserve">
+    <value>Python 解释器</value>
+  </data>
+  <data name="CreateEnvDialog_ComfyUI_源_共享布局必填" xml:space="preserve">
+    <value>ComfyUI 源 (共享布局必填)</value>
+  </data>
+  <data name="CreateEnvDialog_端口" xml:space="preserve">
+    <value>端口</value>
+  </data>
+  <data name="CreateEnvDialog_取消" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="CreateEnvDialog_创建" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="EnvironmentDetailPanel_运行中" xml:space="preserve">
+    <value>运行中</value>
+  </data>
+  <data name="EnvironmentDetailPanel_已停止" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="EnvironmentDetailPanel_端口_1" xml:space="preserve">
+    <value>端口: %1</value>
+  </data>
+  <data name="EnvironmentDetailPanel_Python_1" xml:space="preserve">
+    <value>Python: %1</value>
+  </data>
+  <data name="EnvironmentDetailPanel_启动" xml:space="preserve">
+    <value>启动</value>
+  </data>
+  <data name="EnvironmentDetailPanel_停止" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="EnvironmentDetailPanel_删除" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="EnvironmentDetailPanel_实时日志" xml:space="preserve">
+    <value>实时日志</value>
+  </data>
+  <data name="EnvironmentPage_搜索环境" xml:space="preserve">
+    <value>搜索环境...</value>
+  </data>
+  <data name="EnvironmentPage_端口_1" xml:space="preserve">
+    <value>端口 %1</value>
+  </data>
+  <data name="EnvironmentPage_选择环境查看详情" xml:space="preserve">
+    <value>选择环境查看详情</value>
+  </data>
+  <data name="InstallDialog_取消" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Main_ComfyUI_Manager" xml:space="preserve">
+    <value>ComfyUI 管理器</value>
+  </data>
+  <data name="Main_环境管理" xml:space="preserve">
+    <value>环境管理</value>
+  </data>
+  <data name="Main_节点目录" xml:space="preserve">
+    <value>节点目录</value>
+  </data>
+  <data name="Main_设置" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="PathField_选择路径" xml:space="preserve">
+    <value>选择路径...</value>
+  </data>
+  <data name="PathField_浏览" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="SettingsPage_设置" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="SettingsPage_数据库路径" xml:space="preserve">
+    <value>数据库路径</value>
+  </data>
+  <data name="SettingsPage_修改后点击迁移按钮复制现有数据库到新位置" xml:space="preserve">
+    <value>修改后点击「迁移」按钮复制现有数据库到新位置</value>
+  </data>
+  <data name="SettingsPage_迁移" xml:space="preserve">
+    <value>迁移</value>
+  </data>
+  <data name="SettingsPage_迁移成功请重启应用" xml:space="preserve">
+    <value>迁移成功，请重启应用</value>
+  </data>
+  <data name="SettingsPage_主题模式" xml:space="preserve">
+    <value>主题模式</value>
+  </data>
+  <data name="SettingsPage_浅色" xml:space="preserve">
+    <value>浅色</value>
+  </data>
+  <data name="SettingsPage_深色" xml:space="preserve">
+    <value>深色</value>
+  </data>
+  <data name="SettingsPage_跟随系统" xml:space="preserve">
+    <value>跟随系统</value>
+  </data>
+  <data name="SettingsPage_主色调" xml:space="preserve">
+    <value>主色调</value>
+  </data>
+  <data name="SettingsPage_语言" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="SettingsPage_日志级别" xml:space="preserve">
+    <value>日志级别</value>
+  </data>
+  <data name="SettingsPage_默认_Python_路径" xml:space="preserve">
+    <value>默认 Python 路径</value>
+  </data>
+</root>

@@ -52,3 +52,7 @@ python/
 *~
 .vscode/
 .idea/
+
+# .NET build output
+**/bin/
+**/obj/

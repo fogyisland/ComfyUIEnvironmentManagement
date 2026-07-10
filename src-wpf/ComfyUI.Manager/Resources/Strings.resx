@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CatalogPage_节点目录" xml:space="preserve">
+    <value>节点目录</value>
+  </data>
+  <data name="CatalogPage_搜索节点_eg_impact_manager" xml:space="preserve">
+    <value>搜索节点 (e.g. impact, manager)...</value>
+  </data>
+  <data name="CatalogPage_刷新" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="CatalogPage__离线__显示缓存数据_1" xml:space="preserve">
+    <value>⚠ 离线 — 显示缓存数据 (%1)</value>
+  </data>
+  <data name="CatalogPage__1" xml:space="preserve">
+    <value>⭐ %1</value>
+  </data>
+  <data name="CatalogPage_安装" xml:space="preserve">
+    <value>安装</value>
+  </data>
+  <data name="CatalogPage_无数据__点刷新按钮" xml:space="preserve">
+    <value>(无数据 — 点刷新按钮)</value>
+  </data>
+  <data name="ConfirmDialog_确认" xml:space="preserve">
+    <value>确认</value>
+  </data>
+  <data name="ConfirmDialog_取消" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ConfirmDialog_请确认" xml:space="preserve">
+    <value>请确认</value>
+  </data>
+  <data name="ConflictPanel__1_个冲突" xml:space="preserve">
+    <value>⚠ %1 个冲突</value>
+  </data>
+  <data name="ConflictPanel_类_1_被_2_个节点提供" xml:space="preserve">
+    <value>类 "%1" 被 %2 个节点提供</value>
+  </data>
+  <data name="ConflictPanel_冲突_1" xml:space="preserve">
+    <value>冲突: %1</value>
+  </data>
+  <data name="ConflictPanel_禁用其一" xml:space="preserve">
+    <value>禁用其一</value>
+  </data>
+  <data name="ConflictPanel_查看详情" xml:space="preserve">
+    <value>查看详情</value>
+  </data>
+  <data name="ConflictPanel_忽略" xml:space="preserve">
+    <value>忽略</value>
+  </data>
+  <data name="CreateEnvDialog_新建环境" xml:space="preserve">
+    <value>新建环境</value>
+  </data>
+  <data name="CreateEnvDialog_请输入环境名" xml:space="preserve">
+    <value>请输入环境名</value>
+  </data>
+  <data name="CreateEnvDialog_请选择_Python_解释器" xml:space="preserve">
+    <value>请选择 Python 解释器</value>
+  </data>
+  <data name="CreateEnvDialog_共享_ComfyUI" xml:space="preserve">
+    <value>共享 ComfyUI</value>
+  </data>
+  <data name="CreateEnvDialog_共享布局必须指定_ComfyUI_源" xml:space="preserve">
+    <value>共享布局必须指定 ComfyUI 源</value>
+  </data>
+  <data name="CreateEnvDialog_环境名" xml:space="preserve">
+    <value>环境名</value>
+  </data>
+  <data name="CreateEnvDialog_例如_my-env" xml:space="preserve">
+    <value>例如: my-env</value>
+  </data>
+  <data name="CreateEnvDialog_布局" xml:space="preserve">
+    <value>布局</value>
+  </data>
+  <data name="CreateEnvDialog_独立_ComfyUI" xml:space="preserve">
+    <value>独立 ComfyUI</value>
+  </data>
+  <data name="CreateEnvDialog_Python_解释器" xml:space="preserve">
+    <value>Python 解释器</value>
+  </data>
+  <data name="CreateEnvDialog_ComfyUI_源_共享布局必填" xml:space="preserve">
+    <value>ComfyUI 源 (共享布局必填)</value>
+  </data>
+  <data name="CreateEnvDialog_端口" xml:space="preserve">
+    <value>端口</value>
+  </data>
+  <data name="CreateEnvDialog_取消" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="CreateEnvDialog_创建" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="DepPanel_依赖分析_1_个冲突" xml:space="preserve">
+    <value>依赖分析 (%1 个冲突)</value>
+  </data>
+  <data name="DepPanel_重新解析依赖" xml:space="preserve">
+    <value>重新解析依赖</value>
+  </data>
+  <data name="DepPanel_检查全局已知冲突" xml:space="preserve">
+    <value>检查全局已知冲突</value>
+  </data>
+  <data name="DepPanel_尚无依赖记录__点上面的按钮解析" xml:space="preserve">
+    <value>(尚无依赖记录 — 点上面的按钮解析)</value>
+  </data>
+  <data name="DepPanel__1_个冲突" xml:space="preserve">
+    <value>⚠ %1 个冲突</value>
+  </data>
+  <data name="DepPanel_冲突_1_2" xml:space="preserve">
+    <value>冲突: %1 (%2)</value>
+  </data>
+  <data name="EnvironmentDetailPanel_运行中" xml:space="preserve">
+    <value>运行中</value>
+  </data>
+  <data name="EnvironmentDetailPanel_已停止" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="EnvironmentDetailPanel_端口_1" xml:space="preserve">
+    <value>端口: %1</value>
+  </data>
+  <data name="EnvironmentDetailPanel_Python_1" xml:space="preserve">
+    <value>Python: %1</value>
+  </data>
+  <data name="EnvironmentDetailPanel_启动" xml:space="preserve">
+    <value>启动</value>
+  </data>
+  <data name="EnvironmentDetailPanel_停止" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="EnvironmentDetailPanel_删除" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="EnvironmentDetailPanel_自定义节点_1" xml:space="preserve">
+    <value>自定义节点 (%1)</value>
+  </data>
+  <data name="EnvironmentDetailPanel_重新扫描" xml:space="preserve">
+    <value>重新扫描</value>
+  </data>
+  <data name="EnvironmentDetailPanel_实时日志" xml:space="preserve">
+    <value>实时日志</value>
+  </data>
+  <data name="EnvironmentPage_搜索环境" xml:space="preserve">
+    <value>搜索环境...</value>
+  </data>
+  <data name="EnvironmentPage_端口_1" xml:space="preserve">
+    <value>端口 %1</value>
+  </data>
+  <data name="EnvironmentPage_选择环境查看详情" xml:space="preserve">
+    <value>选择环境查看详情</value>
+  </data>
+  <data name="HistoryDialog_版本历史__1" xml:space="preserve">
+    <value>版本历史 — %1</value>
+  </data>
+  <data name="HistoryDialog_1_条历史记录" xml:space="preserve">
+    <value>%1 条历史记录</value>
+  </data>
+  <data name="HistoryDialog_回滚" xml:space="preserve">
+    <value>回滚</value>
+  </data>
+  <data name="HistoryDialog_关闭" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="InstallDialog_安装节点" xml:space="preserve">
+    <value>安装节点</value>
+  </data>
+  <data name="InstallDialog_作者_1" xml:space="preserve">
+    <value>作者: %1</value>
+  </data>
+  <data name="InstallDialog__1" xml:space="preserve">
+    <value>⭐ %1</value>
+  </data>
+  <data name="InstallDialog_目标_env" xml:space="preserve">
+    <value>目标 env:</value>
+  </data>
+  <data name="InstallDialog_取消" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="InstallDialog_安装" xml:space="preserve">
+    <value>安装</value>
+  </data>
+  <data name="Main_ComfyUI_Manager" xml:space="preserve">
+    <value>ComfyUI Manager</value>
+  </data>
+  <data name="Main_环境管理" xml:space="preserve">
+    <value>环境管理</value>
+  </data>
+  <data name="Main_节点目录" xml:space="preserve">
+    <value>节点目录</value>
+  </data>
+  <data name="Main_设置" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="NodeDetailPanel_本地信息" xml:space="preserve">
+    <value>本地信息</value>
+  </data>
+  <data name="NodeDetailPanel_版本" xml:space="preserve">
+    <value>版本:</value>
+  </data>
+  <data name="NodeDetailPanel_未知" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="NodeDetailPanel_作者" xml:space="preserve">
+    <value>作者:</value>
+  </data>
+  <data name="NodeDetailPanel_描述" xml:space="preserve">
+    <value>描述:</value>
+  </data>
+  <data name="NodeDetailPanel_无" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="NodeDetailPanel_类映射" xml:space="preserve">
+    <value>类映射:</value>
+  </data>
+  <data name="NodeDetailPanel_远程信息_GitHub" xml:space="preserve">
+    <value>远程信息 (GitHub)</value>
+  </data>
+  <data name="NodeDetailPanel_获取中" xml:space="preserve">
+    <value>获取中…</value>
+  </data>
+  <data name="NodeDetailPanel_查看远程信息" xml:space="preserve">
+    <value>查看远程信息</value>
+  </data>
+  <data name="NodeDetailPanel_Stars" xml:space="preserve">
+    <value>Stars:</value>
+  </data>
+  <data name="NodeDetailPanel_最后提交" xml:space="preserve">
+    <value>最后提交:</value>
+  </data>
+  <data name="NodeDetailPanel_主页" xml:space="preserve">
+    <value>主页:</value>
+  </data>
+  <data name="NodeDetailPanel__无法获取远程信息_1" xml:space="preserve">
+    <value>⚠ 无法获取远程信息: %1</value>
+  </data>
+  <data name="NodeDetailPanel_关闭" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="NodeListItem_已禁用" xml:space="preserve">
+    <value>已禁用</value>
+  </data>
+  <data name="NodeListItem_启用中" xml:space="preserve">
+    <value>启用中</value>
+  </data>
+  <data name="NodeListItem_启用" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="NodeListItem_禁用" xml:space="preserve">
+    <value>禁用</value>
+  </data>
+  <data name="NodeScanBusy_正在扫描节点" xml:space="preserve">
+    <value>正在扫描节点…</value>
+  </data>
+  <data name="PathField_选择路径" xml:space="preserve">
+    <value>选择路径...</value>
+  </data>
+  <data name="PathField_浏览" xml:space="preserve">
+    <value>浏览...</value>
+  </data>
+  <data name="SettingsPage_设置" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="SettingsPage_数据库路径" xml:space="preserve">
+    <value>数据库路径</value>
+  </data>
+  <data name="SettingsPage_修改后点击迁移按钮复制现有数据库到新位置" xml:space="preserve">
+    <value>修改后点击「迁移」按钮复制现有数据库到新位置</value>
+  </data>
+  <data name="SettingsPage_迁移" xml:space="preserve">
+    <value>迁移</value>
+  </data>
+  <data name="SettingsPage_迁移成功请重启应用" xml:space="preserve">
+    <value>迁移成功，请重启应用</value>
+  </data>
+  <data name="SettingsPage_主题模式" xml:space="preserve">
+    <value>主题模式</value>
+  </data>
+  <data name="SettingsPage_浅色" xml:space="preserve">
+    <value>浅色</value>
+  </data>
+  <data name="SettingsPage_深色" xml:space="preserve">
+    <value>深色</value>
+  </data>
+  <data name="SettingsPage_跟随系统" xml:space="preserve">
+    <value>跟随系统</value>
+  </data>
+  <data name="SettingsPage_主色调" xml:space="preserve">
+    <value>主色调</value>
+  </data>
+  <data name="SettingsPage_语言" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="SettingsPage_日志级别" xml:space="preserve">
+    <value>日志级别</value>
+  </data>
+  <data name="SettingsPage_禁用模式" xml:space="preserve">
+    <value>禁用模式</value>
+  </data>
+  <data name="SettingsPage_仅标记_推荐" xml:space="preserve">
+    <value>仅标记 (推荐)</value>
+  </data>
+  <data name="SettingsPage_重命名目录_强制跳过_M3" xml:space="preserve">
+    <value>重命名目录 (强制跳过) [M3+]</value>
+  </data>
+  <data name="SettingsPage_M2_阶段仅支持仅标记模式folder_rename_模式计划在_M3_完整实现届时会同步启用此选项" xml:space="preserve">
+    <value>M2 阶段仅支持「仅标记」模式。folder_rename 模式计划在 M3 完整实现,届时会同步启用此选项。</value>
+  </data>
+  <data name="SettingsPage_默认_Python_路径" xml:space="preserve">
+    <value>默认 Python 路径</value>
+  </data>
+  <data name="VersionPanel_节点版本_1" xml:space="preserve">
+    <value>节点版本 (%1)</value>
+  </data>
+  <data name="VersionPanel_刷新版本状态" xml:space="preserve">
+    <value>刷新版本状态</value>
+  </data>
+  <data name="VersionPanel_全部升级" xml:space="preserve">
+    <value>全部升级</value>
+  </data>
+  <data name="VersionPanel__锁定" xml:space="preserve">
+    <value>🔒 锁定</value>
+  </data>
+  <data name="VersionPanel_有更新" xml:space="preserve">
+    <value>有更新</value>
+  </data>
+  <data name="VersionPanel_升级" xml:space="preserve">
+    <value>升级</value>
+  </data>
+  <data name="VersionPanel_解锁" xml:space="preserve">
+    <value>解锁</value>
+  </data>
+  <data name="VersionPanel_锁定" xml:space="preserve">
+    <value>锁定</value>
+  </data>
+  <data name="VersionPanel_历史" xml:space="preserve">
+    <value>历史</value>
+  </data>
+  <data name="VersionPanel_尚无节点__请先扫描" xml:space="preserve">
+    <value>(尚无节点 — 请先扫描)</value>
+  </data>
+</root>
