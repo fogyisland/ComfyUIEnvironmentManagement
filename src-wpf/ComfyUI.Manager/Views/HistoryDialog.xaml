@@ -1,0 +1,34 @@
+<Window x:Class="ComfyUI.Manager.Views.HistoryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="版本历史" Height="500" Width="800"
+        Background="{StaticResource BackgroundBrush}">
+    <DockPanel>
+        <Button DockPanel.Dock="Bottom" Content="关闭" Margin="8"
+                Command="{Binding CloseCommand}"
+                Style="{StaticResource MaterialButton}"
+                HorizontalAlignment="Right" />
+        <DataGrid ItemsSource="{Binding Entries}"
+                  SelectedItem="{Binding Selected}"
+                  AutoGenerateColumns="False" IsReadOnly="True" Margin="8">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="动作" Binding="{Binding Action}" Width="80" />
+                <DataGridTextColumn Header="版本" Binding="{Binding PkgVersion}" Width="120" />
+                <DataGridTextColumn Header="SHA Before" Binding="{Binding VersionBefore}" Width="140" />
+                <DataGridTextColumn Header="SHA After" Binding="{Binding VersionAfter}" Width="140" />
+                <DataGridTextColumn Header="结果" Binding="{Binding Result}" Width="80" />
+                <DataGridTextColumn Header="时间" Binding="{Binding PerformedAt}" Width="*" />
+                <DataGridTemplateColumn Header="操作" Width="80">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="回滚"
+                                    Command="{Binding DataContext.RollbackCommand,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>
