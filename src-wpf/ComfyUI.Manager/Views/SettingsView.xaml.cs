@@ -1,0 +1,6 @@
+using System.Windows.Controls;
+namespace ComfyUI.Manager.Views;
+public partial class SettingsView : UserControl
+{
+    public SettingsView() { InitializeComponent(); }
+}
