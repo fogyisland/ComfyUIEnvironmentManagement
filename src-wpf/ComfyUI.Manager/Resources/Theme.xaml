@@ -1,0 +1,59 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Material You Purple -->
+    <Color x:Key="PrimaryColor">#6750A4</Color>
+    <Color x:Key="PrimaryVariantColor">#4F378B</Color>
+    <Color x:Key="SecondaryColor">#625B71</Color>
+    <Color x:Key="SurfaceColor">#FFFBFE</Color>
+    <Color x:Key="BackgroundColor">#F6F1FB</Color>
+    <Color x:Key="ErrorColor">#B3261E</Color>
+    <Color x:Key="OnPrimaryColor">#FFFFFF</Color>
+    <Color x:Key="OnSurfaceColor">#1C1B1F</Color>
+
+    <SolidColorBrush x:Key="PrimaryBrush"
+        Color="{StaticResource PrimaryColor}" />
+    <SolidColorBrush x:Key="PrimaryVariantBrush"
+        Color="{StaticResource PrimaryVariantColor}" />
+    <SolidColorBrush x:Key="SecondaryBrush"
+        Color="{StaticResource SecondaryColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush"
+        Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="BackgroundBrush"
+        Color="{StaticResource BackgroundColor}" />
+    <SolidColorBrush x:Key="ErrorBrush"
+        Color="{StaticResource ErrorColor}" />
+    <SolidColorBrush x:Key="OnPrimaryBrush"
+        Color="{StaticResource OnPrimaryColor}" />
+    <SolidColorBrush x:Key="OnSurfaceBrush"
+        Color="{StaticResource OnSurfaceColor}" />
+
+    <!-- 字号 -->
+    <sys:Double x:Key="FontSizeSmall"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib">12</sys:Double>
+    <sys:Double x:Key="FontSizeBody"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib">14</sys:Double>
+    <sys:Double x:Key="FontSizeTitle"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib">18</sys:Double>
+
+    <!-- 间距 -->
+    <Thickness x:Key="PaddingSmall">4</Thickness>
+    <Thickness x:Key="PaddingMedium">8</Thickness>
+    <Thickness x:Key="PaddingLarge">16</Thickness>
+
+    <!-- Button 样式 -->
+    <Style x:Key="MaterialButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource OnPrimaryBrush}" />
+        <Setter Property="Padding" Value="{StaticResource PaddingMedium}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <!-- TextBox 样式 -->
+    <Style x:Key="MaterialTextBox" TargetType="TextBox">
+        <Setter Property="Padding" Value="{StaticResource PaddingSmall}" />
+        <Setter Property="BorderBrush" Value="{StaticResource SecondaryBrush}" />
+    </Style>
+</ResourceDictionary>

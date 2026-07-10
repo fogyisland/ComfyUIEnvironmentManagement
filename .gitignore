@@ -56,3 +56,16 @@ python/
 # .NET build output
 **/bin/
 **/obj/
+
+# WPF build artifacts
+src-wpf/**/bin/
+src-wpf/**/obj/
+src-wpf/**/publish/
+
+# Generated resx (regen on every build via Ts2Resx)
+src-wpf/ComfyUI.Manager/Resources/Strings*.resx
+
+# Logs
+**/logs/*.log
+**/logs/*.log.*
+!logs/.gitkeep

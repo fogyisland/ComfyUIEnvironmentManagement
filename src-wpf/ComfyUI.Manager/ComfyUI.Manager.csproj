@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ComfyUI.Manager</AssemblyName>
+    <RootNamespace>ComfyUI.Manager</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>0.4.0</Version>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="**\*.xaml" Exclude="App.xaml" />
+    <Resource Include="Resources\Theme.xaml" />
+    <Resource Include="Resources\Strings*.resx">
+      <Generator>MSBuild:_GenerateResxSource</Generator>
+    </Resource>
+  </ItemGroup>
+</Project>
