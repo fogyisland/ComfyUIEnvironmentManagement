@@ -1,23 +1,63 @@
-name: M4 i18n CI
+# .github/workflows/m4.yml
+name: M4 CI
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'src-wpf/**'
+      - 'tests-wpf/**'
+      - 'pyproject.toml'
+      - '.github/workflows/m4.yml'
   pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'src-wpf/**'
+      - 'tests-wpf/**'
 
 jobs:
-  resx-drift:
+  test-python:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          dotnet-version: 8.0.x
+          python-version: '3.10.6'
+      - name: Install poetry
+        run: pip install poetry
+      - name: Install deps
+        run: poetry install --no-interaction
+      - name: Run pytest
+        run: poetry run pytest tests/ -v --tb=short
+      - name: Check Python coverage
+        run: |
+          poetry run pytest tests/ --cov=comfy_mgr --cov-report=term-missing
 
-      # M4 i18n: generate .resx from .ts (single source)
+  test-wpf:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore src-wpf/ComfyUI.Manager.sln
+      - name: Build
+        run: dotnet build src-wpf/ComfyUI.Manager.sln -c Release --no-restore
+      - name: Run dotnet test
+        run: dotnet test tests-wpf/ --no-build -c Release --verbosity normal
+
+  generate-resx:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
       - name: Generate WPF .resx from .ts
         run: |
           dotnet run --project src-wpf/Tools.Ts2Resx -- ^
@@ -25,7 +65,41 @@ jobs:
             --out src-wpf/ComfyUI.Manager/Resources/ ^
             --default-locale en_US ^
             --target-locales en_US,zh_CN
-
       - name: Check .resx drift
         run: |
           git diff --exit-code src-wpf/ComfyUI.Manager/Resources/Strings*.resx
+
+  smoke:
+    runs-on: windows-latest
+    needs: [test-python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.6'
+      - name: Install poetry
+        run: pip install poetry
+      - name: Install deps
+        run: poetry install --no-interaction
+      - name: Run smoke
+        run: bash scripts/smoke.sh
+
+  build:
+    runs-on: windows-latest
+    needs: [test-python, test-wpf, generate-resx]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish self-contained
+        run: |
+          dotnet publish src-wpf/ComfyUI.Manager/ComfyUI.Manager.csproj ^
+            -c Release -r win-x64 --self-contained true ^
+            -p:PublishSingleFile=false ^
+            -o ./publish/
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: comfyui-manager-win-x64
+          path: publish/
