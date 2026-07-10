@@ -1,0 +1,33 @@
+<UserControl x:Class="ComfyUI.Manager.Views.DepPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
+            <ComboBox ItemsSource="{Binding Packages}"
+                      DisplayMemberPath="Package"
+                      SelectedItem="{Binding SelectedPackage}" Width="200" />
+            <Button Content="扫描依赖" Command="{Binding ScanCommand}" Margin="8,0"
+                    Style="{StaticResource MaterialButton}" />
+            <Button Content="本地冲突" Command="{Binding LocalCheckCommand}" Margin="0,0,8,0"
+                    Style="{StaticResource MaterialButton}" />
+            <Button Content="全局检查" Command="{Binding GlobalCheckCommand}"
+                    Style="{StaticResource MaterialButton}" />
+        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <DataGrid Grid.Column="0" ItemsSource="{Binding Deps}"
+                      AutoGenerateColumns="False" IsReadOnly="True" Margin="8">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="包" Binding="{Binding Package}" Width="*" />
+                    <DataGridTextColumn Header="源" Binding="{Binding Source}" Width="100" />
+                    <DataGridTextColumn Header="依赖" Binding="{Binding DepName}" Width="*" />
+                    <DataGridTextColumn Header="版本约束" Binding="{Binding DepVersionSpec}" Width="*" />
+                </DataGrid.Columns>
+            </DataGrid>
+            <ListBox Grid.Column="1" ItemsSource="{Binding Conflicts}" Margin="8" />
+        </Grid>
+    </DockPanel>
+</UserControl>
