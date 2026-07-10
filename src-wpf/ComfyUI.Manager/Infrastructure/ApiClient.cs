@@ -20,7 +20,7 @@ public class ApiClient
         };
     }
 
-    public async Task<ErrorEnvelope<T>> PostAsync<T>(
+    public virtual async Task<ErrorEnvelope<T>> PostAsync<T>(
         string route, object body, CancellationToken ct = default)
     {
         var resp = await _http.PostAsJsonAsync(
@@ -34,7 +34,7 @@ public class ApiClient
         };
     }
 
-    public async Task<ErrorEnvelope<T>> GetAsync<T>(
+    public virtual async Task<ErrorEnvelope<T>> GetAsync<T>(
         string route, CancellationToken ct = default)
     {
         var resp = await _http.GetAsync(route, ct);

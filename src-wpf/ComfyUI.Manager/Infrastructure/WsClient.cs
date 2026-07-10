@@ -18,9 +18,18 @@ public class WsClient : IDisposable
     private Task? _receiveLoop;
     private int _retryDelay = 1000;
     private bool _disposed;
+    private Func<WsMessage, Task>? _onMessage;
 
     /// <summary>收到 WS 消息(channel → args → ts)。</summary>
-    public event Func<WsMessage, Task>? OnMessage;
+    public virtual event Func<WsMessage, Task>? OnMessage
+    {
+        add { _onMessage += value; }
+        remove { _onMessage -= value; }
+    }
+
+    /// <summary>触发 OnMessage 事件(供派生类 fakes 注入消息)。</summary>
+    protected virtual Task RaiseOnMessageAsync(WsMessage msg)
+        => _onMessage?.Invoke(msg) ?? Task.CompletedTask;
 
     public WsClient(string url)
     {
@@ -60,7 +69,7 @@ public class WsClient : IDisposable
                 DateTime.TryParse(tsStr, out var ts);
                 var wsMsg = new WsMessage(channel,
                     args.EnumerateArray().ToArray(), ts);
-                if (OnMessage is { } handler)
+                if (_onMessage is { } handler)
                     await handler(wsMsg);
             }
             catch (OperationCanceledException) { break; }
