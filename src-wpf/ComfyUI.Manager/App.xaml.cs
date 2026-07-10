@@ -2,12 +2,14 @@ using System;
 using System.IO;
 using System.Windows;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.ViewModels;
 
 namespace ComfyUI.Manager;
 
 public partial class App : Application
 {
     private ServiceConnection? _connection;
+    private MainViewModel? _mainVm;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -17,10 +19,7 @@ public partial class App : Application
             Environment.ProcessPath)!.TrimEnd('\\');
         var launcher = new PythonLauncher(projectRoot);
 
-        try
-        {
-            await launcher.LaunchAsync();
-        }
+        try { await launcher.LaunchAsync(); }
         catch (ServiceLaunchException ex)
         {
             MessageBox.Show(ex.Message, "启动失败",
@@ -41,13 +40,12 @@ public partial class App : Application
         }
 
         _connection = new ServiceConnection(launcher, api, ws);
-        var main = new MainWindow();
-        // T30 加: main.DataContext = new MainViewModel(api, ws, launcher);
+        _mainVm = new MainViewModel(api, ws, launcher);
+        // P6 接入: _mainVm.Environments = new EnvironmentListViewModel(api, ws);
+
+        var main = new MainWindow { DataContext = _mainVm };
         main.Show();
 
-        Exit += (_, _) =>
-        {
-            _connection?.Dispose();
-        };
+        Exit += (_, _) => _connection?.Dispose();
     }
 }

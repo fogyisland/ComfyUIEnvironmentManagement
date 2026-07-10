@@ -1,8 +1,49 @@
 <Window x:Class="ComfyUI.Manager.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ComfyUI Manager" Height="600" Width="900"
+        xmlns:views="clr-namespace:ComfyUI.Manager.Views"
+        Title="ComfyUI Manager" Height="700" Width="1100"
         Background="{StaticResource BackgroundBrush}">
-    <TextBlock Text="Loading..." HorizontalAlignment="Center"
-               VerticalAlignment="Center" />
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 侧边栏 -->
+        <Border Grid.Row="0" Grid.Column="0"
+                Background="{StaticResource SurfaceBrush}"
+                Padding="8">
+            <StackPanel>
+                <TextBlock Text="ComfyUI Manager"
+                           FontSize="{StaticResource FontSizeTitle}"
+                           FontWeight="Bold" Margin="0,0,0,16" />
+                <Button Content="环境" Margin="0,4"
+                        Command="{Binding ShowEnvironmentsCommand}"
+                        Style="{StaticResource MaterialButton}"
+                        HorizontalAlignment="Stretch" />
+                <Button Content="节点目录" Margin="0,4"
+                        Command="{Binding ShowCatalogCommand}"
+                        Style="{StaticResource MaterialButton}"
+                        HorizontalAlignment="Stretch" />
+                <Button Content="设置" Margin="0,4"
+                        Command="{Binding ShowSettingsCommand}"
+                        Style="{StaticResource MaterialButton}"
+                        HorizontalAlignment="Stretch" />
+            </StackPanel>
+        </Border>
+
+        <!-- 内容区 -->
+        <ContentControl Grid.Row="0" Grid.Column="1"
+                        Content="{Binding CurrentView}" />
+
+        <!-- 底部 ErrorBanner -->
+        <views:ErrorBanner Grid.Row="1" Grid.ColumnSpan="2"
+                           DataContext="{Binding ErrorBanner}"
+                           MaxHeight="120" />
+    </Grid>
 </Window>

@@ -1,4 +1,5 @@
 using System.Windows;
+using ComfyUI.Manager.ViewModels;
 
 namespace ComfyUI.Manager;
 

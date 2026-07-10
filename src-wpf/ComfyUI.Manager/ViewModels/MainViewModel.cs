@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Input;
 using ComfyUI.Manager.Infrastructure;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -11,12 +12,28 @@ public class MainViewModel : ViewModelBase
     public PythonLauncher Launcher { get; }
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
+    private object? _currentView;
+    public object? CurrentView
+    {
+        get => _currentView;
+        set => SetField(ref _currentView, value);
+    }
+
+    public ICommand ShowEnvironmentsCommand { get; }
+    public ICommand ShowCatalogCommand { get; }
+    public ICommand ShowSettingsCommand { get; }
+
     public MainViewModel(ApiClient api, WsClient ws,
         PythonLauncher launcher)
     {
         Api = api;
         Ws = ws;
         Launcher = launcher;
+
+        ShowEnvironmentsCommand = new RelayCommand(_ => CurrentView = null);
+        ShowCatalogCommand = new RelayCommand(_ => CurrentView = null);
+        ShowSettingsCommand = new RelayCommand(_ => CurrentView = null);
+
         // 订阅 WS errorOccurred 事件
         Ws.OnMessage += async msg =>
         {
