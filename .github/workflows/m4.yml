@@ -1,0 +1,31 @@
+name: M4 i18n CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  resx-drift:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # M4 i18n: generate .resx from .ts (single source)
+      - name: Generate WPF .resx from .ts
+        run: |
+          dotnet run --project src-wpf/Tools.Ts2Resx -- ^
+            --ts-dir app/qml/i18n/ ^
+            --out src-wpf/ComfyUI.Manager/Resources/ ^
+            --default-locale en_US ^
+            --target-locales en_US,zh_CN
+
+      - name: Check .resx drift
+        run: |
+          git diff --exit-code src-wpf/ComfyUI.Manager/Resources/Strings*.resx
