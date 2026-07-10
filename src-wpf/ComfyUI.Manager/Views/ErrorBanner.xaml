@@ -1,0 +1,21 @@
+<UserControl x:Class="ComfyUI.Manager.Views.ErrorBanner"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ItemsControl ItemsSource="{Binding Entries}">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <Border Background="{StaticResource ErrorBrush}"
+                        Padding="8" Margin="2" CornerRadius="4">
+                    <StackPanel>
+                        <TextBlock Text="{Binding Code}"
+                                   FontWeight="Bold"
+                                   Foreground="White" />
+                        <TextBlock Text="{Binding Message}"
+                                   Foreground="White"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>
