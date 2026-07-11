@@ -62,6 +62,9 @@ src-wpf/**/bin/
 src-wpf/**/obj/
 src-wpf/**/publish/
 
+# Release build staging (regen on every build_release.ps1 run)
+release/staging/
+
 # Generated resx (regen on every build via Ts2Resx)
 src-wpf/ComfyUI.Manager/Resources/Strings*.resx
 
