@@ -47,6 +47,27 @@ def test_ws_disconnect_removes_client(app_with_client):
     assert len(app.state.ws_broadcaster._clients) == 0
 
 
+def test_ws_pushes_bulk_update_progress(app_with_client):
+    """bus.emit('ws.push', 'bulk_update.progress', {...}) 由 WSBroadcaster fan-out 到 WS client。"""
+    app, client = app_with_client
+    with client.websocket_connect("/ws/events") as ws:
+        payload = {
+            "bulk_id": "test-id",
+            "env_id": "env-1",
+            "node_id": "node-a",
+            "status": "succeeded",
+            "latency_ms": 100,
+        }
+        app.state.bus.emit("ws.push", "bulk_update.progress", payload)
+        import time; time.sleep(0.2)
+        msg = ws.receive_json()
+        if msg.get("channel") == "_ping":
+            msg = ws.receive_json()
+        assert msg["channel"] == "bulk_update.progress"
+        assert msg["args"] == [payload]
+        assert "ts" in msg
+
+
 def test_ws_serialize_failed_does_not_close(app_with_client):
     """emit 一个含无法 JSON 序列化的对象 → WS 不应关闭。"""
     app, client = app_with_client
