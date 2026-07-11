@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace ComfyUI.Manager.Models;
 
@@ -11,10 +12,10 @@ public record BulkUpdateSummary(
 );
 
 public record BulkUpdateStatus(
-    string BulkId,
+    [property: JsonPropertyName("bulk_id")] string BulkId,
     string Status,         // pending | running | completed | cancelled | failed
-    string? StartedAt,
-    string? FinishedAt,
+    [property: JsonPropertyName("started_at")] string? StartedAt,
+    [property: JsonPropertyName("finished_at")] string? FinishedAt,
     int Total,
     int Succeeded,
     int Skipped,
@@ -25,6 +26,10 @@ public record BulkUpdateStatus(
     public bool IsRunning => Status == "running" || Status == "pending";
 }
 
-public record BulkUpdateStartedResponse(string BulkId);
+public record BulkUpdateStartedResponse(
+    [property: JsonPropertyName("bulk_id")] string BulkId
+);
 
-public record BulkUpdateCancelledResponse(string CancelledAtCheckpoint);
+public record BulkUpdateCancelledResponse(
+    [property: JsonPropertyName("cancelled_at_checkpoint")] string CancelledAtCheckpoint
+);

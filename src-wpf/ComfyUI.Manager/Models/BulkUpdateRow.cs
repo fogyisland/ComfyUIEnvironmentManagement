@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace ComfyUI.Manager.Models;
 
@@ -7,5 +8,5 @@ public record BulkUpdateRow(
     string NodeId,
     string Status,    // pending | running | succeeded | skipped | failed
     string? Reason,
-    int LatencyMs
+    [property: JsonPropertyName("latency_ms")] int LatencyMs
 );
