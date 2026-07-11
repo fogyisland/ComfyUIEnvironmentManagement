@@ -18,6 +18,7 @@ from comfy_mgr.services.node import NodeService
 from comfy_mgr.services.scanned_node import ScannedNodeService
 from comfy_mgr.services.conflict import ConflictService
 from comfy_mgr.services.node_meta import NodeMetaService
+from comfy_mgr.services.bulk_update_service import BulkUpdateService
 from app.bridge.environment_bridge import EnvironmentBridge
 from app.bridge.catalog_bridge import CatalogBridge
 from app.bridge.node_bridge import NodeBridge
@@ -130,6 +131,12 @@ class AppContext:
             conflict_service=self.conflict_service,
             node_meta_service=self.node_meta_service,
             bus=self.bus,
+        )
+
+        # ============ M5 新增 ============
+        # BulkUpdateService:跨 env × 节点批量 update(M5 T1)
+        self.bulk_update_service = BulkUpdateService(
+            node_bridge=self.node_bridge, bus=self.bus,
         )
 
         # ============ M3 新增 ============
