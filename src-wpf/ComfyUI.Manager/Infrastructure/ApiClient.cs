@@ -11,8 +11,11 @@ public class ApiClient
 {
     private readonly HttpClient _http;
 
+    public string BaseUrl { get; }
+
     public ApiClient(string baseUrl)
     {
+        BaseUrl = baseUrl;
         _http = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(30),

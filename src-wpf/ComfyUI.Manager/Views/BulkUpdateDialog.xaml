@@ -1,0 +1,119 @@
+<Window x:Class="ComfyUI.Manager.Views.BulkUpdateDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+        Title="批量更新" Width="900" Height="650"
+        Background="{StaticResource BackgroundBrush}"
+        WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <!-- Visibility by BulkUpdateMode via DataTrigger -->
+        <Style x:Key="SelectEnvVisibility" TargetType="FrameworkElement">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Mode}" Value="SelectEnv">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SummaryVisibility" TargetType="FrameworkElement">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Mode}" Value="Summary">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 顶部:env + 节点多选(仅 SelectEnv 模式) -->
+        <StackPanel Grid.Row="0" Orientation="Vertical" Margin="0,0,0,12"
+                    Style="{StaticResource SelectEnvVisibility}">
+            <StackPanel Orientation="Horizontal">
+                <CheckBox Content="全选"
+                          Command="{Binding ToggleSelectAllCommand}"
+                          VerticalAlignment="Center"/>
+                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center"
+                           Text="选择 env 和节点后点击 Start"/>
+            </StackPanel>
+            <ScrollViewer MaxHeight="180" Margin="0,8,0,0"
+                          VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding EnvRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:EnvRow}">
+                            <Border Margin="0,2" Padding="6"
+                                    BorderBrush="{StaticResource SurfaceBrush}"
+                                    BorderThickness="1">
+                                <StackPanel>
+                                    <CheckBox Content="{Binding DisplayName}"
+                                              IsChecked="{Binding Selected}"/>
+                                    <ItemsControl ItemsSource="{Binding Nodes}"
+                                                  Margin="20,4,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:NodeSelectRow}">
+                                                <CheckBox Content="{Binding DisplayName}"
+                                                          IsChecked="{Binding Selected}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </StackPanel>
+
+        <!-- 中部:DataGrid 显示逐行状态 -->
+        <DataGrid Grid.Row="1" x:Name="RowsGrid"
+                  ItemsSource="{Binding Rows}"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  EnableRowVirtualization="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Env" Binding="{Binding EnvId}" Width="120"/>
+                <DataGridTextColumn Header="Node" Binding="{Binding NodeId}" Width="200"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*"/>
+                <DataGridTextColumn Header="ms" Binding="{Binding LatencyMs}" Width="60"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Summary 区(仅 Summary 模式) -->
+        <Border Grid.Row="2" Margin="0,12,0,0" Padding="8"
+                Background="{StaticResource SurfaceBrush}"
+                Style="{StaticResource SummaryVisibility}">
+            <StackPanel>
+                <TextBlock FontWeight="Bold">
+                    <Run Text="完成:"/>
+                    <Run Text="{Binding Summary.Total, Mode=OneWay}"/>
+                    <Run Text="  成功:"/>
+                    <Run Text="{Binding Summary.Succeeded, Mode=OneWay}"/>
+                    <Run Text="  跳过:"/>
+                    <Run Text="{Binding Summary.Skipped, Mode=OneWay}"/>
+                    <Run Text="  失败:"/>
+                    <Run Text="{Binding Summary.Failed, Mode=OneWay}"/>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <!-- 底部:Start / Cancel / Error -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,12,0,0">
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="Red"
+                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <Button Content="Start" Width="100" Margin="0,0,8,0"
+                    Style="{StaticResource MaterialButton}"
+                    Command="{Binding StartCommand}"/>
+            <Button Content="Cancel" Width="100"
+                    Style="{StaticResource MaterialButton}"
+                    Command="{Binding CancelCommand}"/>
+        </StackPanel>
+    </Grid>
+</Window>

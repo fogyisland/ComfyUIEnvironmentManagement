@@ -34,6 +34,10 @@
                         Command="{Binding ShowSettingsCommand}"
                         Style="{StaticResource MaterialButton}"
                         HorizontalAlignment="Stretch" />
+                <Button Content="批量更新" Margin="0,4"
+                        Command="{Binding OpenBulkUpdateCommand}"
+                        Style="{StaticResource MaterialButton}"
+                        HorizontalAlignment="Stretch" />
             </StackPanel>
         </Border>
 
