@@ -60,7 +60,7 @@ class BulkUpdateService:
         from datetime import datetime
         return datetime.now().isoformat(timespec="seconds")
 
-    def start(self, env_ids: list[str], node_ids: list[str]) -> Result[str]:
+    def start(self, env_ids: list[str], node_ids: list[str]) -> Result[dict]:
         if not env_ids:
             return Result.fail(ServiceError(
                 code="BAD_VALIDATION", message="env_ids 不能为空"))
@@ -93,7 +93,7 @@ class BulkUpdateService:
             "env_ids": env_ids,
             "node_ids": node_ids,
         })
-        return Result.ok(bulk_id)
+        return Result.ok({"bulk_id": bulk_id})
 
     async def _run_bulk(self, rec: _BulkRecord) -> None:
         rec.status = "running"
@@ -157,7 +157,7 @@ class BulkUpdateService:
                 "summary": summary,
             })
 
-    def cancel(self, bulk_id: str) -> Result[str]:
+    def cancel(self, bulk_id: str) -> Result[dict]:
         rec = self._bulks.get(bulk_id)
         if rec is None:
             return Result.fail(ServiceError(
@@ -169,7 +169,7 @@ class BulkUpdateService:
         rec._cancel_requested = True
         checkpoint = rec.current or f"{rec.env_ids[0]}#{rec.node_ids[0]}"
         rec.cancelled_at_checkpoint = checkpoint
-        return Result.ok(checkpoint)
+        return Result.ok({"cancelled_at_checkpoint": checkpoint})
 
     def get_status(self, bulk_id: str) -> Result[dict]:
         rec = self._bulks.get(bulk_id)

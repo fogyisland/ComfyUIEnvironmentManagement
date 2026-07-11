@@ -34,8 +34,9 @@ def test_start_returns_bulk_id(fake_node_bridge, fake_bus):
     svc = BulkUpdateService(fake_node_bridge, fake_bus)
     r = svc.start(env_ids=["env-1"], node_ids=["node-a", "node-b"])
     assert r.ok
-    assert isinstance(r.value, str)
-    assert len(r.value) == 36  # UUID4 长度
+    assert "bulk_id" in r.value
+    assert isinstance(r.value["bulk_id"], str)
+    assert len(r.value["bulk_id"]) == 36  # UUID4 长度
 
 
 def test_start_validates_empty_env_ids(fake_node_bridge, fake_bus):
@@ -55,7 +56,7 @@ def test_start_validates_empty_node_ids(fake_node_bridge, fake_bus):
 def test_get_status_returns_pending_immediately(fake_node_bridge, fake_bus):
     svc = BulkUpdateService(fake_node_bridge, fake_bus)
     r = svc.start(env_ids=["env-1"], node_ids=["node-a", "node-b"])
-    bulk_id = r.value
+    bulk_id = r.value["bulk_id"]
     s = svc.get_status(bulk_id)
     assert s.ok
     assert s.value["status"] == "pending"
@@ -80,7 +81,7 @@ def test_cancel_records_checkpoint(fake_node_bridge, fake_bus):
     """cancel 后 status 应记录 cancelled_at_checkpoint。"""
     svc = BulkUpdateService(fake_node_bridge, fake_bus)
     r = svc.start(env_ids=["env-1"], node_ids=["node-a", "node-b"])
-    bulk_id = r.value
+    bulk_id = r.value["bulk_id"]
     r2 = svc.cancel(bulk_id)
     assert r2.ok
     # get_status 应能查到 checkpoint
@@ -98,7 +99,7 @@ def test_run_bulk_marks_version_locked_as_skipped():
     svc = BulkUpdateService(bridge, bus)
     r = svc.start(env_ids=["env-1"], node_ids=["node-a"])
     assert r.ok
-    bulk_id = r.value
+    bulk_id = r.value["bulk_id"]
     # 手动驱动后台 task:测试环境无 running loop,start() 不会真正调度
     # 用 _run_bulk 直接同步跑一次
     import asyncio

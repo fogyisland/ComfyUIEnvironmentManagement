@@ -1,7 +1,7 @@
 """Pydantic 请求/响应模型,所有 route 用作 Request/Response shape。"""
 from __future__ import annotations
 from typing import Any, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 # ===== Health =====

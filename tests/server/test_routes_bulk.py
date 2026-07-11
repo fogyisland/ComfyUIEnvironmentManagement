@@ -46,9 +46,8 @@ def test_start_returns_bulk_id(client):
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is True
-    # service 直接返回 bulk_id 字符串,与 schema BulkUpdateStartedResponse 一致
-    assert isinstance(body["value"], str)
-    assert len(body["value"]) == 36
+    assert "bulk_id" in body["value"]
+    assert len(body["value"]["bulk_id"]) == 36
 
 
 def test_start_empty_env_ids_returns_validation(client):
@@ -94,7 +93,7 @@ def test_get_status_after_start_returns_pending(client):
         "env_ids": ["env-1"],
         "node_ids": ["node-a", "node-b"],
     }).json()
-    bulk_id = start_resp["value"]
+    bulk_id = start_resp["value"]["bulk_id"]
     get_resp = client.get(f"/api/v1/bulk-update/{bulk_id}").json()
     assert get_resp["ok"]
     s = get_resp["value"]
@@ -110,7 +109,7 @@ def test_cancel_after_completed_returns_not_running(client):
         "env_ids": ["env-1"],
         "node_ids": ["node-a"],
     }).json()
-    bulk_id = start_resp["value"]
+    bulk_id = start_resp["value"]["bulk_id"]
     # 由于 mock bridge 立即返回,后台 task 完成得快,先看是否仍 pending
     import time; time.sleep(0.1)  # 给 task 跑完
     status_resp = client.get(f"/api/v1/bulk-update/{bulk_id}").json()["value"]
