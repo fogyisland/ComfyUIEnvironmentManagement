@@ -49,13 +49,17 @@ if (Test-Path "$Root/bin/git-portable") {
 
 # 6. 复制脚本 + docs + logs
 Write-Host "[6/7] Copying scripts + docs + logs dir..." -ForegroundColor Yellow
-Copy-Item -Force "$Root/start-service.bat" $AppDir
+if (Test-Path "$Root/start-service.bat") {
+    Copy-Item -Force "$Root/start-service.bat" $AppDir
+}
 if (Test-Path "$Root/run.bat") {
     # run.bat 是 M3 deprecated,但 spec §13.1 要求保留作为 legacy 提示
     Copy-Item -Force "$Root/run.bat" $AppDir
 }
 Copy-Item -Force "$Root/README.md" $AppDir
-Copy-Item -Force "$Root/LICENSE" $AppDir
+if (Test-Path "$Root/LICENSE") {
+    Copy-Item -Force "$Root/LICENSE" $AppDir
+}
 $LogsDir = Join-Path $AppDir "logs"
 New-Item -ItemType Directory -Path $LogsDir | Out-Null
 "" | Set-Content (Join-Path $LogsDir ".gitkeep")
