@@ -116,3 +116,17 @@ Spec: docs/superpowers/specs/2026-06-26-m2-nodes-design.md
 ## Review Findings Ledger
 
 (Minor findings get logged here; Critical/Important get fixed before next task)
+
+---
+
+# M5 Progress Ledger
+
+Base SHA: ca40dc2 (plan commit, pre-M5)
+Plan: docs/superpowers/plans/2026-07-11-m5.md
+Spec: docs/superpowers/specs/2026-07-11-m5-design.md
+
+## Status
+
+- T1: complete (commits d2d3dd4→4162a11, review clean after 1 fix pass — 5 Important/Critical fixed)
+- T2: complete (commits 3d17adc→4dcd03a, review clean after 1 fix pass — wire shapes + Field import + newline)
+- T3: complete (commit b1d1718) — inline carry-over fix needed for `app_with_client` fixture (commit pending: `CompatHTTPClient` moved from method-local import at `app/app_context.py:148` to module scope; pre-existing M4 bug from `b7f6e3f`). Pre-existing 4 WS tests still fail at assertion stage (`_ping` arrives before `versionChanged`) due to M4 `_on_push_sync` silent-drop bug — same root cause, not M5 regression; same issue affecting pre-existing tests.

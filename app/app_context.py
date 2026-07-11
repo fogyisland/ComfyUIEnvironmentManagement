@@ -19,6 +19,7 @@ from comfy_mgr.services.scanned_node import ScannedNodeService
 from comfy_mgr.services.conflict import ConflictService
 from comfy_mgr.services.node_meta import NodeMetaService
 from comfy_mgr.services.bulk_update_service import BulkUpdateService
+from comfy_mgr.infra.compat_http_client import CompatHTTPClient
 from app.bridge.environment_bridge import EnvironmentBridge
 from app.bridge.catalog_bridge import CatalogBridge
 from app.bridge.node_bridge import NodeBridge
@@ -145,7 +146,6 @@ class AppContext:
         from comfy_mgr.db.scanned_node_repo import ScannedNodeRepo
         from comfy_mgr.infra.http_client import HTTPClient
         from comfy_mgr.infra.catalog_http_client import CatalogHTTPClient
-        from comfy_mgr.infra.compat_http_client import CompatHTTPClient
         from comfy_mgr.infra.git_portable import default_git_resolver
         from comfy_mgr.infra.python_portable import default_python_resolver
         from comfy_mgr.db.version_repo import VersionRepo
