@@ -27,6 +27,7 @@ def build_app(ctx: AppContext) -> FastAPI:
         app.state.environment_bridge = ctx.environment_bridge
         app.state.catalog_bridge = ctx.catalog_bridge
         app.state.node_bridge = ctx.node_bridge
+        app.state.bulk_update_service = ctx.bulk_update_service
         app.state.process_bridge = ctx.process_bridge
         app.state.settings_bridge = ctx.settings_bridge
         app.state.torch_bridge = ctx.torch_bridge
@@ -62,6 +63,7 @@ def build_app(ctx: AppContext) -> FastAPI:
         "process": "/api/v1/process",
         "settings": "/api/v1/settings",
         "torch": "/api/v1/torch",
+        "bulk": "/api/v1/bulk-update",
     }
     for name, prefix in _route_prefixes.items():
         try:

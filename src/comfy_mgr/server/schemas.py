@@ -1,6 +1,6 @@
 """Pydantic 请求/响应模型,所有 route 用作 Request/Response shape。"""
 from __future__ import annotations
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -200,3 +200,42 @@ class ErrorEnvelope(BaseModel):
 class OkEnvelope(BaseModel):
     ok: bool = True
     value: Any = None
+
+
+# ===== M5 bulk update =====
+
+class BulkUpdateRequest(BaseModel):
+    env_ids: list[str] = []
+    node_ids: list[str] = []  # 注:空值校验交由 service 层返回 BAD_VALIDATION envelope(测试期望 200)
+
+
+class BulkUpdateStartedResponse(BaseModel):
+    bulk_id: str
+
+
+class BulkUpdateRow(BaseModel):
+    env_id: str
+    node_id: str
+    status: Literal["succeeded", "skipped", "failed"]
+    reason: Optional[str] = None
+    latency_ms: int = 0
+
+
+class BulkUpdateSummary(BaseModel):
+    total: int
+    succeeded: int
+    skipped: int
+    failed: int
+    rows: list[BulkUpdateRow]
+
+
+class BulkUpdateStatus(BaseModel):
+    bulk_id: str
+    status: Literal["pending", "running", "completed", "cancelled", "failed"]
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    total: int
+    succeeded: int
+    skipped: int
+    failed: int
+    current: Optional[str] = None
