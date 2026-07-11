@@ -34,6 +34,7 @@ class _BulkRecord:
     status: str = "pending"   # pending | running | completed | cancelled | failed
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+    cancelled_at_checkpoint: Optional[str] = None
     rows: list[_RowRecord] = field(default_factory=list)
     succeeded: int = 0
     skipped: int = 0
@@ -78,7 +79,7 @@ class BulkUpdateService:
         self._bulks[bulk_id] = rec
         # 启动后台 task(在已运行的 event loop 中)
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             if loop.is_running():
                 rec._task = asyncio.create_task(self._run_bulk(rec))
             else:
@@ -107,7 +108,8 @@ class BulkUpdateService:
             res = self._bridge.upgrade_node(
                 env_id=row.env_id, package=row.node_id, target=None)
             row.latency_ms = int((time.monotonic() - t0) * 1000)
-            if res.ok:
+            # res 是 dict envelope: {"ok": bool, "value": ...} 或 {"ok": false, "error": {"code", "message"}}
+            if res.get("ok"):
                 row.status = "succeeded"
                 rec.succeeded += 1
                 self._bus.emit("ws.push", "bulk_update.progress", {
@@ -118,16 +120,18 @@ class BulkUpdateService:
                     "latency_ms": row.latency_ms,
                 })
             else:
-                err_code = res.error.code if res.error else "UNKNOWN"
-                # GIT_DIRTY → skipped;其他 → failed
+                err = res.get("error") or {}
+                err_code = err.get("code", "UNKNOWN")
+                err_msg = err.get("message", "")
+                # GIT_DIRTY/GIT_LOCKED/VERSION_LOCKED → skipped;其他 → failed
                 if err_code in ("GIT_DIRTY", "GIT_HAS_LOCAL_CHANGES",
-                                "GIT_LOCKED"):
+                                "GIT_LOCKED", "VERSION_LOCKED"):
                     row.status = "skipped"
-                    row.reason = res.error.message if res.error else "skipped"
+                    row.reason = err_msg or "skipped"
                     rec.skipped += 1
                 else:
                     row.status = "failed"
-                    row.reason = res.error.message if res.error else "failed"
+                    row.reason = err_msg or "failed"
                     rec.failed += 1
                 self._bus.emit("ws.push", "bulk_update.progress", {
                     "bulk_id": rec.bulk_id,
@@ -164,6 +168,7 @@ class BulkUpdateService:
                 message=f"bulk {bulk_id} 已 {rec.status}"))
         rec._cancel_requested = True
         checkpoint = rec.current or f"{rec.env_ids[0]}#{rec.node_ids[0]}"
+        rec.cancelled_at_checkpoint = checkpoint
         return Result.ok(checkpoint)
 
     def get_status(self, bulk_id: str) -> Result[dict]:
@@ -176,6 +181,7 @@ class BulkUpdateService:
             "status": rec.status,
             "started_at": rec.started_at,
             "finished_at": rec.finished_at,
+            "cancelled_at_checkpoint": rec.cancelled_at_checkpoint,
             "total": len(rec.rows),
             "succeeded": rec.succeeded,
             "skipped": rec.skipped,
