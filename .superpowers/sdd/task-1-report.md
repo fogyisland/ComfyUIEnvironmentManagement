@@ -325,3 +325,27 @@ Diff stat: `2 files changed, 59 insertions(+), 14 deletions(-)`.
 ## Concerns / Deviations
 
 None for this fix pass — every change matches the dispatch list verbatim. Original M5 T1 report's "Concerns: None" stands; the deprecation warning noted there is now eliminated by Fix 5.
+
+---
+
+# M5 T1 Fix Pass — Re-review Verdict
+
+## Re-Review Verdict
+- OK All 5 fixes present and correct
+
+## Per-Fix Check
+1. Bridge dict contract: OK — `bulk_update_service.py:112` reads `if res.get("ok"):` and `:123-125` reads `err = res.get("error") or {}; err_code = err.get("code", "UNKNOWN"); err_msg = err.get("message", "")`. Dict envelope contract matches `NodeBridge.upgrade_node` real signature.
+2. VERSION_LOCKED reachable: OK — `bulk_update_service.py:127-128` skip tuple now includes `"VERSION_LOCKED"`. New test `test_run_bulk_marks_version_locked_as_skipped` drives `_run_bulk` synchronously and asserts `rec.skipped == 1`.
+3. Trailing newlines: OK — `tail -c 1` returns `0a` (LF) for both `src/comfy_mgr/services/bulk_update_service.py` and `tests/services/test_bulk_update_service.py`. Diff hunk explicitly removed `\ No newline at end of file` marker.
+4. `cancelled_at_checkpoint` field: OK — `_BulkRecord` dataclass line `cancelled_at_checkpoint: Optional[str] = None` added; `cancel()` writes `rec.cancelled_at_checkpoint = checkpoint` (line 171); `get_status()` exposes it in the response dict (line 184); new test `test_cancel_records_checkpoint` asserts `s.value["cancelled_at_checkpoint"] is not None`.
+5. `get_running_loop`: OK — `bulk_update_service.py:82` uses `loop = asyncio.get_running_loop()`. Deprecated `asyncio.get_event_loop()` form is gone.
+
+## Issues
+None. Each of the 5 dispatch items is present in the diff, matches the actual source, and has at least one targeted test (for Fixes 2 and 4) or behavioral evidence (Fixes 1, 3, 5). No new defects introduced.
+
+## Tests
+8/8 PASS in `pytest tests/services/test_bulk_update_service.py -v` — verified by implementer's run output captured in the fix report. Two new tests (`test_cancel_records_checkpoint`, `test_run_bulk_marks_version_locked_as_skipped`) cover Fix 4 and Fix 2 respectively.
+
+## Assessment
+**Task quality:** Approved
+**Reasoning:** All 5 dispatched fixes are present, correctly implemented, and covered by tests; no regression or new defect introduced.

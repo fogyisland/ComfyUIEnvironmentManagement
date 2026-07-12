@@ -1,41 +1,63 @@
-# Task 24 Report
+# Task T24 Report: `Tools.Ts2Resx` — Console Project
 
-**Status:** DONE (automated checks) + MANUAL PENDING (GUI verification)
+**Status:** DONE_WITH_CONCERNS
+**Commit:** `dbf3630` — `feat(i18n): Ts2Resx console tool for .ts to .resx generation`
 
-**Test summary:** `poetry run pytest -q` → **350 passed + 2 skipped in 553s** (no regressions)
-**Whitespace check:** `git diff --check` → exit 0 (no trailing-whitespace errors on tracked files)
+## What Was Done
 
-**Deviations from brief:** Test count drift — brief expected 343 + 2 skipped (340 baseline + 3 integration). Actual is 350 + 2 skipped. The +7 extra vs. brief is consistent with the cumulative drift seen in T13 (M3 added 75 tests vs. brief's 75 baseline, but T8-T12 added 4 extra tests for check_global and a few other coverage gaps). All M3 tests pass; no regressions in M0/M1/M2.
+Created the first C# / .NET 8 project in the repo: `src-wpf/Tools.Ts2Resx/`.
 
-**Concerns:** Manual GUI smoke checklist (10 items per brief) requires the user to launch `poetry run python app/main.py` and walk through. Not subagent-dispatchable. Marked PENDING until user verification.
+### Files Created (verbatim from brief + minimal compile-required fixes)
 
-## Automated Checks Passed
+- `src-wpf/Tools.Ts2Resx/Tools.Ts2Resx.csproj` — net8.0 console exe (verbatim)
+- `src-wpf/Tools.Ts2Resx/KeyDeriver.cs` — verbatim
+- `src-wpf/Tools.Ts2Resx/TsParser.cs` — verbatim
+- `src-wpf/Tools.Ts2Resx/ResxEmitter.cs` — verbatim
+- `src-wpf/Tools.Ts2Resx/Program.cs` — verbatim
+- `.gitignore` — appended `**/bin/` and `**/obj/` so build artifacts are excluded
+- `src-wpf/ComfyUI.Manager/Resources/Strings.resx` — generated (112 entries, en_US defaults)
+- `src-wpf/ComfyUI.Manager/Resources/Strings.zh-CN.resx` — generated (49 entries)
 
-- [x] Full test suite: 350 passed + 2 skipped
-- [x] `git diff --check`: no whitespace errors
-- [x] No new untracked files
-- [x] Git log shows clean commit chain (T1..T23 all committed, ledger up to date through T23)
+### Build & Test
 
-## Manual GUI Checklist (per brief §10.1)
+- `dotnet build src-wpf/Tools.Ts2Resx/` — Build succeeded, 0 errors, 1 warning (CS8625 null literal on `Emit(path, null, ...)` — by design per brief signature)
+- `dotnet run --project src-wpf/Tools.Ts2Resx -- --ts-dir app/qml/i18n/ --out src-wpf/ComfyUI.Manager/Resources/ --default-locale en_US --target-locales en_US,zh_CN`
+  - Wrote `Strings.resx` (112 entries — default locale emits Source text as Value, per brief)
+  - Wrote `Strings.zh-CN.resx` (49 entries — has non-empty translations)
+- Manually inspected `Strings.resx` head: well-formed standard resx header (4 resheader blocks), Chinese keys sanitized correctly (e.g. `CatalogPage_节点目录` → Chinese chars preserved, `(` `)` `%` `,` dropped per Sanitize rules)
 
-Awaiting user verification:
+## Concerns (Brief Deviations)
 
-- [ ] env 里某节点有 `.git/` → VersionPanel 显示 `current_sha` + "升级" 按钮可用
-- [ ] 点"升级" → 节点 HEAD 更新 + version_history 写入新行(action=upgrade, result=success)
-- [ ] 点"锁定" → 节点标 🔒 + "升级" 按钮置灰
-- [ ] 点"解锁" → 恢复
-- [ ] DepPanel 点"重新解析依赖" → dep_records 写入(requirements.txt + pyproject.toml 来源)
-- [ ] 同 env 内两个节点对同一 dep 冲突 → DepPanel 底部显示 ⚠ N 个冲突 + ConflictPanel 同步出现
-- [ ] CatalogPage 点"刷新" → 网格卡片显示节点(若有网)或 stale cache(若无网)
-- [ ] CatalogPage 某卡片点"安装" → InstallDialog 弹 → 选 env → "安装" → 节点目录被 git clone
-- [ ] 切到那个 env → EnvDetailPanel 节点列表出现新节点
-- [ ] git portable 检测:有 `bin/git-portable/cmd/git.exe` → checkGitPortable 返回 available=True, source=portable;否则 fallback 到系统 git
+The brief's verbatim code did not compile as-is. The following minimal, intent-preserving fixes were required:
 
-**Note:** System `git` is available (`git version 2.54.0.windows.1`); `bin/git-portable/cmd/git.exe` is NOT present in this dev env. The M3 portable resolver falls through to system git per the T5 contract.
+1. **Missing `using` directives** (brief assumed implicit usings, but no `<ImplicitUsings>enable</ImplicitUsings>` is in the csproj):
+   - `TsParser.cs`: added `using System;` (for `InvalidOperationException`)
+   - `ResxEmitter.cs`: added `using System.Collections.Generic;` (for `IEnumerable<>`)
+   - `Program.cs`: added `using System;`, `using System.Collections.Generic;`, `using System.IO;`, `using System.Linq;`
+2. **Removed dead `using System.CommandLine;`** in `Program.cs` — the brief comment says "故意 NOT 引入" (intentionally NOT imported) but the using directive itself still tries to resolve and fails at compile. Removed per the brief's stated intent.
+3. **Typo fix in `ResxEmitter.cs`**: brief line 25 wrote `WriteAttributeString("xmlns", "xsd", "i", null, ...)` (duplicated `"xsd"` and stray `"i"`). The WPF-recognised xsi namespace declaration should be `xmlns:xsi`. Fixed to `("xmlns", "xsi", null, "http://www.w3.org/2001/XMLSchema-instance")`. Standard resx files use both `xmlns:xsd` and `xmlns:xsi`.
 
-## Self-Review
+All three deviations are mechanical, do not change behaviour or shape of generated resx, and were necessary for the project to build at all. Brief code intent is fully preserved.
 
-- **Pre-flight automated gates pass:** all 350 unit + integration tests green, no whitespace regressions in tracked files, git log shows clean T1..T23 chain.
-- **GUI smoke is the only outstanding verification.** This is inherently a user step — subagents can't drive a Qt GUI for visual verification.
-- **Recommended user action:** `cd /d/ToolDevelop/ComfyUI && poetry run python app/main.py` and walk the 10-item checklist above.
-- **No commit needed for T24** unless a manual fix is required during GUI walkthrough. If a fix is found, dispatch a follow-up subagent and append to the M3 ledger.
+## Notes
+
+- .NET 10.0.102 SDK is installed (backwards-compatible with `net8.0` target).
+- The brief's command uses `app/qml/i18n/` (correct — the actual .ts files live at `app/qml/i18n/comfyui_manager_{en_US,zh_CN}.ts`, NOT `app/i18n/`).
+- 3 vanished translations (from M3 era) were correctly filtered out by `IsVanished` check.
+- Vanished `data` lines absent from both resx outputs (correct — they should never be re-introduced by the tool).
+- T25 (tests) and T26 (CI drift check) remain as separate tasks per the brief.
+
+## Test Summary
+
+- `.NET build OK, generated Strings.resx has 112 entries + Strings.zh-CN.resx has 49 entries`
+
+## File Paths (absolute)
+
+- `D:\ToolDevelop\ComfyUI\src-wpf\Tools.Ts2Resx\Tools.Ts2Resx.csproj`
+- `D:\ToolDevelop\ComfyUI\src-wpf\Tools.Ts2Resx\Program.cs`
+- `D:\ToolDevelop\ComfyUI\src-wpf\Tools.Ts2Resx\TsParser.cs`
+- `D:\ToolDevelop\ComfyUI\src-wpf\Tools.Ts2Resx\ResxEmitter.cs`
+- `D:\ToolDevelop\ComfyUI\src-wpf\Tools.Ts2Resx\KeyDeriver.cs`
+- `D:\ToolDevelop\ComfyUI\src-wpf\ComfyUI.Manager\Resources\Strings.resx`
+- `D:\ToolDevelop\ComfyUI\src-wpf\ComfyUI.Manager\Resources\Strings.zh-CN.resx`
+- `D:\ToolDevelop\ComfyUI\.gitignore` (updated with `**/bin/` and `**/obj/`)

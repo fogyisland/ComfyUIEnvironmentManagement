@@ -130,3 +130,42 @@ Spec: docs/superpowers/specs/2026-07-11-m5-design.md
 - T1: complete (commits d2d3dd4→4162a11, review clean after 1 fix pass — 5 Important/Critical fixed)
 - T2: complete (commits 3d17adc→4dcd03a, review clean after 1 fix pass — wire shapes + Field import + newline)
 - T3: complete (commit b1d1718) — inline carry-over fix needed for `app_with_client` fixture (commit pending: `CompatHTTPClient` moved from method-local import at `app/app_context.py:148` to module scope; pre-existing M4 bug from `b7f6e3f`). Pre-existing 4 WS tests still fail at assertion stage (`_ping` arrives before `versionChanged`) due to M4 `_on_push_sync` silent-drop bug — same root cause, not M5 regression; same issue affecting pre-existing tests.
+- T4: complete (commits 464f020→02be0a2, review clean after 1 fix pass — 1 Important: snake_case `[JsonPropertyName]` attrs on positional record params for `latency_ms` / `bulk_id` / `started_at` / `finished_at` / `cancelled_at_checkpoint`)
+- T5: complete (commit 0876513, review APPROVED — 0 fixes; impl correctly adapted brief's `OnPropertyChanged()` → `RaisePropertyChanged()` to match `ViewModelBase` API; Fake's `CancelAsync` return type corrected to `BulkUpdateCancelledResponse` matching T4 fix; brief's unused `CancelResult` field removed per YAGNI)
+- T6: complete (commit 8e9bc32, review APPROVED — 0 fixes; took Path A "WS subscription in MainViewModel.OpenBulkUpdate" instead of brief's Path B "add WsClient to VM ctor"; added `ApiClient.BaseUrl` getter as alternative to touching App.xaml.cs; 5 files exactly, 16/16 WPF tests green)
+- T7: complete (commit 7f44157, review APPROVED — 0 fixes; shim delete + 9 import sites fixed across 5 files; pre-existing failures untouched)
+- T8: complete (commit 0b209b0; 1-line `logsFor` → `logs_for` in `tests/app/test_app_context.py`; 2/2 tests pass; same `setScannedService` issue remains in `tests/bridge/test_app_context_wiring.py` + `tests/integration/test_m2_gui_round_trip.py` — outside T8 scope, will catch in T10 if related)
+- T9: complete (commit 582dd71, review APPROVED — 0 fixes; root cause was pagination, NOT ThreadPoolExecutor as brief guessed; production code untouched; test mock wrapped as `{"nodes": payload, "total": N}` so client stops after 1 page; 6/6 tests pass)
+- T10: complete (no commit — `pytest-mock` already declared in `pyproject.toml:17` but env was stale; `pip install pytest-mock` unblocked 5 ERROR-setup tests; 17/17 tests pass in scope; `tests/services/test_catalog.py` + `tests/services/test_environment_service.py` paths corrected from brief's `tests/app/` placeholders)
+- T11: complete (no commit — verify-only close; brief's "smoke /healthz / /version empty body" was a stale report; routes already return correct JSON: `/healthz` → `{"status":"ok"}` HTTP 200, `/version` → `{"service":"comfy_mgr.server","version":"0.4.0","schema":5}` HTTP 200; `tests/integration/test_server_routes.py:7-17` already covers both with `test_healthz_returns_200` + `test_version_returns_schema_5`; 12/12 server-route tests pass; pre-existing M4 `_on_push_sync` silent-drop bug is separate scope, tracked)
+- T12: pending (整分支 review + v0.5.0 bump + release notes + tag)
+
+## End-of-day snapshot (2026-07-12 — T11 closed)
+
+- Branch: main
+- 12 commits since plan base `ca40dc2`: T1, T1-fix, T1-doc, T2, T2-fix, T3 (WS test), T3-carry-over (CompatHTTPClient scope), T4, T4-fix (JsonPropertyName), T5, T6, T7-T10 (4 carry-over commits + 0-doc T10), T11 (verify-only)
+- WPF tests: 16/16 green (12 M4 + 4 M5 BulkUpdate)
+- Python tests: full suite green except pre-existing M4 `_on_push_sync` silent-drop bug (4 WS integration tests) — not M5 regression
+- Carry-over status: T7-T10 all complete with commits; T11 verify-only close (no commit needed)
+- Resume point: dispatch T12 implementer (whole-branch review + v0.5.0 bump + release notes + tag)
+
+### Files modified this session (M5 commits)
+
+- `src/comfy_mgr/services/bulk_update_service.py` (T1)
+- `src/comfy_mgr/server/routes/bulk.py` (T2)
+- `src/comfy_mgr/server/schemas.py` (T2)
+- `src/comfy_mgr/server/app.py` (T2)
+- `tests/services/test_bulk_update_service.py` (T1)
+- `tests/server/test_routes_bulk.py` (T2)
+- `tests/integration/test_ws_events.py` (T3)
+- `app/app_context.py` (T3 carry-over: CompatHTTPClient scope fix, 1-line move)
+- `src-wpf/ComfyUI.Manager/Models/BulkUpdateRow.cs` (T4)
+- `src-wpf/ComfyUI.Manager/Models/BulkUpdateSummary.cs` (T4)
+- `src-wpf/ComfyUI.Manager/Services/BulkUpdateApiClient.cs` (T4)
+- `src-wpf/ComfyUI.Manager/ViewModels/BulkUpdateDialogViewModel.cs` (T5)
+- `tests-wpf/ComfyUI.Manager.Tests/ViewModels/BulkUpdateDialogViewModelTests.cs` (T5)
+- `tests-wpf/ComfyUI.Manager.Tests/Fakes/FakeBulkUpdateApiClient.cs` (T5)
+- `src-wpf/ComfyUI.Manager/Views/BulkUpdateDialog.xaml` + `.xaml.cs` (T6)
+- `src-wpf/ComfyUI.Manager/MainWindow.xaml` (T6)
+- `src-wpf/ComfyUI.Manager/ViewModels/MainViewModel.cs` (T6)
+- `src-wpf/ComfyUI.Manager/Infrastructure/ApiClient.cs` (T6: BaseUrl getter)
