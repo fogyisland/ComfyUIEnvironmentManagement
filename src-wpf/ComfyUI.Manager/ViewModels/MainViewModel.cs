@@ -103,7 +103,15 @@ public class MainViewModel : ViewModelBase
                         ParseRows(s.GetProperty("rows")));
                     vm.SetSummary(summary);
                 }
-                // failed: just ignore for now (could set ErrorMessage on vm)
+                else if (msg.Channel == "bulk_update.failed")
+                {
+                    var reason = msg.Args.Length >= 1
+                        && msg.Args[0].ValueKind == JsonValueKind.String
+                        ? msg.Args[0].GetString()
+                        : null;
+                    vm.ErrorMessage = reason ?? "bulk update failed";
+                    vm.Mode = BulkUpdateMode.Summary;
+                }
             });
         }
         Ws.OnMessage += Handler;
