@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from comfy_mgr.app_context import AppContext
+from app.app_context import AppContext
 
 logger = logging.getLogger(__name__)
 

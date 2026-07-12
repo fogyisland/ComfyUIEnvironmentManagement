@@ -29,7 +29,7 @@ def test_recover_persisted_processes_runs_on_startup(isolated_appdata, sqlite_cr
     或者 PID 不存在时把 env 改回 stopped 并清 state。
     """
     from datetime import datetime
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
     from comfy_mgr.models.process_state import ProcessStateRepo
     from comfy_mgr.models.environment import EnvironmentRepo, Environment
     from comfy_mgr.server.app import build_app
@@ -69,7 +69,7 @@ def test_recover_persisted_processes_runs_on_startup(isolated_appdata, sqlite_cr
 
 def test_lifespan_shutdown_stops_running_envs(isolated_appdata, sqlite_cross_thread):
     """lifespan 关闭时,所有 running env 应被 stop 调用。"""
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
     from comfy_mgr.server.app import build_app
     from comfy_mgr.models.environment import Environment
 

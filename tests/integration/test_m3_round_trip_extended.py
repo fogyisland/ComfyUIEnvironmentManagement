@@ -64,7 +64,7 @@ def test_real_ctx_version_service_upgrade_via_app(
     """用真实 AppContext 的 version_service 跑 upgrade,验证 M3 wiring 通路。"""
     remote_dir, work_dir = _make_remote_and_work(tmp_path)
 
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
 
     ctx = AppContext()
 
@@ -139,7 +139,7 @@ def test_real_ctx_emit_ws_push_on_env_status(
     isolated_appdata, sqlite_cross_thread
 ):
     """真实 AppContext 的 environment_bridge 触发 envStatusChanged → bus → ws.push。"""
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
 
     ctx = AppContext()
 

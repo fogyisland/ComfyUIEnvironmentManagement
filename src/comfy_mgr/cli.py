@@ -356,7 +356,7 @@ def serve(
 ):
     """启动 FastAPI service（WPF 通过该端口访问）。"""
     import uvicorn
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
     from comfy_mgr.server.app import build_app
     ctx = AppContext()
     app = build_app(ctx)

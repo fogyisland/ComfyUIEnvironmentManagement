@@ -54,7 +54,7 @@ def sqlite_cross_thread(monkeypatch):
 @pytest.fixture
 def app_and_client(isolated_appdata, sqlite_cross_thread):
     """真实 AppContext + 隔离 DB + TestClient(全栈)。"""
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
     from comfy_mgr.server.app import build_app
 
     ctx = AppContext()
@@ -66,7 +66,7 @@ def app_and_client(isolated_appdata, sqlite_cross_thread):
 @pytest.fixture
 def app_with_client(isolated_appdata, sqlite_cross_thread):
     """同 app_and_client,但返回 (app, client) 元组。"""
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
     from comfy_mgr.server.app import build_app
 
     ctx = AppContext()
@@ -78,7 +78,7 @@ def app_with_client(isolated_appdata, sqlite_cross_thread):
 @pytest.fixture
 def app_only(isolated_appdata, sqlite_cross_thread):
     """只返回 FastAPI app(用于需要自己管理 lifespan 的测试)。"""
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
     from comfy_mgr.server.app import build_app
 
     ctx = AppContext()
@@ -88,5 +88,5 @@ def app_only(isolated_appdata, sqlite_cross_thread):
 @pytest.fixture
 def ctx_only(isolated_appdata, sqlite_cross_thread):
     """只返回真实 AppContext(用于 lifespan / recover_persisted_processes 测试)。"""
-    from comfy_mgr.app_context import AppContext
+    from app.app_context import AppContext
     return AppContext()
