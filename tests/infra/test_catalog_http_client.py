@@ -18,7 +18,10 @@ class MockHTTPClient:
         if self.payload is None:
             return Result.fail(ServiceError(
                 code="HTTP_CONNECTION_FAILED", message="offline"))
-        return Result.ok(self.payload)
+        # 包一层 {"nodes": [...], "total": N} 让 list_remote 在第 1 页就终止
+        # 翻页(否则每次返回同一 payload,total 缺失会导致并发拉 200 页,
+        # entries 被重复计数,tests 失败)
+        return Result.ok({"nodes": self.payload, "total": len(self.payload)})
 
 
 def _bootstrap(tmp_path: Path):
