@@ -23,7 +23,7 @@ def test_AppContext_wires_bridge_sink_correctly(qapp, tmp_path, monkeypatch):
     assert ctx.process._bridge_sink.__func__ is ctx.process_bridge._on_line.__func__
     # 并且：调用 _bridge_sink（callable）会追加到 bridge 的 _logs
     ctx.process._bridge_sink("env-test", "hello via sink")
-    assert "hello via sink" in ctx.process_bridge.logsFor("env-test")
+    assert "hello via sink" in ctx.process_bridge.logs_for("env-test")
 
 
 def test_AppContext_process_bridge_has_env_resolver(qapp, tmp_path, monkeypatch):
