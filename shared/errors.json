@@ -1,5 +1,5 @@
 {
-  "_version": "0.4.0",
+  "_version": "0.5.0",
   "BAD_REQUEST": {
     "http_status": 400,
     "severity": "info",
