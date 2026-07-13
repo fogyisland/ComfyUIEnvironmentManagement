@@ -138,16 +138,18 @@ Spec: docs/superpowers/specs/2026-07-11-m5-design.md
 - T9: complete (commit 582dd71, review APPROVED — 0 fixes; root cause was pagination, NOT ThreadPoolExecutor as brief guessed; production code untouched; test mock wrapped as `{"nodes": payload, "total": N}` so client stops after 1 page; 6/6 tests pass)
 - T10: complete (no commit — `pytest-mock` already declared in `pyproject.toml:17` but env was stale; `pip install pytest-mock` unblocked 5 ERROR-setup tests; 17/17 tests pass in scope; `tests/services/test_catalog.py` + `tests/services/test_environment_service.py` paths corrected from brief's `tests/app/` placeholders)
 - T11: complete (no commit — verify-only close; brief's "smoke /healthz / /version empty body" was a stale report; routes already return correct JSON: `/healthz` → `{"status":"ok"}` HTTP 200, `/version` → `{"service":"comfy_mgr.server","version":"0.4.0","schema":5}` HTTP 200; `tests/integration/test_server_routes.py:7-17` already covers both with `test_healthz_returns_200` + `test_version_returns_schema_5`; 12/12 server-route tests pass; pre-existing M4 `_on_push_sync` silent-drop bug is separate scope, tracked)
-- T12: pending (整分支 review + v0.5.0 bump + release notes + tag)
+- T12: complete (整分支 review APPROVED + 1 Important fix `7649b5a` + bump commit `e24278b` `chore(release): bump to v0.5.0 + release notes`; tag `v0.5.0` local-only, points at `e24278b`; 21 commits since `v0.4.0` (19 M5 + T11 ledger + this bump); release notes `docs/M5-RELEASE-NOTES.md` written; 465 Python + 16/16 WPF tests pass; 3 version literals in `tests/test_version_consistency.py` updated to `0.5.0` (mechanical, follows test contract); POST empty `env_ids`/`node_ids` returns 200 + `BAD_VALIDATION` envelope per `schemas.py:209` design comment — brief's 400 expectation was wrong; **push + GitHub release pending user authorization**)
 
-## End-of-day snapshot (2026-07-12 — T11 closed)
+## End-of-day snapshot (2026-07-13 — M5 close-out local done)
 
 - Branch: main
-- 12 commits since plan base `ca40dc2`: T1, T1-fix, T1-doc, T2, T2-fix, T3 (WS test), T3-carry-over (CompatHTTPClient scope), T4, T4-fix (JsonPropertyName), T5, T6, T7-T10 (4 carry-over commits + 0-doc T10), T11 (verify-only)
+- 21 commits since `v0.4.0` (base `ca40dc2` → HEAD `e24278b`); M5 milestone complete locally
+- Local tag `v0.5.0` created at `e24278b`; **NOT pushed** (awaiting user authorization)
 - WPF tests: 16/16 green (12 M4 + 4 M5 BulkUpdate)
-- Python tests: full suite green except pre-existing M4 `_on_push_sync` silent-drop bug (4 WS integration tests) — not M5 regression
-- Carry-over status: T7-T10 all complete with commits; T11 verify-only close (no commit needed)
-- Resume point: dispatch T12 implementer (whole-branch review + v0.5.0 bump + release notes + tag)
+- Python tests: 465 passed + 2 skipped (M4 base + M5 新增 11); 4 pre-existing M4 `_on_push_sync` silent-drop WS integration tests still fail (tracked, out of M5 scope)
+- `tests/test_version_consistency.py` updated to `0.5.0` (mechanical 3-line follow-the-test-contract change)
+- Release notes: `docs/M5-RELEASE-NOTES.md` written (55 lines)
+- Resume point: **push to remote + `gh release create v0.5.0 release/ComfyUI-Manager-v0.5.0-win-x64.zip --notes-file docs/M5-RELEASE-NOTES.md`** (along M4 SSH-deploy-key pattern if proxy TLS issue surfaces)
 
 ### Files modified this session (M5 commits)
 
