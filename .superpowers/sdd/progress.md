@@ -171,3 +171,46 @@ Spec: docs/superpowers/specs/2026-07-11-m5-design.md
 - `src-wpf/ComfyUI.Manager/MainWindow.xaml` (T6)
 - `src-wpf/ComfyUI.Manager/ViewModels/MainViewModel.cs` (T6)
 - `src-wpf/ComfyUI.Manager/Infrastructure/ApiClient.cs` (T6: BaseUrl getter)
+
+---
+
+# M5.2 Progress Ledger
+
+Base SHA: 814c8be (v0.5.1 hotfix, pre-M5.2)
+Plan: proud-petting-feather.md (user-approved via ExitPlanMode 2026-07-13)
+Spec: implicit — M5.2 is an architecture rewrite removing Python control service
+
+## Status
+
+- T1: complete (commit 2c560c4 — `refactor(wpf): add SQLite data access layer`, 8 repos, 918 lines)
+- T2: complete (commit a4d6417 — `refactor(wpf): replace PythonLauncher with VenvVerifier`, 6 files)
+- T3: complete (bundled in a4d6417 — `App.xaml.cs` rewritten, no service launch)
+- T4: complete (commits 91a3438 + 70b2c34 + 5478fd0 — 11 VMs migrated to repos + nav wiring fix; 14/14 tests pass)
+- T5: complete (commit 33b2974 — `ProcessLauncher` + `LogTailer` + `LogViewerDialog`; 14/14 tests pass; review pending user resumption)
+- T6-T10: pending (T6 BulkUpdateOrchestrator, T7 NodeOperations, T8 test rewrite, T9 delete Python service, T10 rebuild + tag v0.6.0)
+
+## End-of-day snapshot (2026-07-13 — M5.2 mid-flight)
+
+- Branch: main
+- 6 new commits since 814c8be: 2c560c4, a4d6417, 91a3438, 70b2c34, 5478fd0, 33b2974
+- WPF build clean (0 警告 0 错误), 14/14 WPF tests pass
+- v0.5.1 zip (215MB) rebuilt successfully at `release/ComfyUI-Manager-v0.6.0-dev-win-x64.zip`
+- WPF staging verified: VenvVerifier passes, MainWindow shows, env list / catalog / settings views wired (catalog 10 项, env 0 项 in user's DB)
+- User saw staging run, navigation buttons work after `5478fd0` fix
+- T5 review (sonnet) was just dispatched but rejected by user — they want to pause
+
+## Resume point (2026-07-14+)
+
+1. Re-dispatch T5 task reviewer with same prompt
+2. Address any Critical/Important findings via fix subagent
+3. T6: BulkUpdateOrchestrator (C# implementation) — replaces BulkUpdateApiClient path in BulkUpdateDialogViewModel
+4. T7: NodeOperations + GitRunner (git clone/pull/reset for node install/upgrade/rollback)
+5. T8: Test rewrite (drop FakeApiClient/FakeWsClient, add FakeProcessLauncher/FakeLogTailer)
+6. T9: Delete Python service code (src/comfy_mgr/server/, cli.py, services/, infra/process.py)
+7. T10: Rebuild release zip + git tag v0.6.0 + push to GitHub release
+
+## Pre-existing issues carried into M5.2
+
+- CatalogViewModelTests:22 (`entry.Name` → `entry.Package`) — FIXED in T4 (was pre-existing before M5.2)
+- FakeApiClient/FakeWsClient still in test tree (compile but unused) — T8 cleanup
+- ApiClient/WsClient still in Infrastructure/ (referenced by MainViewModel.OpenBulkUpdate for WS handler) — T9 deletes
