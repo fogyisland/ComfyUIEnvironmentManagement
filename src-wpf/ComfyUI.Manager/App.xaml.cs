@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Windows;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.ViewModels;
 
@@ -32,7 +33,8 @@ public partial class App : Application
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
-        _mainVm = new MainViewModel();
+        var dbFactory = new SqliteConnectionFactory();
+        _mainVm = new MainViewModel(dbFactory);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();
