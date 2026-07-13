@@ -12,9 +12,15 @@ namespace ComfyUI.Manager.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
-    public ApiClient Api { get; }
-    public WsClient Ws { get; }
-    public PythonLauncher Launcher { get; }
+    // TODO(M5.2-T4): migrate to repository-based constructor — replace
+    // ApiClient/WsClient with EnvironmentRepository/SettingsRepository/etc.
+    // These are nullable for now because App.xaml.cs no longer launches the
+    // Python control service; everything will be wired through repositories
+    // in Task 4.
+#pragma warning disable CS8625
+    public ApiClient? Api { get; }
+    public WsClient? Ws { get; }
+#pragma warning restore CS8625
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
     private object? _currentView;
@@ -29,30 +35,30 @@ public class MainViewModel : ViewModelBase
     public ICommand ShowSettingsCommand { get; }
     public ICommand OpenBulkUpdateCommand { get; }
 
-    public MainViewModel(ApiClient api, WsClient ws,
-        PythonLauncher launcher)
+    public MainViewModel(ApiClient? api = null, WsClient? ws = null)
     {
         Api = api;
         Ws = ws;
-        Launcher = launcher;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => CurrentView = null);
         ShowCatalogCommand = new RelayCommand(_ => CurrentView = null);
         ShowSettingsCommand = new RelayCommand(_ => CurrentView = null);
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
 
-        // 订阅 WS errorOccurred 事件
-        Ws.OnMessage += async msg =>
+        if (Ws is not null)
         {
-            if (msg.Channel == "errorOccurred" && msg.Args.Length >= 2)
+            Ws.OnMessage += async msg =>
             {
-                var code = msg.Args[0].GetString() ?? "UNKNOWN";
-                var message = msg.Args[1].GetString() ?? "";
-                var severity = SeverityFromCode(code);
-                await DispatcherHelper.RunOnUiAsync(() =>
-                    ErrorBanner.Add(code, message, severity));
-            }
-        };
+                if (msg.Channel == "errorOccurred" && msg.Args.Length >= 2)
+                {
+                    var code = msg.Args[0].GetString() ?? "UNKNOWN";
+                    var message = msg.Args[1].GetString() ?? "";
+                    var severity = SeverityFromCode(code);
+                    await DispatcherHelper.RunOnUiAsync(() =>
+                        ErrorBanner.Add(code, message, severity));
+                }
+            };
+        }
     }
 
     private static ErrorSeverity SeverityFromCode(string code)
@@ -68,10 +74,18 @@ public class MainViewModel : ViewModelBase
 
     private void OpenBulkUpdate()
     {
+        // TODO(M5.2-T6): rewrite BulkUpdateDialog on top of
+        // BulkUpdateOrchestrator (local C# orchestrator). The HTTP/WS path
+        // is removed when the Python control service is deleted in T9.
+        if (Api is null || Ws is null)
+        {
+            // Service disabled in M5.2 — bulk update UI not available yet.
+            return;
+        }
+
         var bulkApi = new BulkUpdateApiClient(Api.BaseUrl);
         var vm = new BulkUpdateDialogViewModel(bulkApi);
 
-        // Subscribe to WS channel bulk_update.* for this dialog's lifetime
         async Task Handler(WsMessage msg)
         {
             if (msg.Channel != "bulk_update.progress"
@@ -118,7 +132,6 @@ public class MainViewModel : ViewModelBase
 
         BulkUpdateDialog.Show(vm);
 
-        // Cleanup subscription when dialog closes
         Ws.OnMessage -= Handler;
     }
 

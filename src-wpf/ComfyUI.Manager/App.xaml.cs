@@ -8,7 +8,6 @@ namespace ComfyUI.Manager;
 
 public partial class App : Application
 {
-    private ServiceConnection? _connection;
     private MainViewModel? _mainVm;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -17,35 +16,28 @@ public partial class App : Application
 
         var projectRoot = Path.GetDirectoryName(
             Environment.ProcessPath)!.TrimEnd('\\');
-        var launcher = new PythonLauncher(projectRoot);
 
-        try { await launcher.LaunchAsync(); }
-        catch (ServiceLaunchException ex)
+        // M5.2: WPF no longer launches a Python control service. It only
+        // verifies the bundled venv can import comfy_mgr; the UI drives
+        // everything else (env creation, config) against local SQLite +
+        // direct process control, and listens on each env's port only when
+        // that env is started.
+        var verifier = new VenvVerifier(projectRoot);
+        var result = await verifier.VerifyAsync();
+        if (!result.Ok)
         {
-            MessageBox.Show(ex.Message, "启动失败",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            Shutdown(1);
-            return;
+            var msg = "Venv 验证失败,WPF 仍可启动但功能受限。\n\n"
+                + result.ErrorMessage;
+            MessageBox.Show(msg, "Venv 验证失败",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
-        var api = new ApiClient($"http://127.0.0.1:{launcher.Port}");
-        var ws = new WsClient($"ws://127.0.0.1:{launcher.Port}/ws/events");
-        try { await ws.ConnectAsync(); }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"WS 连接失败: {ex.Message}", "启动失败",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            Shutdown(1);
-            return;
-        }
-
-        _connection = new ServiceConnection(launcher, api, ws);
-        _mainVm = new MainViewModel(api, ws, launcher);
-        // P6 接入: _mainVm.Environments = new EnvironmentListViewModel(api, ws);
+        // TODO(M5.2-T4): pass EnvironmentRepository / SettingsRepository /
+        // etc. to MainViewModel constructor. For now the ctor is nullable —
+        // it boots an empty shell with no live Api/Ws.
+        _mainVm = new MainViewModel();
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();
-
-        Exit += (_, _) => _connection?.Dispose();
     }
 }
