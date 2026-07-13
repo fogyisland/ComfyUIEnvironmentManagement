@@ -1,18 +1,23 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
+
 namespace ComfyUI.Manager.Models;
 
+/// <summary>
+/// CatalogEntry:row of the <c>catalog_cache</c> table.
+/// </summary>
 public class CatalogEntry
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = "";
-    [JsonPropertyName("description")]
-    public string? Description { get; set; }
-    [JsonPropertyName("stars")]
-    public int Stars { get; set; }
-    [JsonPropertyName("author")]
-    public string? Author { get; set; }
-    [JsonPropertyName("stale")]
-    public bool Stale { get; set; }
+    [JsonPropertyName("source_url")]
+    public string SourceUrl { get; set; } = "";
+    [JsonPropertyName("package")]
+    public string Package { get; set; } = "";
+    [JsonPropertyName("raw_metadata")]
+    public Dictionary<string, object?> RawMetadata { get; set; } = new();
+    [JsonPropertyName("cached_at")]
+    public string CachedAt { get; set; } = "";
+    [JsonPropertyName("expires_at")]
+    public string ExpiresAt { get; set; } = "";
 }

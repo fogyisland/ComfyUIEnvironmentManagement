@@ -3,6 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace ComfyUI.Manager.Models;
 
+/// <summary>
+/// ScannedNode:row of the <c>scanned_nodes</c> table.
+/// </summary>
 public class ScannedNode
 {
     [JsonPropertyName("id")]
@@ -23,6 +26,10 @@ public class ScannedNode
     public List<string> ClassMappings { get; set; } = new();
     [JsonPropertyName("status")]
     public string Status { get; set; } = "enabled";
+    [JsonPropertyName("scan_meta")]
+    public Dictionary<string, string> ScanMeta { get; set; } = new();
+    [JsonPropertyName("last_scanned_at")]
+    public string? LastScannedAt { get; set; }
     [JsonPropertyName("locked")]
     public bool Locked { get; set; }
 }

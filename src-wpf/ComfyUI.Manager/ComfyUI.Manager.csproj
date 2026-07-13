@@ -8,10 +8,13 @@
     <AssemblyName>ComfyUI.Manager</AssemblyName>
     <RootNamespace>ComfyUI.Manager</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.5.0</Version>
+    <Version>0.6.0</Version>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+  </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">
       <Generator>MSBuild:Compile</Generator>
