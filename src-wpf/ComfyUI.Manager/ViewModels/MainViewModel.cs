@@ -1,18 +1,9 @@
-using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Views;
 
 namespace ComfyUI.Manager.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
-    private readonly EnvironmentRepository _envRepo;
-    private readonly NodeRepository _nodeRepo;
-    private readonly CatalogRepository _catalogRepo;
-    private readonly VersionRepository _versionRepo;
-    private readonly DepRepository _depRepo;
-    private readonly ProcessStateRepository _processRepo;
-    private readonly SettingsRepository _settingsRepo;
-
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
     private object? _currentView;
@@ -27,23 +18,8 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
 
-    public MainViewModel(
-        EnvironmentRepository envRepo,
-        NodeRepository nodeRepo,
-        CatalogRepository catalogRepo,
-        VersionRepository versionRepo,
-        DepRepository depRepo,
-        ProcessStateRepository processRepo,
-        SettingsRepository settingsRepo)
+    public MainViewModel()
     {
-        _envRepo = envRepo;
-        _nodeRepo = nodeRepo;
-        _catalogRepo = catalogRepo;
-        _versionRepo = versionRepo;
-        _depRepo = depRepo;
-        _processRepo = processRepo;
-        _settingsRepo = settingsRepo;
-
         ShowEnvironmentsCommand = new RelayCommand(_ => CurrentView = null);
         ShowCatalogCommand = new RelayCommand(_ => CurrentView = null);
         ShowSettingsCommand = new RelayCommand(_ => CurrentView = null);

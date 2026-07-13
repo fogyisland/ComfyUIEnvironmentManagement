@@ -69,11 +69,8 @@ public class VersionPanelViewModel : ViewModelBase
         {
             Package = node.Package,
             CurrentVersion = node.Version ?? "",
-            CurrentSha = node.Version ?? "",
-            CurrentShaShort =
-                (node.Version ?? "").Length > 7
-                    ? (node.Version ?? "").Substring(0, 7)
-                    : node.Version ?? "",
+            CurrentSha = "",
+            CurrentShaShort = "",
             LatestVersion = "",
             HasUpdate = false,
             Locked = node.Locked,
