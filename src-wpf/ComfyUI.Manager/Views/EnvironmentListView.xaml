@@ -29,6 +29,10 @@
                                         Command="{Binding DataContext.StopCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}" />
+                                <Button Content="查看日志" Margin="2"
+                                        Command="{Binding DataContext.ShowLogCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
                             </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>

@@ -10,6 +10,7 @@ namespace ComfyUI.Manager;
 public partial class App : Application
 {
     private MainViewModel? _mainVm;
+    private ProcessLauncher? _launcher;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -34,9 +35,21 @@ public partial class App : Application
         }
 
         var dbFactory = new SqliteConnectionFactory();
-        _mainVm = new MainViewModel(dbFactory);
+        var envRepo = new EnvironmentRepository(dbFactory);
+        var processStateRepo = new ProcessStateRepository(dbFactory);
+        _launcher = new ProcessLauncher(
+            projectRoot, dbFactory, envRepo, processStateRepo);
+
+        _mainVm = new MainViewModel(dbFactory, _launcher);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        base.OnExit(e);
+        // kill all env processes we started
+        try { _launcher?.Dispose(); } catch { }
     }
 }

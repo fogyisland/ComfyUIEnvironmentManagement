@@ -29,8 +29,11 @@ public class EnvironmentListViewModelTests
         SeedEnv(db, "env-1", "stopped");
         SeedEnv(db, "env-2", "running");
 
+        // Launcher is not exercised by these VM tests; pass null! so the
+        // VM can be constructed without bringing up real processes.
         var vm = new EnvironmentListViewModel(
-            new EnvironmentRepository(db.Factory));
+            new EnvironmentRepository(db.Factory),
+            null!);
 
         Assert.Equal(2, vm.Environments.Count);
         Assert.Equal("env-1", vm.Environments[0].Id);
@@ -44,7 +47,8 @@ public class EnvironmentListViewModelTests
         SeedEnv(db, "env-2", "running");
 
         var vm = new EnvironmentListViewModel(
-            new EnvironmentRepository(db.Factory));
+            new EnvironmentRepository(db.Factory),
+            null!);
 
         Assert.True(vm.StartCommand.CanExecute(vm.Environments[0]));
         Assert.False(vm.StartCommand.CanExecute(vm.Environments[1]));
@@ -59,7 +63,8 @@ public class EnvironmentListViewModelTests
         SeedEnv(db, "env-1", "stopped");
 
         var vm = new EnvironmentListViewModel(
-            new EnvironmentRepository(db.Factory));
+            new EnvironmentRepository(db.Factory),
+            null!);
         Assert.Single(vm.Environments);
 
         SeedEnv(db, "env-2", "stopped");

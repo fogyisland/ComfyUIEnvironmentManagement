@@ -1,4 +1,5 @@
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Views;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -6,6 +7,7 @@ namespace ComfyUI.Manager.ViewModels;
 public class MainViewModel : ViewModelBase
 {
     private readonly SqliteConnectionFactory _dbFactory;
+    private readonly ProcessLauncher _launcher;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -21,9 +23,10 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
 
-    public MainViewModel(SqliteConnectionFactory dbFactory)
+    public MainViewModel(SqliteConnectionFactory dbFactory, ProcessLauncher launcher)
     {
         _dbFactory = dbFactory;
+        _launcher = launcher;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -36,7 +39,7 @@ public class MainViewModel : ViewModelBase
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new EnvironmentListView
         {
-            DataContext = new EnvironmentListViewModel(envRepo),
+            DataContext = new EnvironmentListViewModel(envRepo, _launcher),
         };
     }
 
