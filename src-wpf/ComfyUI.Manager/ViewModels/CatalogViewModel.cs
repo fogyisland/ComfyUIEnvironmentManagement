@@ -1,14 +1,15 @@
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Threading.Tasks;
-using ComfyUI.Manager.Infrastructure;
+using System.Windows;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.ViewModels;
 
 public class CatalogViewModel : ViewModelBase
 {
-    private readonly ApiClient _api;
+    private const int SearchLimit = 50;
+    private readonly CatalogRepository _repo;
+
     public ObservableCollection<CatalogEntry> Entries { get; } = new();
     public RelayCommand RefreshCommand { get; }
     public RelayCommand InstallCommand { get; }
@@ -17,43 +18,40 @@ public class CatalogViewModel : ViewModelBase
     public string Query
     {
         get => _query;
-        set { if (SetField(ref _query, value)) _ = SearchAsync(); }
+        set { if (SetField(ref _query, value)) Search(); }
     }
 
-    public CatalogViewModel(ApiClient api)
+    public CatalogViewModel(CatalogRepository repo)
     {
-        _api = api;
-        RefreshCommand = new RelayCommand(async _ => await RefreshAsync());
+        _repo = repo;
+        RefreshCommand = new RelayCommand(_ => Refresh());
         InstallCommand = new RelayCommand(
-            async p => await InstallAsync(p as CatalogEntry ?? Selected),
+            p => Install(p as CatalogEntry ?? Selected),
             p => (p as CatalogEntry ?? Selected) is not null);
-        _ = SearchAsync();
+        Search();
     }
 
     private CatalogEntry? _selected;
     public CatalogEntry? Selected { get => _selected; set => SetField(ref _selected, value); }
 
-    private async Task SearchAsync()
+    private void Search()
     {
-        var r = await _api.PostAsync<List<CatalogEntry>>(
-            "node/search-catalog", new { query = _query, page = 0 });
-        if (r.Ok && r.Value is not null)
-        {
-            Entries.Clear();
-            foreach (var e in r.Value) Entries.Add(e);
-        }
+        Entries.Clear();
+        foreach (var e in _repo.Search(_query, SearchLimit)) Entries.Add(e);
     }
 
-    private async Task RefreshAsync()
+    private void Refresh()
     {
-        await _api.PostAsync<int>("node/refresh-catalog", new { });
-        await SearchAsync();
+        // TODO(M5.2-T7): refresh catalog from remote registry via NodeOperations.
+        MessageBox.Show("TODO(M5.2-T7): refresh catalog", "刷新目录");
+        Search();
     }
 
-    private async Task InstallAsync(CatalogEntry? entry)
+    private void Install(CatalogEntry? entry)
     {
         if (entry is null) return;
-        await _api.PostAsync<object>("node/install-from-catalog",
-            new { package = entry.Id, target_env_id = (string?)null });
+        // TODO(M5.2-T7): install node from catalog via NodeOperations + GitRunner.
+        MessageBox.Show(
+            $"TODO(M5.2-T7): install '{entry.Package}'", "安装节点");
     }
 }

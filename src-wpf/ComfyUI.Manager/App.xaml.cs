@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Windows;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.ViewModels;
 
@@ -32,10 +33,21 @@ public partial class App : Application
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
-        // TODO(M5.2-T4): pass EnvironmentRepository / SettingsRepository /
-        // etc. to MainViewModel constructor. For now the ctor is nullable —
-        // it boots an empty shell with no live Api/Ws.
-        _mainVm = new MainViewModel();
+        // M5.2: the UI reads metadata directly from local SQLite via
+        // repositories. The connection factory locates catalog.db under
+        // %APPDATA%\ComfyUI-Manager; each repository is a thin reader.
+        var factory = new SqliteConnectionFactory();
+        var envRepo = new EnvironmentRepository(factory);
+        var nodeRepo = new NodeRepository(factory);
+        var catalogRepo = new CatalogRepository(factory);
+        var versionRepo = new VersionRepository(factory);
+        var depRepo = new DepRepository(factory);
+        var processRepo = new ProcessStateRepository(factory);
+        var settingsRepo = new SettingsRepository();
+
+        _mainVm = new MainViewModel(
+            envRepo, nodeRepo, catalogRepo, versionRepo,
+            depRepo, processRepo, settingsRepo);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

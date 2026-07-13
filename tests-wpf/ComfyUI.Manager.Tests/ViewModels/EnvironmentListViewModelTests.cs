@@ -1,78 +1,70 @@
-using System.Windows.Threading;
-using System.Collections.Generic;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Tests.Fakes;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
-using System.Threading.Tasks;
+using Environment = ComfyUI.Manager.Models.Environment;
 
 namespace ComfyUI.Manager.Tests.ViewModels;
 
 public class EnvironmentListViewModelTests
 {
-    [Fact]
-    public async Task Load_PopulatesEnvironmentsFromApi()
+    private static void SeedEnv(TestDb db, string id, string status)
     {
-        var api = new FakeApiClient();
-        api.Register("env/list", _ => new List<Environment>
+        var repo = new EnvironmentRepository(db.Factory);
+        repo.Upsert(new Environment
         {
-            new() { Id = "env-1", Name = "env-1", Port = 8188, Status = "stopped" },
-            new() { Id = "env-2", Name = "env-2", Port = 8189, Status = "running" },
+            Id = id,
+            Name = id,
+            RootPath = $"C:\\envs\\{id}",
+            ComfyuiLayout = "isolated",
+            Status = status,
         });
-        var ws = new FakeWsClient();
-        var vm = new EnvironmentListViewModel(api, ws);
+    }
 
-        await Task.Delay(100);  // 等 _ = LoadAsync() 完成
+    [Fact]
+    public void Load_PopulatesEnvironmentsFromRepository()
+    {
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "stopped");
+        SeedEnv(db, "env-2", "running");
+
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory));
+
         Assert.Equal(2, vm.Environments.Count);
         Assert.Equal("env-1", vm.Environments[0].Id);
     }
 
     [Fact]
-    public async Task StartCommand_CallsStartEnvApi()
+    public void StartCommand_EnabledOnlyForStoppedEnv()
     {
-        var api = new FakeApiClient();
-        bool started = false;
-        api.Register("process/start-env", req =>
-        {
-            started = true;
-            return new { };
-        });
-        api.Register("env/list", _ => new List<Environment>
-        {
-            new() { Id = "env-1", Name = "env-1", Status = "stopped" },
-        });
-        var ws = new FakeWsClient();
-        var vm = new EnvironmentListViewModel(api, ws);
-        await Task.Delay(100);
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "stopped");
+        SeedEnv(db, "env-2", "running");
 
-        vm.Selected = vm.Environments[0];
-        vm.StartCommand.Execute(null);
-        await Task.Delay(100);
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory));
 
-        Assert.True(started);
+        Assert.True(vm.StartCommand.CanExecute(vm.Environments[0]));
+        Assert.False(vm.StartCommand.CanExecute(vm.Environments[1]));
+        Assert.False(vm.StopCommand.CanExecute(vm.Environments[0]));
+        Assert.True(vm.StopCommand.CanExecute(vm.Environments[1]));
     }
 
     [Fact]
-    public async Task WsEvent_TriggersReload()
+    public void RefreshCommand_ReloadsFromRepository()
     {
-        var api = new FakeApiClient();
-        int callCount = 0;
-        api.Register("env/list", _ =>
-        {
-            callCount++;
-            return new List<Environment>
-            {
-                new() { Id = $"env-{callCount}", Status = "stopped" },
-            };
-        });
-        var ws = new FakeWsClient();
-        var vm = new EnvironmentListViewModel(api, ws);
-        await Task.Delay(100);
-        int initialCalls = callCount;
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "stopped");
 
-        ws.Emit("envListChanged");
-        await Task.Delay(200);
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory));
+        Assert.Single(vm.Environments);
 
-        Assert.True(callCount > initialCalls);
+        SeedEnv(db, "env-2", "stopped");
+        vm.RefreshCommand.Execute(null);
+
+        Assert.Equal(2, vm.Environments.Count);
     }
 }

@@ -1,61 +1,56 @@
-using System.Collections.Generic;
+using System.Linq;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Tests.Fakes;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace ComfyUI.Manager.Tests.ViewModels;
 
 public class VersionPanelViewModelTests
 {
-    [Fact]
-    public async Task UpgradeCommand_DisabledWhenLocked()
+    private static void SeedNode(
+        TestDb db, string envId, string package, bool locked)
     {
-        var api = new FakeApiClient();
-        api.Register("node/node-list", _ => new List<ScannedNode>
+        var repo = new NodeRepository(db.Factory);
+        repo.Upsert(new ScannedNode
         {
-            new() { Id = "sn-1", Package = "pkg-a" },
+            Id = $"{envId}:{package}",
+            EnvId = envId,
+            Package = package,
+            PackagePath = $"C:\\envs\\{envId}\\{package}",
+            Version = "1.0.0",
+            Status = "enabled",
+            Locked = locked,
         });
-        api.Register("node/list-versions", _ => new List<VersionStatus>
-        {
-            new() { Package = "pkg-a", HasUpdate = true, Locked = true },
-        });
-        var ws = new FakeWsClient();
-        var vm = new VersionPanelViewModel(api, ws, "env-1");
-        await Task.Delay(200);
-        vm.SelectedPackage = "pkg-a";
-        await Task.Delay(200);
-        Assert.False(vm.UpgradeCommand.CanExecute(vm.Versions.FirstOrDefault()));
     }
 
     [Fact]
-    public async Task WsVersionChanged_Reloads()
+    public void Ctor_LoadsPackagesAndSelectsFirst()
     {
-        var api = new FakeApiClient();
-        api.Register("node/node-list", _ => new List<ScannedNode>
-        {
-            new() { Id = "sn-1", Package = "pkg-a" },
-        });
-        api.Register("node/list-versions", _ => new List<VersionStatus>());
-        var ws = new FakeWsClient();
-        var vm = new VersionPanelViewModel(api, ws, "env-1");
-        await Task.Delay(200);
-        vm.SelectedPackage = "pkg-a";
-        await Task.Delay(200);
+        using var db = new TestDb();
+        SeedNode(db, "env-1", "pkg-a", locked: false);
 
-        int nodeListCalls = 0;
-        api.Register("node/node-list", _ =>
-        {
-            nodeListCalls++;
-            return new List<ScannedNode>
-            {
-                new() { Id = "sn-1", Package = "pkg-a" },
-            };
-        });
-        ws.Emit("versionChanged", "env-1", "pkg-a");
-        await Task.Delay(200);
-        Assert.True(nodeListCalls > 0);
+        var vm = new VersionPanelViewModel(
+            new NodeRepository(db.Factory), "env-1");
+
+        Assert.Single(vm.Packages);
+        Assert.Equal("pkg-a", vm.SelectedPackage);
+        Assert.Single(vm.Versions);
+        Assert.Equal("1.0.0", vm.Versions[0].CurrentVersion);
+    }
+
+    [Fact]
+    public void UpgradeCommand_DisabledWhenLocked()
+    {
+        using var db = new TestDb();
+        SeedNode(db, "env-1", "pkg-a", locked: true);
+
+        var vm = new VersionPanelViewModel(
+            new NodeRepository(db.Factory), "env-1");
+        vm.SelectedPackage = "pkg-a";
+
+        Assert.False(vm.UpgradeCommand.CanExecute(vm.Versions.FirstOrDefault()));
+        Assert.True(vm.Versions[0].Locked);
     }
 }

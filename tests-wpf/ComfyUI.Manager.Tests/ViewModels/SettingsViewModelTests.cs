@@ -1,48 +1,51 @@
-using ComfyUI.Manager.Models;
-using ComfyUI.Manager.Tests.Fakes;
+using System;
+using System.IO;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
-using System.Threading.Tasks;
 
 namespace ComfyUI.Manager.Tests.ViewModels;
 
-public class SettingsViewModelTests
+public class SettingsViewModelTests : IDisposable
 {
-    [Fact]
-    public async Task Load_PopulatesSettings()
+    private readonly string _path;
+
+    public SettingsViewModelTests()
     {
-        var api = new FakeApiClient();
-        api.Register("settings/get-all", _ => new Settings
+        _path = Path.Combine(
+            Path.GetTempPath(), $"comfy-settings-{Guid.NewGuid():N}.json");
+    }
+
+    public void Dispose()
+    {
+        if (File.Exists(_path)) File.Delete(_path);
+    }
+
+    [Fact]
+    public void Load_PopulatesSettingsFromFile()
+    {
+        var repo = new SettingsRepository(_path);
+        repo.Save(new ComfyUI.Manager.Models.Settings
         {
             Language = "en_US",
             ThemeMode = "dark",
             CatalogCacheTtlMinutes = 120,
         });
-        var vm = new SettingsViewModel(api);
-        await Task.Delay(100);
+
+        var vm = new SettingsViewModel(new SettingsRepository(_path));
+
         Assert.Equal("en_US", vm.Language);
         Assert.Equal("dark", vm.ThemeMode);
         Assert.Equal(120, vm.CacheTtlMinutes);
     }
 
     [Fact]
-    public async Task LanguageSet_CallsSetValue()
+    public void LanguageSet_PersistsToFile()
     {
-        var api = new FakeApiClient();
-        string? savedKey = null;
-        object? savedVal = null;
-        api.Register("settings/set-value", req =>
-        {
-            var dict = (System.Text.Json.JsonElement)(
-                req.GetType().GetProperty("Value")?.GetValue(req) ?? new { });
-            // 不深究 req 结构,直接看后续
-            return new { };
-        });
-        api.Register("settings/get-all", _ => new Settings());
-        var vm = new SettingsViewModel(api);
-        await Task.Delay(100);
+        var vm = new SettingsViewModel(new SettingsRepository(_path));
         vm.Language = "en_US";
-        await Task.Delay(200);
-        Assert.Equal("en_US", vm.Language);
+
+        var reloaded = new SettingsRepository(_path).Load();
+        Assert.Equal("en_US", reloaded.Language);
     }
 }

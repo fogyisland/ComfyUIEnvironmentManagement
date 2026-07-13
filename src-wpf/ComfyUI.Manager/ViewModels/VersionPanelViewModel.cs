@@ -3,15 +3,14 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Windows;
-using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.ViewModels;
 
 public class VersionPanelViewModel : ViewModelBase
 {
-    private readonly ApiClient _api;
-    private readonly WsClient _ws;
+    private readonly NodeRepository _nodeRepo;
     private readonly string _envId;
 
     public ObservableCollection<VersionStatus> Versions { get; } = new();
@@ -21,82 +20,77 @@ public class VersionPanelViewModel : ViewModelBase
     public RelayCommand ShowHistoryCommand { get; }
     public event Func<string, Task>? HistoryRequested;
 
-    public VersionPanelViewModel(ApiClient api, WsClient ws, string envId)
+    public VersionPanelViewModel(NodeRepository nodeRepo, string envId)
     {
-        _api = api; _ws = ws; _envId = envId;
-        RefreshCommand = new RelayCommand(async _ => await RefreshAllAsync());
+        _nodeRepo = nodeRepo;
+        _envId = envId;
+        RefreshCommand = new RelayCommand(_ => RefreshAll());
         UpgradeCommand = new RelayCommand(
-            async p => await UpgradeAsync(p as VersionStatus ?? Selected),
+            p => Upgrade(p as VersionStatus ?? Selected),
             p => (p as VersionStatus ?? Selected)?.HasUpdate == true
                 && (p as VersionStatus ?? Selected)?.Locked == false);
         ToggleLockCommand = new RelayCommand(
-            async p => await ToggleLockAsync(p as VersionStatus ?? Selected));
+            p => ToggleLock(p as VersionStatus ?? Selected));
         ShowHistoryCommand = new RelayCommand(
             async p => {
                 var v = p as VersionStatus ?? Selected;
                 if (v is not null && HistoryRequested is not null)
                     await HistoryRequested(v.Package);
             });
-
-        _ws.OnMessage += async msg =>
-        {
-            if (msg.Channel == "versionChanged"
-                && msg.Args.Length >= 2
-                && msg.Args[0].GetString() == _envId)
-            {
-                await DispatcherHelper.RunOnUiAsync(() => _ = RefreshAllAsync());
-            }
-        };
-        _ = RefreshAllAsync();
+        RefreshAll();
     }
 
     public List<ScannedNode> Packages { get; } = new();
     private string? _selectedPackage;
-    public string? SelectedPackage { get => _selectedPackage; set { if (SetField(ref _selectedPackage, value)) _ = RefreshVersionsAsync(); } }
+    public string? SelectedPackage { get => _selectedPackage; set { if (SetField(ref _selectedPackage, value)) RefreshVersions(); } }
 
     private VersionStatus? _selected;
     public VersionStatus? Selected { get => _selected; set => SetField(ref _selected, value); }
 
-    private async Task RefreshAllAsync()
+    private void RefreshAll()
     {
-        var r = await _api.PostAsync<List<ScannedNode>>(
-            "node/node-list", new { env_id = _envId });
-        if (r.Ok && r.Value is not null)
-        {
-            Packages.Clear();
-            foreach (var n in r.Value) Packages.Add(n);
-            if (Packages.Count > 0 && SelectedPackage is null)
-                SelectedPackage = Packages[0].Package;
-        }
+        Packages.Clear();
+        foreach (var n in _nodeRepo.ListByEnv(_envId)) Packages.Add(n);
+        if (Packages.Count > 0 && SelectedPackage is null)
+            SelectedPackage = Packages[0].Package;
+        else
+            RefreshVersions();
     }
 
-    private async Task RefreshVersionsAsync()
+    private void RefreshVersions()
     {
+        Versions.Clear();
         if (SelectedPackage is null) return;
-        var r = await _api.PostAsync<List<VersionStatus>>(
-            "node/list-versions",
-            new { env_id = _envId, package = SelectedPackage });
-        if (r.Ok && r.Value is not null)
+        var node = Packages.Find(n => n.Package == SelectedPackage);
+        if (node is null) return;
+        // Real read of stored version state; latest_version / has_update come
+        // from a live git compare, which is TODO(M5.2-T7).
+        Versions.Add(new VersionStatus
         {
-            Versions.Clear();
-            foreach (var v in r.Value) Versions.Add(v);
-        }
+            Package = node.Package,
+            CurrentVersion = node.Version ?? "",
+            CurrentSha = node.Version ?? "",
+            CurrentShaShort =
+                (node.Version ?? "").Length > 7
+                    ? (node.Version ?? "").Substring(0, 7)
+                    : node.Version ?? "",
+            LatestVersion = "",
+            HasUpdate = false,
+            Locked = node.Locked,
+        });
     }
 
-    private async Task UpgradeAsync(VersionStatus? v)
+    private void Upgrade(VersionStatus? v)
     {
         if (v is null) return;
-        await _api.PostAsync<object>("node/upgrade-node",
-            new { env_id = _envId, package = v.Package });
-        await RefreshVersionsAsync();
+        // TODO(M5.2-T7): upgrade package via NodeOperations + GitRunner.
+        MessageBox.Show($"TODO(M5.2-T7): upgrade '{v.Package}'", "升级");
     }
 
-    private async Task ToggleLockAsync(VersionStatus? v)
+    private void ToggleLock(VersionStatus? v)
     {
         if (v is null) return;
-        var route = v.Locked ? "node/unlock-version" : "node/lock-version";
-        await _api.PostAsync<object>(route,
-            new { env_id = _envId, package = v.Package });
-        await RefreshVersionsAsync();
+        // TODO(M5.2-T7): lock/unlock version via NodeOperations.
+        MessageBox.Show($"TODO(M5.2-T7): toggle lock '{v.Package}'", "锁定");
     }
 }

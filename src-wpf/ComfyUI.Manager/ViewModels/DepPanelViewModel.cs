@@ -1,15 +1,15 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Threading.Tasks;
-using ComfyUI.Manager.Infrastructure;
+using System.Windows;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.ViewModels;
 
 public class DepPanelViewModel : ViewModelBase
 {
-    private readonly ApiClient _api;
-    private readonly WsClient _ws;
+    private readonly NodeRepository _nodeRepo;
+    private readonly DepRepository _depRepo;
     private readonly string _envId;
 
     public ObservableCollection<DepRecord> Deps { get; } = new();
@@ -19,76 +19,53 @@ public class DepPanelViewModel : ViewModelBase
     public RelayCommand LocalCheckCommand { get; }
     public RelayCommand GlobalCheckCommand { get; }
 
-    public DepPanelViewModel(ApiClient api, WsClient ws, string envId)
+    public DepPanelViewModel(
+        NodeRepository nodeRepo, DepRepository depRepo, string envId)
     {
-        _api = api; _ws = ws; _envId = envId;
-        ScanCommand = new RelayCommand(async _ => await ScanAsync());
-        LocalCheckCommand = new RelayCommand(async _ => await LocalCheckAsync());
-        GlobalCheckCommand = new RelayCommand(async _ => await GlobalCheckAsync());
-        _ws.OnMessage += async msg =>
-        {
-            if (msg.Channel == "depsChanged"
-                && msg.Args.Length >= 2
-                && msg.Args[0].GetString() == _envId)
-                await DispatcherHelper.RunOnUiAsync(() => _ = LoadPackagesAsync());
-        };
-        _ = LoadPackagesAsync();
+        _nodeRepo = nodeRepo;
+        _depRepo = depRepo;
+        _envId = envId;
+        ScanCommand = new RelayCommand(_ => Scan());
+        LocalCheckCommand = new RelayCommand(_ => LocalCheck());
+        GlobalCheckCommand = new RelayCommand(_ => GlobalCheck());
+        LoadPackages();
     }
 
     private string? _selectedPackage;
-    public string? SelectedPackage { get => _selectedPackage; set { if (SetField(ref _selectedPackage, value)) _ = LoadDepsAsync(); } }
+    public string? SelectedPackage { get => _selectedPackage; set { if (SetField(ref _selectedPackage, value)) LoadDeps(); } }
 
-    private async Task LoadPackagesAsync()
+    private void LoadPackages()
     {
-        var r = await _api.PostAsync<List<ScannedNode>>(
-            "node/node-list", new { env_id = _envId });
-        if (r.Ok && r.Value is not null)
-        {
-            Packages.Clear();
-            foreach (var n in r.Value) Packages.Add(n);
-            if (Packages.Count > 0 && SelectedPackage is null)
-                SelectedPackage = Packages[0].Package;
-        }
+        Packages.Clear();
+        foreach (var n in _nodeRepo.ListByEnv(_envId)) Packages.Add(n);
+        if (Packages.Count > 0 && SelectedPackage is null)
+            SelectedPackage = Packages[0].Package;
     }
 
-    private async Task ScanAsync()
+    private void LoadDeps()
     {
+        Deps.Clear();
         if (SelectedPackage is null) return;
-        await _api.PostAsync<object>("node/scan-deps",
-            new { env_id = _envId, package = SelectedPackage });
-        await LoadDepsAsync();
+        foreach (var d in _depRepo.ListByEnvAndPackage(_envId, SelectedPackage))
+            Deps.Add(d);
     }
 
-    private async Task LoadDepsAsync()
+    private void Scan()
     {
-        if (SelectedPackage is null) return;
-        var r = await _api.PostAsync<List<DepRecord>>(
-            "node/list-deps",
-            new { env_id = _envId, package = SelectedPackage });
-        if (r.Ok && r.Value is not null)
-        {
-            Deps.Clear();
-            foreach (var d in r.Value) Deps.Add(d);
-        }
+        // TODO(M5.2-T7): scan package deps via NodeOperations.
+        MessageBox.Show("TODO(M5.2-T7): scan deps", "扫描依赖");
+        LoadDeps();
     }
 
-    private async Task LocalCheckAsync()
+    private void LocalCheck()
     {
-        var r = await _api.PostAsync<List<object>>(
-            "node/detect-dep-conflicts", new { env_id = _envId });
-        Conflicts.Clear();
-        if (r.Ok && r.Value is not null)
-            foreach (var c in r.Value)
-                Conflicts.Add(c.ToString() ?? "");
+        // TODO(M5.2-T7): detect local dep conflicts via NodeOperations.
+        MessageBox.Show("TODO(M5.2-T7): local conflict check", "本地检查");
     }
 
-    private async Task GlobalCheckAsync()
+    private void GlobalCheck()
     {
-        var r = await _api.PostAsync<List<object>>(
-            "node/check-global-compat", new { env_id = _envId });
-        Conflicts.Clear();
-        if (r.Ok && r.Value is not null)
-            foreach (var c in r.Value)
-                Conflicts.Add(c.ToString() ?? "");
+        // TODO(M5.2-T7): check global compat via NodeOperations.
+        MessageBox.Show("TODO(M5.2-T7): global compat check", "全局检查");
     }
 }

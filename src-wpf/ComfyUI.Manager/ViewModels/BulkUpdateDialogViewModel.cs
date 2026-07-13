@@ -1,9 +1,8 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading.Tasks;
+using System.Windows;
 using ComfyUI.Manager.Models;
-using ComfyUI.Manager.Services;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -11,7 +10,6 @@ public enum BulkUpdateMode { SelectEnv, Running, Summary }
 
 public class BulkUpdateDialogViewModel : ViewModelBase
 {
-    private readonly BulkUpdateApiClient _api;
     private BulkUpdateSummary? _summary;
     private BulkUpdateMode _mode = BulkUpdateMode.SelectEnv;
     private string? _bulkId;
@@ -54,14 +52,15 @@ public class BulkUpdateDialogViewModel : ViewModelBase
         set { _isBusy = value; RaisePropertyChanged(); }
     }
 
-    public BulkUpdateDialogViewModel(BulkUpdateApiClient api)
+    // TODO(M5.2-T6): take a BulkUpdateOrchestrator and drive the run locally.
+    // The HTTP BulkUpdateApiClient path was removed with the Python service;
+    // the orchestrator is implemented in T6, so for now every operation shows
+    // a placeholder message.
+    public BulkUpdateDialogViewModel()
     {
-        _api = api;
-        StartCommand = new RelayCommand(
-            async _ => await StartAsync(),
-            _ => CanStart());
+        StartCommand = new RelayCommand(_ => Start(), _ => CanStart());
         CancelCommand = new RelayCommand(
-            async _ => await CancelAsync(),
+            _ => Cancel(),
             _ => BulkId != null && Mode == BulkUpdateMode.Running);
         ToggleSelectAllCommand = new RelayCommand(_ => ToggleSelectAll());
     }
@@ -97,81 +96,16 @@ public class BulkUpdateDialogViewModel : ViewModelBase
             .Distinct()
             .ToList();
 
-    public async Task StartAsync()
+    private void Start()
     {
-        var envIds = SelectedEnvIds();
-        var nodeIds = SelectedNodeIds();
-        if (!envIds.Any() || !nodeIds.Any())
-        {
-            ErrorMessage = "请至少选择 1 个 env 和 1 个节点";
-            return;
-        }
-        IsBusy = true;
-        ErrorMessage = null;
-        var resp = await _api.StartAsync(envIds, nodeIds);
-        IsBusy = false;
-        if (!resp.Ok)
-        {
-            ErrorMessage = resp.Error?.Message ?? "unknown";
-            return;
-        }
-        BulkId = resp.Value!.BulkId;
-        Rows.Clear();
-        foreach (var e in envIds)
-        {
-            foreach (var n in nodeIds)
-            {
-                Rows.Add(new BulkUpdateRow(e, n, "pending", null, 0));
-            }
-        }
-        Mode = BulkUpdateMode.Running;
+        // TODO(M5.2-T6): delegate to BulkUpdateOrchestrator.
+        MessageBox.Show("批量更新功能待 T6 实现", "批量更新");
     }
 
-    public async Task CancelAsync()
+    private void Cancel()
     {
-        if (BulkId == null) return;
-        await _api.CancelAsync(BulkId);
-    }
-
-    /// <summary>由 WS handler 调用,更新单行状态。</summary>
-    public void UpdateRow(string envId, string nodeId, string status,
-        string? reason = null, int latencyMs = 0)
-    {
-        var row = Rows.FirstOrDefault(
-            r => r.EnvId == envId && r.NodeId == nodeId);
-        if (row == null) return;
-        var idx = Rows.IndexOf(row);
-        Rows[idx] = new BulkUpdateRow(envId, nodeId, status, reason, latencyMs);
-    }
-
-    /// <summary>由 WS handler 调用,bulk 完成后切到 summary。</summary>
-    public void SetSummary(BulkUpdateSummary summary)
-    {
-        Summary = summary;
-        Mode = BulkUpdateMode.Summary;
-    }
-
-    public async Task RefreshAsync(string bulkId)
-    {
-        var resp = await _api.GetStatusAsync(bulkId);
-        if (!resp.Ok)
-        {
-            ErrorMessage = resp.Error?.Message ?? "unknown";
-            Mode = BulkUpdateMode.SelectEnv;
-            return;
-        }
-        var s = resp.Value!;
-        if (s.IsRunning)
-        {
-            BulkId = bulkId;
-            Mode = BulkUpdateMode.Running;
-            // 重建 Rows from 推断(无 rows 字段;按 selected 重置 pending)
-        }
-        else
-        {
-            // completed / cancelled → 显示 summary 占位,真实 summary 由后续 WS push
-            Mode = BulkUpdateMode.Summary;
-        }
+        // TODO(M5.2-T6): cancel the orchestrator run.
+        MessageBox.Show("批量更新功能待 T6 实现", "批量更新");
     }
 }
 

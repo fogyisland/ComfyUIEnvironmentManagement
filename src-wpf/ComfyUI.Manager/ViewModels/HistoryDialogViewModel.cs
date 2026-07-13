@@ -1,15 +1,14 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Threading.Tasks;
-using ComfyUI.Manager.Infrastructure;
+using System.Windows;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.ViewModels;
 
 public class HistoryDialogViewModel : ViewModelBase
 {
-    private readonly ApiClient _api;
+    private readonly VersionRepository _repo;
     private readonly string _envId;
     private readonly string _package;
 
@@ -19,36 +18,35 @@ public class HistoryDialogViewModel : ViewModelBase
 
     public event Action? CloseRequested;
 
-    public HistoryDialogViewModel(ApiClient api, string envId, string package)
+    public HistoryDialogViewModel(
+        VersionRepository repo, string envId, string package)
     {
-        _api = api; _envId = envId; _package = package;
+        _repo = repo;
+        _envId = envId;
+        _package = package;
         RollbackCommand = new RelayCommand(
-            async p => await RollbackAsync(p as VersionHistoryEntry ?? Selected),
+            p => Rollback(p as VersionHistoryEntry ?? Selected),
             p => (p as VersionHistoryEntry ?? Selected)?.VersionBefore is not null);
         CloseCommand = new RelayCommand(_ => CloseRequested?.Invoke());
-        _ = LoadAsync();
+        Load();
     }
 
     private VersionHistoryEntry? _selected;
     public VersionHistoryEntry? Selected { get => _selected; set => SetField(ref _selected, value); }
 
-    private async Task LoadAsync()
+    private void Load()
     {
-        var r = await _api.PostAsync<List<VersionHistoryEntry>>(
-            "node/list-version-history",
-            new { env_id = _envId, package = _package, limit = 50 });
-        if (r.Ok && r.Value is not null)
-        {
-            Entries.Clear();
-            foreach (var e in r.Value) Entries.Add(e);
-        }
+        Entries.Clear();
+        foreach (var e in _repo.ListHistoryByEnvAndPackage(_envId, _package))
+            Entries.Add(e);
     }
 
-    private async Task RollbackAsync(VersionHistoryEntry? e)
+    private void Rollback(VersionHistoryEntry? e)
     {
         if (e?.VersionBefore is null) return;
-        await _api.PostAsync<object>("node/rollback-version",
-            new { env_id = _envId, package = _package, history_id = e.Id });
-        CloseRequested?.Invoke();
+        // TODO(M5.2-T7): roll back version via NodeOperations + GitRunner.
+        MessageBox.Show(
+            $"TODO(M5.2-T7): rollback '{_package}' to {e.VersionBefore}",
+            "回滚版本");
     }
 }
