@@ -1,26 +1,18 @@
 [project]
 name = "comfyui-manager"
-version = "0.1.0"
+version = "0.6.0"
 description = "ComfyUI 多环境管理工具"
 requires-python = ">=3.10,<3.13"
-dependencies = [
-    "typer>=0.12.0",
-    "pyyaml>=6.0",
-    "fastapi>=0.115",
-    "pyside6>=6.7.0",
-    "uvicorn>=0.30",
-]
+# M5.2: WPF GUI 不依赖任何 Python control service。pyproject 只保留
+# 数据库初始化路径所需的依赖(scripts/create_catalog_db.py 仍用 sqlite3 +
+# urllib 等 stdlib,实际"dependencies" 可以清空)。如果未来某天想重新引入
+# Python 端 cli/server(例如 CLI-only 工具),再补回 typer / fastapi。
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-mock>=3.12.0",
-    "pytest-qt>=4.4.0",
 ]
-
-[project.scripts]
-comfy-mgr = "comfy_mgr.cli:app"
-comfy-mgr-gui = "app.main:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
@@ -36,10 +28,4 @@ markers = [
 package-mode = true
 packages = [
     { include = "comfy_mgr", from = "src" },
-    { include = "app" },
 ]  # explicit so poetry-core can find the package without setup.py
-
-[dependency-groups]
-dev = [
-    "pytest-asyncio (>=1.4.0,<2.0.0)"
-]
