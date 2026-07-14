@@ -187,7 +187,8 @@ public sealed class BulkUpdateOrchestrator
                 rows.Add(runningRow);
                 EmitLog(logWriter, bulkId, envId, nodeId, "START");
 
-                Progress?.Invoke(runningRow);
+                var pStart = Progress;
+                pStart?.Invoke(runningRow);
 
                 // 节点目录不存在 → skip
                 if (!Directory.Exists(nodeDir))
@@ -198,7 +199,8 @@ public sealed class BulkUpdateOrchestrator
                     ReplaceLast(rows, runningRow, skippedRow);
                     EmitLog(logWriter, bulkId, envId, nodeId,
                         $"END status=skipped reason=目录不存在 ms={sw.ElapsedMilliseconds}");
-                    Progress?.Invoke(skippedRow);
+                    var pSkip = Progress;
+                    pSkip?.Invoke(skippedRow);
                     skipped++;
                     continue;
                 }
@@ -221,7 +223,8 @@ public sealed class BulkUpdateOrchestrator
                 var terminalRow = new BulkUpdateRow(
                     envId, nodeId, status, reason, (int)sw.ElapsedMilliseconds);
                 ReplaceLast(rows, runningRow, terminalRow);
-                Progress?.Invoke(terminalRow);
+                var pDone = Progress;
+                pDone?.Invoke(terminalRow);
 
                 if (status == "succeeded") succeeded++;
                 else failed++;
@@ -241,7 +244,8 @@ public sealed class BulkUpdateOrchestrator
         // 订阅者的 Completed 处理通常把 Mode 切到 Summary。
         try
         {
-            Completed?.Invoke(summary);
+            var pDone = Completed;
+            pDone?.Invoke(summary);
         }
         catch
         {
@@ -252,7 +256,8 @@ public sealed class BulkUpdateOrchestrator
         {
             try
             {
-                Cancelled?.Invoke();
+                var pCancel = Cancelled;
+                pCancel?.Invoke();
             }
             catch { }
         }
@@ -378,7 +383,8 @@ public sealed class BulkUpdateOrchestrator
         rows.Add(row);
         EmitLog(logWriter, bulkId, envId, nodeId,
             $"END status={status} reason={reason ?? "-"} ms={latencyMs}");
-        Progress?.Invoke(row);
+        var pEmit = Progress;
+        pEmit?.Invoke(row);
         return new BulkUpdateRow(envId, nodeId, status, reason, latencyMs);
     }
 

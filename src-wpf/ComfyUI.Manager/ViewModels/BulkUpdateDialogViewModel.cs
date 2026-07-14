@@ -148,6 +148,16 @@ public class BulkUpdateDialogViewModel : ViewModelBase
     private void Cancel()
     {
         if (!IsBusy) return;
+        CancelRun();
+    }
+
+    /// <summary>
+    /// 由 View (dialog Closing) 调用,确保 user 主动关窗时 run 也会被取消,
+    /// 而不是默默在后台跑完。
+    /// </summary>
+    public void CancelRun()
+    {
+        if (!IsBusy) return;
         _orchestrator.CancelAsync();
         try { _runCts.Cancel(); } catch { }
     }

@@ -295,6 +295,76 @@ public sealed class BulkUpdateOrchestratorTests
     }
 
     [Fact]
+    public async Task StartAsync_MidRunCancel_StopsBeforeAllRowsComplete()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        // 慢 fake-git:每个 git pull 阻塞 ~5s,这样 orchestrator 在跑第二个 (env,node)
+        // 之前给我们 cancel 的窗口。
+        var fakeScript = Path.Combine(tempRoot, "slow-git.cmd");
+        File.WriteAllText(fakeScript,
+            "@echo off\r\nping 127.0.0.1 -n 6 > nul\r\nexit /b 0\r\n");
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+
+        // 4 个 (env, node):2 env × 2 node。总耗时 ~20s(没 cancel)。我们 cancel
+        // 在第一个 running emit 之后,期望 Total < 4。
+        var nodesRoot = Path.Combine(tempRoot, "nodes");
+        Directory.CreateDirectory(nodesRoot);
+        Directory.CreateDirectory(Path.Combine(nodesRoot, "node-a"));
+        Directory.CreateDirectory(Path.Combine(nodesRoot, "node-b"));
+        SeedEnv(envRepo, nodeRepo, "env-1", nodesRoot,
+            ("node-a", Path.Combine(nodesRoot, "node-a")),
+            ("node-b", Path.Combine(nodesRoot, "node-b")));
+        SeedEnv(envRepo, nodeRepo, "env-2", nodesRoot,
+            ("node-a", Path.Combine(nodesRoot, "node-a")),
+            ("node-b", Path.Combine(nodesRoot, "node-b")));
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, fakeScript, envRepo, nodeRepo);
+
+        var seenRunning = 0;
+        orch.Progress += r =>
+        {
+            if (r.Status == "running")
+            {
+                Interlocked.Increment(ref seenRunning);
+            }
+        };
+
+        var cancelledFired = new TaskCompletionSource();
+        orch.Cancelled += () => cancelledFired.TrySetResult();
+
+        using var cts = new CancellationTokenSource();
+
+        // 在背景启动 orchestrator,等见到第一个 running 就 cancel。
+        var runTask = orch.StartAsync(
+            new[] { "env-1", "env-2" }, new[] { "node-a", "node-b" }, cts.Token);
+
+        // 轮询等到 at least 1 个 running emit(慢 git 让我们有时间)。
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (Volatile.Read(ref seenRunning) < 1 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(100);
+        }
+
+        cts.Cancel();
+
+        // Orchestrator 应当半路停下 —— summary.Total < 4(完整 2x2)。
+        var summary = await runTask;
+        Assert.True(summary.Total < 4,
+            $"mid-run cancel 应该中止,Total={summary.Total},期望 < 4");
+        Assert.True(cancelledFired.Task.Wait(TimeSpan.FromSeconds(5)),
+            "Cancelled 事件应触发");
+    }
+
+    [Fact]
     public async Task StartAsync_Timeout_FailsGracefully()
     {
         if (string.IsNullOrEmpty(FindGit())) return;
