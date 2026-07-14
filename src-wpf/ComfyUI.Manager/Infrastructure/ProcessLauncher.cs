@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -233,7 +234,7 @@ public sealed class ProcessLauncher : IDisposable
                     shutdownCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
                     try
                     {
-                        await process.WaitForExitAsync(ct);
+                        await process.WaitForExitAsync(shutdownCts.Token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -298,10 +299,12 @@ public sealed class ProcessLauncher : IDisposable
                 nameof(env));
         }
 
-        // WPF only ships on Windows, so default to Scripts/python.exe.
-        // (M5.2-T9 will delete all cross-platform code if the user confirms
-        // Windows-only; cross-env paths bin/python are kept for reference.)
-        var exe = Path.Combine(env.VenvPath, "Scripts", "python.exe");
+        // Scripts/python.exe on Windows, bin/python on Linux/macOS —
+        // 与 VenvVerifier 保持一致,避免在 WSL / macOS 开发时静默失败。
+        var relative = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? Path.Combine("Scripts", "python.exe")
+            : Path.Combine("bin", "python");
+        var exe = Path.Combine(env.VenvPath, relative);
 
         if (!File.Exists(exe))
         {
@@ -394,6 +397,9 @@ public sealed class ProcessLauncher : IDisposable
             // 清掉 _running + process_state + env row,append exit code 到 log。
             lock (_runningLock)
             {
+                // StopEnvAsync 会先移除 _running 再等待退出;若已不在表里,
+                // 说明 Stop 正在接管清理,避免 DB double-write / clobber 并发重启。
+                if (!_running.ContainsKey(envId)) return;
                 _running.Remove(envId);
             }
             try
@@ -434,18 +440,43 @@ public sealed class ProcessLauncher : IDisposable
     private static async Task WaitForPortAsync(string host, int port,
         TimeSpan timeout, CancellationToken ct)
     {
-        var deadline = DateTime.UtcNow.Add(timeout);
-        while (DateTime.UtcNow < deadline)
+        using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadlineCts.CancelAfter(timeout);
+        while (!deadlineCts.IsCancellationRequested)
         {
-            if (ct.IsCancellationRequested) break;
-            if (IsPortInUse(host, port)) return;
             try
             {
-                await Task.Delay(500, ct);
+                using var client = new TcpClient();
+                await client.ConnectAsync(host, port, deadlineCts.Token);
+                return; // 连上了,端口已 listen
             }
             catch (OperationCanceledException)
             {
-                break;
+                // caller 取消 或 deadline 到期
+                if (ct.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(ct);
+                }
+                throw new TimeoutException(
+                    $"端口 {port} 在 {timeout.TotalSeconds:0}s 内未 listen");
+            }
+            catch
+            {
+                // connection refused / 端口未起,重试
+            }
+
+            try
+            {
+                await Task.Delay(500, deadlineCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (ct.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(ct);
+                }
+                throw new TimeoutException(
+                    $"端口 {port} 在 {timeout.TotalSeconds:0}s 内未 listen");
             }
         }
         throw new TimeoutException(
