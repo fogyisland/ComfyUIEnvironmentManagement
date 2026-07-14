@@ -197,6 +197,31 @@ Spec: implicit — M5.2 is an architecture rewrite removing Python control servi
 - v0.5.1 zip (215MB) rebuilt successfully at `release/ComfyUI-Manager-v0.6.0-dev-win-x64.zip`
 - WPF staging verified: VenvVerifier passes, MainWindow shows, env list / catalog / settings views wired (catalog 10 项, env 0 项 in user's DB)
 - User saw staging run, navigation buttons work after `5478fd0` fix
+
+## End-of-day snapshot (2026-07-14 — M5.2 close-out: v0.6.0 pushed + released)
+
+- Branch: main, all commits pushed to origin (https://github.com/fogyisland/ComfyUIEnvironmentManagement)
+- Tag `v0.6.0` pushed + GitHub release created with zip asset
+- T5 review fixes: 1 Critical (StopEnvAsync shutdownCts token) + 4 Important fixed (commit 7791433) + 1 regression test
+- T6 BulkUpdateOrchestrator: ff446e5 + cd329b4 + 4a43a83 (T6 review fixes: thread-safe events, dialog-close cancel, mid-run cancel test)
+- T7 NodeOperations + GitRunner: 1617234
+- T8 test rewrite: 13c369f (deleted dead ApiClient/WsClient + Fakes)
+- T9 drop Python service + QML: 48d782e (after rebase, was d7cf85e with zips dropped)
+- T10 zip + tag: 503245d (build_release.ps1) + 207cd13 (.gitignore release/*.zip)
+- WPF tests: 26/26 ✅ (5 new NodeOperations tests + 1 new mid-run cancel test)
+- pytest: 181/181 ✅ (after deleting services/integration/bridge/app tests)
+- 7 files removed outright: src/comfy_mgr/server/, cli.py, __main__.py, services/, infra/process.py, app/, run.bat, start.bat
+- pyproject.toml: dropped fastapi/uvicorn/typer/pyside6 deps; version bumped 0.5.0→0.6.0
+- GitHub release v0.6.0: `ComfyUI-Manager-v0.6.0-win-x64.zip` (215 MB)
+- Release notes: `release/RELEASE-NOTES-v0.6.0.md`
+
+## Review Findings Ledger (M5.2)
+
+(Minor findings get logged here; Critical/Important get fixed before next task)
+
+- T6 Minor: `BulkUpdateDialogViewModel._runCts` field — kept as authoritative CTS source (used to cancel on dialog close); not dead state despite reviewer's I-1 flag
+- T6 Minor: git-portable missing in `bin/`; App.xaml.cs falls back to PATH `git` (verified working)
+- T9 Minor: `.gitignore` initially didn't have `release/*.zip` — added in 207cd13 after push rejected (zips > 100 MB GitHub limit)
 - T5 review (sonnet) was just dispatched but rejected by user — they want to pause
 
 ## Resume point (2026-07-14+)
