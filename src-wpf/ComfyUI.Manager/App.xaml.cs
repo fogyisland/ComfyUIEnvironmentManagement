@@ -45,10 +45,12 @@ public partial class App : Application
         // M5.2-T6: bulk update 在 WPF 端直接跑 git pull,git exe 优先用
         // bin/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
         var gitExe = ResolveGitExe(projectRoot);
+        var gitRunner = new GitRunner(gitExe);
+        var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo);
 
-        _mainVm = new MainViewModel(dbFactory, _launcher, bulkOrchestrator);
+        _mainVm = new MainViewModel(dbFactory, _launcher, bulkOrchestrator, nodeOps);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

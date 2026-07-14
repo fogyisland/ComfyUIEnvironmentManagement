@@ -11,6 +11,7 @@ public class MainViewModel : ViewModelBase
     private readonly SqliteConnectionFactory _dbFactory;
     private readonly ProcessLauncher _launcher;
     private readonly BulkUpdateOrchestrator _orchestrator;
+    private readonly NodeOperations _nodeOps;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -29,11 +30,13 @@ public class MainViewModel : ViewModelBase
     public MainViewModel(
         SqliteConnectionFactory dbFactory,
         ProcessLauncher launcher,
-        BulkUpdateOrchestrator orchestrator)
+        BulkUpdateOrchestrator orchestrator,
+        NodeOperations nodeOps)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
         _orchestrator = orchestrator;
+        _nodeOps = nodeOps;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -53,9 +56,10 @@ public class MainViewModel : ViewModelBase
     private void ShowCatalog()
     {
         var catRepo = new CatalogRepository(_dbFactory);
+        var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new CatalogView
         {
-            DataContext = new CatalogViewModel(catRepo),
+            DataContext = new CatalogViewModel(catRepo, envRepo, _nodeOps),
         };
     }
 

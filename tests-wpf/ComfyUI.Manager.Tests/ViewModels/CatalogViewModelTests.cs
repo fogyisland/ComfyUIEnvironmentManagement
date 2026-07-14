@@ -1,6 +1,7 @@
 using System;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Tests.Fakes;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
@@ -22,6 +23,17 @@ public class CatalogViewModelTests
         });
     }
 
+    /// <summary>
+    /// Noop NodeOperations:不会真跑 git clone。Catalog 页面测试不需要 git。
+    /// </summary>
+    private sealed class NoopNodeOps : NodeOperations
+    {
+        public NoopNodeOps(EnvironmentRepository envRepo, NodeRepository nodeRepo)
+            : base(new GitRunner("git"), envRepo, nodeRepo)
+        {
+        }
+    }
+
     [Fact]
     public void Ctor_LoadsAllCatalogEntries()
     {
@@ -29,7 +41,10 @@ public class CatalogViewModelTests
         SeedCatalog(db, "pkg-a");
         SeedCatalog(db, "pkg-b");
 
-        var vm = new CatalogViewModel(new CatalogRepository(db.Factory));
+        var vm = new CatalogViewModel(
+            new CatalogRepository(db.Factory),
+            new EnvironmentRepository(db.Factory),
+            new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)));
 
         Assert.Equal(2, vm.Entries.Count);
     }
@@ -41,7 +56,10 @@ public class CatalogViewModelTests
         SeedCatalog(db, "alpha");
         SeedCatalog(db, "beta");
 
-        var vm = new CatalogViewModel(new CatalogRepository(db.Factory));
+        var vm = new CatalogViewModel(
+            new CatalogRepository(db.Factory),
+            new EnvironmentRepository(db.Factory),
+            new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)));
         vm.Query = "alph";
 
         Assert.Single(vm.Entries);
