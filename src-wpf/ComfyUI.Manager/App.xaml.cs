@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
 
 namespace ComfyUI.Manager;
@@ -36,11 +37,18 @@ public partial class App : Application
 
         var dbFactory = new SqliteConnectionFactory();
         var envRepo = new EnvironmentRepository(dbFactory);
+        var nodeRepo = new NodeRepository(dbFactory);
         var processStateRepo = new ProcessStateRepository(dbFactory);
         _launcher = new ProcessLauncher(
             projectRoot, dbFactory, envRepo, processStateRepo);
 
-        _mainVm = new MainViewModel(dbFactory, _launcher);
+        // M5.2-T6: bulk update 在 WPF 端直接跑 git pull,git exe 优先用
+        // bin/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
+        var gitExe = ResolveGitExe(projectRoot);
+        var bulkOrchestrator = new BulkUpdateOrchestrator(
+            projectRoot, gitExe, envRepo, nodeRepo);
+
+        _mainVm = new MainViewModel(dbFactory, _launcher, bulkOrchestrator);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();
@@ -51,5 +59,12 @@ public partial class App : Application
         base.OnExit(e);
         // kill all env processes we started
         try { _launcher?.Dispose(); } catch { }
+    }
+
+    private static string ResolveGitExe(string projectRoot)
+    {
+        var portable = Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe");
+        if (File.Exists(portable)) return portable;
+        return "git"; // fallback to PATH
     }
 }

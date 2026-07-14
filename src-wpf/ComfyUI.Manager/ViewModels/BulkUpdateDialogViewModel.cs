@@ -1,8 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Windows;
+using System.Threading;
+using System.Threading.Tasks;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -10,6 +14,9 @@ public enum BulkUpdateMode { SelectEnv, Running, Summary }
 
 public class BulkUpdateDialogViewModel : ViewModelBase
 {
+    private readonly BulkUpdateOrchestrator _orchestrator;
+    private CancellationTokenSource _runCts = new();
+
     private BulkUpdateSummary? _summary;
     private BulkUpdateMode _mode = BulkUpdateMode.SelectEnv;
     private string? _bulkId;
@@ -43,26 +50,38 @@ public class BulkUpdateDialogViewModel : ViewModelBase
     public string? ErrorMessage
     {
         get => _errorMessage;
-        set { _errorMessage = value; RaisePropertyChanged(); }
+        set
+        {
+            _errorMessage = value;
+            RaisePropertyChanged();
+        }
     }
 
     public bool IsBusy
     {
         get => _isBusy;
-        set { _isBusy = value; RaisePropertyChanged(); }
+        set
+        {
+            if (_isBusy == value) return;
+            _isBusy = value;
+            RaisePropertyChanged();
+            StartCommand.RaiseCanExecuteChanged();
+        }
     }
 
-    // TODO(M5.2-T6): take a BulkUpdateOrchestrator and drive the run locally.
-    // The HTTP BulkUpdateApiClient path was removed with the Python service;
-    // the orchestrator is implemented in T6, so for now every operation shows
-    // a placeholder message.
-    public BulkUpdateDialogViewModel()
+    public BulkUpdateDialogViewModel(BulkUpdateOrchestrator orchestrator)
     {
+        _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
+
         StartCommand = new RelayCommand(_ => Start(), _ => CanStart());
         CancelCommand = new RelayCommand(
             _ => Cancel(),
-            _ => BulkId != null && Mode == BulkUpdateMode.Running);
+            _ => IsBusy && Mode == BulkUpdateMode.Running);
         ToggleSelectAllCommand = new RelayCommand(_ => ToggleSelectAll());
+
+        _orchestrator.Progress += OnProgress;
+        _orchestrator.Completed += OnCompleted;
+        _orchestrator.Cancelled += OnCancelled;
     }
 
     public void LoadEnvs(IEnumerable<EnvRow> envs)
@@ -98,14 +117,96 @@ public class BulkUpdateDialogViewModel : ViewModelBase
 
     private void Start()
     {
-        // TODO(M5.2-T6): delegate to BulkUpdateOrchestrator.
-        MessageBox.Show("批量更新功能待 T6 实现", "批量更新");
+        var envIds = SelectedEnvIds();
+        var nodeIds = SelectedNodeIds();
+        if (envIds.Count == 0 || nodeIds.Count == 0) return;
+
+        // 预填 Rows —— 一个 (env, node) 一条 "pending"。Orchestrator 的 Progress
+        // 事件从背景任务发,我们用索引直接更新对应 row 而无需每次都遍历查找。
+        Rows.Clear();
+        for (int i = 0; i < envIds.Count; i++)
+        {
+            for (int j = 0; j < nodeIds.Count; j++)
+            {
+                Rows.Add(new BulkUpdateRow(envIds[i], nodeIds[j], "pending", null, 0));
+            }
+        }
+
+        // 旧 CTS 释放 —— 上一轮如果意外没释放,以这里为权威源。
+        try { _runCts.Dispose(); } catch { }
+        _runCts = new CancellationTokenSource();
+
+        Mode = BulkUpdateMode.Running;
+        IsBusy = true;
+        ErrorMessage = null;
+        BulkId = _orchestrator.CurrentBulkId; // StartAsync 前为空,Orchestrator 启动后才填
+
+        _ = _orchestrator.StartAsync(envIds, nodeIds, _runCts.Token)
+            .ContinueWith(t => DispatcherHelper.RunOnUiAsync(() => OnRunFinished(t)));
     }
 
     private void Cancel()
     {
-        // TODO(M5.2-T6): cancel the orchestrator run.
-        MessageBox.Show("批量更新功能待 T6 实现", "批量更新");
+        if (!IsBusy) return;
+        _orchestrator.CancelAsync();
+        try { _runCts.Cancel(); } catch { }
+    }
+
+    // -------- Orchestrator event handlers (called from background task) --------
+
+    private void OnProgress(BulkUpdateRow row)
+    {
+        DispatcherHelper.RunOnUiAsync(() =>
+        {
+            // 找到现有的 pending / running 行,直接替换 —— 其它字段(env/node)不变,
+            // 只更新 Status/Reason/LatencyMs。
+            for (int i = 0; i < Rows.Count; i++)
+            {
+                var existing = Rows[i];
+                if (existing.EnvId == row.EnvId && existing.NodeId == row.NodeId
+                    && existing.Status is "pending" or "running")
+                {
+                    Rows[i] = row;
+                    return;
+                }
+            }
+            // 兜底:没找到就 append(不应该发生 —— 我们 Start 时已预填)
+            Rows.Add(row);
+        });
+    }
+
+    private void OnCompleted(BulkUpdateSummary summary)
+    {
+        DispatcherHelper.RunOnUiAsync(() =>
+        {
+            BulkId ??= summary.Rows.Count > 0 ? "(已完成)" : null;
+            Summary = summary;
+            Mode = BulkUpdateMode.Summary;
+            IsBusy = false;
+            StartCommand.RaiseCanExecuteChanged();
+        });
+    }
+
+    private void OnCancelled()
+    {
+        DispatcherHelper.RunOnUiAsync(() =>
+        {
+            ErrorMessage = "已取消";
+        });
+    }
+
+    private void OnRunFinished(Task<BulkUpdateSummary> task)
+    {
+        // Orchestrator 的 Completed 事件已经把 Summary / Mode 设好了。
+        // 这里只处理异常 + 最终收尾(IsBusy 在 OnCompleted 里已设 false,这里冗余也无害)。
+        if (task.IsFaulted)
+        {
+            var msg = task.Exception?.GetBaseException().Message
+                ?? "未知错误";
+            ErrorMessage = $"运行失败:{msg}";
+            IsBusy = false;
+            Mode = BulkUpdateMode.Summary;
+        }
     }
 }
 

@@ -1,3 +1,6 @@
+using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Tests.Fakes;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
 
@@ -7,7 +10,13 @@ public class BulkUpdateDialogViewModelTests
 {
     private static BulkUpdateDialogViewModel NewVmWithFixture()
     {
-        var vm = new BulkUpdateDialogViewModel();
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        var orch = new BulkUpdateOrchestrator(
+            System.IO.Path.GetTempPath(), "git", envRepo, nodeRepo);
+
+        var vm = new BulkUpdateDialogViewModel(orch);
         var env1 = new EnvRow("env-1", "Env 1");
         env1.Nodes.Add(new NodeSelectRow("node-a", "Node A"));
         env1.Nodes.Add(new NodeSelectRow("node-b", "Node B"));
@@ -53,7 +62,12 @@ public class BulkUpdateDialogViewModelTests
     [Fact]
     public void StartsInSelectEnvMode()
     {
-        var vm = new BulkUpdateDialogViewModel();
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        var orch = new BulkUpdateOrchestrator(
+            System.IO.Path.GetTempPath(), "git", envRepo, nodeRepo);
+        var vm = new BulkUpdateDialogViewModel(orch);
         Assert.Equal(BulkUpdateMode.SelectEnv, vm.Mode);
     }
 }
