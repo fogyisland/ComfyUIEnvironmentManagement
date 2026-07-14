@@ -64,6 +64,8 @@ src-wpf/**/publish/
 
 # Release build staging (regen on every build_release.ps1 run)
 release/staging/
+# Release zips (>100 MB each — push via `gh release create`, not via git)
+release/*.zip
 
 # Generated resx (regen on every build via Ts2Resx)
 src-wpf/ComfyUI.Manager/Resources/Strings*.resx
