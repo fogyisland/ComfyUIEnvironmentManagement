@@ -198,21 +198,21 @@ Spec: implicit — M5.2 is an architecture rewrite removing Python control servi
 - WPF staging verified: VenvVerifier passes, MainWindow shows, env list / catalog / settings views wired (catalog 10 项, env 0 项 in user's DB)
 - User saw staging run, navigation buttons work after `5478fd0` fix
 
-## End-of-day snapshot (2026-07-14 — M5.2 close-out: v0.6.0 pushed + released)
+## End-of-day snapshot (2026-07-14 — M5.2 close-out: v0.6.0 pushed + tagged, release asset upload pending)
 
 - Branch: main, all commits pushed to origin (https://github.com/fogyisland/ComfyUIEnvironmentManagement)
-- Tag `v0.6.0` pushed + GitHub release created with zip asset
+- Tag `v0.6.0` pushed; **GitHub release upload pending** (zip 225 MB present at `release/ComfyUI-Manager-v0.6.0-win-x64.zip`, awaiting `gh release create`)
 - T5 review fixes: 1 Critical (StopEnvAsync shutdownCts token) + 4 Important fixed (commit 7791433) + 1 regression test
 - T6 BulkUpdateOrchestrator: ff446e5 + cd329b4 + 4a43a83 (T6 review fixes: thread-safe events, dialog-close cancel, mid-run cancel test)
 - T7 NodeOperations + GitRunner: 1617234
 - T8 test rewrite: 13c369f (deleted dead ApiClient/WsClient + Fakes)
 - T9 drop Python service + QML: 48d782e (after rebase, was d7cf85e with zips dropped)
-- T10 zip + tag: 503245d (build_release.ps1) + 207cd13 (.gitignore release/*.zip)
+- T10 build script + tag: 503245d (build_release.ps1 rewrite, WPF-only zip) + 207cd13 (.gitignore release/*.zip)
 - WPF tests: 26/26 ✅ (5 new NodeOperations tests + 1 new mid-run cancel test)
 - pytest: 181/181 ✅ (after deleting services/integration/bridge/app tests)
 - 7 files removed outright: src/comfy_mgr/server/, cli.py, __main__.py, services/, infra/process.py, app/, run.bat, start.bat
 - pyproject.toml: dropped fastapi/uvicorn/typer/pyside6 deps; version bumped 0.5.0→0.6.0
-- GitHub release v0.6.0: `ComfyUI-Manager-v0.6.0-win-x64.zip` (215 MB)
+- Release zip: `release/ComfyUI-Manager-v0.6.0-win-x64.zip` (225 MB, present, no rebuild needed)
 - Release notes: `release/RELEASE-NOTES-v0.6.0.md`
 
 ## Review Findings Ledger (M5.2)
@@ -226,16 +226,14 @@ Spec: implicit — M5.2 is an architecture rewrite removing Python control servi
 
 ## Resume point (2026-07-14+)
 
-1. Re-dispatch T5 task reviewer with same prompt
-2. Address any Critical/Important findings via fix subagent
-3. T6: BulkUpdateOrchestrator (C# implementation) — replaces BulkUpdateApiClient path in BulkUpdateDialogViewModel
-4. T7: NodeOperations + GitRunner (git clone/pull/reset for node install/upgrade/rollback)
-5. T8: Test rewrite (drop FakeApiClient/FakeWsClient, add FakeProcessLauncher/FakeLogTailer)
-6. T9: Delete Python service code (src/comfy_mgr/server/, cli.py, services/, infra/process.py)
-7. T10: Rebuild release zip + git tag v0.6.0 + push to GitHub release
+1. `cd D:\ToolDevelop\ComfyUI`
+2. Verify `release/ComfyUI-Manager-v0.6.0-win-x64.zip` exists (225 MB, no rebuild needed per `feedback_no_rebuild_zip.md`)
+3. `gh release create v0.6.0 release/ComfyUI-Manager-v0.6.0-win-x64.zip --notes-file release/RELEASE-NOTES-v0.6.0.md`
+4. Verify `https://github.com/fogyisland/ComfyUIEnvironmentManagement/releases/tag/v0.6.0` is accessible + zip asset downloadable
+5. Append "release asset uploaded" entry to this ledger
+6. Commit + push ledger update
 
 ## Pre-existing issues carried into M5.2
 
+- All carried issues resolved in T8 (FakeApiClient/WsClient deleted) + T9 (ApiClient/WsClient + Python service + QML app deleted)
 - CatalogViewModelTests:22 (`entry.Name` → `entry.Package`) — FIXED in T4 (was pre-existing before M5.2)
-- FakeApiClient/FakeWsClient still in test tree (compile but unused) — T8 cleanup
-- ApiClient/WsClient still in Infrastructure/ (referenced by MainViewModel.OpenBulkUpdate for WS handler) — T9 deletes
