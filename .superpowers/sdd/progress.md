@@ -237,3 +237,42 @@ Spec: implicit — M5.2 is an architecture rewrite removing Python control servi
 
 - All carried issues resolved in T8 (FakeApiClient/WsClient deleted) + T9 (ApiClient/WsClient + Python service + QML app deleted)
 - CatalogViewModelTests:22 (`entry.Name` → `entry.Package`) — FIXED in T4 (was pre-existing before M5.2)
+
+## Post-release hotfixes (2026-07-15)
+
+After v0.6.0 tag was pushed (6469bf8) but before `gh release create` ran,
+user started manual smoke-testing the WPF UI. Three functional gaps were
+found and fixed:
+
+- **dd5458b** `feat(wpf): M5.2 hotfix — Env Create flow on WPF side`
+  - M5.2 T9 deleted Python `services/environment.py` but WPF side never
+    got a Create path. New: VenvCreator / JunctionLinker /
+    EnvCreatorService / CreateEnvDialog modal. Tests 26/26.
+
+- **bb5d0ff** `feat(wpf): extend Settings — paths, git exe, proxy URL/port, extra paths`
+  - Settings page only had theme/lang/TTL/compat API. Added 8 persisted
+    fields with auto-save bindings, Browse buttons, dynamic ExtraPaths
+    table. Tests 26/26.
+
+- **497a817** `feat(wpf): git proxy — explicit enable checkbox + per-process env vars`
+  - Settings.GitProxyEnabled (default false). New GitProxyConfig
+    shared between SettingsViewModel + GitRunner/BulkUpdateOrchestrator.
+    Per-process env var injection (`HTTP_PROXY` + `HTTPS_PROXY` on
+    ProcessStartInfo.EnvironmentVariables) — does NOT touch system env.
+    11 new GitProxyConfigTests. Tests 37/37.
+
+## v0.6.0 vs v0.6.1 release question (open)
+
+`gh release list` shows v0.5.1 as Latest; v0.6.0 tag is on remote but
+no `gh release create` has been run. The 3 hotfix commits above sit
+on top of v0.6.0. Two paths:
+
+1. Bundle today's 3 commits into v0.6.0's release notes — no rebuild,
+   just `gh release create v0.6.0` with the existing zip (zip
+   predates the hotfixes).
+2. Cut v0.6.1: rebuild zip with today's commits, new release.
+
+User has not yet chosen. Default leaning: option 1 (faster, aligns with
+"no rebuild when version unchanged" preference) — but the 3 commits
+add real user-facing functionality (env create, git proxy), so
+option 2 is the honest answer. Ask user.
