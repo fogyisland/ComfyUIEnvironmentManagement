@@ -10,21 +10,23 @@ public class SettingsDefaultsTests
     private const string ProjectRoot = @"D:\ToolDevelop\ComfyUI";
 
     [Fact]
-    public void Apply_FillsAllEmptyPathFieldsWithRelativeSubdirs()
+    public void Apply_EmptyFieldsStayEmpty()
     {
+        // 不主动填默认值 —— 路径没填就保持空,由服务层在使用时报错引导用户配置。
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("template-python", s.TemplatePythonDir);
-        Assert.Equal("ComfyUI", s.TemplateComfyuiDir);
-        Assert.Equal("envs", s.EnvsDir);
-        Assert.Equal("global-nodes", s.GlobalNodesDir);
+        Assert.Equal("", s.TemplatePythonDir);
+        Assert.Equal("", s.TemplateComfyuiDir);
+        Assert.Equal("", s.EnvsDir);
+        Assert.Equal("", s.GlobalNodesDir);
     }
 
     [Fact]
     public void Apply_DoesNotOverwriteRelativeExistingValues()
     {
+        // 用户已经填了相对路径 → 不动
         var s = new Settings
         {
             TemplatePythonDir = "E:\\my-python",
@@ -33,15 +35,16 @@ public class SettingsDefaultsTests
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("E:\\my-python", s.TemplatePythonDir); // 相对路径保留
-        Assert.Equal("my-envs", s.EnvsDir);                 // 相对路径保留
-        Assert.Equal("ComfyUI", s.TemplateComfyuiDir);      // 空字段填默认
-        Assert.Equal("global-nodes", s.GlobalNodesDir);      // 空字段填默认
+        Assert.Equal("E:\\my-python", s.TemplatePythonDir);
+        Assert.Equal("my-envs", s.EnvsDir);
+        Assert.Equal("", s.TemplateComfyuiDir);   // 空字段保持空
+        Assert.Equal("", s.GlobalNodesDir);      // 空字段保持空
     }
 
     [Fact]
     public void Apply_MigratesAbsolutePathUnderProjectRoot_ToRelative()
     {
+        // 兼容旧 settings.json:绝对路径若落在 projectRoot 下,转相对(剥掉前缀)
         var s = new Settings
         {
             EnvsDir = @"D:\ToolDevelop\ComfyUI\bin\Debug\net8.0-windows\envs",
@@ -50,7 +53,6 @@ public class SettingsDefaultsTests
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        // 剥掉 projectRoot 前缀,转相对
         Assert.Equal(@"bin\Debug\net8.0-windows\envs", s.EnvsDir);
         Assert.Equal("ComfyUI", s.TemplateComfyuiDir);
     }
@@ -80,8 +82,8 @@ public class SettingsDefaultsTests
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("template-python", s.TemplatePythonDir);
-        Assert.Equal("envs", s.EnvsDir);
+        Assert.Equal("   ", s.TemplatePythonDir); // whitespace 视为空,保持原样
+        Assert.Equal("\t", s.EnvsDir);
     }
 
     [Fact]
@@ -91,19 +93,18 @@ public class SettingsDefaultsTests
     }
 
     [Fact]
-    public void Apply_DefaultsAreNeverAbsolute()
+    public void Apply_KeepsRelativePathUntouched()
     {
-        // 防御:默认子目录名不能含绝对路径成分
-        var s = new Settings();
+        // 设置页填了相对路径,Apply 不重新格式化或加 ../ 前缀
+        var s = new Settings
+        {
+            EnvsDir = "envs",
+            TemplatePythonDir = "..\\external-python",
+        };
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        foreach (var path in new[] {
-            s.TemplatePythonDir, s.TemplateComfyuiDir,
-            s.EnvsDir, s.GlobalNodesDir })
-        {
-            Assert.False(Path.IsPathRooted(path),
-                $"默认值不应是绝对路径: {path}");
-        }
+        Assert.Equal("envs", s.EnvsDir);
+        Assert.Equal("..\\external-python", s.TemplatePythonDir);
     }
 }
