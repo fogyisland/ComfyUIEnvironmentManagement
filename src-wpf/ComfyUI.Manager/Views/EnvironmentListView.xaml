@@ -5,6 +5,8 @@
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
             <Button Content="刷新" Command="{Binding RefreshCommand}"
                     Style="{StaticResource MaterialButton}" />
+            <Button Content="+ 新建环境" Command="{Binding CreateCommand}"
+                    Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
         </StackPanel>
         <DataGrid ItemsSource="{Binding Environments}"
                   SelectedItem="{Binding Selected}"

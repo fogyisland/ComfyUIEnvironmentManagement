@@ -4,6 +4,7 @@ using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Views;
 using Environment = ComfyUI.Manager.Models.Environment;
 
@@ -13,17 +14,23 @@ public class EnvironmentListViewModel : ViewModelBase
 {
     private readonly EnvironmentRepository _repo;
     private readonly ProcessLauncher _launcher;
+    private readonly EnvCreatorService _envCreator;
 
     public ObservableCollection<Environment> Environments { get; } = new();
     public RelayCommand RefreshCommand { get; }
     public RelayCommand StartCommand { get; }
     public RelayCommand StopCommand { get; }
     public RelayCommand ShowLogCommand { get; }
+    public RelayCommand CreateCommand { get; }
 
-    public EnvironmentListViewModel(EnvironmentRepository repo, ProcessLauncher launcher)
+    public EnvironmentListViewModel(
+        EnvironmentRepository repo,
+        ProcessLauncher launcher,
+        EnvCreatorService envCreator)
     {
         _repo = repo;
         _launcher = launcher;
+        _envCreator = envCreator;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
             async p => await StartEnvAsync(p as Environment ?? Selected),
@@ -34,6 +41,7 @@ public class EnvironmentListViewModel : ViewModelBase
         ShowLogCommand = new RelayCommand(
             p => ShowLog(p as Environment ?? Selected),
             p => (p as Environment ?? Selected)?.Status == "running");
+        CreateCommand = new RelayCommand(_ => CreateEnv());
         Load();
     }
 
@@ -104,5 +112,11 @@ public class EnvironmentListViewModel : ViewModelBase
         StartCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
         ShowLogCommand.RaiseCanExecuteChanged();
+    }
+
+    private void CreateEnv()
+    {
+        var created = Views.CreateEnvDialog.Show(_envCreator);
+        if (created is not null) Load();
     }
 }

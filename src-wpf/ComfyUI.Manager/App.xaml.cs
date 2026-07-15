@@ -42,15 +42,23 @@ public partial class App : Application
         _launcher = new ProcessLauncher(
             projectRoot, dbFactory, envRepo, processStateRepo);
 
+        var settingsRepo = new SettingsRepository();
+        var settings = settingsRepo.Load();
+
         // M5.2-T6: bulk update 在 WPF 端直接跑 git pull,git exe 优先用
         // bin/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
-        var gitExe = ResolveGitExe(projectRoot);
+        // settings.GitExe 优先,settings 是空则走默认。
+        var gitExe = !string.IsNullOrWhiteSpace(settings.GitExe)
+            ? settings.GitExe
+            : ResolveGitExe(projectRoot);
         var gitRunner = new GitRunner(gitExe);
         var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo);
+        var envCreator = new EnvCreatorService(
+            dbFactory, new VenvCreator(), new JunctionLinker(), settings);
 
-        _mainVm = new MainViewModel(dbFactory, _launcher, bulkOrchestrator, nodeOps);
+        _mainVm = new MainViewModel(dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

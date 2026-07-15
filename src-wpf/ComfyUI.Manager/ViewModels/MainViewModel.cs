@@ -12,6 +12,7 @@ public class MainViewModel : ViewModelBase
     private readonly ProcessLauncher _launcher;
     private readonly BulkUpdateOrchestrator _orchestrator;
     private readonly NodeOperations _nodeOps;
+    private readonly EnvCreatorService _envCreator;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -31,12 +32,14 @@ public class MainViewModel : ViewModelBase
         SqliteConnectionFactory dbFactory,
         ProcessLauncher launcher,
         BulkUpdateOrchestrator orchestrator,
-        NodeOperations nodeOps)
+        NodeOperations nodeOps,
+        EnvCreatorService envCreator)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
         _orchestrator = orchestrator;
         _nodeOps = nodeOps;
+        _envCreator = envCreator;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -49,7 +52,7 @@ public class MainViewModel : ViewModelBase
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new EnvironmentListView
         {
-            DataContext = new EnvironmentListViewModel(envRepo, _launcher),
+            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator),
         };
     }
 

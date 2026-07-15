@@ -33,6 +33,7 @@ public class EnvironmentListViewModelTests
         // VM can be constructed without bringing up real processes.
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -48,6 +49,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!);
 
         Assert.True(vm.StartCommand.CanExecute(vm.Environments[0]));
@@ -64,6 +66,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!);
         Assert.Single(vm.Environments);
 
