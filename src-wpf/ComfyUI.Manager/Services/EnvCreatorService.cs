@@ -32,17 +32,20 @@ public sealed class EnvCreatorService
     private readonly VenvCreator _venvCreator;
     private readonly JunctionLinker _linker;
     private readonly Models.Settings _settings;
+    private readonly string _projectRoot;
 
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
         JunctionLinker linker,
-        Models.Settings settings)
+        Models.Settings settings,
+        string projectRoot)
     {
         _dbFactory = dbFactory;
         _venvCreator = venvCreator;
         _linker = linker;
         _settings = settings;
+        _projectRoot = projectRoot;
     }
 
     public sealed class CreateEnvException : Exception
@@ -90,10 +93,12 @@ public sealed class EnvCreatorService
         // 3. 生成 env_id
         string envId = $"env-{Guid.NewGuid().ToString("N")[..8]}";
 
-        // 4. 创建 env 根目录
-        var envsDir = !string.IsNullOrWhiteSpace(_settings.EnvsDir)
-            ? _settings.EnvsDir
-            : Path.Combine(Directory.GetCurrentDirectory(), "envs");
+        // 4. 创建 env 根目录 —— _settings.EnvsDir 是相对路径(默认 "envs"),
+        // 始终相对于 _projectRoot 解析。空字符串回退到默认子目录名。
+        var envsSubdir = string.IsNullOrWhiteSpace(_settings.EnvsDir)
+            ? Infrastructure.SettingsDefaults.EnvsSubdir
+            : _settings.EnvsDir;
+        var envsDir = Path.Combine(_projectRoot, envsSubdir);
         Directory.CreateDirectory(envsDir);
         var rootPath = Path.Combine(envsDir, name);
         if (Directory.Exists(rootPath) && Directory.EnumerateFileSystemEntries(rootPath).Any())

@@ -13,27 +13,17 @@ public partial class App : Application
     private MainViewModel? _mainVm;
     private ProcessLauncher? _launcher;
 
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
         var projectRoot = Path.GetDirectoryName(
             Environment.ProcessPath)!.TrimEnd('\\');
 
-        // M5.2: WPF no longer launches a Python control service. It only
-        // verifies the bundled venv can import comfy_mgr; the UI drives
-        // everything else (env creation, config) against local SQLite +
-        // direct process control, and listens on each env's port only when
-        // that env is started.
-        var verifier = new VenvVerifier(projectRoot);
-        var result = await verifier.VerifyAsync();
-        if (!result.Ok)
-        {
-            var msg = "Venv 验证失败,WPF 仍可启动但功能受限。\n\n"
-                + result.ErrorMessage;
-            MessageBox.Show(msg, "Venv 验证失败",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
+        // M5.2: WPF 完全独立 —— 不启动任何 Python control service。
+        // 直连 SQLite + 直 Process.Start ComfyUI + 直调 git。
+        // venv 检查只在 EnvCreatorService 创建 env 时做(那时 python.exe
+        // 路径用户已指定),启动时拦着太烦。
 
         var dbFactory = new SqliteConnectionFactory();
         var envRepo = new EnvironmentRepository(dbFactory);
@@ -45,8 +35,11 @@ public partial class App : Application
         var settingsRepo = new SettingsRepository();
         var settings = settingsRepo.Load();
 
-        // 首次启动:把 path 类字段默认填到程序目录下的子文件夹,UI 一眼可见。
-        // 只填空,不覆盖用户已填值。Save 后 settings.json 自带绝对路径。
+        // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
+        // 1) 空字段 → 默认子目录名(相对)
+        // 2) 已经在 projectRoot 下的绝对路径 → 转相对(跨机器/跨盘符时
+        //    settings.json 不需重新生成)
+        // 3) 用户故意选的别处绝对路径 → 保留
         SettingsDefaults.Apply(settings, projectRoot);
         settingsRepo.Save(settings);
 
@@ -63,7 +56,7 @@ public partial class App : Application
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy);
         var envCreator = new EnvCreatorService(
-            dbFactory, new VenvCreator(), new JunctionLinker(), settings);
+            dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy);

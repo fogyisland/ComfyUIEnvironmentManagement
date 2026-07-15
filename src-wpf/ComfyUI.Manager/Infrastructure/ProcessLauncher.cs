@@ -300,7 +300,7 @@ public sealed class ProcessLauncher : IDisposable
         }
 
         // Scripts/python.exe on Windows, bin/python on Linux/macOS —
-        // 与 VenvVerifier 保持一致,避免在 WSL / macOS 开发时静默失败。
+        // 显式 OS 判定,避免在 WSL / macOS 开发时静默失败。
         var relative = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? Path.Combine("Scripts", "python.exe")
             : Path.Combine("bin", "python");
