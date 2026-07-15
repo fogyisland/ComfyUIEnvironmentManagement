@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -5,10 +6,33 @@ namespace ComfyUI.Manager.Models;
 
 public class Settings
 {
+    // —— 基础 / 显示 ——
     [JsonPropertyName("theme")] public string Theme { get; set; } = "material_purple";
     [JsonPropertyName("theme_mode")] public string ThemeMode { get; set; } = "system";
     [JsonPropertyName("language")] public string Language { get; set; } = "zh_CN";
     [JsonPropertyName("catalog_auto_refresh")] public bool CatalogAutoRefresh { get; set; }
     [JsonPropertyName("catalog_cache_ttl_minutes")] public int CatalogCacheTtlMinutes { get; set; } = 60;
     [JsonPropertyName("compat_api_base_url")] public string CompatApiBaseUrl { get; set; } = "";
+
+    // —— 路径 ——
+    [JsonPropertyName("template_python_dir")] public string TemplatePythonDir { get; set; } = "";
+    [JsonPropertyName("template_comfyui_dir")] public string TemplateComfyuiDir { get; set; } = "";
+    [JsonPropertyName("envs_dir")] public string EnvsDir { get; set; } = "";
+    [JsonPropertyName("global_nodes_dir")] public string GlobalNodesDir { get; set; } = "";
+
+    // —— 环境 / 工具 ——
+    [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
+    [JsonPropertyName("git_exe")] public string GitExe { get; set; } = "";
+    [JsonPropertyName("git_proxy_url")] public string GitProxyUrl { get; set; } = "";
+    [JsonPropertyName("git_proxy_port")] public int GitProxyPort { get; set; }
+
+    // —— 高级:用户自定义 path 表(key=name,value=path)——
+    [JsonPropertyName("extra_paths")] public List<ExtraPath> ExtraPaths { get; set; } = new();
 }
+
+public class ExtraPath
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("path")] public string Path { get; set; } = "";
+}
+

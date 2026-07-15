@@ -1,19 +1,149 @@
 <UserControl x:Class="ComfyUI.Manager.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <StackPanel Margin="16" MaxWidth="500" HorizontalAlignment="Left">
-        <TextBlock Text="语言" Margin="0,8,0,4" />
-        <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" />
-        <TextBlock Text="主题模式" Margin="0,8,0,4" />
-        <ComboBox ItemsSource="{Binding ThemeModes}" SelectedItem="{Binding ThemeMode}" />
-        <TextBlock Text="Catalog 缓存 TTL(分钟)" Margin="0,8,0,4" />
-        <TextBox Text="{Binding CacheTtlMinutes, UpdateSourceTrigger=PropertyChanged}"
-                 Style="{StaticResource MaterialTextBox}" />
-        <TextBlock Text="外部冲突 API URL" Margin="0,8,0,4" />
-        <TextBox Text="{Binding CompatApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
-                 Style="{StaticResource MaterialTextBox}" />
-        <Button Content="检查更新" Margin="0,16,0,0"
-                Command="{Binding CheckUpdateCommand}"
-                Style="{StaticResource MaterialButton}" />
-    </StackPanel>
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:ComfyUI.Manager.Views"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="16" MaxWidth="640" HorizontalAlignment="Left">
+
+            <!-- ============ 基础 ============ -->
+            <TextBlock Text="基础" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+            <TextBlock Text="语言" Margin="0,8,0,4" />
+            <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}"
+                      Width="240" HorizontalAlignment="Left" />
+            <TextBlock Text="主题模式" Margin="0,8,0,4" />
+            <ComboBox ItemsSource="{Binding ThemeModes}" SelectedItem="{Binding ThemeMode}"
+                      Width="240" HorizontalAlignment="Left" />
+            <TextBlock Text="Catalog 缓存 TTL(分钟)" Margin="0,8,0,4" />
+            <TextBox Text="{Binding CacheTtlMinutes, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource MaterialTextBox}" Width="240"
+                     HorizontalAlignment="Left" />
+            <TextBlock Text="外部冲突 API URL" Margin="0,8,0,4" />
+            <TextBox Text="{Binding CompatApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource MaterialTextBox}" Width="480"
+                     HorizontalAlignment="Left" />
+
+            <!-- ============ 路径 ============ -->
+            <TextBlock Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+
+            <TextBlock Text="模板 Python 目录(内含 3.10/3.11/.../python.exe)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseTemplatePython"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding TemplatePythonDir, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
+            <TextBlock Text="模板 ComfyUI 目录(shared 源)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseTemplateComfyui"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding TemplateComfyuiDir, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
+            <TextBlock Text="虚拟环境目录(env 创建时放这里)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseEnvsDir"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding EnvsDir, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
+            <TextBlock Text="base 节点目录(全局 catalog 节点)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseGlobalNodesDir"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding GlobalNodesDir, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
+            <!-- ============ 环境 / 工具 ============ -->
+            <TextBlock Text="环境 / 工具" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+
+            <TextBlock Text="venv baseline Python(virtualenv 创建时使用)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowsePythonVenvBaseline"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding PythonVenvBaseline, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
+            <TextBlock Text="git.exe 路径(留空走 PATH 默认)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseGitExe"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding GitExe, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
+            <TextBlock Text="git 代理" Margin="0,8,0,4" />
+            <Grid Margin="0,2,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="120" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0"
+                         Text="{Binding GitProxyUrl, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+                <TextBox Grid.Column="2"
+                         Text="{Binding GitProxyPort, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </Grid>
+
+            <!-- ============ 高级:额外 paths 表格 ============ -->
+            <TextBlock Text="高级 — 额外路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <ItemsControl ItemsSource="{Binding ExtraPaths}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource MaterialTextBox}" Margin="0,0,4,0" />
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource MaterialTextBox}" />
+                            <Button Grid.Column="2" Content="浏览..." Margin="4,0,0,0"
+                                    Click="BrowseExtraPath"
+                                    DataContext="{Binding}"
+                                    Tag="{Binding}"
+                                    Style="{StaticResource MaterialButton}" />
+                            <Button Grid.Column="3" Content="删除" Margin="4,0,0,0"
+                                    Command="{Binding DataContext.RemoveExtraPathCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Style="{StaticResource MaterialButton}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="+ 添加路径" Margin="0,8,0,0"
+                    Command="{Binding AddExtraPathCommand}"
+                    Style="{StaticResource MaterialButton}"
+                    HorizontalAlignment="Left" />
+
+            <!-- ============ 底部 ============ -->
+            <Button Content="检查更新" Margin="0,32,0,16"
+                    Command="{Binding CheckUpdateCommand}"
+                    Style="{StaticResource MaterialButton}"
+                    HorizontalAlignment="Left" />
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>
