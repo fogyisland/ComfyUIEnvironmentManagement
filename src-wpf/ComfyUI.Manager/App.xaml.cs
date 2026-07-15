@@ -45,6 +45,11 @@ public partial class App : Application
         var settingsRepo = new SettingsRepository();
         var settings = settingsRepo.Load();
 
+        // 首次启动:把 path 类字段默认填到程序目录下的子文件夹,UI 一眼可见。
+        // 只填空,不覆盖用户已填值。Save 后 settings.json 自带绝对路径。
+        SettingsDefaults.Apply(settings, projectRoot);
+        settingsRepo.Save(settings);
+
         // M5.2-T6: bulk update 在 WPF 端直接跑 git pull,git exe 优先用
         // bin/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
         // settings.GitExe 优先,settings 是空则走默认。
