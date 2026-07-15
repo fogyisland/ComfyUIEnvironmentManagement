@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Infrastructure;
 
 namespace ComfyUI.Manager.Services;
 
@@ -13,21 +14,25 @@ namespace ComfyUI.Manager.Services;
 /// - 复用同一份 ProcessStartInfo 模板,只换 workdir 与 args
 /// - timeout / cancellation 由 caller 通过 CancellationToken 传入(由 caller 决定上限)
 /// - 返回 GitResult(exitCode / stdout / stderr),不抛异常 —— caller 按 ExitCode 决定怎么走
-/// - 不动 PATH / 环境变量;git exe 路径由 caller 解析(portable / system git)
+/// - 不动 PATH / 系统环境变量;git exe 路径由 caller 解析(portable / system git)
+/// - 代理:每次 RunAsync 读 live GitProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
+///   写到 psi.EnvironmentVariables(per-process,不污染整个 WPF)
 /// </summary>
 public sealed class GitRunner
 {
     private readonly string _gitExe;
+    private readonly GitProxyConfig? _proxy;
 
     public string GitExe => _gitExe;
 
-    public GitRunner(string gitExe)
+    public GitRunner(string gitExe, GitProxyConfig? proxy = null)
     {
         if (string.IsNullOrWhiteSpace(gitExe))
         {
             throw new ArgumentException("gitExe 不能为空", nameof(gitExe));
         }
         _gitExe = gitExe;
+        _proxy = proxy;
     }
 
     /// <summary>
@@ -59,6 +64,8 @@ public sealed class GitRunner
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
+        // 代理:启用时把 HTTP_PROXY/HTTPS_PROXY 注入到这一个 psi(per-process)。
+        _proxy?.ApplyTo(psi);
         foreach (var a in args)
         {
             psi.ArgumentList.Add(a);

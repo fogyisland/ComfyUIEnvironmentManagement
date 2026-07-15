@@ -25,6 +25,7 @@ public class Settings
     [JsonPropertyName("git_exe")] public string GitExe { get; set; } = "";
     [JsonPropertyName("git_proxy_url")] public string GitProxyUrl { get; set; } = "";
     [JsonPropertyName("git_proxy_port")] public int GitProxyPort { get; set; }
+    [JsonPropertyName("git_proxy_enabled")] public bool GitProxyEnabled { get; set; }
 
     // —— 高级:用户自定义 path 表(key=name,value=path)——
     [JsonPropertyName("extra_paths")] public List<ExtraPath> ExtraPaths { get; set; } = new();

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using Microsoft.Win32;
 
@@ -10,11 +11,13 @@ namespace ComfyUI.Manager.ViewModels;
 public class SettingsViewModel : ViewModelBase
 {
     private readonly SettingsRepository _repo;
+    private readonly GitProxyConfig _proxy;
     private Settings _settings;
 
-    public SettingsViewModel(SettingsRepository repo)
+    public SettingsViewModel(SettingsRepository repo, GitProxyConfig proxy)
     {
         _repo = repo;
+        _proxy = proxy;
         _settings = _repo.Load();
         ExtraPaths = new ObservableCollection<ExtraPath>(_settings.ExtraPaths);
         ExtraPaths.CollectionChanged += (_, _) =>
@@ -90,13 +93,38 @@ public class SettingsViewModel : ViewModelBase
     }
     public string GitProxyUrl
     {
-        get => _settings.GitProxyUrl;
-        set { _settings.GitProxyUrl = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        // getter/setter 都双写:_settings(持久化) + _proxy(运行期 live)。
+        // 让 git 代理开关能即时生效,不用重启。
+        get => _proxy.Url;
+        set
+        {
+            _proxy.Url = value;
+            _settings.GitProxyUrl = value;
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
     }
     public int GitProxyPort
     {
-        get => _settings.GitProxyPort;
-        set { _settings.GitProxyPort = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        get => _proxy.Port;
+        set
+        {
+            _proxy.Port = value;
+            _settings.GitProxyPort = value;
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
+    }
+    public bool GitProxyEnabled
+    {
+        get => _proxy.Enabled;
+        set
+        {
+            _proxy.Enabled = value;
+            _settings.GitProxyEnabled = value;
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
     }
 
     // —— 高级:用户自定义 path 表 ——
@@ -141,5 +169,6 @@ public class SettingsViewModel : ViewModelBase
         RaisePropertyChanged(nameof(GitExe));
         RaisePropertyChanged(nameof(GitProxyUrl));
         RaisePropertyChanged(nameof(GitProxyPort));
+        RaisePropertyChanged(nameof(GitProxyEnabled));
     }
 }

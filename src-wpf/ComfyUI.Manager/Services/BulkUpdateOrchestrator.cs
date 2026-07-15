@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using Environment = ComfyUI.Manager.Models.Environment;
 
@@ -22,6 +23,8 @@ namespace ComfyUI.Manager.Services;
 /// - 取消:Caller 通过传入的 CancellationToken 或调用本类的 CancelAsync()
 ///   取消,已发出的 Progress 行保留 terminal 状态,未发出的不再发出。
 /// - 日志:每个 bulk run 一个 &lt;projectRoot&gt;/logs/bulk-update-&lt;bulkId&gt;.log。
+/// - 代理:每次 git 调用读 live GitProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
+///   写到 psi.EnvironmentVariables(per-process,不污染整个 WPF)。
 /// </summary>
 public sealed class BulkUpdateOrchestrator
 {
@@ -31,6 +34,7 @@ public sealed class BulkUpdateOrchestrator
     private readonly string _gitExe;
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeRepository _nodeRepo;
+    private readonly GitProxyConfig? _proxy;
 
     private CancellationTokenSource? _runCts;
     private readonly object _runLock = new();
@@ -58,7 +62,8 @@ public sealed class BulkUpdateOrchestrator
         string projectRoot,
         string gitExe,
         EnvironmentRepository envRepo,
-        NodeRepository nodeRepo)
+        NodeRepository nodeRepo,
+        GitProxyConfig? proxy = null)
     {
         if (string.IsNullOrWhiteSpace(projectRoot))
         {
@@ -72,6 +77,7 @@ public sealed class BulkUpdateOrchestrator
         _gitExe = gitExe;
         _envRepo = envRepo;
         _nodeRepo = nodeRepo;
+        _proxy = proxy;
     }
 
     /// <summary>
@@ -292,6 +298,8 @@ public sealed class BulkUpdateOrchestrator
             CreateNoWindow = true,
             WorkingDirectory = nodeDir,
         };
+        // 代理:启用时把 HTTP_PROXY/HTTPS_PROXY 注入到这一个 psi(per-process)。
+        _proxy?.ApplyTo(psi);
         psi.ArgumentList.Add("-C");
         psi.ArgumentList.Add(nodeDir);
         psi.ArgumentList.Add("pull");

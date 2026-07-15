@@ -13,6 +13,8 @@ public class MainViewModel : ViewModelBase
     private readonly BulkUpdateOrchestrator _orchestrator;
     private readonly NodeOperations _nodeOps;
     private readonly EnvCreatorService _envCreator;
+    private readonly SettingsRepository _settingsRepo;
+    private readonly GitProxyConfig _gitProxy;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -33,13 +35,17 @@ public class MainViewModel : ViewModelBase
         ProcessLauncher launcher,
         BulkUpdateOrchestrator orchestrator,
         NodeOperations nodeOps,
-        EnvCreatorService envCreator)
+        EnvCreatorService envCreator,
+        SettingsRepository settingsRepo,
+        GitProxyConfig gitProxy)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
         _orchestrator = orchestrator;
         _nodeOps = nodeOps;
         _envCreator = envCreator;
+        _settingsRepo = settingsRepo;
+        _gitProxy = gitProxy;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -68,10 +74,9 @@ public class MainViewModel : ViewModelBase
 
     private void ShowSettings()
     {
-        var settingsRepo = new SettingsRepository();
         CurrentView = new SettingsView
         {
-            DataContext = new SettingsViewModel(settingsRepo),
+            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy),
         };
     }
 

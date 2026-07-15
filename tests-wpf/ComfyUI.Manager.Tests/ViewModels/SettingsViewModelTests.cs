@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
 
@@ -32,7 +33,7 @@ public class SettingsViewModelTests : IDisposable
             CatalogCacheTtlMinutes = 120,
         });
 
-        var vm = new SettingsViewModel(new SettingsRepository(_path));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
 
         Assert.Equal("en_US", vm.Language);
         Assert.Equal("dark", vm.ThemeMode);
@@ -42,7 +43,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void LanguageSet_PersistsToFile()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
         vm.Language = "en_US";
 
         var reloaded = new SettingsRepository(_path).Load();

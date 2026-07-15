@@ -51,14 +51,17 @@ public partial class App : Application
         var gitExe = !string.IsNullOrWhiteSpace(settings.GitExe)
             ? settings.GitExe
             : ResolveGitExe(projectRoot);
-        var gitRunner = new GitRunner(gitExe);
+        // 共享同一份 GitProxyConfig,SettingsViewModel 改它会立即影响下一次 git 调用。
+        var gitProxy = GitProxyConfig.From(settings);
+        var gitRunner = new GitRunner(gitExe, gitProxy);
         var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
-            projectRoot, gitExe, envRepo, nodeRepo);
+            projectRoot, gitExe, envRepo, nodeRepo, gitProxy);
         var envCreator = new EnvCreatorService(
             dbFactory, new VenvCreator(), new JunctionLinker(), settings);
 
-        _mainVm = new MainViewModel(dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator);
+        _mainVm = new MainViewModel(
+            dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

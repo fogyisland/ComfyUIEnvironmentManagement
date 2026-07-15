@@ -88,7 +88,10 @@
             </DockPanel>
 
             <TextBlock Text="git 代理" Margin="0,8,0,4" />
-            <Grid Margin="0,2,0,0">
+            <CheckBox Content="启用代理(只作用于本应用的 git 调用)"
+                      IsChecked="{Binding GitProxyEnabled}"
+                      Margin="0,0,0,4" />
+            <Grid Margin="0,2,0,0" IsEnabled="{Binding GitProxyEnabled}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="8" />
