@@ -41,12 +41,15 @@ if (-not (Test-Path "$Root/python")) {
 }
 Copy-Item -Recurse -Force "$Root/python" (Join-Path $AppDir "python")
 
-# 5. 复制 git-portable(可选,缺失会回落到 PATH 的 git)
-Write-Host "[5/6] Copying git-portable (if present)..." -ForegroundColor Yellow
-if (Test-Path "$Root/bin/git-portable") {
-    New-Item -ItemType Directory -Path (Join-Path $AppDir "bin") | Out-Null
-    Copy-Item -Recurse -Force "$Root/bin/git-portable" (Join-Path $AppDir "bin/git-portable")
+# 5. git-portable:缺失则 fetch,再复制到 zip
+Write-Host "[5/6] Ensuring git-portable..." -ForegroundColor Yellow
+if (-not (Test-Path "$Root/bin/git-portable/cmd/git.exe")) {
+    Write-Host "  git-portable missing, fetching..." -ForegroundColor Yellow
+    & "$Root/scripts/fetch_git_portable.ps1" -ProjectRoot $Root
+    if ($LASTEXITCODE -ne 0) { throw "fetch_git_portable.ps1 failed" }
 }
+New-Item -ItemType Directory -Path (Join-Path $AppDir "bin") | Out-Null
+Copy-Item -Recurse -Force "$Root/bin/git-portable" (Join-Path $AppDir "bin/git-portable")
 
 # 6. docs + logs dir + zip
 Write-Host "[6/6] Finalizing + compressing..." -ForegroundColor Yellow
