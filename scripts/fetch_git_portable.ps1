@@ -31,8 +31,14 @@ $Url = "https://github.com/git-for-windows/git/releases/download/$Tag/$ZipName"
 $TempZip = Join-Path $env:TEMP $ZipName
 
 Write-Host "[fetch] Downloading $Url" -ForegroundColor Yellow
-Invoke-WebRequest -Uri $Url -OutFile $TempZip -UseBasicParsing
-if ($LASTEXITCODE -ne 0) { throw "MinGit download failed" }
+try {
+    Invoke-WebRequest -Uri $Url -OutFile $TempZip -UseBasicParsing
+} catch {
+    throw "MinGit download failed: $($_.Exception.Message)"
+}
+if (-not (Test-Path $TempZip) -or (Get-Item $TempZip).Length -lt 1MB) {
+    throw "MinGit download did not produce a valid file at $TempZip"
+}
 
 # 3. 解压到 bin/git-portable/(先清旧内容)
 if (Test-Path $GitPortableDir) { Remove-Item -Recurse -Force $GitPortableDir }
