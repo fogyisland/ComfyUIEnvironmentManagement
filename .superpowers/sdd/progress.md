@@ -276,3 +276,38 @@ User has not yet chosen. Default leaning: option 1 (faster, aligns with
 "no rebuild when version unchanged" preference) — but the 3 commits
 add real user-facing functionality (env create, git proxy), so
 option 2 is the honest answer. Ask user.
+
+## v0.6.1 release (2026-07-16) — closed
+
+**Decision:** v0.6.1 rebuild path (option 2 above). v0.6.0 zip on
+disk was built before the 8 hotfix commits, so uploading it would
+have shipped stale binaries. User picked the honest option.
+
+**Flow:**
+1. Bump version literals 0.6.0 → 0.6.1 in 5 files
+   (pyproject.toml + src/comfy_mgr/__init__.py + shared/errors.json
+   + ComfyUI.Manager.csproj + tests/test_version_consistency.py).
+   3/3 version consistency tests PASS.
+2. `scripts/build_release.ps1 -Version 0.6.1` →
+   `release/ComfyUI-Manager-v0.6.1-win-x64.zip` (215.2 MB).
+   Verified DLLs in zip match build output (timestamp + size).
+3. Write `release/RELEASE-NOTES-v0.6.1.md` (78 lines, 8 commits
+   listed with one-line description + upgrade notes + carry-over).
+4. Commit `ae7a70b` (bump) + commit `c200b0c` (release notes).
+5. `git push origin main` + `git push origin v0.6.1` (new tag).
+6. `gh release create v0.6.1 release/ComfyUI-Manager-v0.6.1-win-x64.zip
+   --notes-file release/RELEASE-NOTES-v0.6.1.md --title "v0.6.1 — Post-release hotfixes (8 commits)"`
+   → https://github.com/fogyisland/ComfyUIEnvironmentManagement/releases/tag/v0.6.1
+7. `gh release list` confirms v0.6.1 is **Latest**.
+
+**8 commits since v0.6.0 (all in v0.6.1 release notes):**
+- e877812 SettingsDefaults 不再自动填默认值
+- 5313333 relative settings paths + EnvCreatorService takes projectRoot
+- dda64f3 drop startup venv pre-check
+- 311970d default Settings paths to program-root subfolders
+- 497a817 git proxy — explicit enable checkbox + per-process env vars
+- bb5d0ff extend Settings — paths / git exe / proxy URL/port / extra paths
+- dd5458b M5.2 hotfix — Env Create flow on WPF side
+- (plus bump commit ae7a70b + release notes commit c200b0c)
+
+**Status: project fully closed for v0.6.1. No further work pending.**
