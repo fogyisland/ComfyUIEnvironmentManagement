@@ -10,15 +10,34 @@ public class SettingsDefaultsTests
     private const string ProjectRoot = @"D:\ToolDevelop\ComfyUI";
 
     [Fact]
-    public void Apply_EmptyFieldsStayEmpty()
+    public void Apply_TemplatePythonDir_EmptyDefaultsToPython()
     {
-        // 不主动填默认值 —— 路径没填就保持空,由服务层在使用时报错引导用户配置。
+        // template paths:空字段填默认子目录名(指向 package 自带的 portable python/)
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("", s.TemplatePythonDir);
-        Assert.Equal("", s.TemplateComfyuiDir);
+        Assert.Equal("python", s.TemplatePythonDir);
+    }
+
+    [Fact]
+    public void Apply_TemplateComfyuiDir_EmptyDefaultsToComfyUI()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("ComfyUI", s.TemplateComfyuiDir);
+    }
+
+    [Fact]
+    public void Apply_UserConfiguredPaths_EmptyStaysEmpty()
+    {
+        // EnvsDir / GlobalNodesDir 默认保持空(用户主动管理,服务层在使用时报错)
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
         Assert.Equal("", s.EnvsDir);
         Assert.Equal("", s.GlobalNodesDir);
     }
@@ -31,14 +50,15 @@ public class SettingsDefaultsTests
         {
             TemplatePythonDir = "E:\\my-python",
             EnvsDir = "my-envs",
+            GlobalNodesDir = "shared-nodes",
         };
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal("E:\\my-python", s.TemplatePythonDir);
         Assert.Equal("my-envs", s.EnvsDir);
-        Assert.Equal("", s.TemplateComfyuiDir);   // 空字段保持空
-        Assert.Equal("", s.GlobalNodesDir);      // 空字段保持空
+        Assert.Equal("shared-nodes", s.GlobalNodesDir);
+        Assert.Equal("ComfyUI", s.TemplateComfyuiDir);   // 空字段填默认
     }
 
     [Fact]
@@ -69,21 +89,6 @@ public class SettingsDefaultsTests
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal(@"E:\external\envs", s.EnvsDir);
-    }
-
-    [Fact]
-    public void Apply_TreatsWhitespaceAsEmpty()
-    {
-        var s = new Settings
-        {
-            TemplatePythonDir = "   ",
-            EnvsDir = "\t",
-        };
-
-        SettingsDefaults.Apply(s, ProjectRoot);
-
-        Assert.Equal("   ", s.TemplatePythonDir); // whitespace 视为空,保持原样
-        Assert.Equal("\t", s.EnvsDir);
     }
 
     [Fact]
