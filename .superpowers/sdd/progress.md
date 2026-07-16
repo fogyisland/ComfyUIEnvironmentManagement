@@ -311,3 +311,55 @@ have shipped stale binaries. User picked the honest option.
 - (plus bump commit ae7a70b + release notes commit c200b0c)
 
 **Status: project fully closed for v0.6.1. No further work pending.**
+
+## v0.6.2 release (2026-07-16) — closed
+
+**Trigger:** v0.6.1 zip did NOT contain `bin/git-portable/` (gitignored
+empty dir at build time). User asked "把 git 也下载到当前目录下,不需要再安装"
++ "template path 默认在当前的包的根目录下,不需要跑到额外的地方".
+
+**Fixes (3 commits since v0.6.1):**
+- **77fb63c** `feat(wpf): template paths 默认填 package root 子目录名`
+  - `SettingsDefaults.cs`: split into `Resolve` (空→默认 + migrate) and
+    `MigrateOnly` (only migrate). Template paths (TemplatePythonDir,
+    TemplateComfyuiDir) default-fill `python` / `ComfyUI`; user-configured
+    paths (EnvsDir, GlobalNodesDir) stay empty (validated at use-time).
+- **f1734e9** `feat(scripts): git-portable fetcher + auto-fetch on release build`
+  - New `scripts/fetch_git_portable.ps1`: downloads MinGit-*-64-bit.zip
+    from git-for-windows releases into `bin/git-portable/`. Idempotent
+    (skip if exists + `--version` passes).
+  - `scripts/build_release.ps1` step [5/6] changed from "if present,
+    copy" to "ensure + copy": missing → auto-fetch. Build flow is
+    now self-contained.
+- **787703c** `fix(scripts): fetcher 改用 try/catch + 文件大小校验`
+  - `$LASTEXITCODE` was 0 even when `Invoke-WebRequest` errored, so
+    the original fetch check didn't catch failures. Replaced with
+    try/catch + `(Get-Item $TempZip).Length -lt 1MB` sanity check.
+
+**Flow:**
+1. Bump version literals 0.6.1 → 0.6.2 in 5 files (3/3 consistency tests PASS).
+2. Write `release/RELEASE-NOTES-v0.6.2.md` (53 lines).
+3. `scripts/build_release.ps1 -Version 0.6.2` →
+   `release/ComfyUI-Manager-v0.6.2-win-x64.zip` (253.9 MB).
+   +28.4 MB vs v0.6.1 = git-portable 89.5 MB compressed delta.
+   Verified `bin/git-portable/` is in zip: 380 entries, 89.53 MB
+   uncompressed, `cmd/git.exe` (47 KB stub) + `mingw64/bin/git.exe` (4.18 MB).
+4. Commit `564c481` (bump) + commit `0e3af36` (release notes).
+5. `git push origin main` (58642ac..0e3af36) + `git push origin v0.6.2`.
+6. `gh release create v0.6.2 release/ComfyUI-Manager-v0.6.2-win-x64.zip
+   --notes-file release/RELEASE-NOTES-v0.6.2.md --title "v0.6.2 — Bundle git-portable + template path defaults"`
+   → https://github.com/fogyisland/ComfyUIEnvironmentManagement/releases/tag/v0.6.2
+7. `gh release list` confirms v0.6.2 is **Latest**.
+
+**WPF tests:** 45/45 PASS (8 SettingsDefaultsTests covering selective defaults).
+
+**Known carry-over (non-blocking):**
+- 4 pre-existing M4 `_on_push_sync` silent-drop WS integration tests still fail (M5.2 deleted Python WS server, these tests have no code to exercise — defer to M6+ cleanup).
+- Existing settings.json `EnvsDir = "envs"` / `TemplatePythonDir = "template-python"` not auto-migrated (selective defaults only fill EMPTY fields). User must manually edit.
+
+**Gotcha:**
+- MinGit `cmd/git.exe` is a stub (~47 KB) that calls `mingw64/bin/git.exe` (~4.18 MB). When verifying zip contents, the small `cmd/git.exe` size is expected — MinGit's official layout.
+- `bin/git-portable/` is gitignored (`**/bin/`), so `git status` won't show it. Verify with `bin/git-portable/cmd/git.exe --version`.
+- `Invoke-WebRequest -OutFile` in some proxy scenarios leaves `$LASTEXITCODE` at 0 even on error → always use try/catch + size sanity check for download scripts.
+
+**Status: project fully closed for v0.6.2. No further work pending.**
