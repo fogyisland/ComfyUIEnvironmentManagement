@@ -54,7 +54,7 @@ WPF Catalog 页面三项 UX 改造 + 一项架构调整:
 - 空状态文案:根据 `IsBusy` / `ErrorMessage` / `HasEntries` 三态显示 "暂无数据,正在自动加载..." / "加载失败: {message},点 刷新 重试" / "暂无数据"
 - `catalog_cache` 表从 `%APPDATA%/catalog.db` 拆分到 `<AppBaseDir>/data/catalog-cache.db`,新 db 文件首次创建时自动 init schema(`CREATE TABLE IF NOT EXISTS catalog_cache ...`)
 - `Settings` 加 `CatalogViewMode` 枚举字段 + `CatalogPageSize` int 字段;`SettingsDefaults.Apply` 默认 `List` / 20
-- 现有 74 个 WPF tests 不掉(改 2 个 + 加 4-5 个,总 78-80 个)
+- 现有 74 个 WPF tests 不掉(改 2 个 + 加 7-8 个,总 81-82 个)
 - 改完后 `dotnet test` 全绿,`dotnet build` 0 警告 0 错误
 
 ### 1.2 非目标(明确不做)
@@ -207,15 +207,12 @@ UserControl
 │   ├── ProgressBar IsBusy=True 时显示 (Visibility 由 converter 控)
 │   └── TextBlock ErrorMessage (红色,可选显示)
 │
-├── ContentControl Content={Binding PagedEntries}
-│   │ (注: 实际用 ItemsControl, PagedEntries 是 ObservableCollection<CatalogEntry>)
-│   │
-│   ├── ItemsControl (List 模式时激活) Visibility={Binding IsListMode, Converter=BoolToVis}
-│   │   └── DataGrid + 现有 5 列(包名/作者/⭐/说明/操作)
-│   │
-│   └── ItemsControl (Tile 模式时激活) Visibility={Binding IsTileMode, Converter=BoolToVis}
-│       └── ItemsPanelTemplate: WrapPanel
-│       └── ItemTemplate: 详细卡片 StackPanel (320 宽, 圆角 8, 边距 8)
+├── ItemsControl (List 模式时激活) Visibility={Binding IsListMode, Converter=BoolToVis}
+│   └── DataGrid + 现有 5 列(包名/作者/⭐/说明/操作)
+│
+├── ItemsControl (Tile 模式时激活) Visibility={Binding IsTileMode, Converter=BoolToVis}
+│   └── ItemsPanelTemplate: WrapPanel
+│   └── ItemTemplate: 详细卡片 StackPanel (320 宽, 圆角 8, 边距 8)
 │
 ├── TextBlock 空状态 (Visibility={Binding !HasEntries, Converter=BoolToVis})
 │   └── Text 三态: "暂无数据,正在自动加载..." / "加载失败: {msg},点 刷新 重试" / "暂无数据"
