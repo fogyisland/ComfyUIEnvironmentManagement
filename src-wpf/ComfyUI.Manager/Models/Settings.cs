@@ -29,6 +29,16 @@ public class Settings
 
     // —— 高级:用户自定义 path 表(key=name,value=path)——
     [JsonPropertyName("extra_paths")] public List<ExtraPath> ExtraPaths { get; set; } = new();
+
+    // —— 节点源(查询/下载):两个列表 + 两个 active 名称 ——
+    [JsonPropertyName("query_sources")]
+    public List<NodeSource> QuerySources { get; set; } = new();
+    [JsonPropertyName("download_sources")]
+    public List<NodeSource> DownloadSources { get; set; } = new();
+    [JsonPropertyName("active_query_source_name")]
+    public string ActiveQuerySourceName { get; set; } = "";
+    [JsonPropertyName("active_download_source_name")]
+    public string ActiveDownloadSourceName { get; set; } = "";
 }
 
 public class ExtraPath

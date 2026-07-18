@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using ComfyUI.Manager.Models;
 
@@ -32,6 +33,11 @@ public static class SettingsDefaults
     public const string TemplateComfyuiSubdir = "ComfyUI";
     public const string EnvsSubdir = "envs";
     public const string GlobalNodesSubdir = "global-nodes";
+    public const string DefaultQuerySourceName = "comfyui manager";
+    public const string DefaultQuerySourceUrl =
+        "https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json";
+    public const string DefaultDownloadSourceName = "comfyui manager";
+    public const string DefaultDownloadSourceUrl = "https://github.com/comfyanonymous/{node}";
 
     /// <summary>
     /// template paths 空时填默认值(子目录名);user-configured paths 空时保持空。
@@ -51,6 +57,30 @@ public static class SettingsDefaults
         s.TemplateComfyuiDir = Resolve(s.TemplateComfyuiDir, TemplateComfyuiSubdir, projectRoot);
         s.EnvsDir = MigrateOnly(s.EnvsDir, projectRoot);
         s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
+
+        // 节点源:空列表 → 装默认 "comfyui manager";空 active → 回落到列表第一条
+        if (s.QuerySources is null || s.QuerySources.Count == 0)
+        {
+            s.QuerySources = new List<NodeSource>
+            {
+                new() { Name = DefaultQuerySourceName, Url = DefaultQuerySourceUrl },
+            };
+        }
+        if (s.DownloadSources is null || s.DownloadSources.Count == 0)
+        {
+            s.DownloadSources = new List<NodeSource>
+            {
+                new() { Name = DefaultDownloadSourceName, Url = DefaultDownloadSourceUrl },
+            };
+        }
+        if (string.IsNullOrWhiteSpace(s.ActiveQuerySourceName))
+        {
+            s.ActiveQuerySourceName = s.QuerySources[0].Name;
+        }
+        if (string.IsNullOrWhiteSpace(s.ActiveDownloadSourceName))
+        {
+            s.ActiveDownloadSourceName = s.DownloadSources[0].Name;
+        }
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
@@ -111,5 +112,69 @@ public class SettingsDefaultsTests
 
         Assert.Equal("envs", s.EnvsDir);
         Assert.Equal("..\\external-python", s.TemplatePythonDir);
+    }
+
+    [Fact]
+    public void Apply_QuerySources_EmptyGetsDefault()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Single(s.QuerySources);
+        Assert.Equal("comfyui manager", s.QuerySources[0].Name);
+        Assert.Equal(SettingsDefaults.DefaultQuerySourceUrl, s.QuerySources[0].Url);
+    }
+
+    [Fact]
+    public void Apply_DownloadSources_EmptyGetsDefault()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Single(s.DownloadSources);
+        Assert.Equal("comfyui manager", s.DownloadSources[0].Name);
+        Assert.Equal(SettingsDefaults.DefaultDownloadSourceUrl, s.DownloadSources[0].Url);
+    }
+
+    [Fact]
+    public void Apply_ActiveQuerySourceName_EmptyFallbacksToFirst()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("comfyui manager", s.ActiveQuerySourceName);
+    }
+
+    [Fact]
+    public void Apply_ActiveDownloadSourceName_EmptyFallbacksToFirst()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("comfyui manager", s.ActiveDownloadSourceName);
+    }
+
+    [Fact]
+    public void Apply_ExistingQuerySources_NotOverwritten()
+    {
+        // 用户已有自定义 query sources → 不覆盖
+        var s = new Settings
+        {
+            QuerySources = new List<NodeSource>
+            {
+                new() { Name = "my-mirror", Url = "https://my-mirror/catalog.json" },
+            },
+            ActiveQuerySourceName = "my-mirror",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Single(s.QuerySources);
+        Assert.Equal("my-mirror", s.QuerySources[0].Name);
+        Assert.Equal("my-mirror", s.ActiveQuerySourceName);
     }
 }
