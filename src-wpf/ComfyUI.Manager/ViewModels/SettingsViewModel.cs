@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Linq;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
@@ -14,21 +16,124 @@ public class SettingsViewModel : ViewModelBase
     private readonly GitProxyConfig _proxy;
     private Settings _settings;
 
+    private bool _isAddQuerySourceOpen;
+    private bool _isAddDownloadSourceOpen;
+    private string _newQuerySourceName = "";
+    private string _newQuerySourceUrl = "";
+    private string _newDownloadSourceName = "";
+    private string _newDownloadSourceUrl = "";
+
     public SettingsViewModel(SettingsRepository repo, GitProxyConfig proxy)
     {
         _repo = repo;
         _proxy = proxy;
         _settings = _repo.Load();
+        // 首次启动/无 settings.json 时把默认值(node source 列表 + active 名)填上。
+        // 生产环境 App.xaml.cs 也会 Apply,这里再 Apply 一次保证测试直构造 VM
+        // 时也能拿到默认值(幂等:已存在的非空列表/active 名不会被覆盖)。
+        SettingsDefaults.Apply(_settings, AppContext.BaseDirectory);
+        _repo.Save(_settings);
         ExtraPaths = new ObservableCollection<ExtraPath>(_settings.ExtraPaths);
         ExtraPaths.CollectionChanged += (_, _) =>
         {
             _settings.ExtraPaths = new List<ExtraPath>(ExtraPaths);
             _repo.Save(_settings);
         };
+        QuerySources = new ObservableCollection<NodeSource>(_settings.QuerySources);
+        QuerySources.CollectionChanged += (_, _) =>
+        {
+            _settings.QuerySources = new List<NodeSource>(QuerySources);
+            _repo.Save(_settings);
+            RaisePropertyChanged(nameof(ActiveQuerySource));
+        };
+        DownloadSources = new ObservableCollection<NodeSource>(_settings.DownloadSources);
+        DownloadSources.CollectionChanged += (_, _) =>
+        {
+            _settings.DownloadSources = new List<NodeSource>(DownloadSources);
+            _repo.Save(_settings);
+            RaisePropertyChanged(nameof(ActiveDownloadSource));
+        };
         AddExtraPathCommand = new RelayCommand(_ => ExtraPaths.Add(new ExtraPath()));
         RemoveExtraPathCommand = new RelayCommand(p =>
         {
             if (p is ExtraPath ep) ExtraPaths.Remove(ep);
+        });
+        AddQuerySourceCommand = new RelayCommand(_ =>
+        {
+            NewQuerySourceName = "";
+            NewQuerySourceUrl = "";
+            IsAddQuerySourceOpen = true;
+        });
+        RemoveQuerySourceCommand = new RelayCommand(p =>
+        {
+            if (p is NodeSource ns)
+            {
+                var wasActive = ns.Name == _settings.ActiveQuerySourceName;
+                QuerySources.Remove(ns);
+                // 删的是 active → 把 active 名改落到列表第一条(空表则清空),
+                // 避免悬空指针 / 下次 service Refresh 时报"未配置"。
+                if (wasActive)
+                {
+                    ActiveQuerySource = QuerySources.FirstOrDefault();
+                }
+            }
+        });
+        ConfirmAddQuerySourceCommand = new RelayCommand(_ =>
+        {
+            if (string.IsNullOrWhiteSpace(NewQuerySourceName) ||
+                string.IsNullOrWhiteSpace(NewQuerySourceUrl))
+            {
+                IsAddQuerySourceOpen = false;
+                return;
+            }
+            var ns = new NodeSource { Name = NewQuerySourceName, Url = NewQuerySourceUrl };
+            QuerySources.Add(ns);
+            ActiveQuerySource = ns;  // 自动 active
+            // 表单关闭 → 清空 inputs,下次再开 Add 是空白
+            NewQuerySourceName = "";
+            NewQuerySourceUrl = "";
+            IsAddQuerySourceOpen = false;
+        });
+        CancelAddQuerySourceCommand = new RelayCommand(_ =>
+        {
+            IsAddQuerySourceOpen = false;
+        });
+        AddDownloadSourceCommand = new RelayCommand(_ =>
+        {
+            NewDownloadSourceName = "";
+            NewDownloadSourceUrl = "";
+            IsAddDownloadSourceOpen = true;
+        });
+        RemoveDownloadSourceCommand = new RelayCommand(p =>
+        {
+            if (p is NodeSource ns)
+            {
+                var wasActive = ns.Name == _settings.ActiveDownloadSourceName;
+                DownloadSources.Remove(ns);
+                if (wasActive)
+                {
+                    ActiveDownloadSource = DownloadSources.FirstOrDefault();
+                }
+            }
+        });
+        ConfirmAddDownloadSourceCommand = new RelayCommand(_ =>
+        {
+            if (string.IsNullOrWhiteSpace(NewDownloadSourceName) ||
+                string.IsNullOrWhiteSpace(NewDownloadSourceUrl))
+            {
+                IsAddDownloadSourceOpen = false;
+                return;
+            }
+            var ns = new NodeSource { Name = NewDownloadSourceName, Url = NewDownloadSourceUrl };
+            DownloadSources.Add(ns);
+            ActiveDownloadSource = ns;
+            NewDownloadSourceName = "";
+            NewDownloadSourceUrl = "";
+            IsAddDownloadSourceOpen = false;
+        });
+        CancelAddDownloadSourceCommand = new RelayCommand(_ =>
+        {
+            IsAddDownloadSourceOpen = false;
         });
         RaiseAllPropertiesChanged();
     }
@@ -133,6 +238,72 @@ public class SettingsViewModel : ViewModelBase
     public RelayCommand AddExtraPathCommand { get; }
     public RelayCommand RemoveExtraPathCommand { get; }
 
+    // —— 节点源(query / download) ——
+    public ObservableCollection<NodeSource> QuerySources { get; }
+    public ObservableCollection<NodeSource> DownloadSources { get; }
+
+    public NodeSource? ActiveQuerySource
+    {
+        get => QuerySources.FirstOrDefault(s => s.Name == _settings.ActiveQuerySourceName);
+        set
+        {
+            _settings.ActiveQuerySourceName = value?.Name ?? "";
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
+    }
+
+    public NodeSource? ActiveDownloadSource
+    {
+        get => DownloadSources.FirstOrDefault(s => s.Name == _settings.ActiveDownloadSourceName);
+        set
+        {
+            _settings.ActiveDownloadSourceName = value?.Name ?? "";
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
+    }
+
+    public bool IsAddQuerySourceOpen
+    {
+        get => _isAddQuerySourceOpen;
+        set => SetField(ref _isAddQuerySourceOpen, value);
+    }
+    public bool IsAddDownloadSourceOpen
+    {
+        get => _isAddDownloadSourceOpen;
+        set => SetField(ref _isAddDownloadSourceOpen, value);
+    }
+    public string NewQuerySourceName
+    {
+        get => _newQuerySourceName;
+        set => SetField(ref _newQuerySourceName, value);
+    }
+    public string NewQuerySourceUrl
+    {
+        get => _newQuerySourceUrl;
+        set => SetField(ref _newQuerySourceUrl, value);
+    }
+    public string NewDownloadSourceName
+    {
+        get => _newDownloadSourceName;
+        set => SetField(ref _newDownloadSourceName, value);
+    }
+    public string NewDownloadSourceUrl
+    {
+        get => _newDownloadSourceUrl;
+        set => SetField(ref _newDownloadSourceUrl, value);
+    }
+
+    public RelayCommand AddQuerySourceCommand { get; }
+    public RelayCommand RemoveQuerySourceCommand { get; }
+    public RelayCommand ConfirmAddQuerySourceCommand { get; }
+    public RelayCommand CancelAddQuerySourceCommand { get; }
+    public RelayCommand AddDownloadSourceCommand { get; }
+    public RelayCommand RemoveDownloadSourceCommand { get; }
+    public RelayCommand ConfirmAddDownloadSourceCommand { get; }
+    public RelayCommand CancelAddDownloadSourceCommand { get; }
+
     public RelayCommand CheckUpdateCommand { get; } = new RelayCommand(_ =>
     {
         Process.Start(new ProcessStartInfo
@@ -170,5 +341,7 @@ public class SettingsViewModel : ViewModelBase
         RaisePropertyChanged(nameof(GitProxyUrl));
         RaisePropertyChanged(nameof(GitProxyPort));
         RaisePropertyChanged(nameof(GitProxyEnabled));
+        RaisePropertyChanged(nameof(ActiveQuerySource));
+        RaisePropertyChanged(nameof(ActiveDownloadSource));
     }
 }
