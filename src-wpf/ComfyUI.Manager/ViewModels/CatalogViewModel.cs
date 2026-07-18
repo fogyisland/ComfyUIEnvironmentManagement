@@ -138,7 +138,6 @@ public class CatalogViewModel : ViewModelBase
             && !string.IsNullOrWhiteSpace(rs)) return rs;
         if (entry.RawMetadata.TryGetValue("url", out var u) && u is string us
             && !string.IsNullOrWhiteSpace(us)) return us;
-        if (!string.IsNullOrWhiteSpace(entry.SourceUrl)) return entry.SourceUrl;
         return null;
     }
 }
