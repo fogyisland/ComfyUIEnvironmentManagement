@@ -349,3 +349,82 @@ None. Each of the 5 dispatch items is present in the diff, matches the actual so
 ## Assessment
 **Task quality:** Approved
 **Reasoning:** All 5 dispatched fixes are present, correctly implemented, and covered by tests; no regression or new defect introduced.
+
+---
+
+# v0.6.3 T1 Report — NodeSource model + 4 Settings fields + SettingsDefaults defaults
+
+**Status:** DONE
+**Commit:** `9af2d5c` — `feat(wpf): add NodeSource model + 4 Settings fields + Defaults`
+
+## What was implemented
+
+### 1. New file: `src-wpf/ComfyUI.Manager/Models/NodeSource.cs`
+Created the `NodeSource` model class with:
+- `Name` (string, default `""`)
+- `Url` (string, default `""`)
+- snake_case JSON property names: `name`, `url`
+- Namespace: `ComfyUI.Manager.Models`
+
+### 2. Modified: `src-wpf/ComfyUI.Manager/Models/Settings.cs`
+Added 4 new fields after `ExtraPaths` (line 31), before the closing `}`:
+- `QuerySources`: `List<NodeSource>` (default `new()`)
+- `DownloadSources`: `List<NodeSource>` (default `new()`)
+- `ActiveQuerySourceName`: `string` (default `""`)
+- `ActiveDownloadSourceName`: `string` (default `""`)
+- All with snake_case JSON property names: `query_sources`, `download_sources`, `active_query_source_name`, `active_download_source_name`
+- `CompatApiBaseUrl` on line 15 untouched.
+
+### 3. Modified: `src-wpf/ComfyUI.Manager/Infrastructure/SettingsDefaults.cs`
+- Added 4 new `public const string` fields after the existing 4 `Subdir` constants (lines 31-34):
+  - `DefaultQuerySourceName = "comfyui manager"`
+  - `DefaultQuerySourceUrl = "https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json"`
+  - `DefaultDownloadSourceName = "comfyui manager"`
+  - `DefaultDownloadSourceUrl = "https://github.com/comfyanonymous/{node}"`
+- Added new default-fill block in `Apply` after `s.GlobalNodesDir = MigrateOnly(...)`, before the closing `}` of `Apply`:
+  - Empty `QuerySources` → 1-entry list with "comfyui manager" + query URL
+  - Empty `DownloadSources` → 1-entry list with "comfyui manager" + download URL
+  - Empty `ActiveQuerySourceName` → fallbacks to `QuerySources[0].Name`
+  - Empty `ActiveDownloadSourceName` → fallbacks to `DownloadSources[0].Name`
+- Also added `using System.Collections.Generic;` (was needed for `List<NodeSource>` to compile).
+
+### 4. Modified: `tests-wpf/ComfyUI.Manager.Tests/Infrastructure/SettingsDefaultsTests.cs`
+Appended 5 new tests after the last existing test:
+- `Apply_QuerySources_EmptyGetsDefault`
+- `Apply_DownloadSources_EmptyGetsDefault`
+- `Apply_ActiveQuerySourceName_EmptyFallbacksToFirst`
+- `Apply_ActiveDownloadSourceName_EmptyFallbacksToFirst`
+- `Apply_ExistingQuerySources_NotOverwritten`
+- Also added `using System.Collections.Generic;` (was needed for `List<NodeSource>` to compile).
+
+## Test results
+
+Command: `dotnet test tests-wpf/ComfyUI.Manager.Tests/ --filter "FullyQualifiedName~SettingsDefaultsTests" -v minimal`
+
+Final output:
+```
+已通过! - 失败:     0，通过:    13，已跳过:     0，总计:    13，持续时间: 228 ms - ComfyUI.Manager.Tests.dll (net8.0)
+```
+
+13/13 PASS (8 old + 5 new).
+
+## Files changed (relative paths)
+
+- `src-wpf/ComfyUI.Manager/Models/NodeSource.cs` (new)
+- `src-wpf/ComfyUI.Manager/Models/Settings.cs` (modified)
+- `src-wpf/ComfyUI.Manager/Infrastructure/SettingsDefaults.cs` (modified)
+- `tests-wpf/ComfyUI.Manager.Tests/Infrastructure/SettingsDefaultsTests.cs` (modified)
+
+## Self-review findings
+
+- `CompatApiBaseUrl` on line 15 of Settings.cs was not touched.
+- `ExtraPaths` on line 31 of Settings.cs was not touched; new fields added after it.
+- `SettingsDefaults.cs` constants were added after line 34 (last `Subdir` const) and before the `Apply` method.
+- `SettingsDefaults.Apply` still preserves null-safety via `if (s is null) return;`.
+- `NodeSource.cs` uses snake_case JSON property names (`name`, `url`) as required.
+- `SettingsDefaults.cs` needed `using System.Collections.Generic;` added — not in the brief, but required for `List<NodeSource>` to compile.
+- `SettingsDefaultsTests.cs` needed `using System.Collections.Generic;` added — not in the brief, but required for `List<NodeSource>` to compile.
+
+## Concerns
+
+None. The brief did not mention the two `using System.Collections.Generic;` additions, but they were required for the code to compile. This is a minor deviation that the implementer would have to make regardless — the brief's code snippets used `List<NodeSource>` without the using.

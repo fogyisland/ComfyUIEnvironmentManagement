@@ -363,3 +363,40 @@ empty dir at build time). User asked "把 git 也下载到当前目录下,不需
 - `Invoke-WebRequest -OutFile` in some proxy scenarios leaves `$LASTEXITCODE` at 0 even on error → always use try/catch + size sanity check for download scripts.
 
 **Status: project fully closed for v0.6.2. No further work pending.**
+
+## v0.6.3 hotfix (in progress) — 2026-07-18
+
+Base: a8b8a6f. Plan: docs/superpowers/plans/2026-07-18-hotfix-node-source-list.md (8 tasks).
+
+**Pre-flight fixes applied to plan before T1 dispatch:**
+- T6: added step 5.5 to update App.xaml.cs (pass 9 args to MainViewModel) so build stays green between T6 and T7 commits
+- T3: clarified "replace lines 22-32" → keep AddExtraPathCommand/RemoveExtraPathCommand, replace only ExtraPaths init + CollectionChanged
+- T7: removed confusing "remove the now-redundant" sentence from InstallAsync replacement instructions
+- T6: removed unused `using System.Net.Http;` from rewritten CatalogViewModel.cs
+
+
+**Task ledger (running list):**
+- T1: complete (9af2d5c, review clean, 1 Minor: missing trailing newline on SettingsDefaultsTests.cs)
+- T2: complete (4a16e8d, review clean, 2 Minor: missing trailing newlines on NodeUrlResolver.cs + test)
+- T3: complete (88c6c8d, review clean with 3 spec deviations from brief; all 3 were brief-defect fixes driven by brief's own tests; 1 Important bounded: AppContext.BaseDirectory vs Environment.ProcessPath in single-file deployment — currently safe because App.xaml.cs runs Apply first; 1 Minor: missing trailing newlines)
+- T4: complete (5499a64, review clean)
+- T5: complete (5bdea6b, review clean with 1 spec deviation intentional: recursive `ParseRawMetadata` to unwrap JsonElement → native CLR types, test required real strings not JsonElement)
+- T6: complete (94b6e80, review clean)
+- T7: complete (b66cc38, review clean with 1 spec deviation: Windows test path uses `<reposRoot>/{node}.git` not brief's `<remote>/{node}` because latter isn't a valid bare-repo path)
+- T8-step1 (whole-branch review, opus): complete — verdict "Approved with one bounded Important caveat (I1)"
+- I1 fix: complete (80d8385) — drop SourceUrl fallback in ExtractRepoUrl; 74/74 tests still pass
+- T8-step3 (version bump): complete (e344aad) — 5 files, 3/3 consistency tests pass
+- T8-step6 (release notes): complete (8118515) — `release/RELEASE-NOTES-v0.6.3.md` 83 lines
+- T8-step8 (build zip): complete — `release/ComfyUI-Manager-v0.6.3-win-x64.zip` 253.9 MB (same as v0.6.2; only WPF code changed). bin/git-portable/cmd/git.exe (46920 bytes) confirmed bundled.
+- T8-step9 (push + release): complete — main pushed (a8b8a6f..8118515), tag v0.6.3 created + pushed, `gh release create` → v0.6.3 is **Latest**.
+
+**Whole-branch review (opus model) findings:**
+- ✅ Spec ✅ Quality ✅ Approved
+- I1 (bounded Important): `ExtractRepoUrl` falls back to `entry.SourceUrl` (query URL = JSON) when `repository`/`url` absent — would feed JSON URL to git clone. **Fixed in 80d8385** by dropping the SourceUrl fallback so missing → null → clean "catalog 条目缺 repository url" error path.
+- Minor findings collected: missing trailing newlines on multiple files (SettingsDefaultsTests, NodeUrlResolver + test). Cosmetic only.
+
+**Gotcha:**
+- `release/staging/ComfyUI Manager/` lockup: prior build process (or running ComfyUI.Manager.exe) holds the DLLs open. Fix: `taskkill //F //IM ComfyUI.Manager.exe` before re-running `scripts/build_release.ps1`.
+- Release zip 253.9 MB ≈ same as v0.6.2 since v0.6.3 only modified WPF source (no new bundled assets).
+
+**Status: v0.6.3 RELEASED.** v0.6.3 is now Latest on GitHub: https://github.com/fogyisland/ComfyUIEnvironmentManagement/releases/tag/v0.6.3
