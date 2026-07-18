@@ -7,6 +7,8 @@
     <views:BoolToBrushConverter x:Key="BoolToBrush" />
     <views:NullToVisibilityConverter x:Key="NullToVisibility" />
     <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+    <views:BoolToRefreshTextConverter x:Key="BoolToRefreshText" />
+    <views:InverseBoolConverter x:Key="InverseBool" />
 
     <!-- Material You Purple -->
     <Color x:Key="PrimaryColor">#6750A4</Color>

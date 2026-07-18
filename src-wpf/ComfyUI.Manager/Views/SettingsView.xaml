@@ -78,6 +78,18 @@
                         Style="{StaticResource MaterialButton}" />
             </Grid>
 
+            <StackPanel Margin="0,16,0,0">
+                <Button Content="{Binding IsBusy, Converter={StaticResource BoolToRefreshText}}"
+                        Command="{Binding RefreshCatalogCommand}"
+                        Style="{StaticResource MaterialButton}"
+                        HorizontalAlignment="Left"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                <TextBlock Text="{Binding StatusMessage}" Foreground="Green" Margin="0,4,0,0"
+                           Visibility="{Binding StatusMessage, Converter={StaticResource NullToVisibility}}" />
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource ErrorBrush}" Margin="0,4,0,0"
+                           Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}}" />
+            </StackPanel>
+
             <!-- ============ 下载节点的源 ============ -->
             <TextBlock Text="下载节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="当前使用(URL 中可用 {node} 占位)" Margin="0,0,0,4" />
