@@ -27,6 +27,108 @@
                      Style="{StaticResource MaterialTextBox}" Width="480"
                      HorizontalAlignment="Left" />
 
+            <!-- ============ 查询节点的源 ============ -->
+            <TextBlock Text="查询节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock Text="当前使用" Margin="0,0,0,4" />
+            <ComboBox ItemsSource="{Binding QuerySources}"
+                      DisplayMemberPath="Name"
+                      SelectedItem="{Binding ActiveQuerySource, Mode=TwoWay}"
+                      Width="320" HorizontalAlignment="Left" />
+            <ItemsControl ItemsSource="{Binding QuerySources}" Margin="0,8,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Url}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <Button Grid.Column="2" Content="删除" Margin="8,0,0,0"
+                                    Command="{Binding DataContext.RemoveQuerySourceCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Style="{StaticResource MaterialButton}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="+ 添加查询源" Margin="0,8,0,0" HorizontalAlignment="Left"
+                    Command="{Binding AddQuerySourceCommand}"
+                    Style="{StaticResource MaterialButton}" />
+            <Grid Margin="0,8,0,0"
+                  Visibility="{Binding IsAddQuerySourceOpen,
+                                Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Style="{StaticResource MaterialTextBox}"
+                         Text="{Binding NewQuerySourceName, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Grid.Column="1" Style="{StaticResource MaterialTextBox}" Margin="8,0,0,0"
+                         Text="{Binding NewQuerySourceUrl, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="2" Content="确定" Margin="8,0,0,0"
+                        Command="{Binding ConfirmAddQuerySourceCommand}"
+                        Style="{StaticResource MaterialButton}" />
+                <Button Grid.Column="3" Content="取消" Margin="4,0,0,0"
+                        Command="{Binding CancelAddQuerySourceCommand}"
+                        Style="{StaticResource MaterialButton}" />
+            </Grid>
+
+            <!-- ============ 下载节点的源 ============ -->
+            <TextBlock Text="下载节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock Text="当前使用(URL 中可用 {node} 占位)" Margin="0,0,0,4" />
+            <ComboBox ItemsSource="{Binding DownloadSources}"
+                      DisplayMemberPath="Name"
+                      SelectedItem="{Binding ActiveDownloadSource, Mode=TwoWay}"
+                      Width="320" HorizontalAlignment="Left" />
+            <ItemsControl ItemsSource="{Binding DownloadSources}" Margin="0,8,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Url}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <Button Grid.Column="2" Content="删除" Margin="8,0,0,0"
+                                    Command="{Binding DataContext.RemoveDownloadSourceCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Style="{StaticResource MaterialButton}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="+ 添加下载源" Margin="0,8,0,0" HorizontalAlignment="Left"
+                    Command="{Binding AddDownloadSourceCommand}"
+                    Style="{StaticResource MaterialButton}" />
+            <Grid Margin="0,8,0,0"
+                  Visibility="{Binding IsAddDownloadSourceOpen,
+                                Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Style="{StaticResource MaterialTextBox}"
+                         Text="{Binding NewDownloadSourceName, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Grid.Column="1" Style="{StaticResource MaterialTextBox}" Margin="8,0,0,0"
+                         Text="{Binding NewDownloadSourceUrl, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="2" Content="确定" Margin="8,0,0,0"
+                        Command="{Binding ConfirmAddDownloadSourceCommand}"
+                        Style="{StaticResource MaterialButton}" />
+                <Button Grid.Column="3" Content="取消" Margin="4,0,0,0"
+                        Command="{Binding CancelAddDownloadSourceCommand}"
+                        Style="{StaticResource MaterialButton}" />
+            </Grid>
+
             <!-- ============ 路径 ============ -->
             <TextBlock Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
