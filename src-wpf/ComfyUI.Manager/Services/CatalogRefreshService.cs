@@ -28,7 +28,7 @@ public class CatalogRefreshService
         _settings = settings;
     }
 
-    public async Task<RefreshResult> RefreshAsync(CancellationToken ct = default)
+    public virtual async Task<RefreshResult> RefreshAsync(CancellationToken ct = default)
     {
         var src = _settings.QuerySources
             .FirstOrDefault(s => s.Name == _settings.ActiveQuerySourceName);

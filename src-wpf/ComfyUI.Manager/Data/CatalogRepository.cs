@@ -27,15 +27,17 @@ public sealed class CatalogRepository
     {
         using var conn = _store.Open();
         using var cmd = conn.CreateCommand();
+        // limit <= 0 means "no LIMIT clause" (SQLite would treat LIMIT 0 as
+        // empty result set otherwise).
         cmd.CommandText = @"
             SELECT id, source_url, package, raw_metadata, cached_at, expires_at
             FROM catalog_cache
             WHERE LOWER(package) LIKE @pattern
                OR LOWER(raw_metadata) LIKE @pattern
-            ORDER BY package
-            LIMIT @limit";
+            ORDER BY package"
+            + (limit > 0 ? " LIMIT @limit" : "");
         cmd.Parameters.AddWithValue("@pattern", $"%{query.ToLowerInvariant()}%");
-        cmd.Parameters.AddWithValue("@limit", limit);
+        if (limit > 0) cmd.Parameters.AddWithValue("@limit", limit);
         using var reader = cmd.ExecuteReader();
         var list = new List<CatalogEntry>();
         while (reader.Read())

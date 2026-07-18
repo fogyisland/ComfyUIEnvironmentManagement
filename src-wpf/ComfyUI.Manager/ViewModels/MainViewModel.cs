@@ -18,6 +18,8 @@ public class MainViewModel : ViewModelBase
     private readonly GitProxyConfig _gitProxy;
     private readonly Settings _settings;
     private readonly CatalogFetcher _catalogFetcher;
+    private readonly CatalogRefreshService _catalogRefreshService;
+    private readonly CatalogCacheStore _catalogCacheStore;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -42,7 +44,9 @@ public class MainViewModel : ViewModelBase
         SettingsRepository settingsRepo,
         GitProxyConfig gitProxy,
         Settings settings,
-        CatalogFetcher catalogFetcher)
+        CatalogFetcher catalogFetcher,
+        CatalogRefreshService catalogRefreshService,
+        CatalogCacheStore catalogCacheStore)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -53,6 +57,8 @@ public class MainViewModel : ViewModelBase
         _gitProxy = gitProxy;
         _settings = settings;
         _catalogFetcher = catalogFetcher;
+        _catalogRefreshService = catalogRefreshService;
+        _catalogCacheStore = catalogCacheStore;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -71,11 +77,11 @@ public class MainViewModel : ViewModelBase
 
     private void ShowCatalog()
     {
-        var catRepo = new CatalogRepository(new CatalogCacheStore());
+        var catRepo = new CatalogRepository(_catalogCacheStore);
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new CatalogView
         {
-            DataContext = new CatalogViewModel(catRepo, envRepo, _nodeOps, _catalogFetcher, _settings),
+            DataContext = new CatalogViewModel(catRepo, envRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo),
         };
     }
 

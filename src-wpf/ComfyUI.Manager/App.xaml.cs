@@ -56,6 +56,10 @@ public partial class App : Application
         var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings);
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes);
+        var catalogCacheStore = new CatalogCacheStore();
+        var catalogRepo = new CatalogRepository(catalogCacheStore);
+        var catalogRefreshService = new CatalogRefreshService(
+            catalogFetcher, catalogRepo, settings);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy);
         var envCreator = new EnvCreatorService(
@@ -63,7 +67,7 @@ public partial class App : Application
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
-            settings, catalogFetcher);
+            settings, catalogFetcher, catalogRefreshService, catalogCacheStore);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();
