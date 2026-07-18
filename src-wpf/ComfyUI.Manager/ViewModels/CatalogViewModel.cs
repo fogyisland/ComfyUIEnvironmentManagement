@@ -1,6 +1,8 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Windows;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -13,6 +15,8 @@ public class CatalogViewModel : ViewModelBase
     private readonly CatalogRepository _repo;
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeOperations _nodeOps;
+    private readonly CatalogFetcher _fetcher;
+    private readonly Settings _settings;
 
     public ObservableCollection<CatalogEntry> Entries { get; } = new();
     public RelayCommand RefreshCommand { get; }
@@ -25,23 +29,41 @@ public class CatalogViewModel : ViewModelBase
         set { if (SetField(ref _query, value)) Search(); }
     }
 
+    private CatalogEntry? _selected;
+    public CatalogEntry? Selected { get => _selected; set => SetField(ref _selected, value); }
+
+    private string? _errorMessage;
+    public string? ErrorMessage
+    {
+        get => _errorMessage;
+        set => SetField(ref _errorMessage, value);
+    }
+
+    private bool _isBusy;
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set => SetField(ref _isBusy, value);
+    }
+
     public CatalogViewModel(
         CatalogRepository repo,
         EnvironmentRepository envRepo,
-        NodeOperations nodeOps)
+        NodeOperations nodeOps,
+        CatalogFetcher fetcher,
+        Settings settings)
     {
         _repo = repo;
         _envRepo = envRepo;
         _nodeOps = nodeOps;
-        RefreshCommand = new RelayCommand(_ => Refresh());
+        _fetcher = fetcher;
+        _settings = settings;
+        RefreshCommand = new RelayCommand(_ => _ = RefreshAsync());
         InstallCommand = new RelayCommand(
             async p => await InstallAsync(p as CatalogEntry ?? Selected),
             p => (p as CatalogEntry ?? Selected) is not null);
         Search();
     }
-
-    private CatalogEntry? _selected;
-    public CatalogEntry? Selected { get => _selected; set => SetField(ref _selected, value); }
 
     private void Search()
     {
@@ -49,47 +71,63 @@ public class CatalogViewModel : ViewModelBase
         foreach (var e in _repo.Search(_query, SearchLimit)) Entries.Add(e);
     }
 
-    private void Refresh()
+    private async Task RefreshAsync()
     {
-        // TODO(M5.2-T7): refresh catalog from remote registry via NodeOperations.
-        MessageBox.Show("TODO(M5.2-T7): refresh catalog", "刷新目录");
-        Search();
+        ErrorMessage = null;
+        var active = _settings.ActiveQuerySourceName;
+        var src = _settings.QuerySources.FirstOrDefault(s => s.Name == active);
+        if (src is null || string.IsNullOrWhiteSpace(src.Url))
+        {
+            ErrorMessage = "未配置查询源,请先在 Settings 添加";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var entries = await _fetcher.FetchAsync(src.Url);
+            foreach (var e in entries)
+            {
+                e.SourceUrl = src.Url;
+                _repo.Upsert(e);
+            }
+            Search();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"拉取失败: {ex.Message}(本地缓存仍可用)";
+            Search();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
-    private async System.Threading.Tasks.Task InstallAsync(CatalogEntry? entry)
+    private async Task InstallAsync(CatalogEntry? entry)
     {
         if (entry is null) return;
-        var repoUrl = ExtractRepoUrl(entry);
-        if (string.IsNullOrWhiteSpace(repoUrl))
+        var templateUrl = ExtractRepoUrl(entry);
+        if (string.IsNullOrWhiteSpace(templateUrl))
         {
-            MessageBox.Show("catalog 条目缺 repository url", "安装节点",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            ErrorMessage = "catalog 条目缺 repository url";
             return;
         }
         var envs = _envRepo.ListAll();
         if (envs.Count == 0)
         {
-            MessageBox.Show("没有 env 可安装,先创建一个", "安装节点",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            ErrorMessage = "没有 env 可安装,先创建一个";
             return;
         }
-        // 简单策略:装到第一个 env。如果以后需要多选,改为 dialog。
         var env = envs[0];
-        try
+        var result = await _nodeOps.InstallAsync(env.Id, entry.Package, templateUrl);
+        if (!result.Success)
         {
-            var result = await _nodeOps.InstallAsync(env.Id, entry.Package, repoUrl);
-            MessageBox.Show(
-                result.Success
-                    ? $"OK, version={result.Version}"
-                    : $"失败:{result.Reason}",
-                "安装节点",
-                MessageBoxButton.OK,
-                result.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            ErrorMessage = $"安装失败:{result.Reason}";
         }
-        catch (System.Exception ex)
+        else
         {
-            MessageBox.Show($"异常:{ex.Message}", "安装节点",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ErrorMessage = $"已安装 {entry.Package} → version={result.Version}";
         }
     }
 

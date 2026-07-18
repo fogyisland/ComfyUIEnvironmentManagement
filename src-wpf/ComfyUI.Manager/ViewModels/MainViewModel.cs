@@ -1,6 +1,7 @@
 using System.Linq;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Views;
 
@@ -15,6 +16,8 @@ public class MainViewModel : ViewModelBase
     private readonly EnvCreatorService _envCreator;
     private readonly SettingsRepository _settingsRepo;
     private readonly GitProxyConfig _gitProxy;
+    private readonly Settings _settings;
+    private readonly CatalogFetcher _catalogFetcher;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -37,7 +40,9 @@ public class MainViewModel : ViewModelBase
         NodeOperations nodeOps,
         EnvCreatorService envCreator,
         SettingsRepository settingsRepo,
-        GitProxyConfig gitProxy)
+        GitProxyConfig gitProxy,
+        Settings settings,
+        CatalogFetcher catalogFetcher)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -46,6 +51,8 @@ public class MainViewModel : ViewModelBase
         _envCreator = envCreator;
         _settingsRepo = settingsRepo;
         _gitProxy = gitProxy;
+        _settings = settings;
+        _catalogFetcher = catalogFetcher;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -68,7 +75,7 @@ public class MainViewModel : ViewModelBase
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new CatalogView
         {
-            DataContext = new CatalogViewModel(catRepo, envRepo, _nodeOps),
+            DataContext = new CatalogViewModel(catRepo, envRepo, _nodeOps, _catalogFetcher, _settings),
         };
     }
 

@@ -59,7 +59,8 @@ public partial class App : Application
             dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
 
         _mainVm = new MainViewModel(
-            dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy);
+            dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
+            settings, null!);  // catalogFetcher filled in T7
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();
