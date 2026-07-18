@@ -1,4 +1,4 @@
-# v0.6.4 Hotfix — Catalog 页面:自动加载 + 分页 + 磁贴/列表切换 + Cache 拆分
+# v0.6.4 Hotfix — Catalog 页面:Settings 手动刷新 + 分页 + 磁贴/列表切换 + Cache 拆分
 
 **里程碑:** v0.6.4 hotfix(v0.6.3 之后)
 **日期:** 2026-07-18
@@ -9,26 +9,30 @@
 
 ## 0. 摘要
 
-WPF Catalog 页面三项 UX 改造 + 一项架构调整:
+WPF Catalog 页面 UX 改造 + 一项架构调整 + 一项流程调整:
 
-1. **去掉"打开页面就看到 10 个默认包"**:改为打开页面自动 fire-and-forget 拉 active QuerySource,拉到后分页(20/页)展示;离线/拉失败时显示空状态 + 错误提示
+1. **去掉"打开页面就看到 10 个默认包"**:改为用户**手动**去 Settings 页点"刷新节点目录"按钮,把数据从 active QuerySource 下载到本地 SQLite。Catalog 页只渲染本地 cache,无 auto-refresh。
 2. **视图模式可切换**:`列表`(DataGrid 现状)vs `磁贴`(WrapPanel 详细卡片),顶部 toggle 切换,持久化到 settings.json
 3. **Cache 数据库拆分**:`catalog_cache` 表移到绿色包目录 `<AppBaseDir>/data/catalog-cache.db`(随包发布走),其他用户表(env list / scanned_nodes / version_history 等)继续留在 `%APPDATA%\ComfyUI-Manager\state.db`
+4. **流程入口集中到 Settings**:刷新节点目录的唯一入口在 Settings 页(query source section 下方加按钮),Catalog 页的"刷新"按钮**保留**(共享内部实现,作为快速重试)
 
 ### 关键决策
 
 | 决策 | 选择 |
 |---|---|
-| 自动加载触发 | ctor fire-and-forget 调 `InitialRefreshAsync()`,不等结果,IsBusy 状态指示 |
+| 刷新入口(主) | Settings 页 →"查询节点的源" section 下方 →"刷新节点目录"按钮 → 调 `RefreshCatalogAsync` → 写 SQLite |
+| 刷新入口(快速重试) | Catalog 页 → 保留"刷新"按钮 → 调同一个 `RefreshCatalogAsync` 内部实现 |
+| 自动加载 | **去掉**(CatalogViewModel ctor 不再 fire-and-forget `InitialRefreshAsync`) |
 | 分页大小 | `Settings.CatalogPageSize = 20`(可配置,默认 20) |
 | 视图模式持久化 | `Settings.CatalogViewMode` 枚举(`List` / `Tile`),默认 `List` |
 | 磁贴样式 | 详细卡片(WrapPanel 2-3 列,每张 320 宽,显示 包名/作者/⭐/说明/安装按钮) |
 | 视图切换实现 | `DataTemplateSelector`(而非 ContentControl + Style trigger),两个 `DataTemplate` x:Key |
 | Cache db 路径 | `<AppBaseDir>/data/catalog-cache.db`(目录自动 mkdir) |
 | 用户 db 路径 | `%APPDATA%\ComfyUI-Manager\state.db`(原 catalog.db 路径改名,只放用户表) |
-| 旧 catalog_cache 数据迁移 | **不做迁移**;首次启动自动 fetch 重新填充(用户最多等 1 个 refresh 周期,15s 超时) |
-| 空状态 | "暂无数据,正在自动加载..."(加载中)/ "加载失败,点 刷新 重试"(失败后) |
-| `Ctor_LoadsAllCatalogEntries` test | 改名 + 重写语义(变"读本地 cache 到第一页") |
+| 旧 catalog_cache 数据迁移 | **不做迁移**;首次启动后用户点 Settings 刷新按钮重新填充 |
+| 空状态 | "暂无数据,去 Settings 刷新"(空)/ "刷新失败: {msg},重试"(失败)/ "刷新成功,共 N 个"(成功 toast) |
+| `Ctor_LoadsAllCatalogEntries` test | 改名 + 重写语义(变"读本地 cache 到第一页,无 auto refresh") |
+| `RefreshCommand` 共享 | 抽取 `CatalogRefreshService`(或共享静态方法)供 Settings + Catalog 共用 |
 
 ### 不动的东西
 
@@ -46,21 +50,24 @@ WPF Catalog 页面三项 UX 改造 + 一项架构调整:
 
 ### 1.1 目标(本次完成时)
 
-- Catalog 页面打开后 **自动从 active QuerySource 拉 JSON** → 解析 → 写入 `<AppBaseDir>/data/catalog-cache.db` 的 `catalog_cache` 表 → 自动切到第 1 页显示
-- 显示分页:每页 20 个,底部 `Prev / 1/N / Next` 翻页,搜索 query 变化时重置回第 1 页
-- 视图模式 toggle:顶部两个按钮 `列表` / `磁贴`,active 高亮,点击切换 + 写 `Settings.CatalogViewMode`
+- **去掉 Catalog 页打开自动刷新**:ctor 不再 fire-and-forget `InitialRefreshAsync`;Catalog 页只读本地 cache,空则显示"暂无数据,去 Settings 刷新"
+- **Settings 页加"刷新节点目录"按钮**:位于"查询节点的源" section 下方 → 点击 → 从 active QuerySource 拉 JSON → 解析 → 写入 `<AppBaseDir>/data/catalog-cache.db` 的 `catalog_cache` 表 → 完成后显示 toast 提示
+- **Catalog 页保留"刷新"按钮**:作为快速重试入口,与 Settings 刷新共享同一个内部方法(共享 Service 抽取)
+- **分页**:每页 20 个,底部 `Prev / 1/N / Next` 翻页,搜索 query 变化时重置回第 1 页
+- **视图模式 toggle**:顶部两个按钮 `列表` / `磁贴`,active 高亮,点击切换 + 写 `Settings.CatalogViewMode`
 - 列表模式:复用现有 DataGrid
 - 磁贴模式:WrapPanel 2-3 列 + 详细卡片(包名 + 作者 + ⭐ + 说明 2-3 行 + 安装按钮)
-- 空状态文案:根据 `IsBusy` / `ErrorMessage` / `HasEntries` 三态显示 "暂无数据,正在自动加载..." / "加载失败: {message},点 刷新 重试" / "暂无数据"
+- 空状态文案:三态 `"暂无数据,去 Settings 刷新"`(空)/ `"刷新失败: {message}"`(失败后显示在 ErrorMessage)/ `"刷新成功,共 N 个条目"`(成功后显示在 InfoMessage 5s 自动消失)
 - `catalog_cache` 表从 `%APPDATA%/catalog.db` 拆分到 `<AppBaseDir>/data/catalog-cache.db`,新 db 文件首次创建时自动 init schema(`CREATE TABLE IF NOT EXISTS catalog_cache ...`)
 - `Settings` 加 `CatalogViewMode` 枚举字段 + `CatalogPageSize` int 字段;`SettingsDefaults.Apply` 默认 `List` / 20
-- 现有 74 个 WPF tests 不掉(改 2 个 + 加 7-8 个,总 81-82 个)
+- 现有 74 个 WPF tests 不掉(改 2 个 + 加 8-9 个,总 82-83 个)
 - 改完后 `dotnet test` 全绿,`dotnet build` 0 警告 0 错误
 
 ### 1.2 非目标(明确不做)
 
+- ❌ Catalog 页 ctor 自动 refresh(去掉,只在 Settings 手动)
 - ❌ 多 query source 并行合并拉取(沿用 v0.6.3:同时只 1 个 active)
-- ❌ 旧 `%APPDATA%` 里 catalog_cache 数据迁移(用户接受"首次启动自动重新 fetch")
+- ❌ 旧 `%APPDATA%` 里 catalog_cache 数据迁移(用户接受"首次启动后手动点 Settings 刷新")
 - ❌ 磁贴模式虚拟化(`VirtualizingWrapPanel` 集成);20 个/页 OK,不优化
 - ❌ 分页跳页(只 Prev/Next,不输入页码)
 - ❌ 磁贴模式自定义排序/筛选(沿用现有 query 过滤)
@@ -79,10 +86,11 @@ WPF Catalog 页面三项 UX 改造 + 一项架构调整:
 
 1. 用户解压 v0.6.4 绿色包,双击 `ComfyUI.Manager.exe`
 2. WPF 启动 → 进入 Catalog 页(默认 List 视图)
-3. 页面显示 "暂无数据,正在自动加载..."(顶部 IsBusy 进度条)
-4. 后台 `InitialRefreshAsync` 拉 `https://raw.githubusercontent.com/.../custom-node-list.json`(~5-15s)
-5. 拉到后:写入 `<AppBaseDir>/data/catalog-cache.db` → `Search()` 重读 → `ApplyPage()` → 显示前 20 个
-6. 用户看到 DataGrid 满 20 行 + 底部 `1 / 3`(假设有 60 个条目)
+3. 页面显示 "暂无数据,去 Settings 刷新"(空状态文案)
+4. 用户切到 Settings 页 → 看到 "查询节点的源" section 下方新增的"刷新节点目录"按钮(默认 active source = "comfyui manager")
+5. 用户点 "刷新节点目录" → 按钮变 disabled + 显示 "刷新中..." → 调 `RefreshCatalogAsync` → 拉 `https://raw.githubusercontent.com/.../custom-node-list.json`(~5-15s)
+6. 拉到后:写入 `<AppBaseDir>/data/catalog-cache.db` → 按钮恢复 → toast "刷新成功,共 120 个条目"
+7. 用户切回 Catalog 页 → 看到 DataGrid 满 20 行 + 底部 `1 / 6`(120 / 20 = 6 页)
 
 ### US-2:视图模式切换
 
@@ -103,18 +111,27 @@ WPF Catalog 页面三项 UX 改造 + 一项架构调整:
 
 1. 用户断网后重启 WPF
 2. Catalog 页打开:`<AppBaseDir>/data/catalog-cache.db` 已有上次拉的 60 个 → 立即显示第 1 页(本地 cache)
-3. 后台 `InitialRefreshAsync` 拉新失败 → `ErrorMessage = "拉取失败: <reason>(本地缓存仍可用)"`
-4. 用户点 `刷新` 按钮重试 → 仍失败 → 错误文案不变,本地 cache 仍渲染
+3. 用户点 "刷新" 按钮重试 → 拉失败 → `ErrorMessage = "刷新失败: <reason>"`
+4. 本地 cache 仍渲染,DataGrid 仍可用
 
-### US-5:用户升级 v0.6.3 → v0.6.4
+### US-5:Catalog 页快速刷新(已有数据场景)
+
+1. 用户已有 cache(60 个条目),想更新到最新版
+2. 切到 Catalog 页 → 看到旧的 60 个
+3. 点 Catalog 顶部 "刷新" 按钮 → 调 `RefreshCatalogAsync`(跟 Settings 同一个内部方法)→ 拉新版 → 完成后自动重读 + 跳回第 1 页
+4. ErrorMessage / InfoMessage 区域显示 "刷新成功,共 N 个"
+
+### US-6:用户升级 v0.6.3 → v0.6.4
 
 1. 用户覆盖安装 v0.6.4
 2. 旧 `%APPDATA%/ComfyUI-Manager/catalog.db` 还在(里面只有 catalog_cache + 其他用户表的混合)
 3. v0.6.4 启动:
-   - `SqliteConnectionFactory` 路径仍是 `%APPDATA%/state.db`,正常读 `environments` / `scanned_nodes` 等用户表
-   - `CatalogCacheStore` 路径是 `<AppBaseDir>/data/catalog-cache.db`,首次启动文件不存在 → `init_schema` + 自动 fetch → 写入新表
-   - 旧 `%APPDATA%/state.db` 里的 `catalog_cache` 表被忽略(无害,WPF 不再读它)
-4. 用户 env list / scanned nodes 完整保留,只是 catalog 重新拉一遍
+   - `SqliteConnectionFactory.ResolveDbPath()` 检测到旧 `catalog.db` 但无 `state.db` → 自动 `File.Move(catalog.db, state.db)`
+   - `state.db` 含 `environments` / `scanned_nodes` 等用户表,WPF 正常读
+   - `CatalogCacheStore` 路径是 `<AppBaseDir>/data/catalog-cache.db`,首次启动文件不存在 → `init_schema`(空表)
+   - Catalog 页显示"暂无数据,去 Settings 刷新"
+4. 用户去 Settings 点"刷新节点目录" → 数据下载到新位置
+5. 用户 env list / scanned nodes 完整保留,只是 catalog 重新拉一遍
 
 ---
 
@@ -152,7 +169,37 @@ WPF Catalog 页面三项 UX 改造 + 一项架构调整:
 - `CatalogCacheStore`(新类,本质窄化版 SqliteConnectionFactory):path = `<AppBaseDir>/data/catalog-cache.db`,自己 `init_schema_catalog_cache`(`CREATE TABLE IF NOT EXISTS catalog_cache (id TEXT PRIMARY KEY, package TEXT, source_url TEXT, raw_metadata TEXT, cached_at TEXT, expires_at TEXT, ...)` + 索引)
 - `CatalogRepository` 改用 `CatalogCacheStore`,其他 Repository 继续用 `SqliteConnectionFactory`
 
-### 3.2 CatalogViewModel 数据流
+### 3.2 数据流(共享 `CatalogRefreshService`)
+
+**新加服务** `Services/CatalogRefreshService.cs` — 集中所有 refresh 逻辑,供 Settings + Catalog 共用:
+
+```csharp
+public class CatalogRefreshService {
+    private readonly CatalogFetcher _fetcher;
+    private readonly CatalogRepository _repo;
+    private readonly Settings _settings;
+
+    public async Task<RefreshResult> RefreshAsync(CancellationToken ct = default) {
+        var src = _settings.QuerySources.FirstOrDefault(s => s.Name == _settings.ActiveQuerySourceName);
+        if (src is null || string.IsNullOrWhiteSpace(src.Url))
+            return RefreshResult.Fail("未配置查询源,请先在 Settings 添加");
+        try {
+            var entries = await _fetcher.FetchAsync(src.Url, ct);
+            foreach (var e in entries) { e.SourceUrl = src.Url; _repo.Upsert(e); }
+            return RefreshResult.Ok(entries.Count);
+        } catch (Exception ex) {
+            return RefreshResult.Fail($"拉取失败: {ex.Message}(本地缓存仍可用)");
+        }
+    }
+}
+
+public record RefreshResult(bool Success, int EntryCount, string? Error) {
+    public static RefreshResult Ok(int n) => new(true, n, null);
+    public static RefreshResult Fail(string err) => new(false, 0, err);
+}
+```
+
+**CatalogViewModel** 数据流(打开页面):
 
 ```
 ctor:
@@ -163,17 +210,19 @@ ctor:
   ↓
   ApplyPage()          // _allEntries.Skip((Page-1)*Size).Take(Size) → PagedEntries
   ↓
-  fire-and-forget InitialRefreshAsync():
-    ↓
-    IsBusy = true
-    ↓
-    try: GET active query source URL (HttpClient 15s timeout)
-         parse → List<CatalogEntry>
-         _catalogCacheStore.Upsert(e) per entry  (注: CatalogRepository.Upsert 走 cache store)
-         _allEntries = new List from _catalogCacheStore.Search("", 0) (无限)
-         ApplyPage()  // 跳回第 1 页
-    catch: ErrorMessage = "拉取失败: {ex.Message}(本地缓存仍可用)"
-    finally: IsBusy = false
+  // 去掉 fire-and-forget InitialRefreshAsync — no auto
+  // 用户须手动点 Settings/Catalog 刷新按钮
+
+RefreshCommand (Catalog 页手动刷新):
+  ↓
+  IsBusy = true
+  ↓
+  await _refreshService.RefreshAsync()
+  ↓
+  if (Success): Search() → ApplyPage() → 跳第 1 页 → InfoMessage = "刷新成功,共 N 个"
+  else: ErrorMessage = result.Error
+  ↓
+  finally: IsBusy = false
 
 Search(query):
   _query = query
@@ -195,7 +244,26 @@ ViewMode setter:
   // XAML DataTemplateSelector 自动重新评估
 ```
 
+**SettingsViewModel** 数据流(点刷新按钮):
+
+```
+RefreshCatalogCommand.Execute():
+  ↓
+  if (no active source) → ErrorMessage = "未配置查询源,请先添加"
+  ↓
+  IsBusy = true, StatusMessage = "正在刷新..."
+  ↓
+  await _refreshService.RefreshAsync() (同一个 Service 实例)
+  ↓
+  if (Success): StatusMessage = $"刷新成功,共 N 个条目"(绿色,5s 后清空)
+  else: ErrorMessage = result.Error(红色)
+  ↓
+  finally: IsBusy = false
+```
+
 ### 3.3 XAML 渲染路径
+
+**CatalogView.xaml**:
 
 ```
 UserControl
@@ -204,8 +272,9 @@ UserControl
 │   │   ├── Button "列表" Command={Binding SetListViewCommand}
 │   │   │   Style: IsChecked triggers 高亮 (用现有 MaterialButton 加 state)
 │   │   └── Button "磁贴" Command={Binding SetTileViewCommand}
+│   ├── Button "刷新" Command={Binding RefreshCommand} (快速重试入口)
 │   ├── ProgressBar IsBusy=True 时显示 (Visibility 由 converter 控)
-│   └── TextBlock ErrorMessage (红色,可选显示)
+│   └── TextBlock ErrorMessage (红色,可选显示) / InfoMessage (绿色,5s 自动消失)
 │
 ├── ItemsControl (List 模式时激活) Visibility={Binding IsListMode, Converter=BoolToVis}
 │   └── DataGrid + 现有 5 列(包名/作者/⭐/说明/操作)
@@ -215,12 +284,29 @@ UserControl
 │   └── ItemTemplate: 详细卡片 StackPanel (320 宽, 圆角 8, 边距 8)
 │
 ├── TextBlock 空状态 (Visibility={Binding !HasEntries, Converter=BoolToVis})
-│   └── Text 三态: "暂无数据,正在自动加载..." / "加载失败: {msg},点 刷新 重试" / "暂无数据"
+│   └── Text 二态: "暂无数据,去 Settings 刷新"(默认)/ "刷新失败: {msg}"(失败后,ErrorMessage)
 │
 └── StackPanel 底部 (Visibility={Binding HasEntries, Converter=BoolToVis})
     ├── Button "< Prev" Command={Binding PrevPageCommand} (第 1 页时 IsEnabled=false)
     ├── TextBlock "1 / 3"
     └── Button "Next >" Command={Binding NextPageCommand} (最后页时 IsEnabled=false)
+```
+
+**SettingsView.xaml**(在"查询节点的源" section 下方加刷新按钮):
+
+```
+"查询节点的源" section (现有)
+  ├── section header "查询节点的源"
+  ├── ComboBox (active source)
+  ├── ItemsControl (list of sources)
+  ├── "+ 添加" button
+  └── inline add form
++ 新增:
+  └── Button "刷新节点目录" Command={Binding RefreshCatalogCommand}
+      Style: MaterialButton
+      IsEnabled: !IsBusy
+      Text: 正常 "刷新节点目录" / IsBusy 时 "刷新中..."
+  + StatusMessage TextBlock (绿色 / 红色,5s 自动消失)
 ```
 
 ### 3.4 关键类签名
@@ -271,6 +357,16 @@ public static class SettingsDefaults {
     public static void Apply(Settings s, string baseDir);  // 加 2 个新默认值
 }
 
+// Services/CatalogRefreshService.cs (新,共享)
+public class CatalogRefreshService {
+    public CatalogRefreshService(CatalogFetcher fetcher, CatalogRepository repo, Settings settings);
+    public Task<RefreshResult> RefreshAsync(CancellationToken ct = default);
+}
+public record RefreshResult(bool Success, int EntryCount, string? Error) {
+    public static RefreshResult Ok(int n);
+    public static RefreshResult Fail(string err);
+}
+
 // ViewModels/CatalogViewModel.cs (大改)
 public class CatalogViewModel : ViewModelBase {
     public ObservableCollection<CatalogEntry> PagedEntries { get; } = new();
@@ -282,24 +378,38 @@ public class CatalogViewModel : ViewModelBase {
     public bool IsTileMode => ViewMode == CatalogViewMode.Tile;
     public bool HasEntries => _allEntries.Count > 0;  // 通知属性
     public string? ErrorMessage { get; private set; }  // 已存在
+    public string? InfoMessage { get; private set; }  // 新:成功提示
     public bool IsBusy { get; private set; }  // 已存在
-    public string? EmptyStateText { get; private set; }  // 三态文案
 
     public RelayCommand NextPageCommand { get; }
     public RelayCommand PrevPageCommand { get; }
     public RelayCommand SetListViewCommand { get; }
     public RelayCommand SetTileViewCommand { get; }
-    public RelayCommand RefreshCommand { get; }  // 已存在
+    public RelayCommand RefreshCommand { get; }  // 改:内部调 _refreshService
 
     public CatalogViewModel(CatalogRepository repo, EnvironmentRepository envRepo,
-                            NodeOperations nodeOps, CatalogFetcher fetcher, Settings settings);
+                            NodeOperations nodeOps, CatalogRefreshService refreshService, Settings settings);
+    // 删除: 4-arg 旧 ctor (fetcher)
 
     // 私有
     private List<CatalogEntry> _allEntries = new();
     private void Search();
     private void ApplyPage();
     private void SetViewMode(CatalogViewMode mode);  // 写 Settings
-    private async Task InitialRefreshAsync();
+    // 删: InitialRefreshAsync (no auto)
+}
+
+// ViewModels/SettingsViewModel.cs (改,加 RefreshCatalogCommand)
+public class SettingsViewModel : ViewModelBase {
+    // ... 现有 6 UI state props + 8 commands
+    public bool IsBusy { get; private set; }  // 新
+    public string? StatusMessage { get; private set; }  // 新(替换 EmptyStateText)
+    public string? ErrorMessage { get; private set; }  // 新
+    public RelayCommand RefreshCatalogCommand { get; }  // 新
+
+    public SettingsViewModel(SettingsRepository repo, GitProxyConfig gitProxy,
+                             CatalogRefreshService refreshService);  // ctor 加 refreshService
+    private async Task RefreshCatalogAsync();
 }
 
 // Views/CatalogView.xaml (大改)
@@ -307,6 +417,9 @@ public class CatalogViewModel : ViewModelBase {
 // - ItemsControl + DataTemplateSelector (新增)
 // - 底部分页
 // - 空状态 panel
+
+// Views/SettingsView.xaml (改,加刷新按钮)
+// - "查询节点的源" section 末尾加 Button "刷新节点目录" + StatusMessage TextBlock
 
 // Views/CatalogViewTemplateSelector.cs (新)
 public class CatalogViewTemplateSelector : DataTemplateSelector {
@@ -378,10 +491,22 @@ WrapPanel 2-3 列 (响应式,窗口窄时 1 列)
 ### 4.5 空状态
 
 ```
-页面中心 TextBlock:
-  - 加载中: "暂无数据,正在自动加载..."(灰色 14pt)
-  - 失败:   "加载失败: <message>。点 刷新 重试。"(红色 14pt)
-  - 空(无 cache 也无 fetch): "暂无数据,点 刷新 加载"(灰色)
+页面中心 TextBlock (三态):
+  - 加载中: "正在刷新..."(灰色 14pt, IsBusy=true 时显示)
+  - 失败:   "刷新失败: <message>"(红色 14pt, ErrorMessage 区域显示)
+  - 空(无 cache): "暂无数据,去 Settings 刷新"(灰色 14pt,默认空状态)
+```
+
+### 4.6 Settings 页"刷新节点目录"按钮(新)
+
+```
+"查询节点的源" section 末尾:
+  + Button "刷新节点目录" Command={Binding RefreshCatalogCommand}
+    - IsEnabled: !IsBusy
+    - Text: 正常 "刷新节点目录" / IsBusy 时 "刷新中..."(禁用)
+    - Style: MaterialButton
+  + TextBlock StatusMessage (绿色 12pt, 5s 后自动清空)
+  + TextBlock ErrorMessage (红色 12pt, 手动清空或下次操作覆盖)
 ```
 
 ---
@@ -393,20 +518,24 @@ WrapPanel 2-3 列 (响应式,窗口窄时 1 列)
 - `Ctor_LoadsAllCatalogEntries` → `Ctor_LoadsLocalCache_AsFirstPage`:ctor 读 2 个 seed entries → `PagedEntries.Count == 2`(因为 2 < PageSize=20,只 1 页)
 - `Query_FiltersEntries` → `Query_FiltersAndResetsToFirstPage`:query "alph" → 只有 alpha → CurrentPage=1
 
-### 5.2 新加(7-8 个)
+### 5.2 新加(8-9 个)
 
-- `Ctor_InitialRefresh_StartsInBackground`:`FakeCatalogFetcher` 预设 5 个 entries,await 200ms,断言 PagedEntries.Count == 5
+- ~~`Ctor_InitialRefresh_StartsInBackground`~~ — **删**(no auto refresh)
 - `NextPageCommand_AdvancesPage_WhenMorePages`:seed 25 个,CurrentPage=1,NextCommand → CurrentPage=2,PagedEntries.Count==5(25 - 20)
 - `NextPageCommand_Disabled_OnLastPage`:seed 5 个,CurrentPage=1,NextCommand.CanExecute == false
 - `PrevPageCommand_Disabled_OnFirstPage`:seed 5 个,CurrentPage=1,PrevCommand.CanExecute == false
 - `ViewMode_DefaultsFromSettings_List`:new Settings().CatalogViewMode = List → VM.ViewMode == List
 - `SetTileViewCommand_PersistsToSettings`:触发 SetTileViewCommand → Settings.CatalogViewMode == Tile(模拟 Save)
+- `RefreshCommand_DelegatesToRefreshService`:FakeRefreshService → RefreshCommand.Execute → service.RefreshAsync 调 1 次
+- `RefreshCommand_Success_ShowsInfoMessage`:FakeRefreshService 返回 Ok(120) → InfoMessage = "刷新成功,共 120 个"
 - `CatalogCacheStore_CreatesDbFileAtAppBaseDir`:new CatalogCacheStore(tempPath) → file exists + `SELECT name FROM sqlite_master WHERE type='table' AND name='catalog_cache'` 返回一行
 - `SqliteConnectionFactory_RenamesLegacyCatalogDb_ToStateDb`:在 test 目录建 `catalog.db`(无 `state.db`)→ 触发 ctor → 验证 `state.db` 存在 + `catalog.db` 不存在
+- `SettingsViewModel_RefreshCatalogCommand_CallsService`:FakeRefreshService → 触发 → service.RefreshAsync 调 1 次
+- `SettingsViewModel_RefreshCatalogCommand_Success_SetsStatusMessage`:FakeRefreshService.Ok(50) → StatusMessage = "刷新成功,共 50 个条目"
 
 ### 5.3 总数
 
-旧:74。新增 7-8 + 改 2 个 = **总 80-82 个**。所有 dotnet test 应绿。
+旧:74。新增 10-11 + 改 2 个 = **总 82-83 个**。所有 dotnet test 应绿。
 
 ---
 
@@ -414,11 +543,12 @@ WrapPanel 2-3 列 (响应式,窗口窄时 1 列)
 
 | # | 风险 | 影响 | 缓解 |
 |---|---|---|---|
-| R1 | 旧 `%APPDATA%/catalog.db` 里 `catalog_cache` 数据丢 | 中:用户首次升 v0.6.4 后 Catalog 页是空的,要等自动 fetch(15s) | ctor fire-and-forget `InitialRefreshAsync`,失败也不阻塞;若成功用户无感 |
+| R1 | 旧 `%APPDATA%/catalog.db` 里 `catalog_cache` 数据丢 | 中:用户首次升 v0.6.4 后 Catalog 页是空的 | 用户去 Settings 点"刷新节点目录"按钮手动重新拉(15s 内完成);提示文案"暂无数据,去 Settings 刷新"明示 |
 | R2 | 旧 db 改名 `catalog.db → state.db` 在 Windows 上 file lock | 低:旧 db 只在 v0.6.3 之前用过,M5.2 后基本没人用旧 db | `File.Move` 失败回退到读旧 db(容错) |
 | R3 | WrapPanel 不虚拟化,20 个/页 OK,但 200 个会卡 | 低:PageSize=20 受控 | 若未来要 100/页,改 `VirtualizingWrapPanel` |
-| R4 | 自动 fetch 离线时 15s 卡顿 | 中:用户打开 Catalog 页要等 15s 才看到本地 cache | `InitialRefreshAsync` 不 await,后台跑,本地 cache 立即显示(先 Search 本地,再后台 fetch) |
+| R4 | 用户首次启动不知道要去 Settings 点刷新 | 中:UX 上需明示 | 空状态文案 "暂无数据,去 Settings 刷新" + Settings 页刷新按钮在"查询节点"section 末尾显眼位置 |
 | R5 | `AppContext.BaseDirectory` 在单文件 vs 框架依赖发布不同 | 低:已用(grep 验证) | 沿用现有 settings.json 解析模式 |
+| R6 | `CatalogRefreshService` 注入到 2 个 VM,Singleton 还是 scoped? | 低:WPF 单一容器,共享同一个实例 | `App.xaml.cs` 构造 1 个 `CatalogRefreshService` 实例,2 个 VM 共享 |
 | R6 | `Ctor_LoadsAllCatalogEntries` test 名误导 | 低:只是 test 改名 | 改名 + 改语义 |
 | R7 | db 拆分后 `%APPDATA%/state.db` 表结构 init 谁来做? | 中:以前是 Python service init,M5.2 删了 | `SqliteConnectionFactory.Open` 首次调用时 `InitSchemaIfMissing`(CREATE TABLE IF NOT EXISTS for 所有用户表) |
 | R8 | 视图模式 toggle 按钮样式无现成 | 低:只是写一个简单 trigger | 用现有 MaterialButton style,加 IsChecked visual state |
@@ -431,18 +561,24 @@ WrapPanel 2-3 列 (响应式,窗口窄时 1 列)
 |---|---|---|
 | `src-wpf/ComfyUI.Manager/Models/Settings.cs` | 加 `CatalogViewMode` enum + 2 字段 | +15 |
 | `src-wpf/ComfyUI.Manager/Infrastructure/SettingsDefaults.cs` | 加 2 默认值 | +5 |
+| `src-wpf/ComfyUI.Manager/Services/CatalogRefreshService.cs` | **新文件**(共享) | +40 |
 | `src-wpf/ComfyUI.Manager/Data/CatalogCacheStore.cs` | **新文件** | +50 |
 | `src-wpf/ComfyUI.Manager/Data/SqliteConnectionFactory.cs` | 改 ResolveDbPath + InitSchemaIfMissing | +30 / -10 |
 | `src-wpf/ComfyUI.Manager/Data/CatalogRepository.cs` | 改用 CatalogCacheStore | +5 / -5 |
-| `src-wpf/ComfyUI.Manager/ViewModels/CatalogViewModel.cs` | 大改:分页 + 自动 refresh + 视图模式 | +120 / -50 |
-| `src-wpf/ComfyUI.Manager/Views/CatalogView.xaml` | 大改:toggle + 视图切换 + 分页 + 空状态 | +80 / -30 |
+| `src-wpf/ComfyUI.Manager/ViewModels/CatalogViewModel.cs` | 大改:分页 + refresh 走 Service + 视图模式 | +120 / -50 |
+| `src-wpf/ComfyUI.Manager/ViewModels/SettingsViewModel.cs` | 加 RefreshCatalogCommand + IsBusy/Status/Error | +50 / -5 |
+| `src-wpf/ComfyUI.Manager/Views/CatalogView.xaml` | 大改:toggle + 视图切换 + 分页 + 空状态 + 刷新按钮 | +90 / -30 |
+| `src-wpf/ComfyUI.Manager/Views/SettingsView.xaml` | 加"刷新节点目录"按钮 + Status/Error TextBlock | +30 / -0 |
 | `src-wpf/ComfyUI.Manager/Views/CatalogViewTemplateSelector.cs` | **新文件** | +25 |
+| `src-wpf/ComfyUI.Manager/App.xaml.cs` | 构造 `CatalogRefreshService` 实例,共享给 2 个 VM | +5 / -2 |
 | `src-wpf/ComfyUI.Manager/Resources/Theme.xaml` | 加 TileTemplate + WrapPanel | +40 |
-| `tests-wpf/ComfyUI.Manager.Tests/ViewModels/CatalogViewModelTests.cs` | 改 2 + 加 5 | +80 / -20 |
+| `tests-wpf/ComfyUI.Manager.Tests/ViewModels/CatalogViewModelTests.cs` | 改 2 + 加 7 | +100 / -20 |
+| `tests-wpf/ComfyUI.Manager.Tests/ViewModels/SettingsViewModelTests.cs` | 加 2(RefreshCatalog) | +40 / -0 |
+| `tests-wpf/ComfyUI.Manager.Tests/Services/CatalogRefreshServiceTests.cs` | **新文件** | +60 |
 | `tests-wpf/ComfyUI.Manager.Tests/Data/CatalogCacheStoreTests.cs` | **新文件** | +50 |
-| `tests-wpf/ComfyUI.Manager.Tests/Data/SqliteConnectionFactoryTests.cs` | **新文件**(或并入 CatalogCacheStoreTests) | +30 |
+| `tests-wpf/ComfyUI.Manager.Tests/Data/SqliteConnectionFactoryTests.cs` | **新文件** | +30 |
 
-**总计**:12 个文件(2 新 + 10 改),约 +500 / -100 行
+**总计**:18 个文件(4 新 + 14 改),约 +730 / -120 行
 
 ---
 
@@ -454,6 +590,7 @@ WrapPanel 2-3 列 (响应式,窗口窄时 1 列)
 - catalog JSON 原始文件缓存(目前只在 SQLite)
 - 多 query source 并行合并拉取
 - 离线/在线状态自动检测 + 跳过 fetch
+- Catalog 顶部的快速"刷新"按钮 vs Settings 的"刷新节点目录"按钮合并(目前共存)
 
 ---
 
@@ -464,24 +601,30 @@ WrapPanel 2-3 列 (响应式,窗口窄时 1 列)
 1. **T1: Settings 字段 + Defaults** — `CatalogViewMode` 枚举 + 2 字段 + 默认值 + 3 个 test
 2. **T2: CatalogCacheStore + SqliteConnectionFactory 拆分** — 新类 + 改名 + InitSchemaIfMissing + 4 个 test
 3. **T3: CatalogRepository 改造** — 用 CatalogCacheStore + 1 个集成 test
-4. **T4: CatalogViewModel 分页 + 自动 refresh** — PageSize / CurrentPage / TotalPages / PagedEntries / InitialRefreshAsync / EmptyStateText + 改 2 + 加 4 个 test
-5. **T5: CatalogViewModel 视图模式** — ViewMode / SetListViewCommand / SetTileViewCommand / IsListMode / IsTileMode + 2 个 test
-6. **T6: CatalogView.xaml 大改** — toggle / DataTemplateSelector / 分页 / 空状态
-7. **T7: Theme.xaml TileTemplate** — WrapPanel + 详细卡片 DataTemplate
-8. **T8: 全量 test 跑 + UI 手动验证 + bump v0.6.4 + release**
+4. **T4: CatalogRefreshService** — 共享 Service + RefreshResult record + 3-4 个 test
+5. **T5: CatalogViewModel 分页 + 视图模式 + Refresh 走 Service** — 改 ctor (加 refreshService) + 去掉 auto + 改 2 + 加 7 个 test
+6. **T6: SettingsViewModel 加 RefreshCatalogCommand** — IsBusy / Status / Error + 2 个 test
+7. **T7: CatalogView.xaml 大改** — toggle / DataTemplateSelector / 分页 / 空状态 / 快速刷新按钮
+8. **T8: SettingsView.xaml 加刷新按钮** — Button + Status TextBlock
+9. **T9: App.xaml.cs 注入 CatalogRefreshService** — 共享 1 个实例
+10. **T10: Theme.xaml TileTemplate** — WrapPanel + 详细卡片 DataTemplate
+11. **T11: 全量 test 跑 + UI 手动验证 + bump v0.6.4 + release**
 
 ---
 
 ## 10. 验收
 
 - `dotnet build src-wpf/ComfyUI.Manager/` → 0 警告 0 错误
-- `dotnet test tests-wpf/ComfyUI.Manager.Tests/` → 80+ tests 全绿(旧 74 不掉,新 6-8 个)
+- `dotnet test tests-wpf/ComfyUI.Manager.Tests/` → 82-83 tests 全绿(旧 74 不掉,新 10-11 个)
 - `pytest tests/test_version_consistency.py` → 3/3 PASS(版本号 0.6.3 → 0.6.4)
 - 手动启动 v0.6.4 release exe:
-  1. 打开 Catalog 页 → 看到 "暂无数据,正在自动加载..." → 5-15s 后看到 20 个条目
-  2. 底部 `1 / N` 分页 → `Next >` 翻页
-  3. 点 `磁贴` → 切到卡片视图,关 WPF 重开仍是 `磁贴`
-  4. 断网重启 → 旧 cache 仍渲染,ErrorMessage 提示
+  1. 打开 Catalog 页 → 看到 "暂无数据,去 Settings 刷新"(空状态)
+  2. 切到 Settings → 点 "刷新节点目录" → 5-15s 后看到 "刷新成功,共 120 个条目"
+  3. 切回 Catalog → 看到 DataGrid 满 20 行 + 底部 `1 / 6` + 可点 `Next >` 翻页
+  4. 点 `磁贴` → 切到卡片视图,关 WPF 重开仍是 `磁贴`
+  5. 断网 + Catalog 页 → 点 Catalog 顶"刷新" → 拉失败 → ErrorMessage = "刷新失败: <reason>"
+  6. 旧 `%APPDATA%/catalog.db` 自动改名为 `state.db`,新 `<AppBaseDir>/data/catalog-cache.db` 创建
+- `release/ComfyUI-Manager-v0.6.4-win-x64.zip` build 成功 + GitHub release 标记 Latest
   5. `%APPDATA%/state.db` 存在 + `<AppBaseDir>/data/catalog-cache.db` 存在
   6. 旧 `%APPDATA%/catalog.db` 自动改名为 `state.db`
 - `release/ComfyUI-Manager-v0.6.4-win-x64.zip` build 成功 + GitHub release 标记 Latest
