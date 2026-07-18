@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-manager"
-version = "0.6.2"
+version = "0.6.3"
 description = "ComfyUI 多环境管理工具"
 requires-python = ">=3.10,<3.13"
 # M5.2: WPF GUI 不依赖任何 Python control service。pyproject 只保留
