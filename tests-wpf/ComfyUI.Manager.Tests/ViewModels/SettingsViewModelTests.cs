@@ -1,7 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
 
@@ -22,6 +27,37 @@ public class SettingsViewModelTests : IDisposable
         if (File.Exists(_path)) File.Delete(_path);
     }
 
+    private sealed class FakeRefreshService : CatalogRefreshService
+    {
+        public RefreshResult NextResult { get; set; } = RefreshResult.Ok(0);
+        public int CallCount { get; private set; }
+
+        public FakeRefreshService()
+            : base(new NullFetcher(),
+                   new CatalogRepository(new CatalogCacheStore(System.IO.Path.Combine(
+                       System.IO.Path.GetTempPath(),
+                       $"null-repo-{System.Guid.NewGuid():N}.db"))),
+                   new Settings())
+        { }
+
+        public override Task<RefreshResult> RefreshAsync(
+            System.Threading.CancellationToken ct = default)
+        {
+            CallCount++;
+            return Task.FromResult(NextResult);
+        }
+
+        private sealed class NullFetcher : CatalogFetcher
+        {
+            public NullFetcher() : base(
+                new System.Net.Http.HttpClient(
+                    new Moq.Mock<System.Net.Http.HttpMessageHandler>().Object), 60) { }
+            public override Task<List<CatalogEntry>> FetchAsync(
+                string url, System.Threading.CancellationToken ct = default)
+                => throw new NotImplementedException();
+        }
+    }
+
     [Fact]
     public void Load_PopulatesSettingsFromFile()
     {
@@ -33,7 +69,7 @@ public class SettingsViewModelTests : IDisposable
             CatalogCacheTtlMinutes = 120,
         });
 
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
 
         Assert.Equal("en_US", vm.Language);
         Assert.Equal("dark", vm.ThemeMode);
@@ -43,7 +79,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void LanguageSet_PersistsToFile()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
         vm.Language = "en_US";
 
         var reloaded = new SettingsRepository(_path).Load();
@@ -54,7 +90,7 @@ public class SettingsViewModelTests : IDisposable
     public void Defaults_LoadsQuerySourcesAndDownloadSources_FromAppliedDefaults()
     {
         // 全新 settings.json → 走 SettingsDefaults 兜底,两个列表各 1 条 "comfyui manager"
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
 
         Assert.Single(vm.QuerySources);
         Assert.Equal("comfyui manager", vm.QuerySources[0].Name);
@@ -67,7 +103,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void ConfirmAddQuerySourceCommand_AppendsAndSetsActive()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
         vm.NewQuerySourceName = "my-mirror";
         vm.NewQuerySourceUrl = "https://my-mirror/catalog.json";
 
@@ -85,7 +121,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void ConfirmAddQuerySourceCommand_EmptyFields_DoesNothing()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
         vm.NewQuerySourceName = "";
         vm.NewQuerySourceUrl = "";
         vm.IsAddQuerySourceOpen = true;
@@ -99,7 +135,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void RemoveQuerySourceCommand_WhenActive_FallsBackToFirst()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
         // 默认只有 1 条,先加一条自定义并切到它
         vm.NewQuerySourceName = "my-mirror";
         vm.NewQuerySourceUrl = "https://my-mirror/catalog.json";
@@ -115,7 +151,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void RemoveQuerySourceCommand_LastOne_LeavesListEmpty()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
         vm.RemoveQuerySourceCommand.Execute(vm.QuerySources[0]);
 
         Assert.Empty(vm.QuerySources);
@@ -125,7 +161,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void SwitchActive_PersistsImmediately()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
         vm.NewQuerySourceName = "alt";
         vm.NewQuerySourceUrl = "https://alt/catalog.json";
         vm.ConfirmAddQuerySourceCommand.Execute(null);
@@ -141,7 +177,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void ConfirmAddDownloadSourceCommand_AppendsAndSetsActive()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled);
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeRefreshService());
         vm.NewDownloadSourceName = "gh-proxy";
         vm.NewDownloadSourceUrl = "https://gh-proxy.com/{node}";
 
@@ -151,5 +187,31 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal(2, vm.DownloadSources.Count);
         Assert.Equal("gh-proxy", vm.DownloadSources[1].Name);
         Assert.Same(vm.DownloadSources[1], vm.ActiveDownloadSource);
+    }
+
+    [Fact]
+    public void RefreshCatalogCommand_CallsService()
+    {
+        var svc = new FakeRefreshService();
+        var vm = new SettingsViewModel(
+            new SettingsRepository(_path), GitProxyConfig.Disabled, svc);
+
+        vm.RefreshCatalogCommand.Execute(null);
+        System.Threading.Thread.Sleep(50);  // wait for fire-and-forget
+
+        Assert.Equal(1, svc.CallCount);
+    }
+
+    [Fact]
+    public void RefreshCatalogCommand_Success_SetsStatusMessage()
+    {
+        var svc = new FakeRefreshService { NextResult = RefreshResult.Ok(50) };
+        var vm = new SettingsViewModel(
+            new SettingsRepository(_path), GitProxyConfig.Disabled, svc);
+
+        vm.RefreshCatalogCommand.Execute(null);
+        System.Threading.Thread.Sleep(50);
+
+        Assert.Contains("刷新成功,共 50 个条目", vm.StatusMessage);
     }
 }
