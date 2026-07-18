@@ -16,16 +16,16 @@ public sealed class CatalogRepository
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly SqliteConnectionFactory _factory;
+    private readonly CatalogCacheStore _store;
 
-    public CatalogRepository(SqliteConnectionFactory factory)
+    public CatalogRepository(CatalogCacheStore store)
     {
-        _factory = factory;
+        _store = store;
     }
 
     public List<CatalogEntry> Search(string query, int limit)
     {
-        using var conn = _factory.Open();
+        using var conn = _store.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT id, source_url, package, raw_metadata, cached_at, expires_at
@@ -47,7 +47,7 @@ public sealed class CatalogRepository
 
     public List<CatalogEntry> ListNonExpired(DateTime nowUtc)
     {
-        using var conn = _factory.Open();
+        using var conn = _store.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT id, source_url, package, raw_metadata, cached_at, expires_at
@@ -68,7 +68,7 @@ public sealed class CatalogRepository
 
     public void Upsert(CatalogEntry entry)
     {
-        using var conn = _factory.Open();
+        using var conn = _store.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO catalog_cache

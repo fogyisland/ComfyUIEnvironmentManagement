@@ -71,7 +71,7 @@ public class MainViewModel : ViewModelBase
 
     private void ShowCatalog()
     {
-        var catRepo = new CatalogRepository(_dbFactory);
+        var catRepo = new CatalogRepository(new CatalogCacheStore());
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new CatalogView
         {

@@ -18,7 +18,8 @@ public class CatalogViewModelTests
 {
     private static void SeedCatalog(TestDb db, string package)
     {
-        var repo = new CatalogRepository(db.Factory);
+        var cacheStore = new CatalogCacheStore(db.Path);
+        var repo = new CatalogRepository(cacheStore);
         repo.Upsert(new CatalogEntry
         {
             Id = package,
