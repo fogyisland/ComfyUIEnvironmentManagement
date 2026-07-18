@@ -8,7 +8,7 @@
     <AssemblyName>ComfyUI.Manager</AssemblyName>
     <RootNamespace>ComfyUI.Manager</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.6.3</Version>
+    <Version>0.6.4</Version>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
   </PropertyGroup>
