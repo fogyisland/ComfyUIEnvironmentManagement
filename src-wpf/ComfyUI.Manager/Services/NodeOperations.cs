@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -32,15 +33,18 @@ public class NodeOperations
     private readonly GitRunner _git;
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeRepository _nodeRepo;
+    private readonly Settings _settings;
 
     public NodeOperations(
         GitRunner git,
         EnvironmentRepository envRepo,
-        NodeRepository nodeRepo)
+        NodeRepository nodeRepo,
+        Settings settings)
     {
         _git = git ?? throw new ArgumentNullException(nameof(git));
         _envRepo = envRepo ?? throw new ArgumentNullException(nameof(envRepo));
         _nodeRepo = nodeRepo ?? throw new ArgumentNullException(nameof(nodeRepo));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
     }
 
     /// <summary>
@@ -61,7 +65,18 @@ public class NodeOperations
         }
         if (string.IsNullOrWhiteSpace(repoUrl))
         {
-            return NodeOperationResult.Fail("repoUrl 不能为空");
+            // 回落到 active download source 的 URL 模板
+            var activeName = _settings.ActiveDownloadSourceName;
+            var src = _settings.DownloadSources.FirstOrDefault(s => s.Name == activeName);
+            if (src is null || string.IsNullOrWhiteSpace(src.Url))
+            {
+                return NodeOperationResult.Fail("未配置下载源,请在 Settings 添加");
+            }
+            repoUrl = NodeUrlResolver.Resolve(src.Url, nodeId);
+            if (string.IsNullOrWhiteSpace(repoUrl))
+            {
+                return NodeOperationResult.Fail("下载源 URL 解析为空");
+            }
         }
 
         var targetDir = Path.Combine(env.CustomNodesPath, nodeId);

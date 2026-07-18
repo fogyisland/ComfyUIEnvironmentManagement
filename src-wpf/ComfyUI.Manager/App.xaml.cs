@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Net.Http;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -52,7 +53,9 @@ public partial class App : Application
         // 共享同一份 GitProxyConfig,SettingsViewModel 改它会立即影响下一次 git 调用。
         var gitProxy = GitProxyConfig.From(settings);
         var gitRunner = new GitRunner(gitExe, gitProxy);
-        var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo);
+        var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings);
+        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy);
         var envCreator = new EnvCreatorService(
@@ -60,7 +63,7 @@ public partial class App : Application
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
-            settings, null!);  // catalogFetcher filled in T7
+            settings, catalogFetcher);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

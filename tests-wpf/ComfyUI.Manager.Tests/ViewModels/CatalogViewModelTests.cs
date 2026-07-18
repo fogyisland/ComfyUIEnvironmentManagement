@@ -35,7 +35,7 @@ public class CatalogViewModelTests
     private sealed class NoopNodeOps : NodeOperations
     {
         public NoopNodeOps(EnvironmentRepository envRepo, NodeRepository nodeRepo)
-            : base(new GitRunner("git"), envRepo, nodeRepo)
+            : base(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings())
         {
         }
     }

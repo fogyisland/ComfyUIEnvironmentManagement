@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -119,7 +120,7 @@ public sealed class NodeOperationsTests
 
         using var db = new TestDb();
         var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
 
         var result = await ops.InstallAsync("env-1", "node-a", remote);
         Assert.True(result.Success, $"reason={result.Reason}");
@@ -171,7 +172,7 @@ public sealed class NodeOperationsTests
             Status = "enabled",
         });
 
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
         var result = await ops.UpgradeAsync("env-1", "node-a");
         Assert.True(result.Success, $"reason={result.Reason}");
 
@@ -193,7 +194,7 @@ public sealed class NodeOperationsTests
 
         using var db = new TestDb();
         var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
 
         var result = await ops.InstallAsync("env-1", "node-a", "https://example/repo");
         Assert.False(result.Success);
@@ -233,7 +234,7 @@ public sealed class NodeOperationsTests
             Status = "enabled",
         });
 
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
         // 直接用 HEAD~1(不解析短 sha,git 接受)
         var result = await ops.RollbackAsync("env-1", "node-a", "HEAD~1");
         Assert.True(result.Success, $"reason={result.Reason}");
@@ -260,12 +261,87 @@ public sealed class NodeOperationsTests
             Status = "enabled",
         });
 
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
         ops.Lock("node-x");
         Assert.True(nodeRepo.Get("node-x")!.Locked);
 
         ops.Unlock("node-x");
         Assert.False(nodeRepo.Get("node-x")!.Locked);
+    }
+
+    [Fact]
+    public async Task InstallAsync_EmptyRepoUrl_FallsBackToActiveDownloadSourceUrl()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-install-fallback-{Guid.NewGuid():N}");
+        var customNodes = Path.Combine(tempRoot, "nodes");
+        Directory.CreateDirectory(customNodes);
+
+        // 建一个 bare repo 在 <tempRoot>/repos/{node}.git,这样 {node}
+        // 替换后正好是一个真实的 bare repo 路径。
+        var reposRoot = Path.Combine(tempRoot, "repos");
+        Directory.CreateDirectory(reposRoot);
+        var remoteBare = Path.Combine(reposRoot, "node-a.git");
+        RunGit(tempRoot, "init", "--bare", "--initial-branch=main", remoteBare);
+        // 推一个 commit 进去(否则 clone 出空 repo 也不会报错,
+        // 但我们仍然想要 git 真的拿到 refs)
+        var seedWorking = Path.Combine(tempRoot, "seed");
+        Directory.CreateDirectory(seedWorking);
+        RunGit(seedWorking, "init", "-q", "--initial-branch=main");
+        RunGit(seedWorking, "config", "user.email", "test@example.com");
+        RunGit(seedWorking, "config", "user.name", "test");
+        RunGit(seedWorking, "config", "commit.gpgsign", "false");
+        File.WriteAllText(Path.Combine(seedWorking, "README.md"), "hello\n");
+        RunGit(seedWorking, "add", "README.md");
+        RunGit(seedWorking, "commit", "-q", "-m", "initial");
+        RunGit(seedWorking, "remote", "add", "origin", remoteBare);
+        RunGit(seedWorking, "push", "-q", "-u", "origin", "main");
+
+        using var db = new TestDb();
+        var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
+
+        // Settings 含一个 active download source 模板
+        var settings = new ComfyUI.Manager.Models.Settings
+        {
+            DownloadSources = new List<NodeSource>
+            {
+                new() { Name = "test-source", Url = reposRoot + "/{node}.git" },  // 注意带 {node}
+            },
+            ActiveDownloadSourceName = "test-source",
+        };
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, settings);
+
+        // 传空 repoUrl → 应回落到 active download source,substitute {node}
+        var result = await ops.InstallAsync("env-1", "node-a", "");
+        Assert.True(result.Success, $"reason={result.Reason}");
+        Assert.True(Directory.Exists(Path.Combine(customNodes, "node-a")));
+    }
+
+    [Fact]
+    public async Task InstallAsync_EmptyRepoUrl_NoActiveSource_Fails()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-install-nosrc-{Guid.NewGuid():N}");
+        var customNodes = Path.Combine(tempRoot, "nodes");
+        Directory.CreateDirectory(customNodes);
+
+        using var db = new TestDb();
+        var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
+
+        var settings = new ComfyUI.Manager.Models.Settings
+        {
+            DownloadSources = new(),  // 列表空
+            ActiveDownloadSourceName = "nonexistent",
+        };
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, settings);
+
+        var result = await ops.InstallAsync("env-1", "node-a", "");
+        Assert.False(result.Success);
+        Assert.Contains("未配置下载源", result.Reason);
     }
 
     private static string ReadHeadSha(string cwd)
