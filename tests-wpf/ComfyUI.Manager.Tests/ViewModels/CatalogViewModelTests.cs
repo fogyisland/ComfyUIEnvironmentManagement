@@ -75,7 +75,7 @@ public class CatalogViewModelTests
         SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
 
         var vm = new CatalogViewModel(
-            new CatalogRepository(db.Factory),
+            new CatalogRepository(new CatalogCacheStore(db.Path)),
             new EnvironmentRepository(db.Factory),
             new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)),
             new FakeCatalogFetcher(),
@@ -95,7 +95,7 @@ public class CatalogViewModelTests
         SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
 
         var vm = new CatalogViewModel(
-            new CatalogRepository(db.Factory),
+            new CatalogRepository(new CatalogCacheStore(db.Path)),
             new EnvironmentRepository(db.Factory),
             new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)),
             new FakeCatalogFetcher(),
@@ -122,7 +122,7 @@ public class CatalogViewModelTests
         };
 
         var vm = new CatalogViewModel(
-            new CatalogRepository(db.Factory),
+            new CatalogRepository(new CatalogCacheStore(db.Path)),
             new EnvironmentRepository(db.Factory),
             new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)),
             fetcher,
@@ -134,7 +134,7 @@ public class CatalogViewModelTests
         await Task.Delay(200);
 
         Assert.Equal(settings.QuerySources[0].Url, fetcher.LastUrl);
-        var entries = new CatalogRepository(db.Factory).Search("", 10);
+        var entries = new CatalogRepository(new CatalogCacheStore(db.Path)).Search("", 10);
         Assert.Single(entries);
         Assert.Equal("from-active-source", entries[0].Package);
         Assert.Equal(settings.QuerySources[0].Url, entries[0].SourceUrl);
@@ -152,7 +152,7 @@ public class CatalogViewModelTests
         // 不跑 SettingsDefaults.Apply,settings 保持空 query_sources + 错误 active name
 
         var vm = new CatalogViewModel(
-            new CatalogRepository(db.Factory),
+            new CatalogRepository(new CatalogCacheStore(db.Path)),
             new EnvironmentRepository(db.Factory),
             new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)),
             new FakeCatalogFetcher(),
@@ -178,7 +178,7 @@ public class CatalogViewModelTests
         };
 
         var vm = new CatalogViewModel(
-            new CatalogRepository(db.Factory),
+            new CatalogRepository(new CatalogCacheStore(db.Path)),
             new EnvironmentRepository(db.Factory),
             new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)),
             fetcher,
@@ -201,7 +201,7 @@ public class CatalogViewModelTests
         SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
 
         var vm = new CatalogViewModel(
-            new CatalogRepository(db.Factory),
+            new CatalogRepository(new CatalogCacheStore(db.Path)),
             new EnvironmentRepository(db.Factory),
             new NoopNodeOps(new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory)),
             new FakeCatalogFetcher(),
