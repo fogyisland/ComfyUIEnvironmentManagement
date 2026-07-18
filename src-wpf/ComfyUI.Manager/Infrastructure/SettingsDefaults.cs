@@ -38,6 +38,8 @@ public static class SettingsDefaults
         "https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json";
     public const string DefaultDownloadSourceName = "comfyui manager";
     public const string DefaultDownloadSourceUrl = "https://github.com/comfyanonymous/{node}";
+    public const CatalogViewMode DefaultCatalogViewMode = CatalogViewMode.List;
+    public const int DefaultCatalogPageSize = 20;
 
     /// <summary>
     /// template paths 空时填默认值(子目录名);user-configured paths 空时保持空。
@@ -81,6 +83,10 @@ public static class SettingsDefaults
         {
             s.ActiveDownloadSourceName = s.DownloadSources[0].Name;
         }
+
+        // Catalog 视图:默认值兜底(空枚举/0 表示未设 → 默认 List / 20)
+        if (s.CatalogPageSize <= 0) s.CatalogPageSize = DefaultCatalogPageSize;
+        // CatalogViewMode 枚举:JSON 反序列化时无效值会落到 0 (List),不需要额外 fallback
     }
 
     /// <summary>

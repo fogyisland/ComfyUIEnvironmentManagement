@@ -177,4 +177,44 @@ public class SettingsDefaultsTests
         Assert.Equal("my-mirror", s.QuerySources[0].Name);
         Assert.Equal("my-mirror", s.ActiveQuerySourceName);
     }
+
+    [Fact]
+    public void Apply_CatalogPageSize_ZeroOrNegativeGetsDefault()
+    {
+        var s = new Settings { CatalogPageSize = 0 };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(20, s.CatalogPageSize);
+    }
+
+    [Fact]
+    public void Apply_CatalogPageSize_NegativeGetsDefault()
+    {
+        var s = new Settings { CatalogPageSize = -1 };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(20, s.CatalogPageSize);
+    }
+
+    [Fact]
+    public void Apply_CatalogViewMode_DefaultsToList_OnFreshSettings()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(CatalogViewMode.List, s.CatalogViewMode);
+    }
+
+    [Fact]
+    public void Apply_CatalogPageSize_PositiveValuePreserved()
+    {
+        var s = new Settings { CatalogPageSize = 50 };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(50, s.CatalogPageSize);
+    }
 }

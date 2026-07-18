@@ -4,6 +4,12 @@ using System.Text.Json.Serialization;
 
 namespace ComfyUI.Manager.Models;
 
+public enum CatalogViewMode
+{
+    List,
+    Tile,
+}
+
 public class Settings
 {
     // —— 基础 / 显示 ——
@@ -29,6 +35,12 @@ public class Settings
 
     // —— 高级:用户自定义 path 表(key=name,value=path)——
     [JsonPropertyName("extra_paths")] public List<ExtraPath> ExtraPaths { get; set; } = new();
+
+    // —— Catalog 视图 ——
+    [JsonPropertyName("catalog_view_mode")]
+    public CatalogViewMode CatalogViewMode { get; set; } = CatalogViewMode.List;
+    [JsonPropertyName("catalog_page_size")]
+    public int CatalogPageSize { get; set; } = 20;
 
     // —— 节点源(查询/下载):两个列表 + 两个 active 名称 ——
     [JsonPropertyName("query_sources")]
