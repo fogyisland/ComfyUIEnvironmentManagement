@@ -34,28 +34,34 @@ public class CatalogFetcher
     public virtual async Task<List<CatalogEntry>> FetchAsync(string url, CancellationToken ct = default)
     {
         var json = await _http.GetStringAsync(url, ct);
-        var rawArray = JsonSerializer.Deserialize<List<JsonElement>>(json)
-            ?? new List<JsonElement>();
+        var root = JsonSerializer.Deserialize<JsonElement>(json);
+
+        var rawArray = ExtractEntriesArray(root);
 
         var now = DateTime.UtcNow;
         var expires = now.AddMinutes(_cacheTtlMinutes);
         var entries = new List<CatalogEntry>();
 
-        foreach (var element in rawArray)
+        foreach (var element in rawArray.EnumerateArray())
         {
             string package = "";
             if (element.TryGetProperty("id", out var idProp))
             {
                 package = idProp.GetString() ?? "";
             }
-            if (string.IsNullOrEmpty(package) &&
+            if (string.IsNullOrWhiteSpace(package) &&
+                element.TryGetProperty("title", out var titleProp))
+            {
+                package = titleProp.GetString() ?? "";
+            }
+            if (string.IsNullOrWhiteSpace(package) &&
                 element.TryGetProperty("name", out var nameProp))
             {
                 package = nameProp.GetString() ?? "";
             }
             if (string.IsNullOrWhiteSpace(package))
             {
-                continue;  // 跳过无 id/name 的 row
+                continue;  // 跳过无 id/title/name 的 row
             }
 
             var rawMeta = ParseRawMetadata(element);
@@ -72,6 +78,33 @@ public class CatalogFetcher
         }
 
         return entries;
+    }
+
+    /// <summary>
+    /// Extract the entries array from the JSON root. Supports:
+    /// - 顶层 array(<c>[{{...}}]</c>)— 旧 fixture 格式
+    /// - 顶层 object 含 <c>custom_nodes</c> 数组(<c>{{ "custom_nodes": [...] }}</c>)— 真实默认 URL 格式
+    /// 其他顶层形状抛 <see cref="InvalidOperationException"/>。
+    /// </summary>
+    private static JsonElement ExtractEntriesArray(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            return root;
+        }
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            if (root.TryGetProperty("custom_nodes", out var customNodes)
+                && customNodes.ValueKind == JsonValueKind.Array)
+            {
+                return customNodes;
+            }
+            throw new InvalidOperationException(
+                "Catalog JSON root object does not contain a 'custom_nodes' array. " +
+                "Supported shapes: bare array, or { \"custom_nodes\": [...] }.");
+        }
+        throw new InvalidOperationException(
+            $"Catalog JSON root must be array or object; got {root.ValueKind}.");
     }
 
     /// <summary>

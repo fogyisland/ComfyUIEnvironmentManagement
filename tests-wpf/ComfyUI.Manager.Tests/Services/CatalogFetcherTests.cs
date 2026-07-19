@@ -118,4 +118,55 @@ public class CatalogFetcherTests
         var diff = expires - cached;
         Assert.InRange(diff.TotalMinutes, 29.5, 30.5);
     }
+
+    // v0.6.4 真实 catalog URL 顶层是 { "custom_nodes": [...] } 而不是裸 array。
+    // v0.6.3 的 fixture 错了所以 bug 一直没暴露。
+
+    [Fact]
+    public async Task FetchAsync_UnwrapsCustomNodesWrapper_RealUrlShape()
+    {
+        var json = @"{
+            ""channel"": ""stable"",
+            ""custom_nodes"": [
+                { ""title"": ""ComfyUI-A"", ""author"": ""alice"", ""reference"": ""https://github.com/alice/ComfyUI-A"" },
+                { ""title"": ""ComfyUI-B"", ""author"": ""bob"", ""id"": ""pkg-b"", ""reference"": ""https://github.com/bob/ComfyUI-B"" }
+            ],
+            ""last_update"": ""2026-07-18""
+        }";
+        var fetcher = new CatalogFetcher(MockedHttpClient(json), cacheTtlMinutes: 60);
+
+        var entries = await fetcher.FetchAsync("https://example/registry.json");
+
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("ComfyUI-A", entries[0].Package);
+        Assert.Equal("alice", entries[0].RawMetadata["author"]);
+        Assert.Equal("pkg-b", entries[1].Package);
+    }
+
+    [Fact]
+    public async Task FetchAsync_FallsBackToTitle_WhenIdMissing()
+    {
+        // 真实数据里很多 entries 没 id,只有 title。当前代码只 fallback 到 name,
+        // 真实 fixture 里也没 name,所以会被默默 skip。这里确认 fallback 到 title 修好。
+        var json = @"{ ""custom_nodes"": [
+            { ""title"": ""by-title-only"" }
+        ] }";
+        var fetcher = new CatalogFetcher(MockedHttpClient(json));
+
+        var entries = await fetcher.FetchAsync("https://example/registry.json");
+
+        Assert.Single(entries);
+        Assert.Equal("by-title-only", entries[0].Package);
+    }
+
+    [Fact]
+    public async Task FetchAsync_RootObjectWithoutCustomNodes_Throws()
+    {
+        // 顶层是 Object 但没 custom_nodes 属性 → 不认的格式,抛清晰错误。
+        var json = @"{ ""unrelated_field"": [] }";
+        var fetcher = new CatalogFetcher(MockedHttpClient(json));
+
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => fetcher.FetchAsync("https://example/registry.json"));
+    }
 }
