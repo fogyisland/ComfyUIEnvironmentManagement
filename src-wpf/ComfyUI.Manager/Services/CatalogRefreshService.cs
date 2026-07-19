@@ -40,11 +40,19 @@ public class CatalogRefreshService
         try
         {
             var entries = await _fetcher.FetchAsync(src.Url, ct);
-            foreach (var e in entries)
+            // SQLite write loop OFF the UI SynchronizationContext.
+            // 调用方是 WPF command handler(UI 线程),await 返回后 foreach
+            // 会同步跑 3000+ 个 Upsert,UI 卡到完成才解封。
+            // Task.Run 把整段 foreach 推到 thread pool,UI 立刻恢复。
+            var url = src.Url;
+            await Task.Run(() =>
             {
-                e.SourceUrl = src.Url;
-                _repo.Upsert(e);
-            }
+                foreach (var e in entries)
+                {
+                    e.SourceUrl = url;
+                    _repo.Upsert(e);
+                }
+            }, ct);
             return RefreshResult.Ok(entries.Count);
         }
         catch (Exception ex)
