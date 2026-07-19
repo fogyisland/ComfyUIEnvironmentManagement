@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -23,6 +24,7 @@ public class CatalogViewModelTests : IDisposable
     private readonly NodeRepository _nodeRepo;
     private readonly NoopNodeOps _nodeOps;
     private readonly CatalogRepository _catRepo;
+    private readonly NodeVersionRepository _versionRepo;
 
     public CatalogViewModelTests()
     {
@@ -36,13 +38,15 @@ public class CatalogViewModelTests : IDisposable
         _envRepo = new EnvironmentRepository(_db.Factory);
         _nodeRepo = new NodeRepository(_db.Factory);
         _nodeOps = new NoopNodeOps(_envRepo, _nodeRepo, _settings);
-        _catRepo = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        var cacheStore = new CatalogCacheStore(_db.Path);
+        _catRepo = new CatalogRepository(cacheStore);
+        _versionRepo = new NodeVersionRepository(cacheStore);
     }
 
     public void Dispose() => _db.Dispose();
 
     private CatalogViewModel NewVm() =>
-        new CatalogViewModel(_catRepo, _envRepo, _nodeOps, _refreshService, _settings, _settingsRepo);
+        new CatalogViewModel(_catRepo, _versionRepo, _envRepo, _nodeOps, _refreshService, _settings, _settingsRepo);
 
     private void SeedCatalog(string package)
     {
@@ -54,6 +58,13 @@ public class CatalogViewModelTests : IDisposable
             CachedAt = "2026-07-13T00:00:00",
             ExpiresAt = "2027-07-13T00:00:00",
         });
+    }
+
+    private void SeedVersions(string nodeId, params (string Tag, string Date, bool Pre)[] versions)
+    {
+        _versionRepo.UpsertBatch(versions.Select(v => (
+            nodeId,
+            new VersionInfo { Tag = v.Tag, PublishedAt = v.Date, IsPrerelease = v.Pre })));
     }
 
     private sealed class FakeRefreshService : CatalogRefreshService
@@ -71,6 +82,7 @@ public class CatalogViewModelTests : IDisposable
 
         public override Task<RefreshResult> RefreshAsync(
             IProgress<ComfyUI.Manager.Models.CatalogEntry>? progress = null,
+            IProgress<VersionFetchProgress>? versionProgress = null,
             System.Threading.CancellationToken ct = default)
         {
             RefreshCallCount++;
@@ -213,5 +225,111 @@ public class CatalogViewModelTests : IDisposable
         await Task.Delay(50);
 
         Assert.Contains("拉取失败", vm.ErrorMessage);
+    }
+
+    [Fact]
+    public void Selected_LoadsVersionsFromRepo_DescendingOrder()
+    {
+        SeedCatalog("pkg-a");
+        SeedVersions("pkg-a",
+            ("v1.0.0", "2025-01-01T00:00:00Z", false),
+            ("v2.0.0", "2026-01-01T00:00:00Z", false),
+            ("v1.5.0", "2025-06-01T00:00:00Z", false));
+
+        var vm = NewVm();
+        var entry = vm.PagedEntries.First(e => e.Package == "pkg-a");
+        vm.Selected = entry;
+
+        Assert.Equal(3, vm.SelectedVersions.Count);
+        Assert.Equal("v2.0.0", vm.SelectedVersions[0].Tag);
+        Assert.Equal("v1.5.0", vm.SelectedVersions[1].Tag);
+        Assert.Equal("v1.0.0", vm.SelectedVersions[2].Tag);
+        Assert.Same(vm.SelectedVersions[0], vm.SelectedVersion);  // 默认选最新
+        Assert.Equal("2026-01-01", vm.SelectedVersionDate);
+    }
+
+    [Fact]
+    public void Selected_NoVersions_LeavesCollectionsEmpty()
+    {
+        SeedCatalog("pkg-empty");
+        var vm = NewVm();
+        var entry = vm.PagedEntries.First(e => e.Package == "pkg-empty");
+        vm.Selected = entry;
+
+        Assert.Empty(vm.SelectedVersions);
+        Assert.Null(vm.SelectedVersion);
+        Assert.False(vm.HasVersions);
+    }
+
+    [Fact]
+    public void SelectedVersionDate_PicksFirst10Chars()
+    {
+        SeedCatalog("pkg-x");
+        SeedVersions("pkg-x", ("v1.0.0", "2025-07-15T10:30:00Z", false));
+
+        var vm = NewVm();
+        vm.Selected = vm.PagedEntries.First(e => e.Package == "pkg-x");
+
+        Assert.Equal("2025-07-15", vm.SelectedVersionDate);
+    }
+
+    [Fact]
+    public void InstallButtonLabel_NoVersions_ReturnsInstall()
+    {
+        SeedCatalog("pkg-no-versions");
+        var vm = NewVm();
+        vm.Selected = vm.PagedEntries.First(e => e.Package == "pkg-no-versions");
+
+        Assert.Equal("安装", vm.InstallButtonLabel);
+    }
+
+    [Fact]
+    public void InstallButtonLabel_WithVersions_DefaultsToLatest()
+    {
+        SeedCatalog("pkg-with-versions");
+        SeedVersions("pkg-with-versions",
+            ("v1.0.0", "2025-01-01T00:00:00Z", false),
+            ("v2.0.0", "2026-01-01T00:00:00Z", false));
+
+        var vm = NewVm();
+        vm.Selected = vm.PagedEntries.First(e => e.Package == "pkg-with-versions");
+
+        // ListByNode returns DESC by published_at → v2.0.0 排第一个 → 自动默认
+        Assert.Equal("安装 v2.0.0", vm.InstallButtonLabel);
+    }
+
+    [Fact]
+    public void InstallButtonLabel_UpdatesWhenSelectedVersionChanges()
+    {
+        SeedCatalog("pkg-switch");
+        SeedVersions("pkg-switch",
+            ("v1.0.0", "2025-01-01T00:00:00Z", false),
+            ("v2.0.0", "2026-01-01T00:00:00Z", false));
+
+        var vm = NewVm();
+        vm.Selected = vm.PagedEntries.First(e => e.Package == "pkg-switch");
+
+        Assert.Equal("安装 v2.0.0", vm.InstallButtonLabel);
+
+        vm.SelectedVersion = vm.SelectedVersions.Last();  // 切到 v1.0.0
+        Assert.Equal("安装 v1.0.0", vm.InstallButtonLabel);
+
+        vm.SelectedVersion = vm.SelectedVersions.First();  // 切回 v2.0.0
+        Assert.Equal("安装 v2.0.0", vm.InstallButtonLabel);
+    }
+
+    [Fact]
+    public void InstallButtonLabel_ClearedWhenSelectionCleared()
+    {
+        SeedCatalog("pkg-clear");
+        SeedVersions("pkg-clear", ("v9.9.9", "2025-06-01T00:00:00Z", false));
+
+        var vm = NewVm();
+        var entry = vm.PagedEntries.First(e => e.Package == "pkg-clear");
+        vm.Selected = entry;
+        Assert.Equal("安装 v9.9.9", vm.InstallButtonLabel);
+
+        vm.Selected = null;
+        Assert.Equal("安装", vm.InstallButtonLabel);
     }
 }

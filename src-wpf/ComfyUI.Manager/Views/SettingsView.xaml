@@ -27,6 +27,13 @@
                      Style="{StaticResource MaterialTextBox}" Width="480"
                      HorizontalAlignment="Left" />
 
+            <TextBlock Text="GitHub Token(可选 — 配置后刷新 catalog 时会同步拉取各节点最新版本号,留空则不拉)"
+                       Margin="0,8,0,4" TextWrapping="Wrap" />
+            <PasswordBox x:Name="GitHubTokenBox" Width="480" HorizontalAlignment="Left"
+                         PasswordChanged="OnGitHubTokenChanged" />
+            <TextBlock Text="仅保存在本地 settings.json,不会上传到任何服务器"
+                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" />
+
             <!-- ============ 查询节点的源 ============ -->
             <TextBlock Text="查询节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="当前使用" Margin="0,0,0,4" />

@@ -30,7 +30,7 @@ public sealed class CatalogRepository
         // limit <= 0 means "no LIMIT clause" (SQLite would treat LIMIT 0 as
         // empty result set otherwise).
         cmd.CommandText = @"
-            SELECT id, source_url, package, raw_metadata, cached_at, expires_at
+            SELECT id, source_url, package, raw_metadata, cached_at, expires_at, latest_version
             FROM catalog_cache
             WHERE LOWER(package) LIKE @pattern
                OR LOWER(raw_metadata) LIKE @pattern
@@ -137,6 +137,32 @@ public sealed class CatalogRepository
         cmd.Parameters.AddWithValue("@expires_at", entry.ExpiresAt);
     }
 
+    /// <summary>
+    /// 批量 UPDATE latest_version。一次 connection + transaction,5000+ 条
+    /// ~几百毫秒。items 中 null value 跳过(不更新)。
+    /// </summary>
+    public int UpdateLatestVersions(IEnumerable<(string Id, string Version)> items)
+    {
+        using var conn = _store.Open();
+        using var tx = conn.BeginTransaction();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE catalog_cache SET latest_version = @v WHERE id = @id";
+        cmd.Parameters.Add("@v", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@id", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Prepare();
+        int count = 0;
+        foreach (var (id, ver) in items)
+        {
+            if (string.IsNullOrEmpty(ver)) continue;
+            cmd.Parameters["@v"].Value = ver;
+            cmd.Parameters["@id"].Value = id;
+            cmd.ExecuteNonQuery();
+            count++;
+        }
+        tx.Commit();
+        return count;
+    }
+
     private static CatalogEntry Read(SqliteDataReader reader)
     {
         var rawJson = reader.GetString(3);
@@ -149,6 +175,7 @@ public sealed class CatalogRepository
                 rawJson, JsonOptions) ?? new Dictionary<string, object?>(),
             CachedAt = reader.GetString(4),
             ExpiresAt = reader.GetString(5),
+            LatestVersion = reader.IsDBNull(6) ? null : reader.GetString(6),
         };
     }
 }

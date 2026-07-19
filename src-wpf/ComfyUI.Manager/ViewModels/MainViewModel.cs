@@ -79,9 +79,10 @@ public class MainViewModel : ViewModelBase
     {
         var catRepo = new CatalogRepository(_catalogCacheStore);
         var envRepo = new EnvironmentRepository(_dbFactory);
+        var versionRepo = new NodeVersionRepository(_catalogCacheStore);
         CurrentView = new CatalogView
         {
-            DataContext = new CatalogViewModel(catRepo, envRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo),
+            DataContext = new CatalogViewModel(catRepo, versionRepo, envRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo),
         };
     }
 
@@ -89,7 +90,7 @@ public class MainViewModel : ViewModelBase
     {
         CurrentView = new SettingsView
         {
-            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, _catalogRefreshService),
+            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, _catalogRefreshService, _settings),
         };
     }
 

@@ -26,12 +26,15 @@ public class SettingsViewModel : ViewModelBase
     private string _newDownloadSourceName = "";
     private string _newDownloadSourceUrl = "";
 
-    public SettingsViewModel(SettingsRepository repo, GitProxyConfig proxy, CatalogRefreshService refreshService)
+    public SettingsViewModel(SettingsRepository repo, GitProxyConfig proxy, CatalogRefreshService refreshService, Settings? sharedSettings = null)
     {
         _repo = repo;
         _proxy = proxy;
         _refreshService = refreshService;
-        _settings = _repo.Load();
+        // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一,
+        // 避免 VM 改 token 后 CatalogRefreshService 看不到的 bug)。
+        // 没有注入时(单元测试)才从 disk 加载。
+        _settings = sharedSettings ?? _repo.Load();
         // 首次启动/无 settings.json 时把默认值(node source 列表 + active 名)填上。
         // 生产环境 App.xaml.cs 也会 Apply,这里再 Apply 一次保证测试直构造 VM
         // 时也能拿到默认值(幂等:已存在的非空列表/active 名不会被覆盖)。
@@ -168,6 +171,17 @@ public class SettingsViewModel : ViewModelBase
     {
         get => _settings.CompatApiBaseUrl;
         set { _settings.CompatApiBaseUrl = value; _repo.Save(_settings); RaisePropertyChanged(); }
+    }
+
+    /// <summary>
+    /// GitHub PAT 用于 catalog 刷新时拉各节点最新 release 版本号。空 = 不拉。
+    /// View 端用 PasswordBox,不在 XAML 里直接 TwoWay bind(string 类型会明文显示)。
+    /// 由 View 的 PasswordChanged 事件反向写入此属性并 persist。
+    /// </summary>
+    public string GitHubToken
+    {
+        get => _settings.GitHubToken;
+        set { _settings.GitHubToken = value ?? ""; _repo.Save(_settings); }
     }
 
     // —— 路径 ——

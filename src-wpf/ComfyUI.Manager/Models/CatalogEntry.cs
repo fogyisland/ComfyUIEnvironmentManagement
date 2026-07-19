@@ -20,4 +20,7 @@ public class CatalogEntry
     public string CachedAt { get; set; } = "";
     [JsonPropertyName("expires_at")]
     public string ExpiresAt { get; set; } = "";
+
+    [JsonPropertyName("latest_version")]
+    public string? LatestVersion { get; set; }
 }

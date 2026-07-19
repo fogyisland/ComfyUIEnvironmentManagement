@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
@@ -12,6 +13,7 @@ namespace ComfyUI.Manager.ViewModels;
 public class CatalogViewModel : ViewModelBase
 {
     private readonly CatalogRepository _repo;
+    private readonly NodeVersionRepository _versionRepo;
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeOperations _nodeOps;
     private readonly CatalogRefreshService _refreshService;
@@ -21,6 +23,7 @@ public class CatalogViewModel : ViewModelBase
     private List<CatalogEntry> _allEntries = new();
 
     public ObservableCollection<CatalogEntry> PagedEntries { get; } = new();
+    public ObservableCollection<VersionInfo> SelectedVersions { get; } = new();
     public RelayCommand RefreshCommand { get; }
     public RelayCommand InstallCommand { get; }
     public RelayCommand NextPageCommand { get; }
@@ -67,7 +70,78 @@ public class CatalogViewModel : ViewModelBase
     }
 
     private CatalogEntry? _selected;
-    public CatalogEntry? Selected { get => _selected; set => SetField(ref _selected, value); }
+    public CatalogEntry? Selected
+    {
+        get => _selected;
+        set
+        {
+            if (SetField(ref _selected, value))
+            {
+                RaisePropertyChanged(nameof(HasSelected));
+                RaisePropertyChanged(nameof(SelectedReference));
+                RaisePropertyChanged(nameof(SelectedReferenceUrl));
+                RaisePropertyChanged(nameof(SelectedLatestVersion));
+                RaisePropertyChanged(nameof(SelectedInstallType));
+                RaisePropertyChanged(nameof(SelectedDescription));
+                RaisePropertyChanged(nameof(SelectedAuthor));
+                RaisePropertyChanged(nameof(SelectedTitle));
+                LoadVersionsForSelected();
+            }
+        }
+    }
+
+    private void LoadVersionsForSelected()
+    {
+        SelectedVersions.Clear();
+        SelectedVersion = null;
+        RaisePropertyChanged(nameof(HasVersions));
+        RaisePropertyChanged(nameof(SelectedVersionDate));
+        RaisePropertyChanged(nameof(InstallButtonLabel));
+        if (_selected is null) return;
+        var versions = _versionRepo.ListByNode(_selected.Id);
+        foreach (var v in versions) SelectedVersions.Add(v);
+        // 默认选中最新(第一个,已按 published_at DESC)
+        if (SelectedVersions.Count > 0)
+        {
+            SelectedVersion = SelectedVersions[0];
+        }
+    }
+
+    public bool HasSelected => _selected is not null;
+    public bool HasVersions => SelectedVersions.Count > 0;
+    public string? SelectedTitle => _selected?.RawMetadata?.TryGetValue("title", out var t) == true ? t?.ToString() : _selected?.Package;
+    public string? SelectedAuthor => _selected?.RawMetadata?.TryGetValue("author", out var a) == true ? a?.ToString() : null;
+    public string? SelectedDescription => _selected?.RawMetadata?.TryGetValue("description", out var d) == true ? d?.ToString() : null;
+    public string? SelectedReference => _selected?.RawMetadata?.TryGetValue("reference", out var r) == true ? r?.ToString() : null;
+    public string SelectedReferenceUrl => SelectedReference ?? "";
+    public string? SelectedInstallType => _selected?.RawMetadata?.TryGetValue("install_type", out var i) == true ? i?.ToString() : null;
+    public string? SelectedLatestVersion => string.IsNullOrEmpty(_selected?.LatestVersion) ? "未知" : _selected!.LatestVersion;
+
+    private VersionInfo? _selectedVersion;
+    public VersionInfo? SelectedVersion
+    {
+        get => _selectedVersion;
+        set
+        {
+            if (SetField(ref _selectedVersion, value))
+            {
+                RaisePropertyChanged(nameof(SelectedVersionDate));
+                RaisePropertyChanged(nameof(InstallButtonLabel));
+            }
+        }
+    }
+    public string SelectedVersionDate
+    {
+        get
+        {
+            if (_selectedVersion is null) return "—";
+            var pub = _selectedVersion.PublishedAt;
+            return pub.Length >= 10 ? pub[..10] : pub;
+        }
+    }
+
+    public string InstallButtonLabel =>
+        _selectedVersion is null ? "安装" : $"安装 {_selectedVersion.Tag}";
 
     private string? _errorMessage;
     public string? ErrorMessage
@@ -90,8 +164,27 @@ public class CatalogViewModel : ViewModelBase
         private set => SetField(ref _isBusy, value);
     }
 
+    private int _refreshPercent;
+    public int RefreshPercent
+    {
+        get => _refreshPercent;
+        private set => SetField(ref _refreshPercent, value);
+    }
+
+    private string? _progressMessage;
+    public string? ProgressMessage
+    {
+        get => _progressMessage;
+        private set => SetField(ref _progressMessage, value);
+    }
+
+    public RelayCommand CancelRefreshCommand { get; }
+
+    private CancellationTokenSource? _refreshCts;
+
     public CatalogViewModel(
         CatalogRepository repo,
+        NodeVersionRepository versionRepo,
         EnvironmentRepository envRepo,
         NodeOperations nodeOps,
         CatalogRefreshService refreshService,
@@ -99,6 +192,7 @@ public class CatalogViewModel : ViewModelBase
         SettingsRepository settingsRepo)
     {
         _repo = repo;
+        _versionRepo = versionRepo;
         _envRepo = envRepo;
         _nodeOps = nodeOps;
         _refreshService = refreshService;
@@ -106,6 +200,7 @@ public class CatalogViewModel : ViewModelBase
         _settingsRepo = settingsRepo;
 
         RefreshCommand = new RelayCommand(_ => _ = RefreshAsync(), _ => !IsBusy);
+        CancelRefreshCommand = new RelayCommand(_ => _refreshCts?.Cancel(), _ => IsBusy);
         InstallCommand = new RelayCommand(
             async p => await InstallAsync(p as CatalogEntry ?? Selected),
             p => (p as CatalogEntry ?? Selected) is not null);
@@ -157,20 +252,33 @@ public class CatalogViewModel : ViewModelBase
     {
         ErrorMessage = null;
         InfoMessage = null;
+        ProgressMessage = "拉取 catalog...";
+        RefreshPercent = 0;
         IsBusy = true;
+        _refreshCts?.Dispose();
+        _refreshCts = new CancellationTokenSource();
+        var ct = _refreshCts.Token;
         _allEntries.Clear();
         ApplyPage();
         try
         {
             // Progress<T> 在构造时捕获 SynchronizationContext(UI 线程),回调自动 marshal 回来。
-            // 这样 UI 不会冻住,且每入一条 → 加到 master → 每 PageSize 条触发一次 paging 刷新。
             var progress = new Progress<CatalogEntry>(e => OnEntryArrived(e));
-            var result = await _refreshService.RefreshAsync(progress);
+            var versionProgress = new Progress<VersionFetchProgress>(vp =>
+            {
+                if (vp.Total <= 0) return;
+                RefreshPercent = (int)(100.0 * vp.Completed / vp.Total);
+                ProgressMessage = $"正在拉取版本 {vp.Completed}/{vp.Total}";
+            });
+            var result = await _refreshService.RefreshAsync(progress, versionProgress, ct);
             if (result.Success)
             {
                 CurrentPage = 1;
                 ApplyPage();
-                InfoMessage = $"刷新成功,共 {result.EntryCount} 个条目";
+                var msg = $"刷新成功,共 {result.EntryCount} 个条目";
+                if (result.VersionCount > 0)
+                    msg += $",其中 {result.VersionCount} 个已获取版本号";
+                InfoMessage = msg;
             }
             else
             {
@@ -180,6 +288,10 @@ public class CatalogViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+            RefreshPercent = 0;
+            ProgressMessage = null;
+            _refreshCts?.Dispose();
+            _refreshCts = null;
         }
     }
 
@@ -211,7 +323,9 @@ public class CatalogViewModel : ViewModelBase
             return;
         }
         var env = envs[0];
-        var result = await _nodeOps.InstallAsync(env.Id, entry.Package, templateUrl);
+        var result = await _nodeOps.InstallAsync(
+            env.Id, entry.Package, templateUrl,
+            SelectedVersion?.Tag);
         if (!result.Success) ErrorMessage = $"安装失败:{result.Reason}";
         else ErrorMessage = $"已安装 {entry.Package} → version={result.Version}";
     }

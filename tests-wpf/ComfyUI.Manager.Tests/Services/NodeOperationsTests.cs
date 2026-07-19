@@ -10,6 +10,7 @@ using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Tests.Fakes;
 using Xunit;
 using Environment = ComfyUI.Manager.Models.Environment;
+using System.Linq;
 
 namespace ComfyUI.Manager.Tests.Services;
 
@@ -342,6 +343,125 @@ public sealed class NodeOperationsTests
         var result = await ops.InstallAsync("env-1", "node-a", "");
         Assert.False(result.Success);
         Assert.Contains("未配置下载源", result.Reason);
+    }
+
+    [Fact]
+    public async Task InstallAsync_WithTargetTag_ClonesAndChecksOutTaggedCommit()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-install-tag-{Guid.NewGuid():N}");
+        var (remote, working) = InitRepoPair(tempRoot);
+
+        // 1) 在 working 上加第二个 commit,打 v1.0.0 tag,push 上去
+        File.WriteAllText(Path.Combine(working, "second.md"), "second\n");
+        RunGit(working, "add", "second.md");
+        RunGit(working, "commit", "-q", "-m", "second commit");
+        RunGit(working, "tag", "v1.0.0");
+        RunGit(working, "push", "-q", "origin", "main");
+        // tag 默认不 push,显式 push tag
+        RunGit(working, "push", "-q", "origin", "v1.0.0");
+
+        // 2) 在 working 上做第三个 commit + push(让 HEAD 走在 tag 前面)
+        File.WriteAllText(Path.Combine(working, "third.md"), "third\n");
+        RunGit(working, "add", "third.md");
+        RunGit(working, "commit", "-q", "-m", "third commit");
+        RunGit(working, "push", "-q", "origin", "main");
+
+        // 3) 把 working reset 回 tagged commit(否则 force-push 会改写 origin)
+        RunGit(working, "reset", "--hard", "v1.0.0");
+        RunGit(working, "push", "-f", "-q", "origin", "main");
+
+        var customNodes = Path.Combine(tempRoot, "nodes");
+        Directory.CreateDirectory(customNodes);
+
+        using var db = new TestDb();
+        var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+
+        var result = await ops.InstallAsync("env-1", "node-a", remote, targetTag: "v1.0.0");
+        Assert.True(result.Success, $"reason={result.Reason}");
+        Assert.False(string.IsNullOrWhiteSpace(result.Version));
+
+        var targetDir = Path.Combine(customNodes, "node-a");
+        Assert.True(Directory.Exists(targetDir));
+        Assert.True(File.Exists(Path.Combine(targetDir, "README.md")));
+        Assert.True(File.Exists(Path.Combine(targetDir, "second.md")));   // tagged commit 有
+        Assert.False(File.Exists(Path.Combine(targetDir, "third.md")));   // HEAD 的后续 commit 没有
+
+        var row = nodeRepo.Get("node-a");
+        Assert.NotNull(row);
+        Assert.Equal("enabled", row!.Status);
+
+        // version 应当指向 tag commit,不是后面的 main HEAD
+        var taggedSha = ReadHeadSha(working);  // working 当前 = v1.0.0 那次 commit
+        Assert.Equal(taggedSha, row.Version);
+    }
+
+    [Fact]
+    public async Task InstallAsync_WithInvalidTargetTag_FailsAndRemovesClonedDir()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-install-badtag-{Guid.NewGuid():N}");
+        var (remote, _) = InitRepoPair(tempRoot);
+        var customNodes = Path.Combine(tempRoot, "nodes");
+        Directory.CreateDirectory(customNodes);
+
+        using var db = new TestDb();
+        var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+
+        var targetDir = Path.Combine(customNodes, "node-a");
+        var result = await ops.InstallAsync("env-1", "node-a", remote, targetTag: "nonexistent-tag-xxx");
+
+        Assert.False(result.Success);
+        Assert.Contains("checkout", result.Reason);
+        // 失败的 checkout 应该清掉 clone 出来的目录,避免留半截
+        Assert.False(Directory.Exists(targetDir));
+        Assert.Null(nodeRepo.Get("node-a"));  // DB 也不应注册
+    }
+
+    [Fact]
+    public async Task InstallAsync_NullTargetTag_BehavesLikeOriginal()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-install-nulltag-{Guid.NewGuid():N}");
+        var (remote, _) = InitRepoPair(tempRoot);
+        var customNodes = Path.Combine(tempRoot, "nodes");
+        Directory.CreateDirectory(customNodes);
+
+        using var db = new TestDb();
+        var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+
+        var result = await ops.InstallAsync("env-1", "node-a", remote, targetTag: null);
+        Assert.True(result.Success, $"reason={result.Reason}");
+        Assert.True(Directory.Exists(Path.Combine(customNodes, "node-a")));
+    }
+
+    private static List<string> GetTags(string repoDir)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = repoDir,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("tag");
+        psi.ArgumentList.Add("-l");
+        using var p = Process.Start(psi)!;
+        var stdout = p.StandardOutput.ReadToEnd();
+        p.WaitForExit(3000);
+        return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
     }
 
     private static string ReadHeadSha(string cwd)

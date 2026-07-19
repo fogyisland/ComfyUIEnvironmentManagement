@@ -51,6 +51,10 @@ public class Settings
     public string ActiveQuerySourceName { get; set; } = "";
     [JsonPropertyName("active_download_source_name")]
     public string ActiveDownloadSourceName { get; set; } = "";
+
+    // —— GitHub API:配置后刷新 catalog 时同步拉各节点最新 release —
+    [JsonPropertyName("github_token")]
+    public string GitHubToken { get; set; } = "";
 }
 
 public class ExtraPath

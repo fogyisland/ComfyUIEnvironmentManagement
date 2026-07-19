@@ -53,8 +53,57 @@ public sealed class CatalogCacheStore
                 raw_metadata TEXT NOT NULL,
                 cached_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
+                latest_version TEXT,
                 UNIQUE(source_url, package)
             );";
         cmd.ExecuteNonQuery();
+
+        // 增量升级:旧 db 没有 latest_version 列 → ALTER TABLE ADD COLUMN。
+        // PRAGMA table_info 返回每一列一行,检查 latest_version 是否已存在。
+        EnsureColumn(conn, "catalog_cache", "latest_version", "TEXT");
+
+        // v0.6.4+:节点历史 release 列表(tag + 发布时间 + 是否 prerelease)
+        using (var tbl = conn.CreateCommand())
+        {
+            tbl.CommandText = @"
+                CREATE TABLE IF NOT EXISTS node_versions (
+                    node_id TEXT NOT NULL,
+                    tag_name TEXT NOT NULL,
+                    published_at TEXT NOT NULL,
+                    is_prerelease INTEGER NOT NULL DEFAULT 0,
+                    fetched_at TEXT NOT NULL,
+                    PRIMARY KEY(node_id, tag_name)
+                )";
+            tbl.ExecuteNonQuery();
+        }
+        using (var idx = conn.CreateCommand())
+        {
+            idx.CommandText = "CREATE INDEX IF NOT EXISTS idx_node_versions_node ON node_versions(node_id, published_at DESC)";
+            idx.ExecuteNonQuery();
+        }
+    }
+
+    private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)
+    {
+        bool exists = false;
+        using (var probe = conn.CreateCommand())
+        {
+            probe.CommandText = $"PRAGMA table_info({table})";
+            using var reader = probe.ExecuteReader();
+            while (reader.Read())
+            {
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+        if (!exists)
+        {
+            using var alter = conn.CreateCommand();
+            alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type}";
+            alter.ExecuteNonQuery();
+        }
     }
 }

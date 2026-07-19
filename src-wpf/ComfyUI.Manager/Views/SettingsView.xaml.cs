@@ -10,6 +10,25 @@ public partial class SettingsView : UserControl
     public SettingsView()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) => SyncTokenFromViewModel();
+    }
+
+    private void SyncTokenFromViewModel()
+    {
+        // PasswordBox 不参与 XAML 双向绑定(string 会明文显示),
+        // 首次加载时把 VM 里已存的 token 灌进 PasswordBox。
+        if (DataContext is SettingsViewModel vm && GitHubTokenBox.Password != vm.GitHubToken)
+        {
+            GitHubTokenBox.Password = vm.GitHubToken;
+        }
+    }
+
+    private void OnGitHubTokenChanged(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm && sender is PasswordBox pb)
+        {
+            vm.GitHubToken = pb.Password;
+        }
     }
 
     private void BrowseTemplatePython(object sender, RoutedEventArgs e)

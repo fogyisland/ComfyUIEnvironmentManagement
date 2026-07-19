@@ -58,8 +58,10 @@ public partial class App : Application
         var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes);
         var catalogCacheStore = new CatalogCacheStore();
         var catalogRepo = new CatalogRepository(catalogCacheStore);
+        var githubVersionService = new GitHubVersionService(http);
+        var nodeVersionRepo = new NodeVersionRepository(catalogCacheStore);
         var catalogRefreshService = new CatalogRefreshService(
-            catalogFetcher, catalogRepo, settings);
+            catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy);
         var envCreator = new EnvCreatorService(

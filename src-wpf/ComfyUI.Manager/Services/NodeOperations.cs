@@ -50,12 +50,16 @@ public class NodeOperations
     /// <summary>
     /// git clone &lt;repoUrl&gt; &lt;customNodesPath/nodeId&gt;。
     ///
+    /// 如果 <paramref name="targetTag"/> 非空,clone 完再 <c>git checkout &lt;tag&gt;</c>
+    /// 钉到指定 tag / sha。
+    ///
     /// 完成后:
     /// - 节点目录已存在
     /// - upsert 一条 ScannedNode row(status=enabled, version=HEAD sha)
     /// </summary>
     public virtual async Task<NodeOperationResult> InstallAsync(
         string envId, string nodeId, string repoUrl,
+        string? targetTag = null,
         CancellationToken ct = default)
     {
         var env = RequireEnv(envId);
@@ -111,6 +115,38 @@ public class NodeOperations
                 ?? $"git 退出码 {result.ExitCode}");
         }
 
+        // 可选:钉到指定 tag / sha(详情面板下拉选的版本)
+        // 注意:不能用 "--" (会变成 pathspec),直接传 ref 让 git 自己解析
+        if (!string.IsNullOrWhiteSpace(targetTag))
+        {
+            GitResult checkoutResult;
+            try
+            {
+                checkoutResult = await _git.RunAsync(
+                    targetDir,
+                    new[] { "checkout", targetTag },
+                    DefaultPerCallTimeout, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                TryDelete(targetDir);
+                return NodeOperationResult.Fail("用户取消");
+            }
+            catch (Exception ex)
+            {
+                TryDelete(targetDir);
+                return NodeOperationResult.Fail($"启动 git checkout 失败:{ex.Message}");
+            }
+
+            if (!checkoutResult.Ok)
+            {
+                var reason = FirstLine(checkoutResult.Stderr, checkoutResult.Stdout)
+                    ?? $"git checkout 退出码 {checkoutResult.ExitCode}";
+                TryDelete(targetDir);
+                return NodeOperationResult.Fail($"checkout {targetTag} 失败:{reason}");
+            }
+        }
+
         // 取 HEAD sha 作为 version
         var headSha = await TryReadHeadShaAsync(targetDir, ct);
 
@@ -125,6 +161,29 @@ public class NodeOperations
             LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
         });
         return NodeOperationResult.Ok(headSha);
+    }
+
+    private static void TryDelete(string dir)
+    {
+        if (!Directory.Exists(dir)) return;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                // git 在 .git/objects/pack/ 下的 pack/idx 经常是 readonly,
+                // Directory.Delete 在 Windows 上会"Access denied"。先清 attribute 再删。
+                foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    try { File.SetAttributes(f, FileAttributes.Normal); } catch { /* ignore */ }
+                }
+                Directory.Delete(dir, recursive: true);
+                return;
+            }
+            catch
+            {
+                Thread.Sleep(50);
+            }
+        }
     }
 
     /// <summary>

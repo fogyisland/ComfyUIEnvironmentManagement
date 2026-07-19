@@ -42,6 +42,7 @@ public class SettingsViewModelTests : IDisposable
 
         public override Task<RefreshResult> RefreshAsync(
             IProgress<ComfyUI.Manager.Models.CatalogEntry>? progress = null,
+            IProgress<VersionFetchProgress>? versionProgress = null,
             System.Threading.CancellationToken ct = default)
         {
             CallCount++;
