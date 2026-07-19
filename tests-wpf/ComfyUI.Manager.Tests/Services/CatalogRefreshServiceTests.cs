@@ -129,4 +129,40 @@ public class CatalogRefreshServiceTests : IDisposable
         var entries = new CatalogRepository(new CatalogCacheStore(_db.Path)).Search("", 10);
         Assert.Equal(_settings.QuerySources[0].Url, entries[0].SourceUrl);
     }
+
+    [Fact]
+    public async Task RefreshAsync_StreamsEachEntry_ViaProgress()
+    {
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new() { Id = Guid.NewGuid().ToString(), Package = "stream-a" },
+                new() { Id = Guid.NewGuid().ToString(), Package = "stream-b" },
+                new() { Id = Guid.NewGuid().ToString(), Package = "stream-c" },
+            },
+        };
+        var reported = new List<string>();
+        var progress = new Progress<CatalogEntry>(e => reported.Add(e.Package));
+        // give Progress<T> a sync context so callbacks fire before the awaiter returns
+        var prevCtx = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new SynchronizationContext());
+        try
+        {
+            var svc = new CatalogRefreshService(
+                fetcher,
+                new CatalogRepository(new CatalogCacheStore(_db.Path)),
+                _settings);
+            var result = await svc.RefreshAsync(progress);
+            // drain pending Progress<T> posts on the test sync context
+            await Task.Delay(50);
+            Assert.True(result.Success);
+            Assert.Equal(3, result.EntryCount);
+            Assert.Equal(new[] { "stream-a", "stream-b", "stream-c" }, reported);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(prevCtx);
+        }
+    }
 }

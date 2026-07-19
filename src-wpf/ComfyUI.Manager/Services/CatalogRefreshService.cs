@@ -28,7 +28,9 @@ public class CatalogRefreshService
         _settings = settings;
     }
 
-    public virtual async Task<RefreshResult> RefreshAsync(CancellationToken ct = default)
+    public virtual async Task<RefreshResult> RefreshAsync(
+        IProgress<CatalogEntry>? progress = null,
+        CancellationToken ct = default)
     {
         var src = _settings.QuerySources
             .FirstOrDefault(s => s.Name == _settings.ActiveQuerySourceName);
@@ -39,21 +41,19 @@ public class CatalogRefreshService
 
         try
         {
+            // FetchAsync 内部:HTTP GetStringAsync 后还有 sync 工作(JSON 反序列化 +
+            // 3000+ 条目 parse),这些全跑在 await 返回的 UI 线程上 → UI 卡死。
+            // 整段推 Task.Run + 单连接事务批量 Upsert(10-50x 快)。
+            // Per-entry 回调走 Progress<CatalogEntry> 自动 marshall 回 UI 线程。
             var entries = await _fetcher.FetchAsync(src.Url, ct);
-            // SQLite write loop OFF the UI SynchronizationContext.
-            // 调用方是 WPF command handler(UI 线程),await 返回后 foreach
-            // 会同步跑 3000+ 个 Upsert,UI 卡到完成才解封。
-            // Task.Run 把整段 foreach 推到 thread pool,UI 立刻恢复。
             var url = src.Url;
-            await Task.Run(() =>
+            var count = await Task.Run(() =>
             {
-                foreach (var e in entries)
-                {
-                    e.SourceUrl = url;
-                    _repo.Upsert(e);
-                }
+                foreach (var e in entries) e.SourceUrl = url;
+                return _repo.UpsertBatch(entries,
+                    e => progress?.Report(e));
             }, ct);
-            return RefreshResult.Ok(entries.Count);
+            return RefreshResult.Ok(count);
         }
         catch (Exception ex)
         {

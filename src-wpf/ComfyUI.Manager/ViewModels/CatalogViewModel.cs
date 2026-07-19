@@ -158,12 +158,16 @@ public class CatalogViewModel : ViewModelBase
         ErrorMessage = null;
         InfoMessage = null;
         IsBusy = true;
+        _allEntries.Clear();
+        ApplyPage();
         try
         {
-            var result = await _refreshService.RefreshAsync();
+            // Progress<T> 在构造时捕获 SynchronizationContext(UI 线程),回调自动 marshal 回来。
+            // 这样 UI 不会冻住,且每入一条 → 加到 master → 每 PageSize 条触发一次 paging 刷新。
+            var progress = new Progress<CatalogEntry>(e => OnEntryArrived(e));
+            var result = await _refreshService.RefreshAsync(progress);
             if (result.Success)
             {
-                Search();
                 CurrentPage = 1;
                 ApplyPage();
                 InfoMessage = $"刷新成功,共 {result.EntryCount} 个条目";
@@ -177,6 +181,18 @@ public class CatalogViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    private void OnEntryArrived(CatalogEntry e)
+    {
+        _allEntries.Add(e);
+        // 频繁 ApplyPage(每条都刷)会让 PagedEntries Clear+Add 3000 次,UI 重新布局过载。
+        // 分批:满一页或最后一个时刷一次。
+        if (_allEntries.Count <= PageSize || _allEntries.Count % PageSize == 0)
+        {
+            ApplyPage();
+        }
+        RaisePropertyChanged(nameof(HasEntries));
     }
 
     private async Task InstallAsync(CatalogEntry? entry)
