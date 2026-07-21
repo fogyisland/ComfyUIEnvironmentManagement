@@ -152,15 +152,23 @@ public sealed class BaseEnvInstallerTests : IDisposable
     [Fact]
     public void GetVenvPythonPath_PrefersExplicitPythonExecutable()
     {
-        var env = new Environment
+        var explicitPy = Path.Combine(Path.GetTempPath(), $"explicit-{Guid.NewGuid():N}.exe");
+        File.WriteAllText(explicitPy, "");
+        try
         {
-            VenvPath = Path.Combine(Path.GetTempPath(), "fake-venv"),
-            PythonExecutable = Path.Combine(Path.GetTempPath(), "explicit.exe"),
-        };
-        // explicit.exe 不存在(测试只验解析逻辑,不调 Process.Start),
-        // 但 BaseEnvInstaller 必须先看 explicit,不 fallback 到 venv
-        var actual = BaseEnvInstaller.GetVenvPythonPath(env);
-        Assert.Equal(env.PythonExecutable, actual);
+            var env = new Environment
+            {
+                VenvPath = Path.Combine(Path.GetTempPath(), "fake-venv"),
+                PythonExecutable = explicitPy,
+            };
+            // explicit.exe 存在 → BaseEnvInstaller 必须先看 explicit,不 fallback 到 venv
+            var actual = BaseEnvInstaller.GetVenvPythonPath(env);
+            Assert.Equal(env.PythonExecutable, actual);
+        }
+        finally
+        {
+            try { if (File.Exists(explicitPy)) File.Delete(explicitPy); } catch { }
+        }
     }
 
     [Fact]

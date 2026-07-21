@@ -306,7 +306,8 @@ public class BaseEnvInstaller
     {
         if (env is null) throw new ArgumentNullException(nameof(env));
 
-        if (!string.IsNullOrWhiteSpace(env.PythonExecutable))
+        if (!string.IsNullOrWhiteSpace(env.PythonExecutable)
+            && File.Exists(env.PythonExecutable))
         {
             return env.PythonExecutable;
         }
