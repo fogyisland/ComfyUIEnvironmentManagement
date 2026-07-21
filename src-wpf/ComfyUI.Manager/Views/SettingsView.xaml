@@ -226,6 +226,54 @@
                          Style="{StaticResource MaterialTextBox}" />
             </Grid>
 
+            <!-- ============ 基础环境 ============ -->
+            <TextBlock Text="基础环境" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock Text="CUDA 版本" Margin="0,8,0,4" />
+            <ComboBox ItemsSource="{Binding BaseEnvCudaVersions}"
+                      SelectedItem="{Binding BaseEnvCudaVersion, Mode=TwoWay}"
+                      Width="160" HorizontalAlignment="Left" />
+            <TextBlock Text="Torch 通道" Margin="0,12,0,4" />
+            <ComboBox ItemsSource="{Binding BaseEnvTorchChannels}"
+                      SelectedItem="{Binding BaseEnvTorchChannel, Mode=TwoWay}"
+                      Width="160" HorizontalAlignment="Left" />
+
+            <TextBlock Text="包列表" Margin="0,12,0,4" />
+            <ItemsControl ItemsSource="{Binding BaseEnvPackages}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding Mode=OneWay}"
+                                     IsReadOnly="True" Style="{StaticResource MaterialTextBox}" />
+                            <Button Grid.Column="1" Content="删除" Margin="4,0,0,0"
+                                    Command="{Binding DataContext.RemoveBaseEnvPackageCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Style="{StaticResource MaterialButton}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="额外参数(--user / -f / --no-cache 等)" Margin="0,12,0,4" />
+            <TextBox Text="{Binding BaseEnvExtraArgs, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource MaterialTextBox}" Width="480"
+                     HorizontalAlignment="Left" />
+
+            <CheckBox Content="高级 — 显示整段 raw pip args (CustomPipArgs,填了会完全覆盖上面)"
+                      IsChecked="{Binding BaseEnvIsAdvancedOpen}"
+                      Margin="0,16,0,4" />
+            <Grid Visibility="{Binding BaseEnvIsAdvancedOpen, Converter={StaticResource BoolToVisibility}}">
+                <TextBox Text="{Binding BaseEnvCustomPipArgs, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" Height="60"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalAlignment="Stretch" />
+            </Grid>
+
             <!-- ============ 高级:额外 paths 表格 ============ -->
             <TextBlock Text="高级 — 额外路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <ItemsControl ItemsSource="{Binding ExtraPaths}">
