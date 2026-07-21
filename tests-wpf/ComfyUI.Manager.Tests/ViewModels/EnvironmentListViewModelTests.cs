@@ -34,6 +34,8 @@ public class EnvironmentListViewModelTests
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
             null!,
+            null!,
+            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -49,6 +51,8 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
             null!,
             null!);
 
@@ -66,6 +70,8 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
             null!,
             null!);
         Assert.Single(vm.Environments);

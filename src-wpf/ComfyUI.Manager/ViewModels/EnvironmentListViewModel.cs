@@ -15,6 +15,8 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly EnvironmentRepository _repo;
     private readonly ProcessLauncher _launcher;
     private readonly EnvCreatorService _envCreator;
+    private readonly BaseEnvInstaller _baseEnvInstaller;
+    private readonly Settings _settings;
 
     public ObservableCollection<Environment> Environments { get; } = new();
     public RelayCommand RefreshCommand { get; }
@@ -22,15 +24,20 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand StopCommand { get; }
     public RelayCommand ShowLogCommand { get; }
     public RelayCommand CreateCommand { get; }
+    public RelayCommand BaseEnvCommand { get; }
 
     public EnvironmentListViewModel(
         EnvironmentRepository repo,
         ProcessLauncher launcher,
-        EnvCreatorService envCreator)
+        EnvCreatorService envCreator,
+        BaseEnvInstaller baseEnvInstaller,
+        Settings settings)
     {
         _repo = repo;
         _launcher = launcher;
         _envCreator = envCreator;
+        _baseEnvInstaller = baseEnvInstaller;
+        _settings = settings;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
             async p => await StartEnvAsync(p as Environment ?? Selected),
@@ -42,6 +49,9 @@ public class EnvironmentListViewModel : ViewModelBase
             p => ShowLog(p as Environment ?? Selected),
             p => (p as Environment ?? Selected)?.Status == "running");
         CreateCommand = new RelayCommand(_ => CreateEnv());
+        BaseEnvCommand = new RelayCommand(
+            _ => OpenBaseEnvDialog(),
+            _ => Environments.Count > 0);
         Load();
     }
 
@@ -118,5 +128,19 @@ public class EnvironmentListViewModel : ViewModelBase
     {
         var created = Views.CreateEnvDialog.Show(_envCreator);
         if (created is not null) Load();
+    }
+
+    private void OpenBaseEnvDialog()
+    {
+        var envs = _repo.ListAll();
+        if (envs.Count == 0) return;
+        var result = Views.BaseEnvDialog.Show(envs, _settings);
+        if (result is null) return;
+
+        // dialog 改了配置 → 同步到 Settings(引用替换)
+        _settings.BaseEnv = result.Config;
+
+        Views.BaseEnvProgressDialog.Show(
+            result.SelectedEnvIds, result.Config, _baseEnvInstaller);
     }
 }

@@ -20,6 +20,7 @@ public class MainViewModel : ViewModelBase
     private readonly CatalogFetcher _catalogFetcher;
     private readonly CatalogRefreshService _catalogRefreshService;
     private readonly CatalogCacheStore _catalogCacheStore;
+    private readonly BaseEnvInstaller _baseEnvInstaller;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -46,7 +47,8 @@ public class MainViewModel : ViewModelBase
         Settings settings,
         CatalogFetcher catalogFetcher,
         CatalogRefreshService catalogRefreshService,
-        CatalogCacheStore catalogCacheStore)
+        CatalogCacheStore catalogCacheStore,
+        BaseEnvInstaller baseEnvInstaller)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -59,6 +61,7 @@ public class MainViewModel : ViewModelBase
         _catalogFetcher = catalogFetcher;
         _catalogRefreshService = catalogRefreshService;
         _catalogCacheStore = catalogCacheStore;
+        _baseEnvInstaller = baseEnvInstaller;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -71,7 +74,7 @@ public class MainViewModel : ViewModelBase
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new EnvironmentListView
         {
-            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator),
+            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings),
         };
     }
 
