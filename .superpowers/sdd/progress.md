@@ -400,3 +400,28 @@ Base: a8b8a6f. Plan: docs/superpowers/plans/2026-07-18-hotfix-node-source-list.m
 - Release zip 253.9 MB ≈ same as v0.6.2 since v0.6.3 only modified WPF source (no new bundled assets).
 
 **Status: v0.6.3 RELEASED.** v0.6.3 is now Latest on GitHub: https://github.com/fogyisland/ComfyUIEnvironmentManagement/releases/tag/v0.6.3
+
+---
+
+# v0.6.5 hotfix — 基础环境部署 (Base Environment Deployment) Progress Ledger
+
+Base SHA: f18493b (pre-feature commit)
+Plan: docs/superpowers/plans/2026-07-19-base-env-deploy.md
+Spec: docs/superpowers/specs/2026-07-19-base-env-deploy-design.md
+
+## Status
+
+- T1: complete (commit f0103b5, review APPROVED; 10/10 PASS; 3 brief-defects fixed: missing `using System.Collections.Generic;`, `IReadOnlyList.IndexOf` → `.ToList().IndexOf`, contradictory `Assert.Single` line removed)
+- T2: complete (commit 5fe3d57, review APPROVED; 2/2 PASS)
+- T3: complete (commit 4b13ccd, review APPROVED; 1 enum + 3 records; 0 build errors)
+- T4: complete (commits 88078a0 + f4f8099, review APPROVED; 8/8 PASS; 4 brief-defects documented: `onPercent((int?)5` typed param fix, File.Exists check restoration for G11, FakeBaseEnvInstaller override of InstallAsync+RunPipAsync, test-only assertion fix for Failures semantics)
+- T5: complete (commit 4739f53, review APPROVED; 11/11 PASS — brief said 10, verbatim had 11; 2 brief-defects fixed: `using EnvModel = ...Environment;` alias for CS0104 collision, `Contains("orig-only")` flipped to match clone intent)
+- T6: complete (commit f8e01b9, review APPROVED; XAML + code-behind verbatim from brief; static `Show(IList<Environment>, Settings) → BaseEnvDialogResult?` pattern matches CreateEnvDialog)
+- T7: complete (commit 97afea4, review APPROVED; 6/6 PASS; brief-defect confirmed: T4's FakeBaseEnvInstaller is private nested → T7 declared local duplicate per option (a))
+- T8: complete (commits 9f5680f + bc61a5b, review APPROVED; XAML + code-behind verbatim; 1 brief-defect fix: `CardBrush` → hardcoded `#2A2A2A`; review found Grid.Row layout overlap → fixed in fix-pass: 3 rows → 4 rows with ProgressBar moved to Row 1)
+- T9-11: complete (commit 102dd1d, review APPROVED; 4 production files + 1 test-file ctor compat fix; 168 PASS / 1 SKIP; build clean)
+- T12: complete (commit 3e196d4, review APPROVED; SettingsViewModel.cs + SettingsView.xaml; 168 PASS / 1 SKIP / 0 errors)
+- T13: complete (verify-only close; Release build 0 errors / 7 pre-existing warnings; 168 PASS / 1 SKIP / 0 FAIL; no regressions; manual UI smoke + version bump + release deferred to user)
+- **Whole-branch review (opus): APPROVED FOR MERGE** — 0 critical, 0 important, 6 minor cosmetic findings (silent catch in BaseEnvProgressDialog, missing theme CardBrush, redundant ListAll re-query in OpenBaseEnvDialog, debounce-able Save on CollectionChanged, 2 unused `using` lines)
+
+
