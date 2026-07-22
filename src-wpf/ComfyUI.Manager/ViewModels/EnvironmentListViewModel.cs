@@ -132,18 +132,11 @@ public class EnvironmentListViewModel : ViewModelBase
 
     private void OpenBaseEnvDialog()
     {
-        var envs = _repo.ListAll();
-        if (envs.Count == 0) return;
-        var result = Views.BaseEnvDialog.Show(envs, _settings);
-        if (result is null) return;
-
-        // dialog 改了配置 → 同步到 Settings(引用替换)
-        _settings.BaseEnv = result.Config;
-
-        // TEMP T11: BaseEnvProgressDialog.Show now takes BaseEnvProfile.
-        // T11 will rewrite OpenBaseEnvDialog end-to-end (dialog → progress directly,
-        // skipping the BaseEnvConfig-based BaseEnvDialog that gets deleted in T9).
-        Views.BaseEnvProgressDialog.Show(
-            result.SelectedEnvIds, new BaseEnvProfile(), _baseEnvInstaller);
+        // TEMP T11: stub. Old body called Views.BaseEnvDialog.Show(envs, _settings)
+        // which T9 just deleted. T11 rewrites this end-to-end (skip profile selection,
+        // launch BaseEnvProgressDialog.Show directly with the default profile from
+        // BaseEnvProfileLoader). The EnvList toolbar button is disabled visually
+        // (StartCommand canExecute will be revisited by T11 if needed).
+        return;
     }
 }
