@@ -424,4 +424,38 @@ Spec: docs/superpowers/specs/2026-07-19-base-env-deploy-design.md
 - T13: complete (verify-only close; Release build 0 errors / 7 pre-existing warnings; 168 PASS / 1 SKIP / 0 FAIL; no regressions; manual UI smoke + version bump + release deferred to user)
 - **Whole-branch review (opus): APPROVED FOR MERGE** — 0 critical, 0 important, 6 minor cosmetic findings (silent catch in BaseEnvProgressDialog, missing theme CardBrush, redundant ListAll re-query in OpenBaseEnvDialog, debounce-able Save on CollectionChanged, 2 unused `using` lines)
 
+---
+
+# v0.6.5 redesign — BED 重设计 + 移除 Settings 刷新按钮 Progress Ledger
+
+Base SHA: `1337b52` (v0.6.4 release)
+Plan: `C:\Users\徐鹏\.claude\plans\proud-petting-feather.md`
+Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work that shipped at v0.6.4; this section records the v0.6.5 redesign that pivots BED to a top-level nav menu + removes Settings "刷新节点目录" button.
+
+## Status (2026-07-22)
+
+- T1: complete (commit `2f646dd`, review APPROVED; 11 PASS; `BaseEnvProfile` POCO + `BuildPipArgs()` + `Clone()`)
+- T2: complete (commit `95d1dae`, review APPROVED; 12 PASS; `BaseEnvProfileLoader` with fallback to 5 built-in defaults)
+- T3: complete (commit `fc915ce`, review APPROVED; bundled `base_env_profiles.json` + csproj `CopyToOutputDirectory` rule)
+- T4: complete (commit `16162dc`, review APPROVED; `BaseEnvInstaller.InstallAsync` signature now takes `BaseEnvProfile`; tests refit)
+- T5: complete (commit `025c1eb`, review APPROVED; `BaseEnvProgressViewModel` + `BaseEnvProgressDialog` accept `BaseEnvProfile`)
+- T6: complete (commit `0304bea`, review APPROVED; 15 PASS; `BaseEnvViewModel` + `ShowDialogOverride` test seam)
+- T7: complete (commit `2cf7834`, review APPROVED; `BaseEnvView.xaml` + code-behind; 2-column Grid + EnvModel alias for CS0104)
+- T8: complete (commit `9567df9`, review APPROVED; `ShowBaseEnvCommand` + sidebar button + `App.xaml.cs` `BaseEnvProfileLoader` injection as 13th ctor arg; 206 PASS + 1 SKIP / 0 FAIL)
+- T9: complete (commit `ddeb84c`, review APPROVED; deleted `BaseEnvDialog.xaml` + `.cs` + `BaseEnvDialogViewModel.cs` + `BaseEnvDialogViewModelTests.cs`; added TEMP T11 stub in `EnvironmentListViewModel.OpenBaseEnvDialog`; 195 PASS + 1 SKIP / 0 FAIL; build 0/0)
+- T10: complete (commit `fadccba`, review APPROVED; deleted `BaseEnvConfig.cs` + `BaseEnvConfigTests.cs` + `SettingsBaseEnvTests.cs` (build-blocker); modified `Settings.cs` + `SettingsViewModel.cs` + `SettingsView.xaml` + `BaseEnvInstaller.cs` doc comment + `BaseEnvProfile.cs` doc comment; 183 PASS + 1 SKIP / 0 FAIL; build 0/0)
+- T11: complete (commit `84520d9`, review APPROVED; added `_profileLoader` field + 6th ctor arg to `EnvironmentListViewModel`; replaced `OpenBaseEnvDialog` stub with `OpenBaseEnvProgress()` + `ShowProgressDialogOverride` test seam; updated `MainViewModel.cs:82`; 187 PASS + 1 SKIP / 0 FAIL; build 0/0)
+- T12: complete (commit `fb0ab87`, review APPROVED; deleted refresh StackPanel from SettingsView.xaml + `_refreshService` field + `RefreshCatalogCommand` + `IsBusy`/`StatusMessage`/`ErrorMessage` + `RefreshCatalogAsync` from SettingsViewModel; updated MainViewModel.cs:110; deleted `FakeRefreshService` + 2 tests; 185 PASS + 1 SKIP / 0 FAIL; build 0/0)
+- T13: complete (implementation commit `428209a` + report commit `9341bab`, review APPROVED; CatalogView empty-state text now points to the upper-right in-page refresh; build 0/0; Minor: report retains isolated-worktree SHA)
+
+## Pending (2026-07-22)
+
+- T14: full verify + bump v0.6.5 + `build_release.ps1` + tag + gh release
+
+## Cross-task coordination notes
+
+- `EnvironmentListViewModel.cs:137` still calls `Views.BaseEnvDialog.Show(envs, _settings)` — **T9 must add TEMP T11 placeholder there** to keep build green when `BaseEnvDialog` is deleted.
+- `App.xaml.cs` ctor at line 70 instantiates `BaseEnvProfileLoader(projectRoot)` (decision: profile dir = projectRoot, sibling to `settings.json`).
+- `BaseEnvInstaller`, `BaseEnvProgressViewModel`, `BaseEnvProgressDialog` all now take `BaseEnvProfile` (post T4/T5). No `BaseEnvConfig` references in these files.
+
 
