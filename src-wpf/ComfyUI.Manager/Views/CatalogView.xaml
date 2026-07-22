@@ -105,7 +105,7 @@
                              ScrollViewer.VerticalScrollBarVisibility="Disabled" />
                 </ScrollViewer>
 
-                <TextBlock Text="暂无数据,去 Settings 刷新" FontSize="14" Foreground="Gray"
+                <TextBlock Text="暂无数据,点右上角 刷新" FontSize="14" Foreground="Gray"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding HasEntries, Converter={StaticResource InverseBoolToVisibility}}" />
             </Grid>
