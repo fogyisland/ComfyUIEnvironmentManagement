@@ -17,7 +17,7 @@ public class BaseEnvProgressViewModel : ViewModelBase
 {
     private const int MaxLogLines = 200;
     private readonly IReadOnlyList<string> _envIds;
-    private readonly BaseEnvConfig _config;
+    private readonly BaseEnvProfile _profile;
     private readonly BaseEnvInstaller _installer;
     private CancellationTokenSource? _cts;
     private Task<BaseEnvInstallResult>? _runningTask;
@@ -26,11 +26,11 @@ public class BaseEnvProgressViewModel : ViewModelBase
 
     public BaseEnvProgressViewModel(
         IReadOnlyList<string> envIds,
-        BaseEnvConfig config,
+        BaseEnvProfile profile,
         BaseEnvInstaller installer)
     {
         _envIds = envIds;
-        _config = config;
+        _profile = profile;
         _installer = installer;
         Total = envIds.Count;
         CancelCommand = new RelayCommand(_ => _cts?.Cancel(), _ => _cts is { IsCancellationRequested: false });
@@ -55,10 +55,7 @@ public class BaseEnvProgressViewModel : ViewModelBase
     {
         _cts = new CancellationTokenSource();
         var progress = new Progress<BaseEnvProgress>(OnProgress);
-        // TEMP T5: BaseEnvInstaller.InstallAsync now takes BaseEnvProfile. T4 keeps _config
-        // (BaseEnvConfig) for backward compatibility with T5's plumbing change. Replace
-        // this placeholder with the real profile passed in via VM ctor/RunAsync.
-        _runningTask = _installer.InstallAsync(_envIds, new BaseEnvProfile(), progress, _cts.Token);
+        _runningTask = _installer.InstallAsync(_envIds, _profile, progress, _cts.Token);
         return _runningTask;
     }
 

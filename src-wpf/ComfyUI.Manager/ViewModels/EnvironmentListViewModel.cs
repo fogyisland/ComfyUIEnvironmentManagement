@@ -140,7 +140,10 @@ public class EnvironmentListViewModel : ViewModelBase
         // dialog 改了配置 → 同步到 Settings(引用替换)
         _settings.BaseEnv = result.Config;
 
+        // TEMP T11: BaseEnvProgressDialog.Show now takes BaseEnvProfile.
+        // T11 will rewrite OpenBaseEnvDialog end-to-end (dialog → progress directly,
+        // skipping the BaseEnvConfig-based BaseEnvDialog that gets deleted in T9).
         Views.BaseEnvProgressDialog.Show(
-            result.SelectedEnvIds, result.Config, _baseEnvInstaller);
+            result.SelectedEnvIds, new BaseEnvProfile(), _baseEnvInstaller);
     }
 }

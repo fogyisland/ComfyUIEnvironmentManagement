@@ -12,11 +12,11 @@ public partial class BaseEnvProgressDialog : Window
 
     public BaseEnvProgressDialog(
         IReadOnlyList<string> envIds,
-        BaseEnvConfig config,
+        BaseEnvProfile profile,
         BaseEnvInstaller installer)
     {
         InitializeComponent();
-        _vm = new BaseEnvProgressViewModel(envIds, config, installer);
+        _vm = new BaseEnvProgressViewModel(envIds, profile, installer);
         DataContext = _vm;
         Loaded += async (_, _) =>
         {
@@ -39,10 +39,10 @@ public partial class BaseEnvProgressDialog : Window
     /// </summary>
     public static void Show(
         IReadOnlyList<string> envIds,
-        BaseEnvConfig config,
+        BaseEnvProfile profile,
         BaseEnvInstaller installer)
     {
-        var dlg = new BaseEnvProgressDialog(envIds, config, installer)
+        var dlg = new BaseEnvProgressDialog(envIds, profile, installer)
         {
             Owner = Application.Current.MainWindow,
         };

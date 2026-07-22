@@ -28,7 +28,7 @@ public sealed class BaseEnvProgressViewModelTests : IDisposable
     {
         var installer = new FakeBaseEnvInstaller(_envRepo);
         var vm = new BaseEnvProgressViewModel(
-            new[] { "env-a" }, new BaseEnvConfig(), installer);
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
 
         vm.OnProgress(new BaseEnvProgress(
             BaseEnvStatus.Running, 0, 1, "env-a", "env-a", 30, "downloading", null));
@@ -45,7 +45,7 @@ public sealed class BaseEnvProgressViewModelTests : IDisposable
     {
         var installer = new FakeBaseEnvInstaller(_envRepo);
         var vm = new BaseEnvProgressViewModel(
-            new[] { "env-a" }, new BaseEnvConfig(), installer);
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
 
         vm.OnProgress(new BaseEnvProgress(
             BaseEnvStatus.Succeeded, 1, 1, "env-a", "env-a", 100, null, null));
@@ -59,7 +59,7 @@ public sealed class BaseEnvProgressViewModelTests : IDisposable
     {
         var installer = new FakeBaseEnvInstaller(_envRepo);
         var vm = new BaseEnvProgressViewModel(
-            new[] { "env-a", "env-b" }, new BaseEnvConfig(), installer);
+            new[] { "env-a", "env-b" }, new BaseEnvProfile(), installer);
 
         vm.OnProgress(new BaseEnvProgress(
             BaseEnvStatus.Failed, 1, 2, "env-a", "env-a", null, null, "pip exit 1"));
@@ -73,7 +73,7 @@ public sealed class BaseEnvProgressViewModelTests : IDisposable
     {
         var installer = new FakeBaseEnvInstaller(_envRepo);
         var vm = new BaseEnvProgressViewModel(
-            new[] { "env-a" }, new BaseEnvConfig(), installer);
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
 
         vm.OnProgress(new BaseEnvProgress(
             BaseEnvStatus.Cancelled, 1, 1, "env-a", "env-a", null, null, "用户取消"));
@@ -86,7 +86,7 @@ public sealed class BaseEnvProgressViewModelTests : IDisposable
     {
         var installer = new FakeBaseEnvInstaller(_envRepo);
         var vm = new BaseEnvProgressViewModel(
-            new[] { "env-a" }, new BaseEnvConfig(), installer);
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
 
         Assert.False(vm.CancelCommand.CanExecute(null));
         // After RunAsync starts, Cancel should be enabled; but for this test
@@ -99,7 +99,7 @@ public sealed class BaseEnvProgressViewModelTests : IDisposable
     {
         var installer = new FakeBaseEnvInstaller(_envRepo);
         var vm = new BaseEnvProgressViewModel(
-            new[] { "env-a" }, new BaseEnvConfig(), installer);
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
 
         vm.OnProgress(new BaseEnvProgress(
             BaseEnvStatus.Running, 0, 1, "env-a", "env-a", null, "line 1", null));
