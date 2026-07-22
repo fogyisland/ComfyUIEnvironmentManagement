@@ -145,23 +145,6 @@ public class SettingsViewModel : ViewModelBase
         RefreshCatalogCommand = new RelayCommand(
             _ => _ = RefreshCatalogAsync(),
             _ => !IsBusy);
-        BaseEnvPackages = new ObservableCollection<string>(_settings.BaseEnv.Packages);
-        BaseEnvPackages.CollectionChanged += (_, _) =>
-        {
-            _settings.BaseEnv.Packages = new List<string>(BaseEnvPackages);
-            _repo.Save(_settings);
-        };
-        AddBaseEnvPackageCommand = new RelayCommand(p =>
-        {
-            if (p is string s && !string.IsNullOrWhiteSpace(s) && !BaseEnvPackages.Contains(s))
-            {
-                BaseEnvPackages.Add(s.Trim());
-            }
-        });
-        RemoveBaseEnvPackageCommand = new RelayCommand(p =>
-        {
-            if (p is string s) BaseEnvPackages.Remove(s);
-        });
         RaiseAllPropertiesChanged();
     }
 
@@ -200,46 +183,6 @@ public class SettingsViewModel : ViewModelBase
         get => _settings.GitHubToken;
         set { _settings.GitHubToken = value ?? ""; _repo.Save(_settings); }
     }
-
-    // —— 基础环境 ——
-    public string BaseEnvCudaVersion
-    {
-        get => _settings.BaseEnv.CudaVersion;
-        set { _settings.BaseEnv.CudaVersion = value ?? "cu118"; _repo.Save(_settings); RaisePropertyChanged(); }
-    }
-
-    public string BaseEnvTorchChannel
-    {
-        get => _settings.BaseEnv.TorchChannel;
-        set { _settings.BaseEnv.TorchChannel = value ?? "stable"; _repo.Save(_settings); RaisePropertyChanged(); }
-    }
-
-    public string BaseEnvExtraArgs
-    {
-        get => _settings.BaseEnv.ExtraArgs;
-        set { _settings.BaseEnv.ExtraArgs = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
-    }
-
-    public string BaseEnvCustomPipArgs
-    {
-        get => _settings.BaseEnv.CustomPipArgs;
-        set { _settings.BaseEnv.CustomPipArgs = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
-    }
-
-    private bool _baseEnvIsAdvancedOpen;
-    public bool BaseEnvIsAdvancedOpen
-    {
-        get => _baseEnvIsAdvancedOpen;
-        set => SetField(ref _baseEnvIsAdvancedOpen, value);
-    }
-
-    public ObservableCollection<string> BaseEnvPackages { get; }
-
-    public List<string> BaseEnvCudaVersions { get; } = new() { "cu118", "cu121", "cu124", "cpu" };
-    public List<string> BaseEnvTorchChannels { get; } = new() { "stable", "nightly" };
-
-    public RelayCommand AddBaseEnvPackageCommand { get; }
-    public RelayCommand RemoveBaseEnvPackageCommand { get; }
 
     // —— 路径 ——
     public string TemplatePythonDir
@@ -473,9 +416,5 @@ public class SettingsViewModel : ViewModelBase
         RaisePropertyChanged(nameof(GitProxyEnabled));
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
-        RaisePropertyChanged(nameof(BaseEnvCudaVersion));
-        RaisePropertyChanged(nameof(BaseEnvTorchChannel));
-        RaisePropertyChanged(nameof(BaseEnvExtraArgs));
-        RaisePropertyChanged(nameof(BaseEnvCustomPipArgs));
     }
 }

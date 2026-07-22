@@ -6,11 +6,6 @@ namespace ComfyUI.Manager.Models;
 /// <summary>
 /// 基础环境部署 profile:torch + CUDA + packages 的预设组合。
 /// 从 base_env_profiles.json 加载(或内置默认值)。
-///
-/// 与 BaseEnvConfig 的差别:
-/// - 新增 Id / Name / Description / TorchVersion(给预设展示用)
-/// - 去掉 CustomPipArgs(不再支持高级 raw 模式)
-/// - TorchChannel 重命名为 Channel(更直观)
 /// </summary>
 public class BaseEnvProfile
 {

@@ -13,7 +13,7 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.Services;
 
 /// <summary>
-/// BaseEnvInstaller:跨 env × BaseEnvConfig 跑 pip install,emit Progress 事件。
+/// BaseEnvInstaller:跨 env × BaseEnvProfile 跑 pip install,emit Progress 事件。
 ///
 /// 设计要点:
 /// - 单 env 失败不中断,继续下个 env(G7)

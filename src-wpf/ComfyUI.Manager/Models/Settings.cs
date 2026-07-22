@@ -55,10 +55,6 @@ public class Settings
     // —— GitHub API:配置后刷新 catalog 时同步拉各节点最新 release —
     [JsonPropertyName("github_token")]
     public string GitHubToken { get; set; } = "";
-
-    // —— 基础环境部署:torch/torchaudio/torchvision/xformers 的 pip 参数模板 ——
-    [JsonPropertyName("base_env")]
-    public BaseEnvConfig BaseEnv { get; set; } = new();
 }
 
 public class ExtraPath
