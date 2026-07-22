@@ -67,10 +67,12 @@ public partial class App : Application
         var envCreator = new EnvCreatorService(
             dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
         var baseEnvInstaller = new BaseEnvInstaller(envRepo);
+        var profileLoader = new BaseEnvProfileLoader(projectRoot);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
-            settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller);
+            settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
+            profileLoader);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

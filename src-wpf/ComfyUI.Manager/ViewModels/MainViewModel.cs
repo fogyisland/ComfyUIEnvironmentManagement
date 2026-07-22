@@ -21,6 +21,7 @@ public class MainViewModel : ViewModelBase
     private readonly CatalogRefreshService _catalogRefreshService;
     private readonly CatalogCacheStore _catalogCacheStore;
     private readonly BaseEnvInstaller _baseEnvInstaller;
+    private readonly BaseEnvProfileLoader _profileLoader;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -33,6 +34,7 @@ public class MainViewModel : ViewModelBase
 
     public RelayCommand ShowEnvironmentsCommand { get; }
     public RelayCommand ShowCatalogCommand { get; }
+    public RelayCommand ShowBaseEnvCommand { get; }
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
 
@@ -48,7 +50,8 @@ public class MainViewModel : ViewModelBase
         CatalogFetcher catalogFetcher,
         CatalogRefreshService catalogRefreshService,
         CatalogCacheStore catalogCacheStore,
-        BaseEnvInstaller baseEnvInstaller)
+        BaseEnvInstaller baseEnvInstaller,
+        BaseEnvProfileLoader profileLoader)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -62,9 +65,11 @@ public class MainViewModel : ViewModelBase
         _catalogRefreshService = catalogRefreshService;
         _catalogCacheStore = catalogCacheStore;
         _baseEnvInstaller = baseEnvInstaller;
+        _profileLoader = profileLoader;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
+        ShowBaseEnvCommand = new RelayCommand(_ => ShowBaseEnv());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
     }
@@ -86,6 +91,15 @@ public class MainViewModel : ViewModelBase
         CurrentView = new CatalogView
         {
             DataContext = new CatalogViewModel(catRepo, versionRepo, envRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo),
+        };
+    }
+
+    private void ShowBaseEnv()
+    {
+        var envRepo = new EnvironmentRepository(_dbFactory);
+        CurrentView = new BaseEnvView
+        {
+            DataContext = new BaseEnvViewModel(_profileLoader, envRepo, _baseEnvInstaller),
         };
     }
 

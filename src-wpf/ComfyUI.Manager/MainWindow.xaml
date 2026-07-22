@@ -30,6 +30,10 @@
                         Command="{Binding ShowCatalogCommand}"
                         Style="{StaticResource MaterialButton}"
                         HorizontalAlignment="Stretch" />
+                <Button Content="基础环境" Margin="0,4"
+                        Command="{Binding ShowBaseEnvCommand}"
+                        Style="{StaticResource MaterialButton}"
+                        HorizontalAlignment="Stretch" />
                 <Button Content="设置" Margin="0,4"
                         Command="{Binding ShowSettingsCommand}"
                         Style="{StaticResource MaterialButton}"
