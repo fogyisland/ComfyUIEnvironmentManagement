@@ -26,4 +26,9 @@
       <Generator>MSBuild:_GenerateResxSource</Generator>
     </Resource>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="base_env_profiles.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

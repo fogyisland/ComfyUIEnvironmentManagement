@@ -1,0 +1,75 @@
+[
+  {
+    "id": "pytorch-2.1-cu118-stable",
+    "name": "PyTorch 2.1 + CUDA 11.8 (stable)",
+    "description": "稳定版 PyTorch 2.1.0,搭配 CUDA 11.8,带 xformers",
+    "torchVersion": "2.1.0",
+    "cudaVersion": "cu118",
+    "channel": "stable",
+    "packages": [
+      "torch",
+      "torchaudio",
+      "torchvision",
+      "xformers"
+    ],
+    "extraArgs": ""
+  },
+  {
+    "id": "pytorch-2.1-cu121-stable",
+    "name": "PyTorch 2.1 + CUDA 12.1 (stable)",
+    "description": "稳定版 PyTorch 2.1.0,搭配 CUDA 12.1,带 xformers",
+    "torchVersion": "2.1.0",
+    "cudaVersion": "cu121",
+    "channel": "stable",
+    "packages": [
+      "torch",
+      "torchaudio",
+      "torchvision",
+      "xformers"
+    ],
+    "extraArgs": ""
+  },
+  {
+    "id": "pytorch-2.1-cu124-stable",
+    "name": "PyTorch 2.1 + CUDA 12.4 (stable)",
+    "description": "稳定版 PyTorch 2.1.0,搭配 CUDA 12.4,带 xformers",
+    "torchVersion": "2.1.0",
+    "cudaVersion": "cu124",
+    "channel": "stable",
+    "packages": [
+      "torch",
+      "torchaudio",
+      "torchvision",
+      "xformers"
+    ],
+    "extraArgs": ""
+  },
+  {
+    "id": "pytorch-nightly-cu121",
+    "name": "PyTorch Nightly + CUDA 12.1",
+    "description": "PyTorch nightly,搭配 CUDA 12.1(不带 xformers)",
+    "torchVersion": "nightly",
+    "cudaVersion": "cu121",
+    "channel": "nightly",
+    "packages": [
+      "torch",
+      "torchaudio",
+      "torchvision"
+    ],
+    "extraArgs": ""
+  },
+  {
+    "id": "pytorch-2.1-cpu",
+    "name": "PyTorch 2.1 (CPU only)",
+    "description": "仅 CPU 的 PyTorch 2.1.0,适合无 NVIDIA 显卡环境",
+    "torchVersion": "2.1.0",
+    "cudaVersion": "cpu",
+    "channel": "stable",
+    "packages": [
+      "torch",
+      "torchaudio",
+      "torchvision"
+    ],
+    "extraArgs": ""
+  }
+]
