@@ -3,11 +3,9 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
-using ComfyUI.Manager.Services;
 using Microsoft.Win32;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -16,7 +14,6 @@ public class SettingsViewModel : ViewModelBase
 {
     private readonly SettingsRepository _repo;
     private readonly GitProxyConfig _proxy;
-    private readonly CatalogRefreshService _refreshService;
     private Settings _settings;
 
     private bool _isAddQuerySourceOpen;
@@ -26,13 +23,11 @@ public class SettingsViewModel : ViewModelBase
     private string _newDownloadSourceName = "";
     private string _newDownloadSourceUrl = "";
 
-    public SettingsViewModel(SettingsRepository repo, GitProxyConfig proxy, CatalogRefreshService refreshService, Settings? sharedSettings = null)
+    public SettingsViewModel(SettingsRepository repo, GitProxyConfig proxy, Settings? sharedSettings = null)
     {
         _repo = repo;
         _proxy = proxy;
-        _refreshService = refreshService;
-        // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一,
-        // 避免 VM 改 token 后 CatalogRefreshService 看不到的 bug)。
+        // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
         // 没有注入时(单元测试)才从 disk 加载。
         _settings = sharedSettings ?? _repo.Load();
         // 首次启动/无 settings.json 时把默认值(node source 列表 + active 名)填上。
@@ -142,9 +137,6 @@ public class SettingsViewModel : ViewModelBase
         {
             IsAddDownloadSourceOpen = false;
         });
-        RefreshCatalogCommand = new RelayCommand(
-            _ => _ = RefreshCatalogAsync(),
-            _ => !IsBusy);
         RaiseAllPropertiesChanged();
     }
 
@@ -333,58 +325,6 @@ public class SettingsViewModel : ViewModelBase
             UseShellExecute = true,
         });
     });
-
-    private bool _isBusy;
-    public bool IsBusy
-    {
-        get => _isBusy;
-        private set
-        {
-            if (SetField(ref _isBusy, value))
-            {
-                RefreshCatalogCommand.RaiseCanExecuteChanged();
-            }
-        }
-    }
-
-    private string? _statusMessage;
-    public string? StatusMessage
-    {
-        get => _statusMessage;
-        private set => SetField(ref _statusMessage, value);
-    }
-
-    private string? _errorMessage;
-    public string? ErrorMessage
-    {
-        get => _errorMessage;
-        private set => SetField(ref _errorMessage, value);
-    }
-
-    public RelayCommand RefreshCatalogCommand { get; }
-
-    private async Task RefreshCatalogAsync()
-    {
-        ErrorMessage = null;
-        StatusMessage = null;
-        IsBusy = true;
-        try
-        {
-            var result = await _refreshService.RefreshAsync();
-            if (result.Success)
-            {
-                StatusMessage = $"刷新成功,共 {result.EntryCount} 个条目";
-            }
-            else
-            {
-                ErrorMessage = result.Error;
-            }
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
 
     // —— File pickers:用 Microsoft.Win32 (违反严格 MVVM,但 win-x64 单平台 OK) ——
     public string? PickFolder()

@@ -107,7 +107,7 @@ public class MainViewModel : ViewModelBase
     {
         CurrentView = new SettingsView
         {
-            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, _catalogRefreshService, _settings),
+            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, _settings),
         };
     }
 
