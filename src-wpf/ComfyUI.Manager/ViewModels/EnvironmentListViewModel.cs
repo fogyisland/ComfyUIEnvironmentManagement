@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -17,6 +19,7 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly EnvCreatorService _envCreator;
     private readonly BaseEnvInstaller _baseEnvInstaller;
     private readonly Settings _settings;
+    private readonly BaseEnvProfileLoader _profileLoader;
 
     public ObservableCollection<Environment> Environments { get; } = new();
     public RelayCommand RefreshCommand { get; }
@@ -31,13 +34,15 @@ public class EnvironmentListViewModel : ViewModelBase
         ProcessLauncher launcher,
         EnvCreatorService envCreator,
         BaseEnvInstaller baseEnvInstaller,
-        Settings settings)
+        Settings settings,
+        BaseEnvProfileLoader profileLoader)
     {
         _repo = repo;
         _launcher = launcher;
         _envCreator = envCreator;
         _baseEnvInstaller = baseEnvInstaller;
         _settings = settings;
+        _profileLoader = profileLoader;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
             async p => await StartEnvAsync(p as Environment ?? Selected),
@@ -50,7 +55,7 @@ public class EnvironmentListViewModel : ViewModelBase
             p => (p as Environment ?? Selected)?.Status == "running");
         CreateCommand = new RelayCommand(_ => CreateEnv());
         BaseEnvCommand = new RelayCommand(
-            _ => OpenBaseEnvDialog(),
+            _ => OpenBaseEnvProgress(),
             _ => Environments.Count > 0);
         Load();
     }
@@ -130,13 +135,26 @@ public class EnvironmentListViewModel : ViewModelBase
         if (created is not null) Load();
     }
 
-    private void OpenBaseEnvDialog()
+    // Test seam — unit tests set this to intercept the dialog launch (which calls
+    // Application.Current.MainWindow + ShowDialog() and would throw in test context).
+    public Action<IReadOnlyList<string>, BaseEnvProfile, BaseEnvInstaller>? ShowProgressDialogOverride { get; set; }
+
+    private void OpenBaseEnvProgress()
     {
-        // TEMP T11: stub. Old body called Views.BaseEnvDialog.Show(envs, _settings)
-        // which T9 just deleted. T11 rewrites this end-to-end (skip profile selection,
-        // launch BaseEnvProgressDialog.Show directly with the default profile from
-        // BaseEnvProfileLoader). The EnvList toolbar button is disabled visually
-        // (StartCommand canExecute will be revisited by T11 if needed).
-        return;
+        if (Selected is null && Environments.Count == 0) return;
+        var envIds = Selected is not null
+            ? new List<string> { Selected.Id }
+            : Environments.Select(e => e.Id).ToList();
+        if (envIds.Count == 0) return;
+
+        var profile = _profileLoader.GetDefaults().FirstOrDefault();
+        if (profile is null) return;
+
+        if (ShowProgressDialogOverride is not null)
+        {
+            ShowProgressDialogOverride(envIds, profile, _baseEnvInstaller);
+            return;
+        }
+        Views.BaseEnvProgressDialog.Show(envIds, profile, _baseEnvInstaller);
     }
 }
