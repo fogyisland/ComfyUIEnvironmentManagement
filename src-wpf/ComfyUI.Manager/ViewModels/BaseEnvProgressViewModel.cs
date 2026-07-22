@@ -55,7 +55,10 @@ public class BaseEnvProgressViewModel : ViewModelBase
     {
         _cts = new CancellationTokenSource();
         var progress = new Progress<BaseEnvProgress>(OnProgress);
-        _runningTask = _installer.InstallAsync(_envIds, _config, progress, _cts.Token);
+        // TEMP T5: BaseEnvInstaller.InstallAsync now takes BaseEnvProfile. T4 keeps _config
+        // (BaseEnvConfig) for backward compatibility with T5's plumbing change. Replace
+        // this placeholder with the real profile passed in via VM ctor/RunAsync.
+        _runningTask = _installer.InstallAsync(_envIds, new BaseEnvProfile(), progress, _cts.Token);
         return _runningTask;
     }
 

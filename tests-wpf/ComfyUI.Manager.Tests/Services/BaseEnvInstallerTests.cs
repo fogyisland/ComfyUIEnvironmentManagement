@@ -53,7 +53,16 @@ public sealed class BaseEnvInstallerTests : IDisposable
         return env;
     }
 
-    private static BaseEnvConfig DefaultConfig() => new();
+    private static BaseEnvProfile DefaultProfile() => new()
+    {
+        Id = "test-profile",
+        Name = "Test Profile",
+        Description = "test",
+        TorchVersion = "2.1.0",
+        CudaVersion = "cu118",
+        Channel = "stable",
+        Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
+    };
 
     [Fact]
     public async Task InstallAsync_SingleEnv_Succeeds_EmitsProgressLifecycle()
@@ -65,7 +74,7 @@ public sealed class BaseEnvInstallerTests : IDisposable
         var progress = new RecordingProgress();
 
         var result = await fake.InstallAsync(
-            new[] { "env-a" }, DefaultConfig(), progress, CancellationToken.None);
+            new[] { "env-a" }, DefaultProfile(), progress, CancellationToken.None);
 
         Assert.Equal(1, result.SucceededCount);
         Assert.Equal(0, result.FailedCount);
@@ -96,7 +105,7 @@ public sealed class BaseEnvInstallerTests : IDisposable
         var progress = new RecordingProgress();
 
         var result = await fake.InstallAsync(
-            new[] { "env-a", "env-b" }, DefaultConfig(), progress, CancellationToken.None);
+            new[] { "env-a", "env-b" }, DefaultProfile(), progress, CancellationToken.None);
 
         Assert.Equal(1, result.SucceededCount);
         Assert.Equal(1, result.FailedCount);
@@ -121,7 +130,7 @@ public sealed class BaseEnvInstallerTests : IDisposable
         cts.Cancel();
 
         var result = await fake.InstallAsync(
-            new[] { "env-a" }, DefaultConfig(), progress, cts.Token);
+            new[] { "env-a" }, DefaultProfile(), progress, cts.Token);
 
         Assert.True(result.Cancelled);
         Assert.Equal(0, fake.RunCount);
@@ -140,7 +149,7 @@ public sealed class BaseEnvInstallerTests : IDisposable
         var progress = new RecordingProgress();
 
         var result = await fake.InstallAsync(
-            new[] { "env-a", "env-b" }, DefaultConfig(), progress, CancellationToken.None);
+            new[] { "env-a", "env-b" }, DefaultProfile(), progress, CancellationToken.None);
 
         Assert.True(result.Cancelled);
         Assert.Equal(0, result.SucceededCount);
@@ -252,7 +261,7 @@ public sealed class BaseEnvInstallerTests : IDisposable
             PerEnvResults.TryGetValue(envId, out var r) ? r : NextRunResult ?? PipResultSuccess(0);
 
         public override async Task<BaseEnvInstallResult> InstallAsync(
-            IReadOnlyList<string> envIds, BaseEnvConfig config,
+            IReadOnlyList<string> envIds, BaseEnvProfile profile,
             IProgress<BaseEnvProgress>? progress, CancellationToken ct)
         {
             // Brief defect correction: the verbatim InstallAsync doesn't pass envId to RunPipAsync,
@@ -261,7 +270,7 @@ public sealed class BaseEnvInstallerTests : IDisposable
             var failures = new Dictionary<string, string>();
             int succeeded = 0, failed = 0, total = envIds.Count, completed = 0;
             bool cancelled = false;
-            var pipArgs = config.BuildPipArgs();
+            var pipArgs = profile.BuildPipArgs();
 
             foreach (var envId in envIds)
             {

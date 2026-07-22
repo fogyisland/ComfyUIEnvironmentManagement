@@ -50,7 +50,7 @@ public class BaseEnvInstaller
     /// </summary>
     public virtual async Task<BaseEnvInstallResult> InstallAsync(
         IReadOnlyList<string> envIds,
-        BaseEnvConfig config,
+        BaseEnvProfile profile,
         IProgress<BaseEnvProgress>? progress = null,
         CancellationToken ct = default)
     {
@@ -67,7 +67,7 @@ public class BaseEnvInstaller
         var total = envIds.Count;
         var completed = 0;
 
-        var pipArgs = config.BuildPipArgs();
+        var pipArgs = profile.BuildPipArgs();
 
         foreach (var envId in envIds)
         {
