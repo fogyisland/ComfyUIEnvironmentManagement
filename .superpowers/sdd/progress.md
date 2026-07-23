@@ -464,6 +464,20 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
   - Push: `2ac2829..8340262` to `origin/main` via SSH deploy key (`github_comfy_mgr`, no TLS proxy issues)
 - Carry-over to next hotfix (non-blocking): multi-profile batch install deferred; `CatalogViewModel.InfoMessage` still unbound; 2 pre-existing xUnit1031 warnings (test-internal, not shipped artifact)
 
+---
+
+# v0.6.5.1 hotfix — PyTorch 基础环境列表实时化 (2026-07-23,待晚上继续)
+
+**触发:** 用户启动 v0.6.5 release 后,看到 BED 页面默认 5 个 profile 的 PyTorch 版本还是硬编码 `"2.1.0"`,与 2026 实际 stable(2.5+/2.6+/2.7+)严重脱节,要求运行时拉取真实版本号。
+
+**用户已确认决策(2026-07-23 AskUserQuestion):**
+- 数据源 = **PyTorch 官网 HTML**(`https://pytorch.org/get-started/locally/`)
+- CUDA 变体范围 = **保留 5 个 + 加 cu126**:cu118 / cu121 / cu124 / cu126 / cpu + nightly cu121(共 6 profile + 1 nightly)
+
+**设计细节:** 见 `memory/project_hotfix_pytorch_live.md`(已写入用户项目记忆)。
+
+**Resume 时下一步:** 用户回来后先 EnterPlanMode 写 v0.6.5.1 plan(路径约定 `docs/superpowers/{specs,plans}/2026-07-23-pytorch-live-fetch-{design,plan}.md`);不在今晚继续写代码。
+
 ## Cross-task coordination notes
 
 - `EnvironmentListViewModel.cs:137` still calls `Views.BaseEnvDialog.Show(envs, _settings)` — **T9 must add TEMP T11 placeholder there** to keep build green when `BaseEnvDialog` is deleted.
