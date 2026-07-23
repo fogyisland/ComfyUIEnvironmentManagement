@@ -447,10 +447,12 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 - T11: complete (commit `84520d9`, review APPROVED; added `_profileLoader` field + 6th ctor arg to `EnvironmentListViewModel`; replaced `OpenBaseEnvDialog` stub with `OpenBaseEnvProgress()` + `ShowProgressDialogOverride` test seam; updated `MainViewModel.cs:82`; 187 PASS + 1 SKIP / 0 FAIL; build 0/0)
 - T12: complete (commit `fb0ab87`, review APPROVED; deleted refresh StackPanel from SettingsView.xaml + `_refreshService` field + `RefreshCatalogCommand` + `IsBusy`/`StatusMessage`/`ErrorMessage` + `RefreshCatalogAsync` from SettingsViewModel; updated MainViewModel.cs:110; deleted `FakeRefreshService` + 2 tests; 185 PASS + 1 SKIP / 0 FAIL; build 0/0)
 - T13: complete (implementation commit `428209a` + report commit `9341bab`, review APPROVED; CatalogView empty-state text now points to the upper-right in-page refresh; build 0/0; Minor: report retains isolated-worktree SHA)
+- T14: complete (integration commit `c4168d3` on main; cherry-picked from worktree `agent-a2a59504` work commit `521de70`; 6 release files: `pyproject.toml` + `src/comfy_mgr/__init__.py` + `shared/errors.json` + `src-wpf/ComfyUI.Manager/ComfyUI.Manager.csproj` + `tests/test_version_consistency.py` (3 expected literals) + new `release/RELEASE-NOTES-v0.6.5.md` (187 行中文); pytest version 3 PASS, dotnet test 185 PASS + 1 SKIP / 0 FAIL, dotnet build -c Release 0/0; whole-branch review package generated at `.superpowers/sdd/review-a6f2baf..c4168d3.diff` (16 commits spanning `2f646dd`..`c4168d3`, 158817 bytes) but NOT yet dispatched)
 
-## Pending (2026-07-22)
+## Pending (2026-07-23 session-boundary save)
 
-- T14: full verify + bump v0.6.5 + `build_release.ps1` + tag + gh release
+- **Dispatch whole-branch review** to opus using `review-a6f2baf..c4168d3.diff` (16 commits), then on APPROVED: rebuild release zip via `scripts/build_release.ps1 -Version 0.6.5` in main working tree, smoke if possible, `git tag -a v0.6.5 c4168d3`, push main + tag, `gh release create v0.6.5 release/ComfyUI-Manager-v0.6.5-win-x64.zip --notes-file release/RELEASE-NOTES-v0.6.5.md`
+- T14 carry-over concerns to surface in release notes or next-hotfix list: multi-profile batch install deferred; `CatalogViewModel.InfoMessage` still unbound; 2 pre-existing xUnit1031 warnings (test-internal, not shipped artifact)
 
 ## Cross-task coordination notes
 
