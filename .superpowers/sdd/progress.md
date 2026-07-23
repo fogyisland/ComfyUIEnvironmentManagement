@@ -447,12 +447,22 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 - T11: complete (commit `84520d9`, review APPROVED; added `_profileLoader` field + 6th ctor arg to `EnvironmentListViewModel`; replaced `OpenBaseEnvDialog` stub with `OpenBaseEnvProgress()` + `ShowProgressDialogOverride` test seam; updated `MainViewModel.cs:82`; 187 PASS + 1 SKIP / 0 FAIL; build 0/0)
 - T12: complete (commit `fb0ab87`, review APPROVED; deleted refresh StackPanel from SettingsView.xaml + `_refreshService` field + `RefreshCatalogCommand` + `IsBusy`/`StatusMessage`/`ErrorMessage` + `RefreshCatalogAsync` from SettingsViewModel; updated MainViewModel.cs:110; deleted `FakeRefreshService` + 2 tests; 185 PASS + 1 SKIP / 0 FAIL; build 0/0)
 - T13: complete (implementation commit `428209a` + report commit `9341bab`, review APPROVED; CatalogView empty-state text now points to the upper-right in-page refresh; build 0/0; Minor: report retains isolated-worktree SHA)
-- T14: complete (integration commit `c4168d3` on main; cherry-picked from worktree `agent-a2a59504` work commit `521de70`; 6 release files: `pyproject.toml` + `src/comfy_mgr/__init__.py` + `shared/errors.json` + `src-wpf/ComfyUI.Manager/ComfyUI.Manager.csproj` + `tests/test_version_consistency.py` (3 expected literals) + new `release/RELEASE-NOTES-v0.6.5.md` (187 行中文); pytest version 3 PASS, dotnet test 185 PASS + 1 SKIP / 0 FAIL, dotnet build -c Release 0/0; whole-branch review package generated at `.superpowers/sdd/review-a6f2baf..c4168d3.diff` (16 commits spanning `2f646dd`..`c4168d3`, 158817 bytes) but NOT yet dispatched)
+- T14: complete (integration commit `c4168d3` on main; cherry-picked from worktree `agent-a2a59504` work commit `521de70`; 6 release files: `pyproject.toml` + `src/comfy_mgr/__init__.py` + `shared/errors.json` + `src-wpf/ComfyUI.Manager/ComfyUI.Manager.csproj` + `tests/test_version_consistency.py` (3 expected literals) + new `release/RELEASE-NOTES-v0.6.5.md` (187 行中文); pytest version 3 PASS, dotnet test 185 PASS + 1 SKIP / 0 FAIL, dotnet build -c Release 0/0)
+- Opus whole-branch review: APPROVED FOR MERGE (1 Important + 2 Minor)
+  - I1: `BoolToRefreshTextConverter` + Theme.xaml registration left as dead code → fixed in `58715c7` (`chore(wpf): drop dead BoolToRefreshTextConverter after Settings refresh button removal`)
+  - M1: release notes described nonexistent `IsBusy`/`StatusMessage` fields → fixed in `8340262` (`docs(release): correct BaseEnvView behavior + default profile (v0.6.5)`)
+  - M2: release notes claimed default cu121, actual cu118 → fixed in same `8340262` commit
 
 ## Pending (2026-07-23 session-boundary save)
 
-- **Dispatch whole-branch review** to opus using `review-a6f2baf..c4168d3.diff` (16 commits), then on APPROVED: rebuild release zip via `scripts/build_release.ps1 -Version 0.6.5` in main working tree, smoke if possible, `git tag -a v0.6.5 c4168d3`, push main + tag, `gh release create v0.6.5 release/ComfyUI-Manager-v0.6.5-win-x64.zip --notes-file release/RELEASE-NOTES-v0.6.5.md`
-- T14 carry-over concerns to surface in release notes or next-hotfix list: multi-profile batch install deferred; `CatalogViewModel.InfoMessage` still unbound; 2 pre-existing xUnit1031 warnings (test-internal, not shipped artifact)
+- **All resolved.** v0.6.5 RELEASED 2026-07-23:
+  - Final HEAD on main: `8340262` (post-fix)
+  - Release commit chain since v0.6.4: 18 commits (`2f646dd`..`8340262`) — 14 implementation + 2 fix + 2 ledger sdd
+  - Release zip: `release/ComfyUI-Manager-v0.6.5-win-x64.zip` (278.4 MB / 265.5 MiB, ~9 MB larger than v0.6.4 due to bundled git-portable + ComfyUI template additions)
+  - Tag: `v0.6.5` at `8340262`
+  - GitHub release: https://github.com/fogyisland/ComfyUIEnvironmentManagement/releases/tag/v0.6.5 (**Latest**, confirmed via `gh release list`)
+  - Push: `2ac2829..8340262` to `origin/main` via SSH deploy key (`github_comfy_mgr`, no TLS proxy issues)
+- Carry-over to next hotfix (non-blocking): multi-profile batch install deferred; `CatalogViewModel.InfoMessage` still unbound; 2 pre-existing xUnit1031 warnings (test-internal, not shipped artifact)
 
 ## Cross-task coordination notes
 
