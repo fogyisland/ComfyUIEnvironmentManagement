@@ -478,6 +478,32 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 
 **Resume 时下一步:** 用户回来后先 EnterPlanMode 写 v0.6.5.1 plan(路径约定 `docs/superpowers/{specs,plans}/2026-07-23-pytorch-live-fetch-{design,plan}.md`);不在今晚继续写代码。
 
+---
+
+# v0.6.5.1 implementation — 2026-07-24 开始
+
+**Plan:** `C:\Users\徐鹏\.claude\plans\proud-petting-feather.md`(6 task + 1 close-out,15 Global Constraints G1-G15)
+**Spec:** `docs/superpowers/specs/2026-07-24-pytorch-live-fetch-design.md`
+**Base SHA:** `5de88a0`(v0.6.5 direction commit)→ spec committed at `1b4f837` → T1 at `73d774e`
+**版本号:** v0.6.5.1(用户已确认 via AskUserQuestion)
+
+## Status
+
+- T1: complete (commits 1b4f837..73d774e, review clean — 4/4 tests PASS, full suite 189/189)
+- T2: pending
+- T3: pending
+- T4: pending
+- T5: pending
+- T6: pending (bump + release)
+
+## Cross-task coordination notes
+
+- `EnvironmentListViewModel.cs:137` still calls `Views.BaseEnvDialog.Show(envs, _settings)` — **T9 must add TEMP T11 placeholder there** to keep build green when `BaseEnvDialog` is deleted.
+- `App.xaml.cs` ctor at line 70 instantiates `BaseEnvProfileLoader(projectRoot)` (decision: profile dir = projectRoot, sibling to `settings.json`).
+- `BaseEnvInstaller`, `BaseEnvProgressViewModel`, `BaseEnvProgressDialog` all now take `BaseEnvProfile` (post T4/T5). No `BaseEnvConfig` references in these files.
+- T4 modifies `BaseEnvProfileLoader.LoadAsync` to call `GetLiveDefaultsAsync` when file missing;T2/T3 provide the building blocks (fetcher + cache). T1 POCO is the contract between T2/T3 and T4.
+- T5 only changes one line in `App.xaml.cs:70` to pass `appDataDir, http` to loader ctor.
+
 ## Cross-task coordination notes
 
 - `EnvironmentListViewModel.cs:137` still calls `Views.BaseEnvDialog.Show(envs, _settings)` — **T9 must add TEMP T11 placeholder there** to keep build green when `BaseEnvDialog` is deleted.
