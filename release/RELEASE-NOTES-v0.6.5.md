@@ -61,22 +61,22 @@ Settings "基础环境" section,层级深且混在两个完全不同的设置上
   `Cog`)。
 
 - **`BaseEnvView` XAML + code-behind** (`2cf7834` + `0304bea`) —
-  内嵌展示:左侧 profile 多选 CheckedListBox(替代 v0.6.4 的 dialog
-  内左栏),右侧 env 多选 ListBox,底部 "开始部署" 按钮 + 实时状态
-  textblock(progress VM 直接 bind)。点击按钮 → 复用
-  `BaseEnvProgressDialog.ShowAsync`。
+  内嵌展示:左侧 profile 多选(替代 v0.6.4 的 dialog 内左栏),
+  右侧 env 多选,底部 "开始部署" 按钮。BaseEnvView 本身不显示进度,
+  点击按钮 → `BaseEnvProgressDialog.Show(envIds, profile, installer)`,
+  由该 dialog 自己负责进度 UI。
 
 - **`BaseEnvViewModel` + `StartCommand`** (`0304bea`) —
-  `Profiles`(ObservableCollection) / `Environments` /
-  `SelectedProfiles` / `SelectedEnvironments` / `IsBusy` /
-  `StatusMessage`。`StartCommand.CanExecute = profiles.Count > 0
-  && environments.Count > 0 && !IsBusy`;执行时若选多个 profile
-  按 v0.6.5 行为**只启动第一个 selected profile**(注释明确标记为
-  "known v0.6.5 behavior, multi-profile batch install 在下个 hotfix 跟进")。
+  `Profiles`(ObservableCollection) / `Envs` /
+  `SelectedProfiles` / `SelectedEnvIds`。`StartCommand` 在
+  `SelectedProfiles.Count > 0 && SelectedEnvIds.Count > 0` 时可执行;
+  执行时若选多个 profile 按 v0.6.5 行为**只启动第一个 selected profile**
+  (注释明确标记为 "v0.6.5 behavior,multi-profile batch install 在下个
+  hotfix 跟进")。
 
 - **EnvList 工具栏快捷入口保留** (`84520d9`) —
   `EnvironmentListViewModel.OpenBaseEnvProgress` 跳过 profile 选择
-  对话框,直接用 `profiles[0]`(默认 `pytorch-cu121`)启动 — power user
+  对话框,直接用 `profiles[0]`(默认 `pytorch-cu118`)启动 — power user
   路径,点击即跑。
 
 ---
