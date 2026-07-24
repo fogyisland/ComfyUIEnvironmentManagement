@@ -490,19 +490,22 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 ## Status
 
 - T1: complete (commits 1b4f837..73d774e, review clean — 4/4 tests PASS, full suite 189/189)
-- T2: pending
-- T3: pending
-- T4: pending
-- T5: pending
+- T2: complete (commits 73d774e..154bc74, review clean — 7/7 tests PASS, full suite 196/196;2 Minor: unused `using` + missing trailing newline)
+- T3: complete (commits 154bc74..b6a9bf2, 1 Important fix committed as `38f977f` — JSON options `PropertyNameCaseInsensitive = true` to match `BaseEnvProfileLoader` standard;7/7 tests PASS,full suite 203/203)
+- T4: complete (commits 38f977f..615036c, review clean — 19/19 BaseEnvProfileLoaderTests,full suite 210/1/0)
+- T5: pending(interrupted by user 2026-07-24;`App.xaml.cs` 修改 + `_T5SmokeIntegration.cs` 已写但 build/smoke 未跑)
 - T6: pending (bump + release)
 
-## Cross-task coordination notes
+## T4 → T5 contract (carry-over)
 
-- `EnvironmentListViewModel.cs:137` still calls `Views.BaseEnvDialog.Show(envs, _settings)` — **T9 must add TEMP T11 placeholder there** to keep build green when `BaseEnvDialog` is deleted.
-- `App.xaml.cs` ctor at line 70 instantiates `BaseEnvProfileLoader(projectRoot)` (decision: profile dir = projectRoot, sibling to `settings.json`).
-- `BaseEnvInstaller`, `BaseEnvProgressViewModel`, `BaseEnvProgressDialog` all now take `BaseEnvProfile` (post T4/T5). No `BaseEnvConfig` references in these files.
-- T4 modifies `BaseEnvProfileLoader.LoadAsync` to call `GetLiveDefaultsAsync` when file missing;T2/T3 provide the building blocks (fetcher + cache). T1 POCO is the contract between T2/T3 and T4.
-- T5 only changes one line in `App.xaml.cs:70` to pass `appDataDir, http` to loader ctor.
+- **Cache dir 必须传 `%APPDATA%/ComfyUI-Manager`**(不是 `%APPDATA%`)— T4 ctor 把 `cacheDir` 直接传给 `PyTorchVersionCache`,cache file = `Path.Combine(cacheDir, "pytorch_versions_cache.json")`
+- `App.xaml.cs:70` 应改为:`var appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ComfyUI-Manager"); new BaseEnvProfileLoader(projectRoot, appDataDir, http);`
+- `PyTorchVersionFetcher` / `PyTorchVersionCache` 由 loader 内部创建,不暴露到 ctor
+
+## T5 dirty state(用户中断,未 commit)
+
+- `src-wpf/ComfyUI.Manager/App.xaml.cs` M — T5 修改已写但未 commit,build/smoke 未跑
+- `tests-wpf/ComfyUI.Manager.Tests/Data/_T5SmokeIntegration.cs` ?? — T5 smoke integration 测试 draft(untracked)
 
 ## Cross-task coordination notes
 
