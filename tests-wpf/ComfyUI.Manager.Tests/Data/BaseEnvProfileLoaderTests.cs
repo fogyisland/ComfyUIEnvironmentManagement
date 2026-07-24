@@ -2,11 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
+using Moq;
+using Moq.Protected;
 using Xunit;
 
 namespace ComfyUI.Manager.Tests.Data;
@@ -14,6 +19,18 @@ namespace ComfyUI.Manager.Tests.Data;
 public sealed class BaseEnvProfileLoaderTests : IDisposable
 {
     private readonly string _tempDir;
+
+    /// <summary>
+    /// Representative pytorch.org HTML: stable regex fires on the
+    /// "stable,pip,linux,cuda.x,python" key (torch==2.13.0) and the nightly
+    /// cuda.x regex fires on pt_version_map.nightly.cuda.x.
+    /// </summary>
+    private const string SampleHtml = """
+        <script>
+        var pt_published_versions = {"stable,pip,linux,cuda.x,python":"pip3 install torch==2.13.0 torchvision==0.22.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126"};
+        var pt_version_map = {"stable":{"cpu":["cpu"]},"nightly":{"cpu":["cpu"],"cuda":{"x":["12.6"]}}};
+        </script>
+        """;
 
     public BaseEnvProfileLoaderTests()
     {
@@ -30,19 +47,62 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         catch { /* best-effort cleanup */ }
     }
 
+    // ----- HTTP fakes (HttpMessageHandler via Moq) -----
+
+    private static HttpClient MockedHttpClient(
+        string html,
+        HttpStatusCode status = HttpStatusCode.OK,
+        Action? onSend = null)
+    {
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Returns(() =>
+            {
+                onSend?.Invoke();
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = status,
+                    Content = new StringContent(html, Encoding.UTF8, "text/html"),
+                });
+            });
+        return new HttpClient(handler.Object);
+    }
+
+    private string FreshCacheDir()
+    {
+        var dir = Path.Combine(_tempDir, $"cache-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static void WriteCache(string cacheDir, PyTorchLiveVersions versions)
+    {
+        var path = Path.Combine(cacheDir, PyTorchVersionCache.FileName);
+        var json = JsonSerializer.Serialize(versions, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+        });
+        File.WriteAllText(path, json);
+    }
+
+    // ----- Hardcoded defaults (renamed from GetDefaults_*) -----
+
     [Fact]
-    public void GetDefaults_ReturnsExactlyFiveProfiles()
+    public void GetHardcodedDefaults_ReturnsExactlyFiveProfiles()
     {
         var loader = new BaseEnvProfileLoader(_tempDir);
-        var defaults = loader.GetDefaults();
+        var defaults = loader.GetHardcodedDefaults();
         Assert.Equal(5, defaults.Count);
     }
 
     [Fact]
-    public void GetDefaults_ContainsExpectedIds()
+    public void GetHardcodedDefaults_ContainsExpectedIds()
     {
         var loader = new BaseEnvProfileLoader(_tempDir);
-        var ids = loader.GetDefaults().Select(p => p.Id).ToHashSet();
+        var ids = loader.GetHardcodedDefaults().Select(p => p.Id).ToHashSet();
         Assert.Contains("pytorch-2.1-cu118-stable", ids);
         Assert.Contains("pytorch-2.1-cu121-stable", ids);
         Assert.Contains("pytorch-2.1-cu124-stable", ids);
@@ -51,10 +111,10 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     }
 
     [Fact]
-    public void GetDefaults_Cu118Profile_HasExpectedFields()
+    public void GetHardcodedDefaults_Cu118Profile_HasExpectedFields()
     {
         var loader = new BaseEnvProfileLoader(_tempDir);
-        var p = loader.GetDefaults().Single(x => x.Id == "pytorch-2.1-cu118-stable");
+        var p = loader.GetHardcodedDefaults().Single(x => x.Id == "pytorch-2.1-cu118-stable");
         Assert.Equal("2.1.0", p.TorchVersion);
         Assert.Equal("cu118", p.CudaVersion);
         Assert.Equal("stable", p.Channel);
@@ -62,10 +122,10 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     }
 
     [Fact]
-    public void GetDefaults_NightlyProfile_HasExpectedFields()
+    public void GetHardcodedDefaults_NightlyProfile_HasExpectedFields()
     {
         var loader = new BaseEnvProfileLoader(_tempDir);
-        var p = loader.GetDefaults().Single(x => x.Id == "pytorch-nightly-cu121");
+        var p = loader.GetHardcodedDefaults().Single(x => x.Id == "pytorch-nightly-cu121");
         Assert.Equal("nightly", p.TorchVersion);
         Assert.Equal("cu121", p.CudaVersion);
         Assert.Equal("nightly", p.Channel);
@@ -73,20 +133,22 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     }
 
     [Fact]
-    public void GetDefaults_CpuProfile_HasExpectedFields()
+    public void GetHardcodedDefaults_CpuProfile_HasExpectedFields()
     {
         var loader = new BaseEnvProfileLoader(_tempDir);
-        var p = loader.GetDefaults().Single(x => x.Id == "pytorch-2.1-cpu");
+        var p = loader.GetHardcodedDefaults().Single(x => x.Id == "pytorch-2.1-cpu");
         Assert.Equal("2.1.0", p.TorchVersion);
         Assert.Equal("cpu", p.CudaVersion);
         Assert.Equal("stable", p.Channel);
         Assert.Equal(new[] { "torch", "torchaudio", "torchvision" }, p.Packages);
     }
 
+    // ----- LoadAsync -----
+
     [Fact]
-    public async Task LoadAsync_FileMissing_ReturnsDefaults()
+    public async Task LoadAsync_FallsBackWhenFileMissing()
     {
-        // File does not exist
+        // File does not exist, no HttpClient → hardcoded defaults (5 profiles).
         var loader = new BaseEnvProfileLoader(_tempDir);
         var profiles = await loader.LoadAsync();
         Assert.Equal(5, profiles.Count);
@@ -96,7 +158,6 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public async Task LoadAsync_ValidJson_ReturnsFileContents()
     {
-        // Write a JSON file with 2 custom profiles
         var path = Path.Combine(_tempDir, "base_env_profiles.json");
         var custom = new List<BaseEnvProfile>
         {
@@ -136,14 +197,13 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public async Task LoadAsync_CorruptJson_ReturnsDefaults()
     {
-        // File exists but contains invalid JSON
         var path = Path.Combine(_tempDir, "base_env_profiles.json");
         File.WriteAllText(path, "{not valid json at all][");
 
         var loader = new BaseEnvProfileLoader(_tempDir);
         var profiles = await loader.LoadAsync();
 
-        // Graceful fallback to defaults
+        // Graceful fallback to hardcoded defaults (no HttpClient).
         Assert.Equal(5, profiles.Count);
         Assert.Contains(profiles, p => p.Id == "pytorch-2.1-cu118-stable");
     }
@@ -151,35 +211,30 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public async Task LoadAsync_EmptyJsonFile_ReturnsDefaults()
     {
-        // File exists but is empty/whitespace
         var path = Path.Combine(_tempDir, "base_env_profiles.json");
         File.WriteAllText(path, "");
 
         var loader = new BaseEnvProfileLoader(_tempDir);
         var profiles = await loader.LoadAsync();
 
-        // Empty → fallback to defaults (consistent with missing/corrupt)
         Assert.Equal(5, profiles.Count);
     }
 
     [Fact]
     public async Task LoadAsync_EmptyJsonArray_ReturnsEmptyList()
     {
-        // File exists with a valid empty array "[]" — user explicitly chose to have no profiles
         var path = Path.Combine(_tempDir, "base_env_profiles.json");
         File.WriteAllText(path, "[]");
 
         var loader = new BaseEnvProfileLoader(_tempDir);
         var profiles = await loader.LoadAsync();
 
-        // "[]" is a deliberate empty list, not a fallback trigger — honor it.
         Assert.Empty(profiles);
     }
 
     [Fact]
     public async Task LoadAsync_HonorsCancellationToken()
     {
-        // Verify the method accepts a CancellationToken and returns successfully
         var loader = new BaseEnvProfileLoader(_tempDir);
         using var cts = new CancellationTokenSource();
         var profiles = await loader.LoadAsync(cts.Token);
@@ -189,10 +244,128 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public void Constructor_ExposesPath()
     {
-        // Sanity check the constructor stores the dir
         var loader = new BaseEnvProfileLoader(_tempDir);
-        // We just verify we can call LoadAsync — no exception means construction is fine.
-        var defaults = loader.GetDefaults();
+        var defaults = loader.GetHardcodedDefaults();
         Assert.NotNull(defaults);
+    }
+
+    // ----- GetLiveDefaults (live-fetch path) -----
+
+    [Fact]
+    public async Task GetLiveDefaults_UsesFetchedStableVersion()
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir, FreshCacheDir(), MockedHttpClient(SampleHtml));
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        // All stable profiles carry the fetched "2.13.0"; only nightly stays "nightly".
+        foreach (var p in profiles.Where(x => x.Channel == "stable"))
+        {
+            Assert.Equal("2.13.0", p.TorchVersion);
+        }
+        Assert.Equal("nightly", profiles.Single(x => x.Channel == "nightly").TorchVersion);
+    }
+
+    [Fact]
+    public async Task GetLiveDefaults_GeneratesSixProfiles()
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir, FreshCacheDir(), MockedHttpClient(SampleHtml));
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        Assert.Equal(6, profiles.Count);
+        var cudas = profiles.Select(p => p.CudaVersion).ToList();
+        Assert.Contains("cu118", cudas);
+        Assert.Contains("cu121", cudas);
+        Assert.Contains("cu124", cudas);
+        Assert.Contains("cu126", cudas);
+        Assert.Contains("cpu", cudas);
+        Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu126");
+        Assert.Contains(profiles, p => p.Id == "pytorch-2.13.0-cu126-stable");
+    }
+
+    [Fact]
+    public async Task GetLiveDefaults_NightlyProfileKeepsLiteralNightly()
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir, FreshCacheDir(), MockedHttpClient(SampleHtml));
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        var nightly = profiles.Single(x => x.Id == "pytorch-nightly-cu126");
+        Assert.Equal("nightly", nightly.TorchVersion);
+        Assert.Equal("nightly", nightly.Channel);
+        Assert.Equal("cu126", nightly.CudaVersion);
+        Assert.Equal(new[] { "torch", "torchaudio", "torchvision" }, nightly.Packages);
+    }
+
+    [Fact]
+    public async Task GetLiveDefaults_FallsBackOnFetcherReturnsNull()
+    {
+        // 404 → fetcher returns null → hardcoded 5 profiles (nightly cu121).
+        var loader = new BaseEnvProfileLoader(
+            _tempDir, FreshCacheDir(), MockedHttpClient("not found", HttpStatusCode.NotFound));
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        Assert.Equal(5, profiles.Count);
+        Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu121");
+        Assert.Contains(profiles, p => p.Id == "pytorch-2.1-cu118-stable");
+    }
+
+    [Fact]
+    public async Task GetLiveDefaults_UsesCacheWhenFresh()
+    {
+        var cacheDir = FreshCacheDir();
+        WriteCache(cacheDir, new PyTorchLiveVersions
+        {
+            Stable = "2.9.9",
+            HasNightlyCu126 = true,
+            FetchedAt = DateTimeOffset.UtcNow, // fresh
+        });
+
+        var httpCalls = 0;
+        var loader = new BaseEnvProfileLoader(
+            _tempDir, cacheDir, MockedHttpClient(SampleHtml, onSend: () => httpCalls++));
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        // Cache hit → HTTP never called → cached "2.9.9" used, not fetched "2.13.0".
+        Assert.Equal(0, httpCalls);
+        Assert.Equal(6, profiles.Count);
+        Assert.All(profiles.Where(p => p.Channel == "stable"), p => Assert.Equal("2.9.9", p.TorchVersion));
+    }
+
+    [Fact]
+    public async Task GetLiveDefaults_RefetchesWhenCacheExpired()
+    {
+        var cacheDir = FreshCacheDir();
+        WriteCache(cacheDir, new PyTorchLiveVersions
+        {
+            Stable = "2.9.9",
+            HasNightlyCu126 = true,
+            FetchedAt = DateTimeOffset.UtcNow - TimeSpan.FromHours(2), // expired (>1h TTL)
+        });
+
+        var httpCalls = 0;
+        var loader = new BaseEnvProfileLoader(
+            _tempDir, cacheDir, MockedHttpClient(SampleHtml, onSend: () => httpCalls++));
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        // Expired cache → HTTP called → fresh "2.13.0" used, not stale "2.9.9".
+        Assert.Equal(1, httpCalls);
+        Assert.All(profiles.Where(p => p.Channel == "stable"), p => Assert.Equal("2.13.0", p.TorchVersion));
+    }
+
+    [Fact]
+    public async Task GetLiveDefaults_WithoutHttp_UsesHardcoded()
+    {
+        // No HttpClient / cacheDir → hardcoded defaults, no network.
+        var loader = new BaseEnvProfileLoader(_tempDir);
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        Assert.Equal(5, profiles.Count);
+        Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu121");
     }
 }

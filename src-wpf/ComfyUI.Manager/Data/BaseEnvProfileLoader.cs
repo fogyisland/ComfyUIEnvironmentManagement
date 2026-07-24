@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,9 +11,10 @@ namespace ComfyUI.Manager.Data;
 
 /// <summary>
 /// BaseEnvProfileLoader:从 &lt;appDataDir&gt;/base_env_profiles.json 读取 profile 列表。
-/// 文件缺失 / 解析失败 / 空内容 → 返回 5 个内置默认 profile。
-/// 设计上宁可回退到默认值也不要因为 JSON 损坏就让 UI 空掉(用户可在 UI 里
-/// 再手动选回默认或者编辑 profile 文件后重启)。
+/// 文件缺失 / 解析失败 / 空内容 → 走 <see cref="GetLiveDefaultsAsync"/>
+/// (运行时拉取 PyTorch stable 版本生成 6 个默认 profile);拉取失败再回退
+/// <see cref="GetHardcodedDefaults"/>(v0.6.5 硬编码 5 个)。
+/// 设计上宁可回退到默认值也不要因为 JSON 损坏 / 网络断就让 UI 空掉。
 /// </summary>
 public sealed class BaseEnvProfileLoader
 {
@@ -24,51 +26,91 @@ public sealed class BaseEnvProfileLoader
     };
 
     private readonly string _appDataDir;
+    private readonly string? _cacheDir;
+    private readonly HttpClient? _http;
 
-    public BaseEnvProfileLoader(string appDataDir)
+    /// <summary>
+    /// </summary>
+    /// <param name="appDataDir">存放 base_env_profiles.json 的目录。</param>
+    /// <param name="cacheDir">PyTorch 版本缓存目录;null → 不拉 live,只走 hardcoded。</param>
+    /// <param name="http">共享 HttpClient;null → 不拉 live,只走 hardcoded。</param>
+    public BaseEnvProfileLoader(
+        string appDataDir,
+        string? cacheDir = null,
+        HttpClient? http = null)
     {
         if (string.IsNullOrWhiteSpace(appDataDir))
         {
             throw new ArgumentException("appDataDir must be non-empty", nameof(appDataDir));
         }
         _appDataDir = appDataDir;
+        _cacheDir = cacheDir;
+        _http = http;
     }
 
     /// <summary>
     /// 从 <c>&lt;appDataDir&gt;/base_env_profiles.json</c> 加载 profiles。
-    /// 文件缺失 / 解析失败 / 空字符串 → 回退 <see cref="GetDefaults"/>。
+    /// 文件缺失 / 解析失败 / 空字符串 → 走 <see cref="GetLiveDefaultsAsync"/>。
     /// 有效空数组 "[]" 视为用户明确选择空列表,直接返回(不回退)。
     /// </summary>
     public async Task<IReadOnlyList<BaseEnvProfile>> LoadAsync(CancellationToken ct = default)
     {
         var path = Path.Combine(_appDataDir, FileName);
-        if (!File.Exists(path))
+        if (File.Exists(path))
         {
-            return GetDefaults();
+            var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                try
+                {
+                    var parsed = JsonSerializer.Deserialize<List<BaseEnvProfile>>(json, JsonOptions);
+                    if (parsed != null) return parsed;
+                }
+                catch (JsonException)
+                {
+                    // 损坏 JSON → 静默回退到 live/hardcoded 默认值。
+                }
+            }
         }
 
-        var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return GetDefaults();
-        }
-
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<List<BaseEnvProfile>>(json, JsonOptions);
-            return parsed ?? GetDefaults();
-        }
-        catch (JsonException)
-        {
-            // 损坏 JSON → 静默回退到默认值;调用方拿不到错误,UI 仍能展示。
-            return GetDefaults();
-        }
+        return await GetLiveDefaultsAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 内置 5 个默认 profile。先后顺序即 UI 展示顺序。
+    /// 运行时拉取 PyTorch stable 版本生成 6 个默认 profile。
+    /// 无 HttpClient / 无 cache 目录 → 直接回退 <see cref="GetHardcodedDefaults"/>。
+    /// cache 命中(1h TTL 内)→ 用 cached 生成;否则拉 HTTP,失败 → hardcoded。
     /// </summary>
-    public IReadOnlyList<BaseEnvProfile> GetDefaults()
+    public async Task<IReadOnlyList<BaseEnvProfile>> GetLiveDefaultsAsync(CancellationToken ct = default)
+    {
+        if (_http == null || _cacheDir == null)
+        {
+            return GetHardcodedDefaults();
+        }
+
+        var cache = new PyTorchVersionCache(_cacheDir);
+        var cached = await cache.TryReadAsync(ct).ConfigureAwait(false);
+        if (cached != null)
+        {
+            return BuildLiveDefaults(cached);
+        }
+
+        var fetcher = new PyTorchVersionFetcher(_http);
+        var fresh = await fetcher.FetchAsync(ct).ConfigureAwait(false);
+        if (fresh == null)
+        {
+            return GetHardcodedDefaults();
+        }
+
+        await cache.WriteAsync(fresh, ct).ConfigureAwait(false);
+        return BuildLiveDefaults(fresh);
+    }
+
+    /// <summary>
+    /// v0.6.5 硬编码 5 个默认 profile(fetcher 失败 / 无 HTTP 时回退)。
+    /// 先后顺序即 UI 展示顺序。字面量 "2.1.0" / "nightly" 刻意保留。
+    /// </summary>
+    public IReadOnlyList<BaseEnvProfile> GetHardcodedDefaults()
     {
         return new List<BaseEnvProfile>
         {
@@ -118,6 +160,53 @@ public sealed class BaseEnvProfileLoader
                 Name = "PyTorch 2.1 (CPU only)",
                 Description = "仅 CPU 的 PyTorch 2.1.0,适合无 NVIDIA 显卡环境",
                 TorchVersion = "2.1.0",
+                CudaVersion = "cpu",
+                Channel = "stable",
+                Packages = new List<string> { "torch", "torchaudio", "torchvision" },
+            },
+        };
+    }
+
+    /// <summary>
+    /// 用运行时拉取的 stable 版本生成 6 个默认 profile(spec §4.5):
+    /// 4 个 stable CUDA(cu118/cu121/cu124/cu126)+ 1 个 nightly cu126 + 1 个 CPU。
+    /// 所有 stable profile 共用 <paramref name="v"/>.Stable;nightly 保留字面量 "nightly"。
+    /// </summary>
+    private static IReadOnlyList<BaseEnvProfile> BuildLiveDefaults(PyTorchLiveVersions v)
+    {
+        var stableProfile = new Func<string, string, BaseEnvProfile>((cuda, cudaLabel) => new BaseEnvProfile
+        {
+            Id = $"pytorch-{v.Stable}-{cuda}-stable",
+            Name = $"PyTorch {v.Stable} + CUDA {cudaLabel} (stable)",
+            Description = $"稳定版 PyTorch {v.Stable},搭配 CUDA {cudaLabel},带 xformers",
+            TorchVersion = v.Stable,
+            CudaVersion = cuda,
+            Channel = "stable",
+            Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
+        });
+
+        return new List<BaseEnvProfile>
+        {
+            stableProfile("cu118", "11.8"),
+            stableProfile("cu121", "12.1"),
+            stableProfile("cu124", "12.4"),
+            stableProfile("cu126", "12.6"),
+            new()
+            {
+                Id = "pytorch-nightly-cu126",
+                Name = "PyTorch Nightly + CUDA 12.6",
+                Description = "PyTorch nightly,搭配 CUDA 12.6(不带 xformers)",
+                TorchVersion = "nightly",
+                CudaVersion = "cu126",
+                Channel = "nightly",
+                Packages = new List<string> { "torch", "torchaudio", "torchvision" },
+            },
+            new()
+            {
+                Id = $"pytorch-{v.Stable}-cpu",
+                Name = $"PyTorch {v.Stable} (CPU only)",
+                Description = $"仅 CPU 的 PyTorch {v.Stable},适合无 NVIDIA 显卡环境",
+                TorchVersion = v.Stable,
                 CudaVersion = "cpu",
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision" },

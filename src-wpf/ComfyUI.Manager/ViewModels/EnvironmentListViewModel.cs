@@ -147,7 +147,7 @@ public class EnvironmentListViewModel : ViewModelBase
             : Environments.Select(e => e.Id).ToList();
         if (envIds.Count == 0) return;
 
-        var profile = _profileLoader.GetDefaults().FirstOrDefault();
+        var profile = _profileLoader.GetHardcodedDefaults().FirstOrDefault();
         if (profile is null) return;
 
         if (ShowProgressDialogOverride is not null)
