@@ -8,6 +8,11 @@ namespace ComfyUI.Manager.Data;
 
 public sealed class PyTorchVersionCache
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public static readonly TimeSpan Ttl = TimeSpan.FromHours(1);
     public const string FileName = "pytorch_versions_cache.json";
 
@@ -28,7 +33,7 @@ public sealed class PyTorchVersionCache
         try
         {
             var json = await File.ReadAllTextAsync(FilePath, ct);
-            var versions = JsonSerializer.Deserialize<PyTorchLiveVersions>(json);
+            var versions = JsonSerializer.Deserialize<PyTorchLiveVersions>(json, JsonOptions);
             if (versions is null || versions.FetchedAt + Ttl < DateTimeOffset.UtcNow)
             {
                 return null;
@@ -52,7 +57,7 @@ public sealed class PyTorchVersionCache
                 Directory.CreateDirectory(directory);
             }
 
-            var json = JsonSerializer.Serialize(versions);
+            var json = JsonSerializer.Serialize(versions, JsonOptions);
             await File.WriteAllTextAsync(FilePath, json, ct);
         }
         catch
