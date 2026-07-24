@@ -31,4 +31,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ComfyUI.Manager.Tests" />
+  </ItemGroup>
 </Project>
