@@ -27,17 +27,21 @@ public sealed class PyTorchVersionFetcher
     /// </summary>
     public const string PageUrl = "https://pytorch.org/get-started/locally/";
 
-    // regex A:从 pt_published_versions 内抽出 latest_stable(cuda.x key)
-    // 顺序匹配 var pt_published_versions = { 后第一个 stable,pip,linux,cuda.x,python 行。
+    // regex A:从 pt_published_versions 内抽出 latest_stable 字段。
     // Group 1 = 版本号("2.13.0")
+    // 注:实测 pytorch.org 的 pt_published_versions 是扁平 object,没有
+    // "stable,pip,linux,cuda.x,python":"pip3 install torch==X.Y.Z" 这种
+    // 嵌入版本号的写法(实际是 "pip3 install torch torchvision --index-url ...")。
+    // 版本号在独立的 "latest_stable" 字段里。
     private static readonly Regex StableRegex = new(
-        @"var pt_published_versions = \{[^{}]*?""stable,pip,linux,cuda\.x,python"":\s*""[^""]*?torch==(\d+\.\d+\.\d+)",
+        @"pt_published_versions\s*=\s*\{[^{}]*?""latest_stable""\s*:\s*""(\d+\.\d+\.\d+)""",
         RegexOptions.Compiled);
 
-    // regex B:验证 pt_version_map.nightly.cuda.x 存在(确认 cu126 nightly 索引可装)
-    // 命中 = HasNightlyCu126 = true
+    // regex B:验证 pt_version_map.nightly 下存在 "cuda.x" key(确认 cu126 nightly
+    // 索引可装)。pt_version_map.nightly 也是扁平结构,cuda.x/cuda.y/cuda.z 都是
+    // 直接 key,不是嵌套 "cuda":{"x":...}。
     private static readonly Regex NightlyCudaXRegex = new(
-        @"""nightly"":\s*\{\s*""cpu"":[^{}]*?""cuda"":\s*\{\s*""x"":",
+        @"""nightly"":\s*\{[^{}]*?""cuda\.x""\s*:",
         RegexOptions.Compiled);
 
     private readonly HttpClient _http;

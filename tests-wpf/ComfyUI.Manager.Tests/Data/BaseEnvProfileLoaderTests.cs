@@ -22,13 +22,14 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
 
     /// <summary>
     /// Representative pytorch.org HTML: stable regex fires on the
-    /// "stable,pip,linux,cuda.x,python" key (torch==2.13.0) and the nightly
-    /// cuda.x regex fires on pt_version_map.nightly.cuda.x.
+    /// <c>"latest_stable"</c> field in <c>pt_published_versions</c> and the
+    /// nightly cuda.x regex fires on the flat <c>"cuda.x"</c> key inside
+    /// <c>pt_version_map.nightly</c>.
     /// </summary>
     private const string SampleHtml = """
         <script>
-        var pt_published_versions = {"stable,pip,linux,cuda.x,python":"pip3 install torch==2.13.0 torchvision==0.22.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126"};
-        var pt_version_map = {"stable":{"cpu":["cpu"]},"nightly":{"cpu":["cpu"],"cuda":{"x":["12.6"]}}};
+        var pt_published_versions = {"preview,pip,linux,cuda.x,python":"pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu126","stable,pip,linux,cuda.x,python":"pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126","latest_stable":"2.13.0"};
+        var pt_version_map = {"nightly":{"accnone":["cpu",""],"cuda.x":["cuda","12.6"],"cuda.y":["cuda","13.0"],"cuda.z":["cuda","13.2"]},"release":{"accnone":["cpu",""],"cuda.x":["cuda","12.6"],"cuda.y":["cuda","13.0"],"cuda.z":["cuda","13.2"]}};
         </script>
         """;
 

@@ -22,15 +22,18 @@ namespace ComfyUI.Manager.Tests.Data;
 public sealed class PyTorchVersionFetcherTests
 {
     /// <summary>
-    /// Minimal but representative HTML pulled from pytorch.org/get-started/locally/.
-    /// Includes both <c>pt_published_versions</c> literal (so the stable regex
-    /// can fire on the "stable,pip,linux,cuda.x,python" key) and the
-    /// <c>pt_version_map</c> literal (so the nightly-cuda-x regex can fire).
+    /// Minimal but representative HTML in the actual pytorch.org format:
+    /// <list type="bullet">
+    /// <item><c>pt_published_versions</c> — flat object, version lives in a
+    /// dedicated <c>"latest_stable"</c> field (NOT embedded in pip install strings).</item>
+    /// <item><c>pt_version_map.nightly</c> — flat object, <c>"cuda.x"</c> is a
+    /// direct key (NOT nested as <c>"cuda":{"x":...}</c>).</item>
+    /// </list>
     /// </summary>
     private const string SampleHtml = """
         <script>
-        var pt_published_versions = {"stable,pip,linux,cuda.x,python":"pip3 install torch==2.13.0 torchvision==0.22.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126"};
-        var pt_version_map = {"stable":{"cpu":["cpu"]},"nightly":{"cpu":["cpu"],"cuda":{"x":["12.6"]}}};
+        var pt_published_versions = {"preview,pip,linux,cuda.x,python":"pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu126","stable,pip,linux,cuda.x,python":"pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126","latest_stable":"2.13.0"};
+        var pt_version_map = {"nightly":{"accnone":["cpu",""],"cuda.x":["cuda","12.6"],"cuda.y":["cuda","13.0"],"cuda.z":["cuda","13.2"]},"release":{"accnone":["cpu",""],"cuda.x":["cuda","12.6"],"cuda.y":["cuda","13.0"],"cuda.z":["cuda","13.2"]}};
         </script>
         """;
 
@@ -107,11 +110,11 @@ public sealed class PyTorchVersionFetcherTests
     [Fact]
     public void Parse_ReturnsNullWhenLatestStableMissing()
     {
-        // No "stable,pip,linux,cuda.x,python" key in pt_published_versions
+        // No "latest_stable" key in pt_published_versions
         var html = """
             <script>
-            var pt_published_versions = {"stable,pip,linux,accnone,python":"pip3 install torch==2.13.0"};
-            var pt_version_map = {"nightly":{"cpu":["cpu"],"cuda":{"x":["12.6"]}}};
+            var pt_published_versions = {"preview,pip,linux,cuda.x,python":"pip3 install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu126"};
+            var pt_version_map = {"nightly":{"cuda.x":["cuda","12.6"]}};
             </script>
             """;
 
@@ -126,8 +129,8 @@ public sealed class PyTorchVersionFetcherTests
         // pt_version_map exists but nightly has no cuda.x (e.g. cu126 was retired)
         var html = """
             <script>
-            var pt_published_versions = {"stable,pip,linux,cuda.x,python":"pip3 install torch==2.13.0"};
-            var pt_version_map = {"nightly":{"cpu":["cpu"]}};
+            var pt_published_versions = {"latest_stable":"2.13.0"};
+            var pt_version_map = {"nightly":{"accnone":["cpu",""]}};
             </script>
             """;
 
