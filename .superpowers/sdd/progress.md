@@ -498,6 +498,37 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 - T6: complete (commits d06b997..7879d06, 5 file bump + release notes;zip built 265.5 MB;tag + gh release create → v0.6.5.1 is **Latest** as of 2026-07-25T02:06:56Z)
 - **Release closed:** ledger commit at `29c9e75`
 
+# v0.6.5.2 hotfix — bundled file shadowed live fetch (2026-07-25)
+
+**触发:** 用户启动 v0.6.5.1 GUI 看到 BED 页 profile 列表依然全 `PyTorch 2.1`(2026-07-25 用户桌面反馈)。v0.6.5.1 spec 设计意图是 live fetch,实测 bundled file shadow 掉了 live 分支。
+
+**根因:** `ComfyUI.Manager.csproj` 第 30-32 行 `<None Include="base_env_profiles.json">` + `<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>` 把 v0.6.5 hardcoded JSON 复制到 `<exe-dir>`。`App.xaml.cs:76` 把 `projectRoot` 作为 loader 第一参(`_appDataDir`),loader 启动时直接读 bundled 文件 → 5 个 hardcoded profile → **永远不会走 `GetLiveDefaultsAsync`**。cache 文件虽然写对了 `Stable="2.13.0"`,但 loader 不读。
+
+**修复(`f73569d`):** 删 csproj `<None Include>` 那一行,loader 找不到 bundled 文件 → fall through 到 live fetch。**用户 override 路径不变** — v0.6.5 时期在 `<exe-dir>/base_env_profiles.json` 手动编辑的 profile 仍生效(loader 优先读 exe-dir)。
+
+**状态:** code committed `f73569d`,zip built 265.5 MB,GUI smoke 用户验证中。**未做:** tag v0.6.5.2 push + `gh release create` + 验证 Latest + ledger 收尾 — 用户先收 session,明天续。
+
+**Verification:**
+- pytest version consistency: 3 PASS (0.6.5.1 → 0.6.5.2)
+- dotnet test WPF: 210 PASS + 1 SKIP / 0 FAIL
+- dotnet build Release: 0 warnings, 0 errors
+- staging verified no `base_env_profiles.json`
+- Manual GUI smoke: 用户桌面验证中(等反馈)
+
+**Resume 时路径(2026-07-26 起):**
+1. 确认用户 GUI smoke 结果(应该看到 6 个 profile,Stable="2.13.0",nightly cu126)
+2. 如果 OK → tag + push + gh release:
+   ```bash
+   git tag -a v0.6.5.2 -m "v0.6.5.2 — stop bundling base_env_profiles.json (live fetch fix)"
+   git push origin main
+   git push origin v0.6.5.2
+   gh release create v0.6.5.2 release/ComfyUI-Manager-v0.6.5.2-win-x64.zip \
+     --notes-file release/RELEASE-NOTES-v0.6.5.2.md \
+     --title "v0.6.5.2 — 修 v0.6.5.1:live fetch 被 bundled 文件 shadow"
+   gh release list --limit 2  # verify v0.6.5.2 is Latest
+   ```
+3. 写 ledger commit 收尾
+
 ## T4 → T5 contract (carry-over)
 
 - **Cache dir 必须传 `%APPDATA%/ComfyUI-Manager`**(不是 `%APPDATA%`)— T4 ctor 把 `cacheDir` 直接传给 `PyTorchVersionCache`,cache file = `Path.Combine(cacheDir, "pytorch_versions_cache.json")`
