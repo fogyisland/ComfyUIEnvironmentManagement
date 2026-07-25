@@ -67,7 +67,13 @@ public partial class App : Application
         var envCreator = new EnvCreatorService(
             dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
         var baseEnvInstaller = new BaseEnvInstaller(envRepo);
-        var profileLoader = new BaseEnvProfileLoader(projectRoot);
+        // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
+        // cache 目录 = %APPDATA%/ComfyUI-Manager(PyTorchVersionCache 直接在此存
+        // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。
+        var appDataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "ComfyUI-Manager");
+        var profileLoader = new BaseEnvProfileLoader(projectRoot, appDataDir, http);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
