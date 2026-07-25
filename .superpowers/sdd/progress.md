@@ -491,9 +491,10 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 
 - T1: complete (commits 1b4f837..73d774e, review clean — 4/4 tests PASS, full suite 189/189)
 - T2: complete (commits 73d774e..154bc74, review clean — 7/7 tests PASS, full suite 196/196;2 Minor: unused `using` + missing trailing newline)
+- T2.5: complete (commits 615036c..ecf220c, **post-merge fix** — T2 regex didn't match real pytorch.org HTML format; updated both regexes (latest_stable flat field + flat cuda.x key in nightly) + SampleHtml in PyTorchVersionFetcherTests + BaseEnvProfileLoaderTests;smoke verified against real pytorch.org: 6 profiles, Stable="2.13.0", cache file written;full suite 211/1/0)
 - T3: complete (commits 154bc74..b6a9bf2, 1 Important fix committed as `38f977f` — JSON options `PropertyNameCaseInsensitive = true` to match `BaseEnvProfileLoader` standard;7/7 tests PASS,full suite 203/203)
 - T4: complete (commits 38f977f..615036c, review clean — 19/19 BaseEnvProfileLoaderTests,full suite 210/1/0)
-- T5: pending(interrupted by user 2026-07-24;`App.xaml.cs` 修改 + `_T5SmokeIntegration.cs` 已写但 build/smoke 未跑)
+- T5: complete (commits ecf220c..d06b997, no reviewer dispatch — T2.5 smoke against real pytorch.org already validates the full pipeline;`_T5SmokeIntegration.cs` deleted;App.xaml.cs:70 wired `appDataDir = %APPDATA%/ComfyUI-Manager` + shared `http`)
 - T6: pending (bump + release)
 
 ## T4 → T5 contract (carry-over)
@@ -502,10 +503,10 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 - `App.xaml.cs:70` 应改为:`var appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ComfyUI-Manager"); new BaseEnvProfileLoader(projectRoot, appDataDir, http);`
 - `PyTorchVersionFetcher` / `PyTorchVersionCache` 由 loader 内部创建,不暴露到 ctor
 
-## T5 dirty state(用户中断,未 commit)
+## T5 dirty state(用户中断,未 commit) — RESOLVED 2026-07-25
 
-- `src-wpf/ComfyUI.Manager/App.xaml.cs` M — T5 修改已写但未 commit,build/smoke 未跑
-- `tests-wpf/ComfyUI.Manager.Tests/Data/_T5SmokeIntegration.cs` ?? — T5 smoke integration 测试 draft(untracked)
+- `src-wpf/ComfyUI.Manager/App.xaml.cs` M — **committed at `d06b997`**,build clean
+- `tests-wpf/ComfyUI.Manager.Tests/Data/_T5SmokeIntegration.cs` ?? — **deleted**(real-HTTP smoke passed;coverage moved to T2.5 `SampleHtml` updates which mirror real pytorch.org format)
 
 ## Cross-task coordination notes
 
