@@ -506,28 +506,20 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 
 **修复(`f73569d`):** 删 csproj `<None Include>` 那一行,loader 找不到 bundled 文件 → fall through 到 live fetch。**用户 override 路径不变** — v0.6.5 时期在 `<exe-dir>/base_env_profiles.json` 手动编辑的 profile 仍生效(loader 优先读 exe-dir)。
 
-**状态:** code committed `f73569d`,zip built 265.5 MB,GUI smoke 用户验证中。**未做:** tag v0.6.5.2 push + `gh release create` + 验证 Latest + ledger 收尾 — 用户先收 session,明天续。
+**状态:** **RELEASED** (2026-07-25T16:48:23Z)
+- Tag v0.6.5.2 pushed
+- GitHub release = https://github.com/fogyisland/ComfyUIEnvironmentManagement/releases/tag/v0.6.5.2(**Latest**, published 2026-07-25T16:48:23Z)
+- Zip = `release/ComfyUI-Manager-v0.6.5.2-win-x64.zip`(265.5 MB)
+- v0.6.5.1 仍保留 GitHub release(给已下载用户的兼容性),自动 demote 为非-Latest
 
 **Verification:**
 - pytest version consistency: 3 PASS (0.6.5.1 → 0.6.5.2)
 - dotnet test WPF: 210 PASS + 1 SKIP / 0 FAIL
 - dotnet build Release: 0 warnings, 0 errors
 - staging verified no `base_env_profiles.json`
-- Manual GUI smoke: 用户桌面验证中(等反馈)
+- Manual GUI smoke: cache `FetchedAt = 03:13:44` 证明 v0.6.5.2 staging exe 走了 live fetch 路径并重写 cache(loader 找到了 bundled 文件缺失,fall through 到 `GetLiveDefaultsAsync`)
 
-**Resume 时路径(2026-07-26 起):**
-1. 确认用户 GUI smoke 结果(应该看到 6 个 profile,Stable="2.13.0",nightly cu126)
-2. 如果 OK → tag + push + gh release:
-   ```bash
-   git tag -a v0.6.5.2 -m "v0.6.5.2 — stop bundling base_env_profiles.json (live fetch fix)"
-   git push origin main
-   git push origin v0.6.5.2
-   gh release create v0.6.5.2 release/ComfyUI-Manager-v0.6.5.2-win-x64.zip \
-     --notes-file release/RELEASE-NOTES-v0.6.5.2.md \
-     --title "v0.6.5.2 — 修 v0.6.5.1:live fetch 被 bundled 文件 shadow"
-   gh release list --limit 2  # verify v0.6.5.2 is Latest
-   ```
-3. 写 ledger commit 收尾
+**Release closed:** ledger commit at `3fd14b6` + this v0.6.5.2 完成段追加
 
 ## T4 → T5 contract (carry-over)
 
