@@ -495,7 +495,8 @@ Note: section above ("v0.6.5 hotfix") records the OLD v0.6.4 BED feature work th
 - T3: complete (commits 154bc74..b6a9bf2, 1 Important fix committed as `38f977f` — JSON options `PropertyNameCaseInsensitive = true` to match `BaseEnvProfileLoader` standard;7/7 tests PASS,full suite 203/203)
 - T4: complete (commits 38f977f..615036c, review clean — 19/19 BaseEnvProfileLoaderTests,full suite 210/1/0)
 - T5: complete (commits ecf220c..d06b997, no reviewer dispatch — T2.5 smoke against real pytorch.org already validates the full pipeline;`_T5SmokeIntegration.cs` deleted;App.xaml.cs:70 wired `appDataDir = %APPDATA%/ComfyUI-Manager` + shared `http`)
-- T6: pending (bump + release)
+- T6: complete (commits d06b997..7879d06, 5 file bump + release notes;zip built 265.5 MB;tag + gh release create → v0.6.5.1 is **Latest** as of 2026-07-25T02:06:56Z)
+- **Release closed:** ledger commit at `29c9e75`
 
 ## T4 → T5 contract (carry-over)
 
