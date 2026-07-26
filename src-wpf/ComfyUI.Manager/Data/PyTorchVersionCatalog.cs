@@ -10,13 +10,22 @@ using System.Threading.Tasks;
 namespace ComfyUI.Manager.Data;
 
 /// <summary>
-/// 运行时从 PyPI JSON 拉取 PyTorch stable 版本目录(每个版本的发布时间 +
-/// 可用 CUDA / CPU 索引 tag)。
+/// 运行时从 PyPI JSON + pytorch.org HTML 拉取 PyTorch stable 版本目录
+/// (每个版本的发布时间 + CUDA / CPU 索引 tag)。
 ///
-/// 数据源 <c>https://pypi.org/pypi/torch/json</c> 的 <c>releases</c> 字段
-/// 是一个 <c>version → [file, ...]</c> 的字典,每个 file 含
-/// <c>filename</c> + <c>upload_time</c>。CUDA / CPU tag 出现在
-/// <c>filename</c> 的 <c>+cu118</c> / <c>+cu126</c> / <c>+cpu</c> 片段里。
+/// 数据源:
+/// <list type="number">
+/// <item><c>https://pypi.org/pypi/torch/json</c> — <c>releases</c> 字典;
+///   每个 file 含 <c>filename</c> + <c>upload_time</c>。PyPI 提供版本号 +
+///   发布时间 + CPU wheel 检测 (<c>filename</c> 含 <c>+cpu</c>)。
+///   注:PyPI 的 <c>torch</c> 包不再发布 CUDA 标记的 wheel — 只有 CPU
+///   wheel。所以 CUDA 变体必须从 pytorch.org HTML 来。</item>
+/// <item><c>https://pytorch.org/get-started/locally/</c> —
+///   <c>var pt_version_map = { "release": { "cuda.x": ..., "cuda.y": ..., "cuda.z": ... } }</c>
+///   JavaScript 字面量。<c>cuda.x</c> / <c>cuda.y</c> / <c>cuda.z</c> 是
+///   扁平 key(不是嵌套 <c>"cuda":{"x":...}</c>),由 letter 映射到
+///   <c>cuNNN</c> tag(见 <see cref="CudaLetterToTag"/>)。</item>
+/// </list>
 ///
 /// 任何失败(HTTP 错 / 解析失败 / <c>releases</c> 字段缺失)统一返回
 /// <c>null</c>;调用方应回退到 v0.6.5 hardcoded 默认值,UI 永不空。
@@ -24,16 +33,47 @@ namespace ComfyUI.Manager.Data;
 public sealed class PyTorchVersionCatalog
 {
     /// <summary>
-    /// PyPI torch 包的 JSON API URL。
-    /// 响应体大(几十 MB 量级),调用方应配合 <c>PyTorchVersionCache</c>
-    /// 做持久化。
+    /// PyPI torch 包的 JSON API URL。响应体大(几十 MB 量级),调用方
+    /// 应配合 <c>PyTorchVersionCache</c> 做持久化。
     /// </summary>
-    public const string PageUrl = "https://pypi.org/pypi/torch/json";
+    public const string PyPiPageUrl = "https://pypi.org/pypi/torch/json";
 
-    // 匹配 filename 里的 +cuNNN tag(capture group 1 = "118" / "126")。
-    // 严格限制 NNN 是 3 位数字,避免误匹配 +custom / +cublas 等非 CUDA tag。
-    private static readonly Regex CudaTagRegex = new(
-        @"\+cu(\d{3})",
+    /// <summary>
+    /// pytorch.org "Get Started" 页面 URL。页面内嵌
+    /// <c>var pt_version_map = {...}</c> JavaScript 字面量,
+    /// 用 regex 抽取 <c>release.cuda.x</c> / <c>cuda.y</c> / <c>cuda.z</c>
+    /// key 推导可用 CUDA 变体列表。
+    /// </summary>
+    public const string PytorchOrgPageUrl = "https://pytorch.org/get-started/locally/";
+
+    /// <summary>
+    /// pytorch.org <c>pt_version_map.release</c> 里 <c>cuda.{letter}</c>
+    /// key 的 letter → <c>cuNNN</c> tag 映射。letter 是 pytorch.org 自己
+    /// 用的代号(<c>x</c> / <c>y</c> / <c>z</c>),不一定是 CUDA 数字顺序。
+    /// 如果哪天 pytorch.org 改了 CUDA 编号,只改这里 + 顶层 letter key。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<char, string> CudaLetterToTag =
+        new Dictionary<char, string>
+        {
+            ['x'] = "cu118",
+            ['y'] = "cu121",
+            ['z'] = "cu126",
+        };
+
+    // regex:从整个 pt_version_map 字符串里抽出所有 cuda.x / cuda.y /
+    // cuda.z key(扁平结构)。pt_version_map.nightly 也是同样 flat 结构,
+    // 所以先抽 release 块边界,再在块内找 cuda key。
+    // 块边界:从 "release":{ 到 下一个顶层 },(用非贪婪找最近的 })。
+    // 因为 release 块里没有嵌套 { (key 都是数组值如 [...]),
+    // 所以 "[^}]*" 可以安全吃到块尾。
+    // 块内 cuda key regex: "cuda\.([xyz])"\s*:
+    // Group 1 = letter("x" / "y" / "z")。
+    private static readonly Regex ReleaseBlockRegex = new(
+        @"""release""\s*:\s*\{(?<body>[^}]*)\}",
+        RegexOptions.Compiled);
+
+    private static readonly Regex ReleaseCudaLetterRegex = new(
+        @"""cuda\.(?<letter>[xyz])""\s*:",
         RegexOptions.Compiled);
 
     private static readonly Regex CpuTagRegex = new(
@@ -48,16 +88,26 @@ public sealed class PyTorchVersionCatalog
     }
 
     /// <summary>
-    /// 拉取 PyPI JSON → 解析 → 返回 stable 版本目录。
-    /// 任何失败(HTTP 错 / 超时 / JSON 损坏 / <c>releases</c> 缺失)→
-    /// 返回 <c>null</c>,不抛。
+    /// 并行拉取 PyPI JSON + pytorch.org HTML → 合并解析 → 返回 stable
+    /// 版本目录(每个版本带 CudaVariants + HasCpu)。
+    /// 任何失败(HTTP 错 / 超时 / JSON 损坏 / HTML regex miss /
+    /// <c>releases</c> 缺失)→ 返回 <c>null</c>,不抛。
     /// </summary>
     public async Task<IReadOnlyList<PyTorchVersion>?> FetchAsync(CancellationToken ct = default)
     {
         try
         {
-            var json = await _http.GetStringAsync(PageUrl, ct).ConfigureAwait(false);
-            return Parse(json);
+            // 并行发起两个 GET。任一失败 → 整体回退 null。
+            var pypiTask = _http.GetStringAsync(PyPiPageUrl, ct);
+            var pytorchOrgTask = _http.GetStringAsync(PytorchOrgPageUrl, ct);
+
+            await Task.WhenAll(pypiTask, pytorchOrgTask).ConfigureAwait(false);
+
+            var json = await pypiTask.ConfigureAwait(false);
+            var html = await pytorchOrgTask.ConfigureAwait(false);
+
+            var cudaVariants = ParseCudaVariantsFromHtml(html);
+            return ParsePypiJson(json, cudaVariants);
         }
         catch (Exception ex) when (
             ex is HttpRequestException
@@ -71,8 +121,63 @@ public sealed class PyTorchVersionCatalog
     }
 
     /// <summary>
-    /// 从 PyPI JSON 字符串解析 PyTorch 版本目录。
-    /// 静态 + internal 便于单测(纯字符串输入,无需 mock HTTP)。
+    /// 从 pytorch.org HTML 提取 <c>pt_version_map.release</c> 块里的
+    /// <c>cuda.x</c> / <c>cuda.y</c> / <c>cuda.z</c> key,映射成
+    /// <c>cuNNN</c> tag 列表(按 <see cref="CudaLetterToTag"/> 字典定义)。
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item>HTML 空 → 空列表(不抛)。</item>
+    /// <item>没有 <c>"release"</c> 块 → 空列表(nightly 单独存在不算)。</item>
+    /// <item>只 release 块里有 cuda.{letter} 才计入;nightly 块不算。</item>
+    /// <item>未知 letter (不在 <see cref="CudaLetterToTag"/> 里)→ 静默跳过。</item>
+    /// <item>结果按 <see cref="CudaLetterToTag"/> 字典插入顺序排序
+    ///   (cu118 → cu121 → cu126),不是字母序。</item>
+    /// </list>
+    /// </remarks>
+    internal static IReadOnlyList<string> ParseCudaVariantsFromHtml(string html)
+    {
+        if (string.IsNullOrEmpty(html))
+        {
+            return Array.Empty<string>();
+        }
+
+        // 第一步:抽出 release:{...} 块内容。如果 release 块不存在 → 空。
+        var blockMatch = ReleaseBlockRegex.Match(html);
+        if (!blockMatch.Success)
+        {
+            return Array.Empty<string>();
+        }
+
+        var releaseBody = blockMatch.Groups["body"].Value;
+
+        // 第二步:在 release 块内容里找所有 cuda.x / cuda.y / cuda.z key。
+        // 因为 release 块里的值都是数组([cuda","12.6"]),没有嵌套 {} ,
+        // 所以 [^}]* 把 release 块切到下一个 } 是安全的(夜间的 cuda key
+        // 在 sibling 对象里,不会被误抓)。
+        var matches = ReleaseCudaLetterRegex.Matches(releaseBody);
+        if (matches.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var seen = new HashSet<string>();
+        var result = new List<string>();
+        foreach (Match m in matches)
+        {
+            var letter = m.Groups["letter"].Value[0];
+            if (CudaLetterToTag.TryGetValue(letter, out var tag) && seen.Add(tag))
+            {
+                result.Add(tag);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 从 PyPI JSON 字符串解析 PyTorch 版本目录,把外部传入的
+    /// <paramref name="cudaVariants"/> 列表(来自 pytorch.org HTML)
+    /// 赋给每个稳定版本。
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
@@ -82,12 +187,17 @@ public sealed class PyTorchVersionCatalog
     ///   dev(<c>.devN</c>)版本号一律过滤。</item>
     /// <item>file 列表为空的版本号跳过。</item>
     /// <item><c>upload_time</c> 解析失败的 file 跳过(不影响同版本其他 file)。</item>
-    /// <item><c>CudaVariants</c> 按数字升序、<c>HasCpu</c> = 是否出现 <c>+cpu</c>。</item>
-    /// <item>结果按 <c>ReleaseDate</c> 降序(最新在前);同日期再按版本号
-    ///   字典序降序(稳定排序)。</item>
+    /// <item>没有任何可解析 <c>upload_time</c> 的版本号跳过。</item>
+    /// <item><see cref="PyTorchVersion.CudaVariants"/> 直接取传入的
+    ///   <paramref name="cudaVariants"/>(已排序);不来自 filename。
+    ///   <see cref="PyTorchVersion.HasCpu"/> = 是否有 wheel 含 <c>+cpu</c>。</item>
+    /// <item>结果按 <see cref="PyTorchVersion.ReleaseDate"/> 降序
+    ///   (最新在前);同日期再按版本号字典序降序(稳定排序)。</item>
     /// </list>
     /// </remarks>
-    internal static IReadOnlyList<PyTorchVersion>? Parse(string json)
+    internal static IReadOnlyList<PyTorchVersion>? ParsePypiJson(
+        string json,
+        IReadOnlyList<string> cudaVariants)
     {
         if (string.IsNullOrEmpty(json))
         {
@@ -116,6 +226,10 @@ public sealed class PyTorchVersionCatalog
                 return null;
             }
 
+            // Defensive copy so callers can mutate their input without
+            // affecting the result.
+            var cudaSnapshot = cudaVariants ?? Array.Empty<string>();
+
             var versions = new List<PyTorchVersion>();
 
             foreach (var releaseProp in releasesElement.EnumerateObject())
@@ -137,7 +251,6 @@ public sealed class PyTorchVersionCatalog
                     continue;
                 }
 
-                var cudaSet = new SortedSet<int>();
                 var hasCpu = false;
                 DateTimeOffset? latestUpload = null;
 
@@ -158,13 +271,6 @@ public sealed class PyTorchVersionCatalog
                     if (string.IsNullOrEmpty(filename))
                     {
                         continue;
-                    }
-
-                    var cudaMatch = CudaTagRegex.Match(filename);
-                    if (cudaMatch.Success
-                        && int.TryParse(cudaMatch.Groups[1].Value, out var cudaMinor))
-                    {
-                        cudaSet.Add(cudaMinor);
                     }
 
                     if (!hasCpu && CpuTagRegex.IsMatch(filename))
@@ -202,7 +308,7 @@ public sealed class PyTorchVersionCatalog
                 {
                     Version = versionStr,
                     ReleaseDate = latestUpload.Value,
-                    CudaVariants = cudaSet.Select(c => "cu" + c).ToArray(),
+                    CudaVariants = cudaSnapshot,
                     HasCpu = hasCpu,
                 });
             }
