@@ -30,7 +30,14 @@ namespace ComfyUI.Manager.Data;
 /// 任何失败(HTTP 错 / 解析失败 / <c>releases</c> 字段缺失)统一返回
 /// <c>null</c>;调用方应回退到 v0.6.5 hardcoded 默认值,UI 永不空。
 /// </summary>
-public sealed class PyTorchVersionCatalog
+/// <remarks>
+/// 非 sealed:允许 <c>PyTorchVersionDirectoryTests</c> 用
+/// <see cref="FetchAsync"/> 的 in-memory 子类来验证编排逻辑,避开
+/// 真 <c>HttpClient</c>。<see cref="FetchAsync"/> 是 <c>virtual</c> 的;
+/// <see cref="ParseCudaVariantsFromHtml"/> / <see cref="ParsePypiJson"/>
+/// 仍保持 <c>internal static</c>(纯函数解析,不需要 override)。
+/// </remarks>
+public class PyTorchVersionCatalog
 {
     /// <summary>
     /// PyPI torch 包的 JSON API URL。响应体大(几十 MB 量级),调用方
@@ -93,7 +100,12 @@ public sealed class PyTorchVersionCatalog
     /// 任何失败(HTTP 错 / 超时 / JSON 损坏 / HTML regex miss /
     /// <c>releases</c> 缺失)→ 返回 <c>null</c>,不抛。
     /// </summary>
-    public async Task<IReadOnlyList<PyTorchVersion>?> FetchAsync(CancellationToken ct = default)
+    /// <remarks>
+    /// 标记 <c>virtual</c> 是为了允许测试用 in-memory 子类替换,避开
+    /// 真 <c>HttpClient</c>。生产代码调用方(<c>PyTorchVersionDirectory</c>)
+    /// 期望的契约不变:成功返回 non-null stable 列表,失败返回 null。
+    /// </remarks>
+    public virtual async Task<IReadOnlyList<PyTorchVersion>?> FetchAsync(CancellationToken ct = default)
     {
         try
         {
