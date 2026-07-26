@@ -369,4 +369,135 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         Assert.Equal(5, profiles.Count);
         Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu121");
     }
+
+    // ----- LoadProfilesForVersionAsync (Task 4: per-version generation) -----
+
+    [Fact]
+    public async Task LoadProfilesForVersion_StableUsesSelectedVersionAndVariants()
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir);
+        var metadata = new PyTorchVersion
+        {
+            Version = "2.5.1",
+            CudaVariants = new[] { "cu118", "cu121", "cu124", "cu126" },
+            HasCpu = true,
+        };
+
+        var profiles = await loader.LoadProfilesForVersionAsync("2.5.1", metadata);
+
+        Assert.All(profiles.Where(p => p.Channel == "stable"), p => Assert.Equal("2.5.1", p.TorchVersion));
+        var cudaTags = profiles.Where(p => p.CudaVersion != "cpu").Select(p => p.CudaVersion).ToList();
+        Assert.Contains("cu118", cudaTags);
+        Assert.Contains("cu121", cudaTags);
+        Assert.Contains("cu124", cudaTags);
+        Assert.Contains("cu126", cudaTags);
+        Assert.Contains("cpu", profiles.Select(p => p.CudaVersion));
+        Assert.DoesNotContain(profiles, p => p.Channel == "nightly");
+    }
+
+    [Fact]
+    public async Task LoadProfilesForVersion_NightlyProducesSingleCu126Profile()
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir);
+
+        var profiles = await loader.LoadProfilesForVersionAsync("nightly");
+
+        Assert.Single(profiles);
+        Assert.Equal("cu126", profiles[0].CudaVersion);
+        Assert.Equal("nightly", profiles[0].TorchVersion);
+        Assert.Equal("nightly", profiles[0].Channel);
+    }
+
+    [Fact]
+    public async Task LoadProfilesForVersion_NoMetadataForStable_ReturnsLiveOrFallback()
+    {
+        // No metadata passed → loader derives profiles from live defaults (or hardcoded fallback)
+        // and filters to TorchVersion == "2.5.1".
+        var loader = new BaseEnvProfileLoader(_tempDir);
+
+        var profiles = await loader.LoadProfilesForVersionAsync("2.5.1");
+
+        // Stable profiles carry the requested version.
+        Assert.NotEmpty(profiles);
+        Assert.All(profiles.Where(p => p.Channel == "stable"), p => Assert.Equal("2.5.1", p.TorchVersion));
+    }
+
+    [Fact]
+    public async Task LoadProfilesForVersion_CpuOnlyMetadata_NoCudaProfile()
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir);
+        var metadata = new PyTorchVersion
+        {
+            Version = "2.5.1",
+            CudaVariants = Array.Empty<string>(),
+            HasCpu = true,
+        };
+
+        var profiles = await loader.LoadProfilesForVersionAsync("2.5.1", metadata);
+
+        Assert.Single(profiles);
+        Assert.Equal("cpu", profiles[0].CudaVersion);
+        Assert.Equal("stable", profiles[0].Channel);
+        Assert.Equal("2.5.1", profiles[0].TorchVersion);
+    }
+
+    [Fact]
+    public async Task LoadProfilesForVersion_PreservesPackageList()
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir);
+        var metadata = new PyTorchVersion
+        {
+            Version = "2.5.1",
+            CudaVariants = new[] { "cu118" },
+            HasCpu = true,
+        };
+
+        var stableProfiles = await loader.LoadProfilesForVersionAsync("2.5.1", metadata);
+        var stableCuda = stableProfiles.Single(p => p.CudaVersion == "cu118");
+        Assert.Equal(new[] { "torch", "torchaudio", "torchvision", "xformers" }, stableCuda.Packages);
+
+        var cpu = stableProfiles.Single(p => p.CudaVersion == "cpu");
+        Assert.Equal(new[] { "torch", "torchaudio", "torchvision" }, cpu.Packages);
+
+        var nightly = await loader.LoadProfilesForVersionAsync("nightly");
+        Assert.Equal(new[] { "torch", "torchaudio", "torchvision" }, nightly[0].Packages);
+    }
+
+    [Fact]
+    public async Task LoadAsync_JsonFileUnchangedBehavior()
+    {
+        // Regression: custom JSON file with 2 profiles → LoadAsync returns them unchanged.
+        var path = Path.Combine(_tempDir, "base_env_profiles.json");
+        var custom = new List<BaseEnvProfile>
+        {
+            new BaseEnvProfile
+            {
+                Id = "custom-a",
+                Name = "Custom A",
+                TorchVersion = "2.7.0",
+                CudaVersion = "cu118",
+                Channel = "stable",
+            },
+            new BaseEnvProfile
+            {
+                Id = "custom-b",
+                Name = "Custom B",
+                TorchVersion = "2.8.0",
+                CudaVersion = "cpu",
+                Channel = "stable",
+            },
+        };
+        var json = JsonSerializer.Serialize(custom, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+        });
+        File.WriteAllText(path, json);
+
+        var loader = new BaseEnvProfileLoader(_tempDir);
+        var profiles = await loader.LoadAsync();
+
+        Assert.Equal(2, profiles.Count);
+        Assert.Equal("custom-a", profiles[0].Id);
+        Assert.Equal("custom-b", profiles[1].Id);
+    }
 }
