@@ -63,7 +63,13 @@ public sealed class PyTorchVersionEntry
 /// <c>StableMetadata</c> = null),ComboBox 才能永远把 nightly 选项暴露出来。
 /// 后面是 release date 降序的 stable 项,<c>DisplayName</c> = "PyTorch X.Y.Z"。
 /// </summary>
-public sealed class PyTorchVersionDirectory
+/// <summary>
+/// 非 sealed:<see cref="GetAllAsync"/> 标 <c>virtual</c> 允许测试
+/// 用 in-memory 子类替换,避开真 <c>HttpClient</c> / 真 disk cache。
+/// 跟 <see cref="PyTorchVersionCatalog"/> / <see cref="PyTorchVersionCatalogCache"/>
+/// 保持一致的 testing seam 风格。
+/// </summary>
+public class PyTorchVersionDirectory
 {
     /// <summary>
     /// nightly 虚拟条目用的 <see cref="PyTorchVersionEntry.Version"/>
@@ -90,7 +96,7 @@ public sealed class PyTorchVersionDirectory
     /// 但空列表)按 cache miss 处理 — 调 catalog — 防止"曾经空过一次"
     /// 永久卡死的死锁。
     /// </remarks>
-    public async Task<IReadOnlyList<PyTorchVersionEntry>> GetAllAsync(CancellationToken ct = default)
+    public virtual async Task<IReadOnlyList<PyTorchVersionEntry>> GetAllAsync(CancellationToken ct = default)
     {
         // 1. 试 cache。
         var cached = await _cache.TryReadAsync(ct).ConfigureAwait(false);

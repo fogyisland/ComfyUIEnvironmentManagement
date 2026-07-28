@@ -78,7 +78,7 @@ public partial class App : Application
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
-            profileLoader);
+            profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();
@@ -96,5 +96,16 @@ public partial class App : Application
         var portable = Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe");
         if (File.Exists(portable)) return portable;
         return "git"; // fallback to PATH
+    }
+
+    /// <summary>
+    /// 组装 <see cref="PyTorchVersionDirectory"/>:catalog 拉 PyPI + pytorch.org,
+    /// cache 走 <paramref name="appDataDir"/> 永久落盘。
+    /// </summary>
+    private static PyTorchVersionDirectory BuildPyTorchVersionDirectory(string appDataDir, HttpClient http)
+    {
+        var catalog = new PyTorchVersionCatalog(http);
+        var cache = new PyTorchVersionCatalogCache(appDataDir);
+        return new PyTorchVersionDirectory(catalog, cache);
     }
 }
