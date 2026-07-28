@@ -244,7 +244,7 @@ public sealed class BaseEnvProfileLoader
         }
 
         // nightly 永远是单个 cu126 profile,无视 metadata。
-        if (version == "nightly")
+        if (version == PyTorchVersionDirectory.NightlyVersion)
         {
             return new List<BaseEnvProfile>
             {
@@ -253,9 +253,9 @@ public sealed class BaseEnvProfileLoader
                     Id = "pytorch-nightly-cu126",
                     Name = "PyTorch Nightly + CUDA 12.6",
                     Description = "PyTorch nightly,搭配 CUDA 12.6(不带 xformers)",
-                    TorchVersion = "nightly",
+                    TorchVersion = PyTorchVersionDirectory.NightlyVersion,
                     CudaVersion = "cu126",
-                    Channel = "nightly",
+                    Channel = PyTorchVersionDirectory.NightlyVersion,
                     Packages = new List<string> { "torch", "torchaudio", "torchvision" },
                 },
             };
@@ -371,7 +371,7 @@ public sealed class BaseEnvProfileLoader
                 && char.IsDigit(digits[1])
                 && char.IsDigit(digits[2]))
             {
-                return $"{digits[0]}.{digits[1]}{digits[2]}";
+                return $"{digits[0]}{digits[1]}.{digits[2]}";
             }
         }
         return cuda;

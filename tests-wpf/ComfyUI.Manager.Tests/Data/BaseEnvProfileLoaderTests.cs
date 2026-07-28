@@ -463,6 +463,28 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         Assert.Equal(new[] { "torch", "torchaudio", "torchvision" }, nightly[0].Packages);
     }
 
+    [Theory]
+    [InlineData("cu118", "11.8")]
+    [InlineData("cu121", "12.1")]
+    [InlineData("cu124", "12.4")]
+    [InlineData("cu126", "12.6")]
+    public async Task LoadProfilesForVersion_MetadataNameContainsCudaLabel(string cudaTag, string expectedLabel)
+    {
+        var loader = new BaseEnvProfileLoader(_tempDir);
+        var metadata = new PyTorchVersion
+        {
+            Version = "2.5.1",
+            CudaVariants = new[] { cudaTag },
+            HasCpu = false,
+        };
+
+        var profiles = await loader.LoadProfilesForVersionAsync("2.5.1", metadata);
+
+        var p = profiles.Single(x => x.CudaVersion == cudaTag);
+        Assert.Contains($"CUDA {expectedLabel}", p.Name);
+        Assert.Contains($"CUDA {expectedLabel}", p.Description);
+    }
+
     [Fact]
     public async Task LoadAsync_JsonFileUnchangedBehavior()
     {
