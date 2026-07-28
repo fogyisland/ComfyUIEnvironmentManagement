@@ -114,6 +114,46 @@ public sealed class BaseEnvProfileTests
     }
 
     [Fact]
+    public void BuildPipArgs_StableWithTorchVersion_PinsTorchPackage()
+    {
+        var p = new BaseEnvProfile { TorchVersion = "2.5.1" };  // Channel defaults to stable
+        var args = p.BuildPipArgs();
+        Assert.Contains("torch==2.5.1", args);
+        // 裸 torch 必须被替换掉,否则 pip 会同时装 latest + pinned
+        Assert.DoesNotContain("torch", args);
+    }
+
+    [Fact]
+    public void BuildPipArgs_NightlyWithTorchVersion_DoesNotPin()
+    {
+        var p = new BaseEnvProfile { TorchVersion = "2.5.1", Channel = "nightly" };
+        var args = p.BuildPipArgs();
+        Assert.Contains("torch", args);
+        Assert.DoesNotContain(args, a => a.StartsWith("torch=="));
+    }
+
+    [Fact]
+    public void BuildPipArgs_StableEmptyTorchVersion_NoPin()
+    {
+        var p = new BaseEnvProfile { TorchVersion = "" };
+        var args = p.BuildPipArgs();
+        Assert.Contains("torch", args);
+        Assert.DoesNotContain(args, a => a.StartsWith("torch=="));
+    }
+
+    [Fact]
+    public void BuildPipArgs_StableWithTorchVersion_PreservesOtherPackages()
+    {
+        var p = new BaseEnvProfile { TorchVersion = "2.5.1" };
+        var args = p.BuildPipArgs();
+        Assert.Contains("torchaudio", args);
+        Assert.Contains("torchvision", args);
+        Assert.Contains("xformers", args);
+        // 只有 torch 被 pin,其它包不带 ==
+        Assert.Single(args, a => a.Contains("=="));
+    }
+
+    [Fact]
     public void Clone_ReturnsIndependentDeepCopy()
     {
         var p = new BaseEnvProfile

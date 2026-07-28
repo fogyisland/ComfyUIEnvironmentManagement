@@ -24,11 +24,24 @@ public class BaseEnvProfile
     /// <summary>
     /// 构造 pip install 参数数组(argparse 风格,空格 split)。
     /// 永远走结构化路径(无 CustomPipArgs 分支)。
+    /// stable channel 且 TorchVersion 非空时,把裸 "torch" 替换成 "torch=={TorchVersion}",
+    /// 使多版本下拉框的选择真正作用到 pip 命令上;nightly 无固定版本号,保持不 pin。
     /// </summary>
     public IReadOnlyList<string> BuildPipArgs()
     {
         var args = new List<string> { "install" };
-        args.AddRange(Packages);
+        var pinTorch = Channel == "stable" && !string.IsNullOrWhiteSpace(TorchVersion);
+        foreach (var pkg in Packages)
+        {
+            if (pinTorch && pkg == "torch")
+            {
+                args.Add($"torch=={TorchVersion}");
+            }
+            else
+            {
+                args.Add(pkg);
+            }
+        }
         if (Channel == "nightly")
         {
             args.Add("--pre");
