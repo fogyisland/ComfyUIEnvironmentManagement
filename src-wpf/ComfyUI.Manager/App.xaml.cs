@@ -102,7 +102,12 @@ public partial class App : Application
     /// 组装 <see cref="PyTorchVersionDirectory"/>:catalog 拉 PyPI + pytorch.org,
     /// cache 走 <paramref name="appDataDir"/> 永久落盘。
     /// </summary>
-    private static PyTorchVersionDirectory BuildPyTorchVersionDirectory(string appDataDir, HttpClient http)
+    /// <remarks>
+    /// <c>internal</c> 而非 <c>private</c>:<c>AppWiringTests</c> 需要在不启动
+    /// WPF / 不发真实网络请求的前提下验证组装链路(csproj 已声明
+    /// <c>InternalsVisibleTo("ComfyUI.Manager.Tests")</c>)。
+    /// </remarks>
+    internal static PyTorchVersionDirectory BuildPyTorchVersionDirectory(string appDataDir, HttpClient http)
     {
         var catalog = new PyTorchVersionCatalog(http);
         var cache = new PyTorchVersionCatalogCache(appDataDir);
