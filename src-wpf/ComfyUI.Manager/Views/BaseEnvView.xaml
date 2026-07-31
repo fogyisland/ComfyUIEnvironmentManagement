@@ -31,6 +31,12 @@
             <DockPanel Grid.Column="0">
                 <TextBlock DockPanel.Dock="Top" Text="基础环境组合"
                            FontWeight="SemiBold" Margin="0,0,0,4" />
+                <ComboBox DockPanel.Dock="Top"
+                          Margin="0,0,0,8"
+                          ItemsSource="{Binding Versions}"
+                          SelectedItem="{Binding SelectedVersion}"
+                          DisplayMemberPath="DisplayName"
+                          Visibility="{Binding IsUserOverrideActive, Converter={StaticResource InverseBoolToVisibility}}" />
                 <ListBox x:Name="ProfileListBox"
                          ItemsSource="{Binding Profiles}"
                          SelectionMode="Extended"
