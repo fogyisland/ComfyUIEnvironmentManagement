@@ -157,6 +157,15 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
+            <TextBlock Text="默认 Python 版本(auto-fill 时使用)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <ComboBox DockPanel.Dock="Right" Width="120"
+                          IsEditable="True"
+                          Text="{Binding DefaultPythonVersion, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock VerticalAlignment="Center" Foreground="Gray" FontSize="11"
+                           Text="(auto-fill 时选 TemplatePythonDir 下的哪个版本子目录,如 3.10/3.11/3.12)" />
+            </DockPanel>
+
             <TextBlock Text="虚拟环境目录(env 创建时放这里)" Margin="0,8,0,4" />
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."

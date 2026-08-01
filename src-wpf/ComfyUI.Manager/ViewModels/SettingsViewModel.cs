@@ -142,6 +142,7 @@ public class SettingsViewModel : ViewModelBase
 
     public List<string> Languages { get; } = new() { "zh_CN", "en_US" };
     public List<string> ThemeModes { get; } = new() { "light", "dark", "system" };
+    public List<string> DefaultPythonVersions { get; } = new() { "3.10", "3.11", "3.12", "3.13" };
 
     // —— 基础 / 显示 ——
     public string Language
@@ -191,6 +192,11 @@ public class SettingsViewModel : ViewModelBase
     {
         get => _settings.EnvsDir;
         set { _settings.EnvsDir = value; _repo.Save(_settings); RaisePropertyChanged(); }
+    }
+    public string DefaultPythonVersion
+    {
+        get => _settings.DefaultPythonVersion;
+        set { _settings.DefaultPythonVersion = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
     }
     public string GlobalNodesDir
     {
@@ -348,6 +354,7 @@ public class SettingsViewModel : ViewModelBase
         RaisePropertyChanged(nameof(TemplatePythonDir));
         RaisePropertyChanged(nameof(TemplateComfyuiDir));
         RaisePropertyChanged(nameof(EnvsDir));
+        RaisePropertyChanged(nameof(DefaultPythonVersion));
         RaisePropertyChanged(nameof(GlobalNodesDir));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
