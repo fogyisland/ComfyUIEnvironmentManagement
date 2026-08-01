@@ -50,7 +50,8 @@ User clicks "创建" → EnvCreatorService.CreateAsync (unchanged)
 - **dotnet test:** 285 PASS + 1 SKIP / 0 FAIL(基线 v0.6.5.3 = 273 +
   SettingsTests 3 + CreateEnvDialogViewModelTests 9 - 全量替换的旧测试)
 - **pytest version consistency:** 3 PASS(v0.6.5.3 → v0.6.5.4)
-- **dotnet build Release:** 0 warnings / 0 errors
+- **dotnet build Release:** 0 errors;3 个 NU1900 warnings(NuGet 漏洞数据库
+  `api.nuget.org` 网络超时,与代码无关,环境网络受限导致)
 - **手动 GUI smoke (TBD):** 启动 → 环境 → 新建 → 验证 PythonExe +
   ComfyuiSource 已 auto-fill;改 DefaultPythonVersion 到有子目录的版本,
   点"应用模板" 验证刷新;删 Python 模板子目录,重启,验证顶部黄色提示
@@ -75,9 +76,16 @@ c2880bf docs(sdd): plan v0.6.5.4 — env create auto-fill from settings
 
 ### 已知 carry-over / 未做事项
 
-- **未在本 session 完成:** tag `v0.6.5.4` push + `gh release create` —
-  等用户明确授权(沿用 v0.6.5.3 同模式)。
+- **未在本 session 完成(release boundary,等用户单独授权):**
+  - **rebuild release zip**(沿用 `feedback_no_zip.md`,265 MB 量级)
+  - **`git push origin main`**(等用户明确授权)
+  - **创建/推送 tag `v0.6.5.4`**(`git tag v0.6.5.4 && git push origin v0.6.5.4`)
+  - **`gh release create v0.6.5.4`**(等用户明确授权)
+  - 沿用 v0.6.5.3 同模式,等用户单独授权后再逐项执行。
 - **手动 GUI smoke (TBD):** 用户桌面验证(详见 §4)。
+  - Staging exe (`release/staging/ComfyUI Manager/ComfyUI.Manager.exe`) 是旧
+    v0.6.5.3 版本,新功能(auto-fill / 应用模板 / 黄色提示 / DefaultPythonVersion
+    ComboBox)需未来 rebuild zip 后才能在 GUI 验证。
 
 ---
 
