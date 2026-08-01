@@ -6,6 +6,10 @@
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner">
     <StackPanel Margin="16">
+        <TextBlock Text="{Binding TemplateWarningMessage}"
+                   Foreground="Orange" FontWeight="SemiBold"
+                   TextWrapping="Wrap" Margin="0,0,0,8"
+                   Visibility="{Binding TemplateWarningMessage, Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
         <TextBlock Text="名称" />
         <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                  IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
@@ -19,6 +23,10 @@
 
         <TextBlock Text="Python 解释器 (python.exe)" />
         <DockPanel Margin="0,2,0,8">
+            <Button DockPanel.Dock="Right" Content="应用模板"
+                    Command="{Binding ApplyTemplateCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                    Margin="4,0,0,0" />
             <Button DockPanel.Dock="Right" Content="浏览..."
                     Click="BrowsePython"
                     IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
@@ -28,6 +36,10 @@
 
         <TextBlock Text="ComfyUI 源(shared 必填,independent 作为拷贝来源)" />
         <DockPanel Margin="0,2,0,8">
+            <Button DockPanel.Dock="Right" Content="应用模板"
+                    Command="{Binding ApplyTemplateCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                    Margin="4,0,0,0" />
             <Button DockPanel.Dock="Right" Content="浏览..."
                     Click="BrowseComfyui"
                     IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
