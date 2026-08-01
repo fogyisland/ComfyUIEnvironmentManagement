@@ -78,7 +78,7 @@ public partial class App : Application
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
-            profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir);
+            profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

@@ -68,7 +68,10 @@ public class CreateEnvDialogViewModelTests
     [Fact]
     public void Constructor_LeavesComfyuiSourceBlank_WhenComfyuiTemplateMissing()
     {
-        var (root, py, _) = CreateTemplateTree("3.10");
+        var root = Path.Combine(Path.GetTempPath(), "autofill-test-" + Path.GetRandomFileName());
+        var py = Path.Combine(root, "python", "3.10", "python.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(py)!);
+        File.WriteAllText(py, "");
         try
         {
             var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root);
