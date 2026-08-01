@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -8,18 +11,26 @@ namespace ComfyUI.Manager.ViewModels;
 public class CreateEnvDialogViewModel : ViewModelBase
 {
     private readonly EnvCreatorService _creator;
+    private readonly Settings _settings;
+    private readonly string _projectRoot;
     private readonly Action<Models.Environment?>? _onResult;
 
     public CreateEnvDialogViewModel(
         EnvCreatorService creator,
+        Settings settings,
+        string projectRoot,
         Action<Models.Environment?>? onResult = null)
     {
         _creator = creator;
+        _settings = settings;
+        _projectRoot = projectRoot;
         _onResult = onResult;
         CreateCommand = new RelayCommand(
             async _ => await CreateAsync(),
             _ => CanCreate());
         CancelCommand = new RelayCommand(_ => Closed?.Invoke(null));
+        ApplyTemplateCommand = new RelayCommand(_ => ApplyTemplate());
+        ApplyTemplate();   // 初次填充
     }
 
     public event Action<Models.Environment?>? Closed;
@@ -38,6 +49,7 @@ public class CreateEnvDialogViewModel : ViewModelBase
     public string Layout
     {
         get => _layout;
+        // 决策 2:layout 切换不重新 auto-fill,只 RaisePropertyChanged + RaiseCommandsChanged
         set { _layout = value; RaisePropertyChanged(); RaiseCommandsChanged(); }
     }
 
@@ -76,8 +88,16 @@ public class CreateEnvDialogViewModel : ViewModelBase
         set { _errorMessage = value; RaisePropertyChanged(); }
     }
 
+    private string? _templateWarningMessage;
+    public string? TemplateWarningMessage
+    {
+        get => _templateWarningMessage;
+        private set { _templateWarningMessage = value; RaisePropertyChanged(); }
+    }
+
     public RelayCommand CreateCommand { get; }
     public RelayCommand CancelCommand { get; }
+    public RelayCommand ApplyTemplateCommand { get; }
 
     public bool CanCreate()
     {
@@ -86,6 +106,49 @@ public class CreateEnvDialogViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(PythonExe)) return false;
         if (Layout == "shared" && string.IsNullOrWhiteSpace(ComfyuiSource)) return false;
         return true;
+    }
+
+    /// <summary>
+    /// 从 settings 读 TemplatePythonDir + DefaultPythonVersion + TemplateComfyuiDir +
+    /// projectRoot 拼接,填回 PythonExe + ComfyuiSource。模板缺失时静默留空 +
+    /// TemplateWarningMessage 设警告。
+    /// </summary>
+    public void ApplyTemplate()
+    {
+        var pythonExe = Path.Combine(
+            _projectRoot,
+            _settings.TemplatePythonDir,
+            _settings.DefaultPythonVersion,
+            "python.exe");
+        var comfyuiSource = Path.Combine(
+            _projectRoot,
+            _settings.TemplateComfyuiDir);
+
+        var warnings = new List<string>();
+
+        if (File.Exists(pythonExe))
+        {
+            PythonExe = pythonExe;
+        }
+        else
+        {
+            warnings.Add($"Python 模板 {_settings.DefaultPythonVersion} 未安装,请先在设置页下载");
+            PythonExe = "";
+        }
+
+        if (Directory.Exists(comfyuiSource))
+        {
+            ComfyuiSource = comfyuiSource;
+        }
+        else
+        {
+            warnings.Add("ComfyUI 模板目录未安装,请先在设置页下载");
+            ComfyuiSource = "";
+        }
+
+        TemplateWarningMessage = warnings.Count == 0
+            ? null
+            : string.Join("\n", warnings);
     }
 
     private async Task CreateAsync()
