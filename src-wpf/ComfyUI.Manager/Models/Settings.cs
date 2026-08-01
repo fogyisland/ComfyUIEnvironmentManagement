@@ -23,6 +23,7 @@ public class Settings
     // —— 路径 ——
     [JsonPropertyName("template_python_dir")] public string TemplatePythonDir { get; set; } = "";
     [JsonPropertyName("template_comfyui_dir")] public string TemplateComfyuiDir { get; set; } = "";
+    [JsonPropertyName("default_python_version")] public string DefaultPythonVersion { get; set; } = "3.10";
     [JsonPropertyName("envs_dir")] public string EnvsDir { get; set; } = "";
     [JsonPropertyName("global_nodes_dir")] public string GlobalNodesDir { get; set; } = "";
 
