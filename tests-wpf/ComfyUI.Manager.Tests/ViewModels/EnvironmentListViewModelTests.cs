@@ -41,6 +41,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -56,6 +57,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -76,6 +78,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -101,6 +104,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         Assert.False(vm.BaseEnvCommand.CanExecute(null));
@@ -114,6 +118,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -135,7 +140,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
-            profileLoader);
+            profileLoader,
+            null!);
 
         var launched = false;
         vm.ShowProgressDialogOverride = (_, _, _) => launched = true;
@@ -158,7 +164,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
-            profileLoader);
+            profileLoader,
+            null!);
 
         IReadOnlyList<string>? capturedEnvIds = null;
         BaseEnvProfile? capturedProfile = null;

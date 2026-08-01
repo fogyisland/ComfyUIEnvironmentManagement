@@ -20,6 +20,7 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly BaseEnvInstaller _baseEnvInstaller;
     private readonly Settings _settings;
     private readonly BaseEnvProfileLoader _profileLoader;
+    private readonly string _projectRoot;
 
     public ObservableCollection<Environment> Environments { get; } = new();
     public RelayCommand RefreshCommand { get; }
@@ -35,7 +36,8 @@ public class EnvironmentListViewModel : ViewModelBase
         EnvCreatorService envCreator,
         BaseEnvInstaller baseEnvInstaller,
         Settings settings,
-        BaseEnvProfileLoader profileLoader)
+        BaseEnvProfileLoader profileLoader,
+        string projectRoot)
     {
         _repo = repo;
         _launcher = launcher;
@@ -43,6 +45,7 @@ public class EnvironmentListViewModel : ViewModelBase
         _baseEnvInstaller = baseEnvInstaller;
         _settings = settings;
         _profileLoader = profileLoader;
+        _projectRoot = projectRoot;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
             async p => await StartEnvAsync(p as Environment ?? Selected),
@@ -131,7 +134,7 @@ public class EnvironmentListViewModel : ViewModelBase
 
     private void CreateEnv()
     {
-        var created = Views.CreateEnvDialog.Show(_envCreator);
+        var created = Views.CreateEnvDialog.Show(_envCreator, _settings, _projectRoot);
         if (created is not null) Load();
     }
 
