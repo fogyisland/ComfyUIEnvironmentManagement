@@ -99,6 +99,8 @@ public sealed class SqliteConnectionFactory
                 port INTEGER,
                 enabled_node_ids_json TEXT DEFAULT '[]',
                 status TEXT DEFAULT 'stopped',
+                base_python_path TEXT NOT NULL DEFAULT '',
+                python_version TEXT NOT NULL DEFAULT '',
                 pid INTEGER
             );
             CREATE TABLE IF NOT EXISTS scanned_nodes (
@@ -145,5 +147,32 @@ public sealed class SqliteConnectionFactory
                 started_at TIMESTAMP NOT NULL
             );";
         cmd.ExecuteNonQuery();
+
+        // 增量升级:旧 db 没有 base_python_path / python_version 列 → ALTER TABLE ADD COLUMN。
+        // PRAGMA table_info 返回每一列一行,检查列名是否已存在。
+        EnsureColumn(conn, "environments", "base_python_path", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(conn, "environments", "python_version", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)
+    {
+        using (var info = conn.CreateCommand())
+        {
+            info.CommandText = $"PRAGMA table_info({table})";
+            using var reader = info.ExecuteReader();
+            bool exists = false;
+            while (reader.Read())
+            {
+                if (reader.GetString(1).Equals(column, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (exists) return;
+        }
+        using var alter = conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type}";
+        alter.ExecuteNonQuery();
     }
 }

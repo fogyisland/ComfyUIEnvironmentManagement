@@ -34,4 +34,8 @@ public class Environment
     public string Status { get; set; } = "stopped";
     [JsonPropertyName("pid")]
     public int? Pid { get; set; }
+    [JsonPropertyName("base_python_path")]
+    public string BasePythonPath { get; set; } = "";
+    [JsonPropertyName("python_version")]
+    public string PythonVersion { get; set; } = "";
 }

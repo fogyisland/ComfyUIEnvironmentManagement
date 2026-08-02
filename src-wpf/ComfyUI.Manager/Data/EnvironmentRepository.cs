@@ -26,7 +26,7 @@ public sealed class EnvironmentRepository
             SELECT id, name, root_path, comfyui_layout, comfyui_source,
                    venv_path, python_executable, custom_nodes_path,
                    extra_model_paths_yaml, port, enabled_node_ids_json,
-                   status, pid
+                   status, base_python_path, python_version, pid
             FROM environments
             ORDER BY name";
         using var reader = cmd.ExecuteReader();
@@ -46,7 +46,7 @@ public sealed class EnvironmentRepository
             SELECT id, name, root_path, comfyui_layout, comfyui_source,
                    venv_path, python_executable, custom_nodes_path,
                    extra_model_paths_yaml, port, enabled_node_ids_json,
-                   status, pid
+                   status, base_python_path, python_version, pid
             FROM environments WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", envId);
         using var reader = cmd.ExecuteReader();
@@ -62,12 +62,12 @@ public sealed class EnvironmentRepository
                 (id, name, root_path, comfyui_layout, comfyui_source,
                  venv_path, python_executable, custom_nodes_path,
                  extra_model_paths_yaml, port, enabled_node_ids_json,
-                 status, pid)
+                 status, base_python_path, python_version, pid)
             VALUES
                 (@id, @name, @root_path, @comfyui_layout, @comfyui_source,
                  @venv_path, @python_executable, @custom_nodes_path,
                  @extra_model_paths_yaml, @port, @enabled_node_ids_json,
-                 @status, @pid)
+                 @status, @base_python_path, @python_version, @pid)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,
                 root_path=excluded.root_path,
@@ -80,6 +80,8 @@ public sealed class EnvironmentRepository
                 port=excluded.port,
                 enabled_node_ids_json=excluded.enabled_node_ids_json,
                 status=excluded.status,
+                base_python_path=excluded.base_python_path,
+                python_version=excluded.python_version,
                 pid=excluded.pid";
         Bind(cmd, env);
         cmd.ExecuteNonQuery();
@@ -96,7 +98,7 @@ public sealed class EnvironmentRepository
 
     private static Environment Read(SqliteDataReader reader)
     {
-        return new Environment
+        var result = new Environment
         {
             Id = reader.GetString(0),
             Name = reader.GetString(1),
@@ -110,8 +112,19 @@ public sealed class EnvironmentRepository
             Port = reader.IsDBNull(9) ? null : reader.GetInt32(9),
             EnabledNodeIdsJson = reader.GetString(10),
             Status = reader.GetString(11),
-            Pid = reader.IsDBNull(12) ? null : reader.GetInt32(12),
+            BasePythonPath = reader.GetString(12),
+            PythonVersion = reader.GetString(13),
+            Pid = reader.IsDBNull(14) ? null : reader.GetInt32(14),
         };
+
+        // 老行 fallback:升级前 db 没有 base_python_path / python_version 列,
+        // SELECT 会得到空字符串(因为 DEFAULT '')。在 Read 层做回填,
+        // UI 不需要重复 null-check。Pid 永远在最后一列。
+        if (string.IsNullOrEmpty(result.BasePythonPath))
+            result.BasePythonPath = result.PythonExecutable ?? "";
+        if (string.IsNullOrEmpty(result.PythonVersion))
+            result.PythonVersion = "<unknown>";
+        return result;
     }
 
     private static void Bind(SqliteCommand cmd, Environment env)
@@ -135,6 +148,8 @@ public sealed class EnvironmentRepository
         cmd.Parameters.AddWithValue("@enabled_node_ids_json",
             env.EnabledNodeIdsJson);
         cmd.Parameters.AddWithValue("@status", env.Status);
+        cmd.Parameters.AddWithValue("@base_python_path", env.BasePythonPath);
+        cmd.Parameters.AddWithValue("@python_version", env.PythonVersion);
         cmd.Parameters.AddWithValue("@pid",
             (object?)env.Pid ?? DBNull.Value);
     }
