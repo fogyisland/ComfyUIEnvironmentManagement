@@ -57,6 +57,14 @@
 /// </summary>
 [JsonPropertyName("base_python_path")]
 public string BasePythonPath { get; set; } = "";
+
+/// <summary>
+/// venv 解释器的 Python 版本字符串(如 "3.10.18 (tags/v3.10.18:...)")。
+/// 创建 venv 时从 venv python.exe 读 sys.version 写入。
+/// venv 版本永远等于 base 版本(venv 模块固有事实);base 3.10 → venv 3.10。
+/// </summary>
+[JsonPropertyName("python_version")]
+public string PythonVersion { get; set; } = "";
 ```
 
 保持不变:
@@ -66,10 +74,11 @@ public string BasePythonPath { get; set; } = "";
 
 ### 2.2 SQLite schema(`EnvironmentRepository`)
 
-`environments` 表新增列:
+`environments` 表新增两列:
 
 ```sql
 ALTER TABLE environments ADD COLUMN base_python_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE environments ADD COLUMN python_version TEXT NOT NULL DEFAULT '';
 ```
 
 实现细节:
@@ -80,6 +89,7 @@ ALTER TABLE environments ADD COLUMN base_python_path TEXT NOT NULL DEFAULT '';
 ### 2.3 老行兼容(§5 错误处理)
 
 - `BasePythonPath == ""` → `EnvironmentRepository.Read*` 自动 fallback 到 `PythonExecutable`(不报错),同时在返回前 `BasePythonPath = PythonExecutable`,让后续 dialog 默认值继承仍然有合理值。
+- `PythonVersion == ""` → fallback 到 `"<unknown>"`(同 §5.5)。
 
 ---
 
@@ -165,7 +175,7 @@ public async Task<Environment> CreateAsync(
 
 ### 4.2 写库改动
 
-`Environment` 构造时多设一行:
+`Environment` 构造时多设两行:
 
 ```csharp
 var env = new Environment
@@ -178,12 +188,43 @@ var env = new Environment
     BasePythonPath = pythonExe,                                    // ← 新增
     VenvPath = venvPath,
     PythonExecutable = Path.Combine(venvPath, "Scripts", "python.exe"),
+    PythonVersion = await ReadVenvPythonVersionAsync(venvPath, ct), // ← 新增
     CustomNodesPath = Path.Combine(rootPath, "custom_nodes"),
     ExtraModelPathsYaml = extraYaml,
     Port = allocatedPort,
     Status = "stopped",
     EnabledNodeIdsJson = "[]",
 };
+```
+
+`ReadVenvPythonVersionAsync` 实现细节:
+
+```csharp
+private async Task<string> ReadVenvPythonVersionAsync(string venvPath, CancellationToken ct)
+{
+    try
+    {
+        var venvPython = Path.Combine(venvPath, "Scripts", "python.exe");
+        if (!File.Exists(venvPython)) return "<unknown>";
+        var psi = new ProcessStartInfo
+        {
+            FileName = venvPython,
+            Arguments = "-c \"import sys; print(sys.version)\"",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        using var p = Process.Start(psi)!;
+        var stdout = await p.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
+        await p.WaitForExitAsync(ct).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(stdout) ? "<unknown>" : stdout.Trim();
+    }
+    catch
+    {
+        return "<unknown>";
+    }
+}
 ```
 
 ### 4.3 错误处理不变
@@ -255,9 +296,13 @@ if (string.IsNullOrEmpty(env.BasePythonPath))
 {
     env.BasePythonPath = env.PythonExecutable;   // fallback, 永远不空
 }
+if (string.IsNullOrEmpty(env.PythonVersion))
+{
+    env.PythonVersion = "<unknown>";
+}
 ```
 
-写入路径:永远写 `env.BasePythonPath`(即使是 fallback 后的值)。
+写入路径:永远写 `env.BasePythonPath` 和 `env.PythonVersion`(即使是 fallback 后的值)。
 
 ### 5.6 venv 是 base 的派生(写进 spec 的事实)
 
@@ -270,9 +315,11 @@ if (string.IsNullOrEmpty(env.BasePythonPath))
 | 场景 | 行为 |
 |---|---|
 | `recentBasePythonPath` 文件不存在 | fallback settings(同 v0.6.5.4 行为),顶部黄色提示。 |
-| 老 DB 无 `base_python_path` 列 | `ALTER TABLE` 失败 → 视为老库,读时 `BasePythonPath = PythonExecutable`(同 §5.5)。 |
+| 老 DB 无 `base_python_path` / `python_version` 列 | `ALTER TABLE` 失败 → 视为老库,读时自动 fallback(同 §5.5)。 |
 | 老行 `BasePythonPath IS NULL/""` | `EnvironmentRepository.Read*` 自动 fallback,赋值为 `PythonExecutable`。 |
+| 老行 `PythonVersion IS NULL/""` | `EnvironmentRepository.Read*` 自动 fallback,赋值为 `"<unknown>"`。 |
 | `EnvCreatorService.CreateAsync` 失败 | `CreateEnvException` 码不变(`VENV_PYTHON_MISSING` 等)。 |
+| 创建后读 venv python 版本失败(进程异常 / 超时) | fallback `"<unknown>"`,**不抛**异常(env 已创建成功,版本号只是诊断信息)。 |
 | 用户升级 Python / 删 base | venv 跑不起来,**不告警**;留给后续 hotfix。 |
 | `recentBasePythonPath` 文件存在但已被占(权限问题) | `File.Exists` 返回 true → PythonExe 被填;创建时 `VENV_PYTHON_MISSING` 抛错(同 v0.6.5.4)。 |
 
@@ -283,11 +330,14 @@ if (string.IsNullOrEmpty(env.BasePythonPath))
 ### 7.1 `EnvCreatorServiceTests`(新增)
 
 - `CreateAsync_WritesBasePythonPath`:断言返回 env.BasePythonPath == 传入 pythonExe 参数值。
+- `CreateAsync_WritesPythonVersionFromVenvPython`:断言返回 env.PythonVersion 非空且不等于 `"<unknown>"`(用项目自带的 venv python 测试)。
 
 ### 7.2 `EnvironmentRepositoryTests`(新增)
 
 - `BasePythonPath_RoundTrips`:创建 env → Upsert → ListAll 读出 → 断言 BasePythonPath 一致。
 - `BasePythonPath_FallsBackToVenvPython_WhenColumnEmpty`:mock 读出行的 BasePythonPath 为空,断言 repository 读出后自动填 `PythonExecutable`(同 §5.5)。
+- `PythonVersion_RoundTrips`:断言写入的 PythonVersion 字符串原样读出。
+- `PythonVersion_FallsBackToUnknown_WhenColumnEmpty`:mock 读出行的 PythonVersion 为空,断言 repository 读出后自动填 `"<unknown>"`(同 §5.5)。
 
 ### 7.3 `CreateEnvDialogViewModelTests`(新增)
 
@@ -327,18 +377,20 @@ if (string.IsNullOrEmpty(env.BasePythonPath))
 
 ### 单元测试
 
-- WPF: `dotnet test tests-wpf/ComfyUI.Manager.Tests/ -v minimal` → 期望 285 + 5(新) = 290 PASS / 1 SKIP / 0 FAIL。
-  - 增量:`EnvCreatorServiceTests` 1 + `EnvironmentRepositoryTests` 2 + `CreateEnvDialogViewModelTests` 4 + `EnvironmentListViewModelTests` 3 = 10 新测试(基线 v0.6.5.4 = 285)。
+- WPF: `dotnet test tests-wpf/ComfyUI.Manager.Tests/ -v minimal` → 期望 285 + 13(新) = 298 PASS / 1 SKIP / 0 FAIL。
+  - 增量:`EnvCreatorServiceTests` 2 + `EnvironmentRepositoryTests` 4 + `CreateEnvDialogViewModelTests` 4 + `EnvironmentListViewModelTests` 3 = 13 新测试(基线 v0.6.5.4 = 285)。
 - Python: `PYTHONPATH=src python -m pytest tests/test_version_consistency.py -q` → 3 PASS(版本 bump 后跑)。
 
 ### 端到端手动测试(用户 desktop)
 
 1. 启动 WPF,首次打开新建 dialog,PythonExe = settings 那条(行为同 v0.6.5.4)。
-2. 创建 env A(base = settings 那条)→ dialog 关闭。
+2. 创建 env A(base = settings 那条,如 `<...>/python/3.10/python.exe`)→ dialog 关闭。
 3. 重启 WPF,打开新建 dialog → PythonExe 默认 = env A 的 BasePythonPath。
 4. 在 dialog 内点"应用模板" → PythonExe 重置回 settings 那条。
 5. 删除 env A 目录(包含 venv)→ 重启 WPF,打开新建 dialog → PythonExe 回退 settings(无 env 时)。
 6. 删除 `<projectRoot>/python/3.10/python.exe`(base 模板)→ 重启 WPF,打开新建 dialog → 顶部黄色提示"Python 模板 3.10 未安装"(settings 回退 + 警告)。
+7. 在 EnvListView 选中 env A(或运行 `sqlite3 <db> "SELECT python_version FROM environments WHERE id='env A'"`)→ 看到 `PythonVersion` 字段 = `"3.10.x (...)"`(与 base 一致)。
+8. 切换 settings.DefaultPythonVersion 到 `3.11`(假设有 `3.11/python.exe`)→ 创建 env B → 验证 env B.PythonVersion = `"3.11.x (...)"`,与 base 3.11 一致。
 
 ### Risks + Tradeoffs
 
