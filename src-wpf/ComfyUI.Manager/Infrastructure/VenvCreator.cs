@@ -13,7 +13,7 @@ namespace ComfyUI.Manager.Infrastructure;
 /// M5.2 替代了 Python <c>VenvManager</c>(T9 删)。WPF 端不解析 venv 结构,
 /// 只负责触发创建 + 失败 throw 清晰错误信息。
 /// </summary>
-public sealed class VenvCreator
+public class VenvCreator
 {
     public sealed class VenvCreationException : Exception
     {
@@ -25,7 +25,7 @@ public sealed class VenvCreator
     /// CreateAsync:调 <c>pythonExe -m venv &lt;venvPath&gt;</c> 同步等待。
     /// </summary>
     /// <exception cref="VenvCreationException">python 启动失败 / venv 创建失败</exception>
-    public async Task CreateAsync(
+    public virtual async Task CreateAsync(
         string pythonExe,
         string venvPath,
         CancellationToken ct = default)

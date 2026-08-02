@@ -13,7 +13,7 @@ namespace ComfyUI.Manager.Infrastructure;
 /// Python <c>FS.create_junction</c>(T9 删)。macOS/Linux 上应该用 ln -s,
 /// 但本项目目前只跑 Windows。
 /// </summary>
-public sealed class JunctionLinker
+public class JunctionLinker
 {
     public sealed class JunctionCreationException : Exception
     {
@@ -24,7 +24,7 @@ public sealed class JunctionLinker
     /// <summary>
     /// CreateAsync:在 <paramref name="linkPath"/> 创建指向 <paramref name="targetPath"/> 的 junction。
     /// </summary>
-    public async Task CreateAsync(
+    public virtual async Task CreateAsync(
         string linkPath,
         string targetPath,
         CancellationToken ct = default)
@@ -66,7 +66,7 @@ public sealed class JunctionLinker
     /// CopyDirectoryAsync:把 <paramref name="sourceDir"/> 递归复制到 <paramref name="destDir"/>。
     /// 用于 "independent" 布局(ComfyUI 独立,不共享)。
     /// </summary>
-    public void CopyDirectory(string sourceDir, string destDir)
+    public virtual void CopyDirectory(string sourceDir, string destDir)
     {
         var source = new DirectoryInfo(sourceDir);
         if (!source.Exists)

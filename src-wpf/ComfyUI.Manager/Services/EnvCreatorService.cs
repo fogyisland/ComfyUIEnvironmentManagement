@@ -153,8 +153,10 @@ public sealed class EnvCreatorService
             RootPath = rootPath,
             ComfyuiLayout = layout,
             ComfyuiSource = comfyuiResolved,
+            BasePythonPath = pythonExe,
             VenvPath = venvPath,
             PythonExecutable = Path.Combine(venvPath, "Scripts", "python.exe"),
+            PythonVersion = await ReadVenvPythonVersionAsync(venvPath, ct),
             CustomNodesPath = Path.Combine(rootPath, "custom_nodes"),
             ExtraModelPathsYaml = extraYaml,
             Port = allocatedPort,
@@ -172,5 +174,36 @@ public sealed class EnvCreatorService
         int p = PortBase;
         while (used.Contains(p)) p++;
         return p;
+    }
+
+    /// <summary>
+    /// ReadVenvPythonVersionAsync:跑 <c>&lt;venv&gt;/Scripts/python.exe -c "import sys; print(sys.version)"</c>
+    /// 读 venv python 版本。任何异常(进程启动失败、文件不存在、超时、cancellation)
+    /// fallback <c>"&lt;unknown&gt;"</c> 且不抛 — env 已经成功创建,版本号只是诊断信息。
+    /// </summary>
+    private async Task<string> ReadVenvPythonVersionAsync(string venvPath, CancellationToken ct)
+    {
+        try
+        {
+            var venvPython = Path.Combine(venvPath, "Scripts", "python.exe");
+            if (!File.Exists(venvPython)) return "<unknown>";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = venvPython,
+                Arguments = "-c \"import sys; print(sys.version)\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            var stdout = await p.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            return string.IsNullOrWhiteSpace(stdout) ? "<unknown>" : stdout.Trim();
+        }
+        catch
+        {
+            return "<unknown>";
+        }
     }
 }
