@@ -13,23 +13,30 @@ public class CreateEnvDialogViewModel : ViewModelBase
     private readonly EnvCreatorService _creator;
     private readonly Settings _settings;
     private readonly string _projectRoot;
+    private readonly string? _recentBasePythonPath;
     private readonly Action<Models.Environment?>? _onResult;
 
     public CreateEnvDialogViewModel(
         EnvCreatorService creator,
         Settings settings,
         string projectRoot,
+        string? recentBasePythonPath = null,
         Action<Models.Environment?>? onResult = null)
     {
         _creator = creator;
         _settings = settings;
         _projectRoot = projectRoot;
+        _recentBasePythonPath = recentBasePythonPath;
         _onResult = onResult;
         CreateCommand = new RelayCommand(
             async _ => await CreateAsync(),
             _ => CanCreate());
         CancelCommand = new RelayCommand(_ => Closed?.Invoke(null));
-        ApplyTemplateCommand = new RelayCommand(_ => ApplyTemplate());
+        ApplyTemplateCommand = new RelayCommand(_ =>
+        {
+            _recentBasePythonPath = null;
+            ApplyTemplate();
+        });
         ApplyTemplate();   // 初次填充
     }
 
@@ -115,26 +122,34 @@ public class CreateEnvDialogViewModel : ViewModelBase
     /// </summary>
     public void ApplyTemplate()
     {
-        var pythonExe = Path.Combine(
-            _projectRoot,
-            _settings.TemplatePythonDir,
-            _settings.DefaultPythonVersion,
-            "python.exe");
-        var comfyuiSource = Path.Combine(
-            _projectRoot,
-            _settings.TemplateComfyuiDir);
-
         var warnings = new List<string>();
 
-        if (File.Exists(pythonExe))
+        if (!string.IsNullOrEmpty(_recentBasePythonPath) && File.Exists(_recentBasePythonPath))
         {
-            PythonExe = pythonExe;
+            PythonExe = _recentBasePythonPath;
         }
         else
         {
-            warnings.Add($"Python 模板 {_settings.DefaultPythonVersion} 未安装,请先在设置页下载");
-            PythonExe = "";
+            var pythonExe = Path.Combine(
+                _projectRoot,
+                _settings.TemplatePythonDir,
+                _settings.DefaultPythonVersion,
+                "python.exe");
+
+            if (File.Exists(pythonExe))
+            {
+                PythonExe = pythonExe;
+            }
+            else
+            {
+                warnings.Add($"Python 模板 {_settings.DefaultPythonVersion} 未安装,请先在设置页下载");
+                PythonExe = "";
+            }
         }
+
+        var comfyuiSource = Path.Combine(
+            _projectRoot,
+            _settings.TemplateComfyuiDir);
 
         if (Directory.Exists(comfyuiSource))
         {

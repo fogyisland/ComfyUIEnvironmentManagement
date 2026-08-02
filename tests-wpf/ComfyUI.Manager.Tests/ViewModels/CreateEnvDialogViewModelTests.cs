@@ -39,7 +39,8 @@ public class CreateEnvDialogViewModelTests
             var vm = new CreateEnvDialogViewModel(
                 creator: null!,
                 settings: MakeSettings("3.10"),
-                projectRoot: root);
+                projectRoot: root,
+                recentBasePythonPath: null);
             Assert.Equal(py, vm.PythonExe);
             Assert.Equal(cm, vm.ComfyuiSource);
             Assert.Null(vm.TemplateWarningMessage);
@@ -109,7 +110,8 @@ public class CreateEnvDialogViewModelTests
             var vm = new CreateEnvDialogViewModel(
                 null!,
                 MakeSettings("3.11"),
-                root);
+                root,
+                recentBasePythonPath: null);
             Assert.Equal(py, vm.PythonExe);   // 解析到 3.11 子目录
             Assert.Equal(cm, vm.ComfyuiSource);
         }
@@ -170,5 +172,72 @@ public class CreateEnvDialogViewModelTests
             Assert.Equal("C:\\user-overridden", vm.PythonExe);  // 不应被覆盖
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Constructor_PrefersRecentBase_WhenFileExists()
+    {
+        var recentBase = Path.Combine(Path.GetTempPath(), "recent-base-" + Path.GetRandomFileName());
+        File.WriteAllText(recentBase, "");
+        var (root, _, _) = CreateTemplateTree("3.10");
+        try
+        {
+            var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root, recentBase);
+            Assert.Equal(recentBase, vm.PythonExe);
+            Assert.Null(vm.TemplateWarningMessage);
+        }
+        finally
+        {
+            File.Delete(recentBase);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_FallsBackToSettings_WhenRecentBasePathIsNull()
+    {
+        var (root, py, _) = CreateTemplateTree("3.10");
+        try
+        {
+            var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root, recentBasePythonPath: null);
+            Assert.Equal(py, vm.PythonExe);
+            Assert.Null(vm.TemplateWarningMessage);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Constructor_FallsBackToSettings_WhenRecentBaseFileMissing()
+    {
+        var recentBase = Path.Combine(Path.GetTempPath(), "missing-" + Path.GetRandomFileName());
+        var root = Path.Combine(Path.GetTempPath(), "autofill-test-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(root);
+        try
+        {
+            var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root, recentBase);
+            Assert.Equal("", vm.PythonExe);
+            Assert.Contains("Python 模板 3.10 未安装", vm.TemplateWarningMessage ?? "");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Constructor_ApplyTemplateOverridesRecentBase()
+    {
+        var recentBase = Path.Combine(Path.GetTempPath(), "recent-" + Path.GetRandomFileName());
+        File.WriteAllText(recentBase, "");
+        var (root, py, _) = CreateTemplateTree("3.10");
+        try
+        {
+            var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root, recentBase);
+            Assert.Equal(recentBase, vm.PythonExe);
+            vm.ApplyTemplateCommand.Execute(null);
+            Assert.Equal(py, vm.PythonExe);
+        }
+        finally
+        {
+            File.Delete(recentBase);
+            Directory.Delete(root, recursive: true);
+        }
     }
 }
