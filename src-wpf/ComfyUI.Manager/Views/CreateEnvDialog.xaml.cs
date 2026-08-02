@@ -21,9 +21,9 @@ public partial class CreateEnvDialog : Window
         };
     }
 
-    public static Models.Environment? Show(EnvCreatorService creator, Models.Settings settings, string projectRoot)
+    public static Models.Environment? Show(EnvCreatorService creator, Models.Settings settings, string projectRoot, string? recentBasePythonPath)
     {
-        var vm = new CreateEnvDialogViewModel(creator, settings, projectRoot);
+        var vm = new CreateEnvDialogViewModel(creator, settings, projectRoot, recentBasePythonPath);
         var dlg = new CreateEnvDialog(vm) { Owner = Application.Current.MainWindow };
         dlg.ShowDialog();
         return dlg.Result;

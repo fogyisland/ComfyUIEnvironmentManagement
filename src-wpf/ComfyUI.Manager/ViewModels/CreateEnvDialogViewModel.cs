@@ -13,7 +13,7 @@ public class CreateEnvDialogViewModel : ViewModelBase
     private readonly EnvCreatorService _creator;
     private readonly Settings _settings;
     private readonly string _projectRoot;
-    private readonly string? _recentBasePythonPath;
+    private string? _recentBasePythonPath;
     private readonly Action<Models.Environment?>? _onResult;
 
     public CreateEnvDialogViewModel(

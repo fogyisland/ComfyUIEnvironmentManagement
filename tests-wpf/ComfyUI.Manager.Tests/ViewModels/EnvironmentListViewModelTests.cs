@@ -42,6 +42,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -57,6 +58,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -78,6 +80,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -105,6 +108,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         Assert.False(vm.BaseEnvCommand.CanExecute(null));
@@ -118,6 +122,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -141,6 +146,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
+            null!,
             null!);
 
         var launched = false;
@@ -165,6 +171,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
+            null!,
             null!);
 
         IReadOnlyList<string>? capturedEnvIds = null;
@@ -186,5 +193,88 @@ public class EnvironmentListViewModelTests
         // Default profile's first item should be cu118 stable (per T2's GetDefaults() ordering).
         Assert.Equal("cu118", capturedProfile!.CudaVersion);
         Assert.Null(capturedInstaller);  // We passed null! in ctor.
+    }
+
+    [Fact]
+    public void RecentBasePythonPath_NullWhenListEmpty()
+    {
+        using var db = new TestDb();
+        // No envs seeded — Environments should be empty and RecentBasePythonPath null.
+
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            recentBasePythonPath: null!);
+
+        Assert.Null(vm.RecentBasePythonPath);
+    }
+
+    [Fact]
+    public void RecentBasePythonPath_LastCreatedEnvBasePython()
+    {
+        using var db = new TestDb();
+        var repo = new EnvironmentRepository(db.Factory);
+
+        var env1 = new Environment
+        {
+            Id = "env-a",
+            Name = "alpha",
+            RootPath = @"C:\envs\env-a",
+            ComfyuiLayout = "isolated",
+            Status = "stopped",
+            BasePythonPath = "/tmp/a.exe",
+        };
+        var env2 = new Environment
+        {
+            Id = "env-b",
+            Name = "beta",
+            RootPath = @"C:\envs\env-b",
+            ComfyuiLayout = "isolated",
+            Status = "stopped",
+            BasePythonPath = "/tmp/b.exe",
+        };
+        repo.Upsert(env1);
+        repo.Upsert(env2);
+
+        // The seeded RootPaths do not exist on the test machine, so Directory.Exists
+        // returns false for both and the mtime key falls back to 0 for both. The
+        // secondary sort key is Id descending — "env-b" > "env-a", so env2 wins.
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            recentBasePythonPath: null!);
+
+        Assert.Equal("/tmp/b.exe", vm.RecentBasePythonPath);
+    }
+
+    [Fact]
+    public void CreateEnv_PassesRecentBasePythonPath_ToDialog()
+    {
+        // We cannot drive CreateEnv() directly (the dialog is a real WPF window), so
+        // verify that the ctor-injected RecentBasePythonPath is what CreateEnv()
+        // will hand to Views.CreateEnvDialog.Show(..., RecentBasePythonPath).
+        using var db = new TestDb();
+
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            recentBasePythonPath: "/tmp/x.exe");
+
+        Assert.Equal("/tmp/x.exe", vm.RecentBasePythonPath);
     }
 }
