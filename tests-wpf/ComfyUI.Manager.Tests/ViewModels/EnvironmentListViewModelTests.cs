@@ -42,7 +42,6 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
-            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -58,7 +57,6 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
-            null!,
             null!,
             null!,
             null!,
@@ -80,7 +78,6 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
-            null!,
             null!,
             null!,
             null!,
@@ -108,7 +105,6 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
-            null!,
             null!);
 
         Assert.False(vm.BaseEnvCommand.CanExecute(null));
@@ -122,7 +118,6 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
-            null!,
             null!,
             null!,
             null!,
@@ -146,7 +141,6 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
-            null!,
             null!);
 
         var launched = false;
@@ -171,7 +165,6 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
-            null!,
             null!);
 
         IReadOnlyList<string>? capturedEnvIds = null;
@@ -208,8 +201,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
-            null!,
-            recentBasePythonPath: null!);
+            null!);
 
         Assert.Null(vm.RecentBasePythonPath);
     }
@@ -251,30 +243,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
-            null!,
-            recentBasePythonPath: null!);
+            null!);
 
         Assert.Equal("/tmp/b.exe", vm.RecentBasePythonPath);
-    }
-
-    [Fact]
-    public void CreateEnv_PassesRecentBasePythonPath_ToDialog()
-    {
-        // We cannot drive CreateEnv() directly (the dialog is a real WPF window), so
-        // verify that the ctor-injected RecentBasePythonPath is what CreateEnv()
-        // will hand to Views.CreateEnvDialog.Show(..., RecentBasePythonPath).
-        using var db = new TestDb();
-
-        var vm = new EnvironmentListViewModel(
-            new EnvironmentRepository(db.Factory),
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            recentBasePythonPath: "/tmp/x.exe");
-
-        Assert.Equal("/tmp/x.exe", vm.RecentBasePythonPath);
     }
 }

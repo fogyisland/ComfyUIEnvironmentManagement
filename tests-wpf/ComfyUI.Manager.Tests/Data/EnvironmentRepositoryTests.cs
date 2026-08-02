@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
+using Microsoft.Data.Sqlite;
 using Xunit;
 using Environment = ComfyUI.Manager.Models.Environment;
 
@@ -95,5 +96,61 @@ public sealed class EnvironmentRepositoryTests : IDisposable
 
         Assert.Single(list);
         Assert.Equal("<unknown>", list[0].PythonVersion);
+    }
+
+    [Fact]
+    public void Open_MigratesLegacyEnvironmentsTable_AddingBasePythonPathAndPythonVersion()
+    {
+        // Simulate a pre-v0.6.5.5 state.db whose `environments` table predates the
+        // base_python_path / python_version columns. We craft that schema manually,
+        // close it (release the SQLite WAL lock), then exercise the real
+        // SqliteConnectionFactory.Open() so EnsureColumn has to ALTER TABLE us.
+        var legacy = new SqliteConnection($"Data Source={_dbPath}");
+        legacy.Open();
+        try
+        {
+            using (var cmd = legacy.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    CREATE TABLE environments (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL UNIQUE,
+                        root_path TEXT NOT NULL,
+                        comfyui_layout TEXT NOT NULL,
+                        comfyui_source TEXT,
+                        venv_path TEXT,
+                        python_executable TEXT,
+                        custom_nodes_path TEXT,
+                        extra_model_paths_yaml TEXT,
+                        port INTEGER,
+                        enabled_node_ids_json TEXT DEFAULT '[]',
+                        status TEXT DEFAULT 'stopped',
+                        pid INTEGER
+                    );";
+                cmd.ExecuteNonQuery();
+            }
+        }
+        finally
+        {
+            legacy.Close();
+            legacy.Dispose();
+        }
+
+        // Re-open through the factory; this triggers CreateSchemaIfMissing + EnsureColumn.
+        using (var conn = _factory.Open())
+        using (var pragma = conn.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA table_info(environments)";
+            using var reader = pragma.ExecuteReader();
+            var columnNames = new System.Collections.Generic.List<string>();
+            while (reader.Read())
+            {
+                // PRAGMA table_info: 0=cid, 1=name, 2=type, 3=notnull, 4=dflt, 5=pk
+                columnNames.Add(reader.GetString(1));
+            }
+
+            Assert.Contains("base_python_path", columnNames);
+            Assert.Contains("python_version", columnNames);
+        }
     }
 }

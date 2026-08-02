@@ -22,7 +22,6 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly Settings _settings;
     private readonly BaseEnvProfileLoader _profileLoader;
     private readonly string _projectRoot;
-    private readonly string? _initialRecentBasePythonPath;
 
     public ObservableCollection<Environment> Environments { get; } = new();
     public RelayCommand RefreshCommand { get; }
@@ -41,8 +40,7 @@ public class EnvironmentListViewModel : ViewModelBase
         BaseEnvInstaller baseEnvInstaller,
         Settings settings,
         BaseEnvProfileLoader profileLoader,
-        string projectRoot,
-        string? recentBasePythonPath = null)
+        string projectRoot)
     {
         _repo = repo;
         _launcher = launcher;
@@ -51,8 +49,7 @@ public class EnvironmentListViewModel : ViewModelBase
         _settings = settings;
         _profileLoader = profileLoader;
         _projectRoot = projectRoot;
-        _initialRecentBasePythonPath = recentBasePythonPath;
-        RecentBasePythonPath = recentBasePythonPath;
+        RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
             async p => await StartEnvAsync(p as Environment ?? Selected),
@@ -88,7 +85,7 @@ public class EnvironmentListViewModel : ViewModelBase
     {
         if (Environments.Count == 0)
         {
-            RecentBasePythonPath = _initialRecentBasePythonPath;
+            RecentBasePythonPath = null;
             return;
         }
         // Pick the env with the latest RootPath mtime (when the directory exists),
