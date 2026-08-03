@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
@@ -116,9 +117,9 @@ public class CreateEnvDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 从 settings 读 TemplatePythonDir + DefaultPythonVersion + TemplateComfyuiDir +
-    /// projectRoot 拼接,填回 PythonExe + ComfyuiSource。模板缺失时静默留空 +
-    /// TemplateWarningMessage 设警告。
+    /// 从 settings 读 ActivePythonInterpreterName + PythonInterpreters + TemplateComfyuiDir
+    /// + projectRoot 拼接,填回 PythonExe + ComfyuiSource。Python 解释器缺失/路径不存在时
+    /// 设 TemplateWarningMessage 警告(spec §2.5 文案)。
     /// </summary>
     public void ApplyTemplate()
     {
@@ -130,21 +131,19 @@ public class CreateEnvDialogViewModel : ViewModelBase
         }
         else
         {
-            var pythonExe = Path.Combine(
-                _projectRoot,
-                _settings.TemplatePythonDir,
-                _settings.DefaultPythonVersion,
-                "python.exe");
+            var active = _settings.PythonInterpreters
+                .FirstOrDefault(p => p.Name == _settings.ActivePythonInterpreterName);
+            PythonExe = active?.Path ?? "";
+        }
 
-            if (File.Exists(pythonExe))
-            {
-                PythonExe = pythonExe;
-            }
-            else
-            {
-                warnings.Add($"Python 模板 {_settings.DefaultPythonVersion} 未安装,请先在设置页下载");
-                PythonExe = "";
-            }
+        // —— spec §2.5 警告文案 ——
+        if (string.IsNullOrEmpty(PythonExe))
+        {
+            warnings.Add("请在设置页添加 Python 解释器");
+        }
+        else if (!File.Exists(PythonExe))
+        {
+            warnings.Add("当前 Python 解释器路径不存在,请检查设置");
         }
 
         var comfyuiSource = Path.Combine(
