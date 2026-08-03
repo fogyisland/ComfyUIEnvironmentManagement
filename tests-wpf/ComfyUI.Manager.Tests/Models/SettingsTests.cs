@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json;
 using ComfyUI.Manager.Models;
 using Xunit;
@@ -32,5 +33,29 @@ public class SettingsTests
         var restored = JsonSerializer.Deserialize<Settings>(oldJson);
         Assert.NotNull(restored);
         Assert.Equal("3.10", restored!.DefaultPythonVersion);
+    }
+
+    [Fact]
+    public void PythonInterpreters_RoundTrip()
+    {
+        var s = new Settings
+        {
+            PythonInterpreters = new List<PythonInterpreter>
+            {
+                new() { Name = "py3.10", Path = "D:/python/3.10/python.exe" },
+                new() { Name = "py3.11", Path = "D:/python/3.11/python.exe" },
+            },
+            ActivePythonInterpreterName = "py3.11",
+        };
+
+        var json = JsonSerializer.Serialize(s);
+        var back = JsonSerializer.Deserialize<Settings>(json);
+
+        Assert.NotNull(back);
+        Assert.Equal(2, back!.PythonInterpreters.Count);
+        Assert.Equal("py3.10", back.PythonInterpreters[0].Name);
+        Assert.Equal("D:/python/3.10/python.exe", back.PythonInterpreters[0].Path);
+        Assert.Equal("py3.11", back.PythonInterpreters[1].Name);
+        Assert.Equal("py3.11", back.ActivePythonInterpreterName);
     }
 }

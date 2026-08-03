@@ -56,6 +56,19 @@ public class Settings
     // —— GitHub API:配置后刷新 catalog 时同步拉各节点最新 release —
     [JsonPropertyName("github_token")]
     public string GitHubToken { get; set; } = "";
+
+    // —— v0.6.5.6: 多 Python 解释器管理 ——
+    [JsonPropertyName("python_interpreters")]
+    public List<PythonInterpreter> PythonInterpreters { get; set; } = new();
+
+    [JsonPropertyName("active_python_interpreter_name")]
+    public string ActivePythonInterpreterName { get; set; } = "";
+}
+
+public class PythonInterpreter
+{
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("path")] public string Path { get; set; } = "";
 }
 
 public class ExtraPath
