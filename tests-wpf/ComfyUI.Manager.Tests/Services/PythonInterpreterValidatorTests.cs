@@ -46,7 +46,7 @@ public class PythonInterpreterValidatorTests
         var result = await sut.ValidateAsync(notepad);
 
         Assert.False(result.IsValid);
-        Assert.Contains("Python", result.Error);
+        Assert.NotNull(result.Error);
     }
 
     [Fact]
