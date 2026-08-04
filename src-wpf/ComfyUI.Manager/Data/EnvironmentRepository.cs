@@ -26,7 +26,8 @@ public sealed class EnvironmentRepository
             SELECT id, name, root_path, comfyui_layout, comfyui_source,
                    venv_path, python_executable, custom_nodes_path,
                    extra_model_paths_yaml, port, enabled_node_ids_json,
-                   status, base_python_path, python_version, pid
+                   status, base_python_path, python_version, pid,
+                   bed_profile_id, bed_status, bed_failed_reason
             FROM environments
             ORDER BY name";
         using var reader = cmd.ExecuteReader();
@@ -46,7 +47,8 @@ public sealed class EnvironmentRepository
             SELECT id, name, root_path, comfyui_layout, comfyui_source,
                    venv_path, python_executable, custom_nodes_path,
                    extra_model_paths_yaml, port, enabled_node_ids_json,
-                   status, base_python_path, python_version, pid
+                   status, base_python_path, python_version, pid,
+                   bed_profile_id, bed_status, bed_failed_reason
             FROM environments WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", envId);
         using var reader = cmd.ExecuteReader();
@@ -62,12 +64,14 @@ public sealed class EnvironmentRepository
                 (id, name, root_path, comfyui_layout, comfyui_source,
                  venv_path, python_executable, custom_nodes_path,
                  extra_model_paths_yaml, port, enabled_node_ids_json,
-                 status, base_python_path, python_version, pid)
+                 status, base_python_path, python_version, pid,
+                 bed_profile_id, bed_status, bed_failed_reason)
             VALUES
                 (@id, @name, @root_path, @comfyui_layout, @comfyui_source,
                  @venv_path, @python_executable, @custom_nodes_path,
                  @extra_model_paths_yaml, @port, @enabled_node_ids_json,
-                 @status, @base_python_path, @python_version, @pid)
+                 @status, @base_python_path, @python_version, @pid,
+                 @bed_profile_id, @bed_status, @bed_failed_reason)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,
                 root_path=excluded.root_path,
@@ -82,7 +86,10 @@ public sealed class EnvironmentRepository
                 status=excluded.status,
                 base_python_path=excluded.base_python_path,
                 python_version=excluded.python_version,
-                pid=excluded.pid";
+                pid=excluded.pid,
+                bed_profile_id=excluded.bed_profile_id,
+                bed_status=excluded.bed_status,
+                bed_failed_reason=excluded.bed_failed_reason";
         Bind(cmd, env);
         cmd.ExecuteNonQuery();
     }
@@ -115,6 +122,9 @@ public sealed class EnvironmentRepository
             BasePythonPath = reader.GetString(12),
             PythonVersion = reader.GetString(13),
             Pid = reader.IsDBNull(14) ? null : reader.GetInt32(14),
+            BedProfileId = reader.IsDBNull(15) ? null : reader.GetString(15),
+            BedStatus = reader.IsDBNull(16) ? null : reader.GetString(16),
+            BedFailedReason = reader.IsDBNull(17) ? null : reader.GetString(17),
         };
 
         // 老行 fallback:升级前 db 没有 base_python_path / python_version 列,
@@ -152,5 +162,11 @@ public sealed class EnvironmentRepository
         cmd.Parameters.AddWithValue("@python_version", env.PythonVersion);
         cmd.Parameters.AddWithValue("@pid",
             (object?)env.Pid ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@bed_profile_id",
+            (object?)env.BedProfileId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@bed_status",
+            (object?)env.BedStatus ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@bed_failed_reason",
+            (object?)env.BedFailedReason ?? DBNull.Value);
     }
 }
