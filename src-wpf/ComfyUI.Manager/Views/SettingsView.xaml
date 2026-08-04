@@ -139,14 +139,9 @@
             <!-- ============ 路径 ============ -->
             <TextBlock Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
-            <TextBlock Text="模板 Python 目录(内含 3.10/3.11/.../python.exe)" Margin="0,8,0,4" />
-            <DockPanel Margin="0,2,0,0">
-                <Button DockPanel.Dock="Right" Content="浏览..."
-                        Click="BrowseTemplatePython"
-                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
-                <TextBox Text="{Binding TemplatePythonDir, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}" />
-            </DockPanel>
+            <TextBlock Text="模板 Python 目录(已废弃,只读)" Margin="0,8,0,4" />
+            <TextBox Text="{Binding TemplatePythonDir}" IsReadOnly="True"
+                     Style="{StaticResource MaterialTextBox}" />
 
             <TextBlock Text="模板 ComfyUI 目录(shared 源)" Margin="0,8,0,4" />
             <DockPanel Margin="0,2,0,0">
@@ -157,14 +152,9 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
-            <TextBlock Text="默认 Python 版本(auto-fill 时使用)" Margin="0,8,0,4" />
-            <DockPanel Margin="0,2,0,0">
-                <ComboBox DockPanel.Dock="Right" Width="120"
-                          IsEditable="True"
-                          Text="{Binding DefaultPythonVersion, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock VerticalAlignment="Center" Foreground="Gray" FontSize="11"
-                           Text="(auto-fill 时选 TemplatePythonDir 下的哪个版本子目录,如 3.10/3.11/3.12)" />
-            </DockPanel>
+            <TextBlock Text="默认 Python 版本(已废弃,只读 — 请用下方 &quot;Python 解释器&quot; 区段)" Margin="0,8,0,4" />
+            <TextBox Text="{Binding DefaultPythonVersion}" IsReadOnly="True"
+                     Style="{StaticResource MaterialTextBox}" />
 
             <TextBlock Text="虚拟环境目录(env 创建时放这里)" Margin="0,8,0,4" />
             <DockPanel Margin="0,2,0,0">
@@ -183,6 +173,69 @@
                 <TextBox Text="{Binding GlobalNodesDir, UpdateSourceTrigger=PropertyChanged}"
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
+
+            <!-- ============ Python 解释器(v0.6.5.6) ============ -->
+            <TextBlock Text="Python 解释器" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock Text="可定义多个,选一个作为新建环境 auto-fill 的默认解释器"
+                       Foreground="Gray" FontSize="11" Margin="0,0,0,8" />
+            <TextBlock Text="当前使用" Margin="0,0,0,4" />
+            <ComboBox ItemsSource="{Binding PythonInterpreters}"
+                      DisplayMemberPath="Name"
+                      SelectedValuePath="Name"
+                      SelectedValue="{Binding ActivePythonInterpreterName, Mode=TwoWay}"
+                      Width="320" HorizontalAlignment="Left" />
+            <ItemsControl ItemsSource="{Binding PythonInterpreters}" Margin="0,8,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding Path}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <Button Grid.Column="2" Content="删除" Margin="8,0,0,0"
+                                    Command="{Binding DataContext.RemovePythonInterpreterCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    Style="{StaticResource MaterialButton}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="+ 添加解释器" Margin="0,8,0,0" HorizontalAlignment="Left"
+                    Command="{Binding AddPythonInterpreterCommand}"
+                    Style="{StaticResource MaterialButton}" />
+            <Grid Margin="0,8,0,0"
+                  Visibility="{Binding IsAddPythonInterpreterOpen,
+                                Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Style="{StaticResource MaterialTextBox}"
+                         Text="{Binding NewPythonInterpreterName, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Grid.Column="1" Style="{StaticResource MaterialTextBox}" Margin="8,0,0,0"
+                         Text="{Binding NewPythonInterpreterPath, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="2" Content="浏览..." Margin="4,0,0,0"
+                        Click="BrowsePythonInterpreter"
+                        Style="{StaticResource MaterialButton}" />
+                <Button Grid.Column="3" Content="确定" Margin="8,0,0,0"
+                        Command="{Binding ConfirmAddPythonInterpreterCommand}"
+                        Style="{StaticResource MaterialButton}" />
+                <Button Grid.Column="4" Content="取消" Margin="4,0,0,0"
+                        Command="{Binding CancelAddPythonInterpreterCommand}"
+                        Style="{StaticResource MaterialButton}" />
+            </Grid>
+            <TextBlock Text="{Binding AddPythonInterpreterError}"
+                       Foreground="OrangeRed" FontSize="11" TextWrapping="Wrap"
+                       Margin="0,4,0,0"
+                       Visibility="{Binding HasAddPythonInterpreterError,
+                                     Converter={StaticResource BoolToVisibility}}" />
 
             <!-- ============ 环境 / 工具 ============ -->
             <TextBlock Text="环境 / 工具" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />

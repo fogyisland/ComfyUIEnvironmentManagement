@@ -31,15 +31,6 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void BrowseTemplatePython(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-        {
-            var picked = vm.PickFolder();
-            if (picked is not null) vm.TemplatePythonDir = picked;
-        }
-    }
-
     private void BrowseTemplateComfyui(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)
@@ -82,6 +73,15 @@ public partial class SettingsView : UserControl
         {
             var picked = vm.PickFile("git.exe", "git.exe|git.exe|所有文件|*.*");
             if (picked is not null) vm.GitExe = picked;
+        }
+    }
+
+    private void BrowsePythonInterpreter(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFile("选择 Python 解释器", "可执行文件|*.exe|所有文件|*.*");
+            if (picked is not null) vm.NewPythonInterpreterPath = picked;
         }
     }
 
