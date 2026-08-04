@@ -84,6 +84,25 @@ public sealed class InverseBoolToVisibilityConverter : IValueConverter
     }
 }
 
+/// <summary>
+/// BoolToVisibilityConverter:bool → Visibility(true → Visible,false → Collapsed)。
+/// 用于 "忙时显示" 类面板(如 CreateEnvDialog 进度面板 IsBusy=true → 显示)。
+/// </summary>
+public sealed class BoolToVisibilityConverter : IValueConverter
+{
+    public static readonly BoolToVisibilityConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return (value is bool b && b) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
 public class InverseBoolConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

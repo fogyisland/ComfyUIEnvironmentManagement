@@ -65,7 +65,7 @@
                 <Border BorderBrush="#7F888888" BorderThickness="1" CornerRadius="4"
                         Background="#0A888888"
                         Padding="12,8" Margin="0,8,0,0"
-                        Visibility="{Binding IsBusy, Converter={x:Static views:InverseBoolToVisibilityConverter.Instance}}">
+                        Visibility="{Binding IsBusy, Converter={x:Static views:BoolToVisibilityConverter.Instance}}">
                     <StackPanel>
                         <TextBlock Text="创建进度"
                                    FontWeight="SemiBold" Foreground="#FF67A4A4"
