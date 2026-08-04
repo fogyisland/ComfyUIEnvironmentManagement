@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Infrastructure;
@@ -88,19 +90,67 @@ public static class SettingsDefaults
         if (s.CatalogPageSize <= 0) s.CatalogPageSize = DefaultCatalogPageSize;
         // CatalogViewMode 枚举:JSON 反序列化时无效值会落到 0 (List),不需要额外 fallback
 
+        // —— v0.6.5.6 hotfix:清理 v0.6.5.6 留下的坏 migration 条目 ——
+        // 精确匹配 <TemplatePythonDir>/<DefaultPythonVersion>/python.exe 且文件不存在
+        // → 当成坏 migration 产物清掉,让下方 migration 重新合成正确的。
+        // 不动用户手动 Browse 加的(路径不会精确等于这个合成路径)。
+        if (!string.IsNullOrWhiteSpace(s.TemplatePythonDir)
+            && !string.IsNullOrWhiteSpace(s.DefaultPythonVersion)
+            && s.PythonInterpreters.Count > 0)
+        {
+            var resolvedDir = Path.IsPathRooted(s.TemplatePythonDir)
+                ? s.TemplatePythonDir
+                : Path.Combine(projectRoot, s.TemplatePythonDir);
+            var multiVerPath = Path.Combine(resolvedDir, s.DefaultPythonVersion, "python.exe");
+            if (!File.Exists(multiVerPath))
+            {
+                var fullMultiVer = Path.GetFullPath(multiVerPath);
+                var removedCount = s.PythonInterpreters.RemoveAll(p =>
+                    string.Equals(
+                        Path.GetFullPath(p.Path),
+                        fullMultiVer,
+                        StringComparison.OrdinalIgnoreCase));
+                // 只在确实清掉了坏条目时回退 active,避免误改无关 state
+                if (removedCount > 0
+                    && !string.IsNullOrWhiteSpace(s.ActivePythonInterpreterName)
+                    && !s.PythonInterpreters.Any(p => p.Name == s.ActivePythonInterpreterName))
+                {
+                    s.ActivePythonInterpreterName = s.PythonInterpreters.Count > 0
+                        ? s.PythonInterpreters[0].Name
+                        : "";
+                }
+            }
+        }
+
         // —— v0.6.5.6:首次加载老 settings.json 时,从老 TemplatePythonDir/DefaultPythonVersion 合成默认条目 ——
         if (s.PythonInterpreters.Count == 0
             && !string.IsNullOrWhiteSpace(s.TemplatePythonDir)
             && !string.IsNullOrWhiteSpace(s.DefaultPythonVersion))
         {
-            var candidate = Path.Combine(
-                s.TemplatePythonDir, s.DefaultPythonVersion, "python.exe");
-            s.PythonInterpreters.Add(new PythonInterpreter
+            // 探测 python.exe 实际位置,支持两种 layout:
+            //   1. multi-version (spec 原意):<TemplatePythonDir>/<DefaultPythonVersion>/python.exe
+            //   2. flat venv root (portable python 实际布局):<TemplatePythonDir>/python.exe
+            // TemplatePythonDir 可能是相对或绝对,先 resolve 到绝对路径再做 File.Exists。
+            var resolvedDir = Path.IsPathRooted(s.TemplatePythonDir)
+                ? s.TemplatePythonDir
+                : Path.Combine(projectRoot, s.TemplatePythonDir);
+            var multiVerPath = Path.Combine(resolvedDir, s.DefaultPythonVersion, "python.exe");
+            var flatPath = Path.Combine(resolvedDir, "python.exe");
+            string? candidate = null;
+            if (File.Exists(multiVerPath)) candidate = multiVerPath;
+            else if (File.Exists(flatPath)) candidate = flatPath;
+
+            if (candidate != null)
             {
-                Name = s.DefaultPythonVersion,
-                Path = candidate,
-            });
-            s.ActivePythonInterpreterName = s.DefaultPythonVersion;
+                s.PythonInterpreters.Add(new PythonInterpreter
+                {
+                    Name = s.DefaultPythonVersion,
+                    Path = candidate,
+                });
+                s.ActivePythonInterpreterName = s.DefaultPythonVersion;
+            }
+            // 都不存在 → 跳过合成,留空让用户去 Settings → Browse 添加。
+            // (避免合成出 <dir>/<version>/python.exe 这种死路径污染 active。)
             // 老字段 TemplatePythonDir / DefaultPythonVersion 保留不动
         }
     }

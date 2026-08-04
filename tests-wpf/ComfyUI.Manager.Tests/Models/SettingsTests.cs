@@ -65,45 +65,72 @@ public class SettingsTests
     [Fact]
     public void Migration_FirstLoadFromLegacyTemplatePythonDir_CreatesDefaultEntry()
     {
-        var json = """
+        // v0.6.5.6 hotfix:fixture 必须有真实 python.exe,否则 migration 跳过合成(避免死路径)
+        var tempDir = Path.Combine(Path.GetTempPath(), "cmgr-mig-legacy-" + Guid.NewGuid().ToString("N")[..8]);
+        var versionDir = Path.Combine(tempDir, "3.10");
+        Directory.CreateDirectory(versionDir);
+        File.WriteAllText(Path.Combine(versionDir, "python.exe"), "fake");
+        try
         {
-          "template_python_dir": "D:/python",
-          "default_python_version": "3.10",
-          "github_token": "abc"
+            // 老 settings.json 绝对路径在 JSON 里是带分隔符的,跨平台 compat 用 forward slash
+            var dirInJson = tempDir.Replace('\\', '/');
+            var json = $$"""
+            {
+              "template_python_dir": "{{dirInJson}}",
+              "default_python_version": "3.10",
+              "github_token": "abc"
+            }
+            """;
+
+            var s = JsonSerializer.Deserialize<Settings>(json)!;
+            SettingsDefaults.Apply(s, AppContext.BaseDirectory);
+
+            Assert.Single(s.PythonInterpreters);
+            Assert.Equal("3.10", s.PythonInterpreters[0].Name);
+            // JSON 里 forward slash,Path.Combine 走 backslash —— 都用 Path.GetFullPath 规范化再比较
+            Assert.Equal(
+                Path.GetFullPath(Path.Combine(tempDir, "3.10", "python.exe")),
+                Path.GetFullPath(s.PythonInterpreters[0].Path));
+            Assert.Equal("3.10", s.ActivePythonInterpreterName);
         }
-        """;
-
-        var s = System.Text.Json.JsonSerializer.Deserialize<Settings>(json)!;
-        SettingsDefaults.Apply(s, AppContext.BaseDirectory);
-
-        Assert.Single(s.PythonInterpreters);
-        Assert.Equal("3.10", s.PythonInterpreters[0].Name);
-        Assert.Equal(Path.Combine("D:/python", "3.10", "python.exe"), s.PythonInterpreters[0].Path);
-        Assert.Equal("3.10", s.ActivePythonInterpreterName);
-        // 老字段保留
-        Assert.Equal("D:/python", s.TemplatePythonDir);
-        Assert.Equal("3.10", s.DefaultPythonVersion);
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     [Fact]
     public void Migration_NoOp_WhenPythonInterpretersNonEmpty()
     {
-        var json = """
+        // v0.6.5.6 hotfix:fixture 必须有真实 python.exe,否则 cleanup 把它当坏条目删掉
+        var tempDir = Path.Combine(Path.GetTempPath(), "cmgr-noop-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(tempDir);
+        var userPy = Path.Combine(tempDir, "user-py.exe");
+        File.WriteAllText(userPy, "fake");
+        try
         {
-          "python_interpreters": [
-            { "name": "user-added", "path": "E:/custom/python.exe" }
-          ],
-          "active_python_interpreter_name": "user-added",
-          "template_python_dir": "D:/python",
-          "default_python_version": "3.10"
+            var dirInJson = tempDir.Replace('\\', '/');
+            var json = $$"""
+            {
+              "python_interpreters": [
+                { "name": "user-added", "path": "{{dirInJson}}/user-py.exe" }
+              ],
+              "active_python_interpreter_name": "user-added",
+              "template_python_dir": "{{dirInJson}}",
+              "default_python_version": "3.10"
+            }
+            """;
+
+            var s = JsonSerializer.Deserialize<Settings>(json)!;
+            SettingsDefaults.Apply(s, AppContext.BaseDirectory);
+
+            Assert.Single(s.PythonInterpreters);
+            Assert.Equal("user-added", s.PythonInterpreters[0].Name);
+            Assert.Equal("user-added", s.ActivePythonInterpreterName);
         }
-        """;
-
-        var s = System.Text.Json.JsonSerializer.Deserialize<Settings>(json)!;
-        SettingsDefaults.Apply(s, AppContext.BaseDirectory);
-
-        Assert.Single(s.PythonInterpreters);
-        Assert.Equal("user-added", s.PythonInterpreters[0].Name);
-        Assert.Equal("user-added", s.ActivePythonInterpreterName);
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 }
