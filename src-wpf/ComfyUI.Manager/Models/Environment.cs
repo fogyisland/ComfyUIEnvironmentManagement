@@ -38,4 +38,22 @@ public class Environment
     public string BasePythonPath { get; set; } = "";
     [JsonPropertyName("python_version")]
     public string PythonVersion { get; set; } = "";
+    [JsonPropertyName("bed_profile_id")]
+    public string? BedProfileId { get; set; }
+    [JsonPropertyName("bed_status")]
+    public string? BedStatus { get; set; }
+    [JsonPropertyName("bed_failed_reason")]
+    public string? BedFailedReason { get; set; }
+
+    /// <summary>
+    /// 行 BED 列展示文本:✓ profileId / ✗ 未装 / ⏳ 装中 / ❌ profileId (reason)。
+    /// WPF DataGridTextColumn 直接绑 BedDisplay;不需 INPC(env 一行 read-through)。
+    /// </summary>
+    public string BedDisplay => BedStatus switch
+    {
+        "done" => $"✓ {BedProfileId}",
+        "failed" => $"❌ {BedProfileId ?? "?"} ({BedFailedReason ?? "失败"})",
+        "installing" => "⏳ 装中",
+        _ => "✗ 未装",
+    };
 }
