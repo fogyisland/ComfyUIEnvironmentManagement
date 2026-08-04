@@ -31,10 +31,10 @@ Python 解释器列表,支持命名条目、选定 active、删除/添加、自�
 
 ```
 User opens Settings:
-  read settings.json → 触发 SettingsDefaults.ApplyMigration
-  ├ 老 settings.json (无 PythonInterpreters 字段):
-  │   合成默认条目 [ {Name = "legacy-default", Path = TemplatePythonDir} ]
-  │   ActivePythonInterpreterName = "legacy-default"
+  read settings.json → 触发 SettingsDefaults.Apply(s, projectRoot)
+  ├ 老 settings.json (无 PythonInterpreters 字段 + 老 TemplatePythonDir/DefaultPythonVersion 非空):
+  │   合成默认条目 [ {Name = DefaultPythonVersion, Path = TemplatePythonDir/DefaultPythonVersion/python.exe} ]
+  │   ActivePythonInterpreterName = DefaultPythonVersion
   │   保存回 settings.json(老字段保留标记 deprecated)
   └ 新 settings.json:照常读 PythonInterpreters + ActivePythonInterpreterName
 
@@ -51,7 +51,7 @@ User selects 一条目:
 User 在 CreateEnvDialog 点"应用模板":
   ApplyTemplate 读 settings.ActivePythonInterpreterName
   ├ 命中 → 取 active.Path 作为 PythonExe 默认值
-  └ 未命中 / 为空 → 沿用 v0.6.5.4 fallback(老 template_python_dir 字段,如果存在)
+  └ 未命中 / 为空 → PythonExe 留空 + 顶部黄条提示"请在设置页添加 Python 解释器"
 ```
 
 ### 3) 升级注意
