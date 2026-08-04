@@ -314,4 +314,116 @@ public class CreateEnvDialogViewModelTests
 
         Assert.Equal("", vm.PythonExe);
     }
+
+    // —— 步骤进度面板(v0.6.5.6 hotfix)——
+
+    [Fact]
+    public void Steps_AreConstructedInExpectedOrder_OnInit()
+    {
+        var (vm, _, _, _, _, _) = MakeVm();
+
+        // 与 EnvCreatorService.CreateAsync emit 的 6 个 CreateStepReport 一一对应
+        Assert.Equal(6, vm.Steps.Count);
+        Assert.Equal("校验输入", vm.Steps[0].Name);
+        Assert.Equal("分配端口", vm.Steps[1].Name);
+        Assert.Equal("创建 env 根目录", vm.Steps[2].Name);
+        Assert.Equal("链接 ComfyUI 源", vm.Steps[3].Name);
+        Assert.Equal("创建 venv 环境", vm.Steps[4].Name);
+        Assert.Equal("保存配置", vm.Steps[5].Name);
+    }
+
+    [Fact]
+    public void Steps_StartAsPending_OnInit()
+    {
+        var (vm, _, _, _, _, _) = MakeVm();
+
+        foreach (var s in vm.Steps)
+        {
+            Assert.Equal(CreateStepStatus.Pending, s.Status);
+            Assert.Null(s.Detail);
+        }
+    }
+
+    [Fact]
+    public void ResetSteps_ResetsAllToPending_AndClearsDetail()
+    {
+        var (vm, _, _, _, _, _) = MakeVm();
+        vm.Steps[0].Status = CreateStepStatus.Done;
+        vm.Steps[1].Status = CreateStepStatus.Failed;
+        vm.Steps[1].Detail = "previous detail";
+
+        vm.ResetSteps();
+
+        foreach (var s in vm.Steps)
+        {
+            Assert.Equal(CreateStepStatus.Pending, s.Status);
+            Assert.Null(s.Detail);
+        }
+    }
+
+    [Fact]
+    public void OnStepReport_MarksMatchingStepRunning()
+    {
+        var (vm, _, _, _, _, _) = MakeVm();
+
+        // service 实际流程:先 emit 校验输入,再 emit 分配端口
+        vm.OnStepReport(new CreateStepReport("校验输入"));
+        vm.OnStepReport(new CreateStepReport("分配端口", "port = 8188"));
+
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[0].Status);
+        Assert.Equal(CreateStepStatus.Running, vm.Steps[1].Status);
+        Assert.Equal("port = 8188", vm.Steps[1].Detail);
+        Assert.Equal(CreateStepStatus.Pending, vm.Steps[2].Status);
+    }
+
+    [Fact]
+    public void OnStepReport_AdvancesPreviousStepsToDone_OnSequentialEmits()
+    {
+        var (vm, _, _, _, _, _) = MakeVm();
+
+        vm.OnStepReport(new CreateStepReport("校验输入"));
+        vm.OnStepReport(new CreateStepReport("分配端口"));
+        vm.OnStepReport(new CreateStepReport("创建 env 根目录", "→ /tmp/envs/x"));
+
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[0].Status);
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[1].Status);
+        Assert.Equal(CreateStepStatus.Running, vm.Steps[2].Status);
+        Assert.Equal("→ /tmp/envs/x", vm.Steps[2].Detail);
+        Assert.Equal(CreateStepStatus.Pending, vm.Steps[3].Status);
+    }
+
+    [Fact]
+    public void OnStepReport_AllPreviousDone_WhenLastStepEmits()
+    {
+        var (vm, _, _, _, _, _) = MakeVm();
+
+        // 一次性推到第 6 个 step
+        for (int i = 0; i < vm.Steps.Count - 1; i++)
+        {
+            vm.OnStepReport(new CreateStepReport(vm.Steps[i].Name));
+        }
+        vm.OnStepReport(new CreateStepReport("保存配置", "yaml = /tmp/extra_model_paths.yaml"));
+
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[0].Status);
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[1].Status);
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[2].Status);
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[3].Status);
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[4].Status);
+        Assert.Equal(CreateStepStatus.Running, vm.Steps[5].Status);
+        Assert.Equal("yaml = /tmp/extra_model_paths.yaml", vm.Steps[5].Detail);
+    }
+
+    [Fact]
+    public void OnStepReport_IgnoresUnknownStepName()
+    {
+        var (vm, _, _, _, _, _) = MakeVm();
+
+        vm.OnStepReport(new CreateStepReport("不存在的步骤"));
+
+        // 所有 step 仍 Pending
+        foreach (var s in vm.Steps)
+        {
+            Assert.Equal(CreateStepStatus.Pending, s.Status);
+        }
+    }
 }

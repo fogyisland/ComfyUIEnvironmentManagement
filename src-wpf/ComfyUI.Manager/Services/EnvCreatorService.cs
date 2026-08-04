@@ -63,9 +63,11 @@ public sealed class EnvCreatorService
         string pythonExe,
         string? comfyuiSource,
         int? port,
+        IProgress<CreateStepReport>? progress = null,
         CancellationToken ct = default)
     {
         // 1. 校验输入
+        progress?.Report(new CreateStepReport("校验输入", $"python.exe = {pythonExe}"));
         if (string.IsNullOrWhiteSpace(name))
             throw new CreateEnvException("ENV_NAME_INVALID", "环境名不能为空");
         if (layout != "shared" && layout != "independent")
@@ -89,6 +91,7 @@ public sealed class EnvCreatorService
         // 2. 分配 port
         var usedPorts = envRepo.ListAll().Select(e => e.Port ?? 0).ToHashSet();
         int allocatedPort = port ?? NextFreePort(usedPorts);
+        progress?.Report(new CreateStepReport("分配端口", $"port = {allocatedPort}"));
 
         // 3. 生成 env_id
         string envId = $"env-{Guid.NewGuid().ToString("N")[..8]}";
@@ -102,12 +105,13 @@ public sealed class EnvCreatorService
                 "请先在设置页配置「虚拟环境目录」(env 创建时会放这里)");
         }
         var envsDir = Path.Combine(_projectRoot, _settings.EnvsDir);
-        Directory.CreateDirectory(envsDir);
         var rootPath = Path.Combine(envsDir, name);
+        progress?.Report(new CreateStepReport("创建 env 根目录", $"→ {rootPath}"));
         if (Directory.Exists(rootPath) && Directory.EnumerateFileSystemEntries(rootPath).Any())
             throw new CreateEnvException("ENV_PATH_NOT_EMPTY",
                 $"目标路径 {rootPath} 非空");
 
+        Directory.CreateDirectory(envsDir);
         Directory.CreateDirectory(rootPath);
 
         // 5. 链接 / 复制 ComfyUI
@@ -115,6 +119,8 @@ public sealed class EnvCreatorService
         string comfyuiResolved;
         if (layout == "shared")
         {
+            progress?.Report(new CreateStepReport("链接 ComfyUI 源",
+                $"junction: {comfyuiSource} → {comfyuiLink}"));
             await _linker.CreateAsync(comfyuiLink, comfyuiSource!, ct);
             comfyuiResolved = comfyuiSource!;
         }
@@ -124,12 +130,16 @@ public sealed class EnvCreatorService
             if (string.IsNullOrEmpty(comfyuiSource) || !Directory.Exists(comfyuiSource))
                 throw new CreateEnvException("COMFYUI_SOURCE_MISSING",
                     "independent 布局也需要指定已存在的 ComfyUI 源作为拷贝来源");
+            progress?.Report(new CreateStepReport("链接 ComfyUI 源",
+                $"copy: {comfyuiSource} → {comfyuiLink}"));
             _linker.CopyDirectory(comfyuiSource, comfyuiLink);
             comfyuiResolved = comfyuiLink;
         }
 
         // 6. 创建 venv
         var venvPath = Path.Combine(rootPath, "venv");
+        progress?.Report(new CreateStepReport("创建 venv 环境",
+            $"python -m venv {venvPath}"));
         try
         {
             await _venvCreator.CreateAsync(pythonExe, venvPath, ct);
@@ -143,6 +153,7 @@ public sealed class EnvCreatorService
 
         // 7. 写 extra_model_paths.yaml(占位)
         var extraYaml = Path.Combine(rootPath, "extra_model_paths.yaml");
+        progress?.Report(new CreateStepReport("保存配置", $"yaml = {extraYaml}"));
         File.WriteAllText(extraYaml, "# TODO: M1 填充\n", System.Text.Encoding.UTF8);
 
         // 8. 构造 Environment 写库

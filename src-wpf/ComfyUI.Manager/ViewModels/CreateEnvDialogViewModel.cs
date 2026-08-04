@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -107,6 +108,31 @@ public class CreateEnvDialogViewModel : ViewModelBase
     public RelayCommand CancelCommand { get; }
     public RelayCommand ApplyTemplateCommand { get; }
 
+    /// <summary>
+    /// 步骤进度面板:CreateEnvDialog 启动时构造,N=6 个 CreateStepViewModel
+    /// 与 EnvCreatorService.CreateAsync emit 的 6 个 CreateStepReport 一一对应。
+    /// View 层 ItemsControl 绑定,DataTemplate 用 Status → Glyph/color DataTrigger。
+    /// </summary>
+    public ObservableCollection<CreateStepViewModel> Steps { get; } =
+        new()
+        {
+            new CreateStepViewModel("校验输入"),
+            new CreateStepViewModel("分配端口"),
+            new CreateStepViewModel("创建 env 根目录"),
+            new CreateStepViewModel("链接 ComfyUI 源"),
+            new CreateStepViewModel("创建 venv 环境"),
+            new CreateStepViewModel("保存配置"),
+        };
+
+    internal void ResetSteps()
+    {
+        foreach (var s in Steps)
+        {
+            s.Detail = null;
+            s.Status = CreateStepStatus.Pending;
+        }
+    }
+
     public bool CanCreate()
     {
         if (IsBusy) return false;
@@ -170,6 +196,12 @@ public class CreateEnvDialogViewModel : ViewModelBase
         if (IsBusy) return;
         IsBusy = true;
         ErrorMessage = null;
+        ResetSteps();
+
+        // Progress<T> 在 UI 线程构造 → 自动捕获 SynchronizationContext,
+        // env creator 在 taskpool 调 Report 时回调自动 marshal 回 UI 线程。
+        var progress = new Progress<CreateStepReport>(OnStepReport);
+
         try
         {
             int? port = null;
@@ -179,20 +211,73 @@ public class CreateEnvDialogViewModel : ViewModelBase
                 Name, Layout, PythonExe,
                 string.IsNullOrWhiteSpace(ComfyuiSource) ? null : ComfyuiSource,
                 port,
+                progress,
                 CancellationToken.None);
             Closed?.Invoke(env);
         }
         catch (EnvCreatorService.CreateEnvException ex)
         {
             ErrorMessage = $"{ex.Code}: {ex.Message}";
+            MarkCurrentStepFailed();
         }
         catch (Exception ex)
         {
             ErrorMessage = ex.Message;
+            MarkCurrentStepFailed();
         }
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// OnStepReport:env creator emit 的 step 名 → 匹配 Steps 里的 entry。
+    /// 顺序匹配定位 idx,把 idx 之前所有 Pending/Running 的 step 关掉成 Done,
+    /// 再把 idx 那个 step 标 Running + 更新 Detail。
+    /// Service 是顺序 emit,这样能精准对应 step 切换,
+    /// 不会出现 "前一个 step 还 Running 当前 step 就变 Running" 的状态。
+    /// </summary>
+    internal void OnStepReport(CreateStepReport report)
+    {
+        var idx = -1;
+        for (int i = 0; i < Steps.Count; i++)
+        {
+            if (Steps[i].Name == report.Name) { idx = i; break; }
+        }
+        if (idx < 0)
+        {
+            // service emit 了 Steps 里没有的 step,忽略(开发期暴露)
+            return;
+        }
+
+        // 关闭 idx 之前所有未完成的 step
+        for (int i = 0; i < idx; i++)
+        {
+            var s = Steps[i];
+            if (s.Status == CreateStepStatus.Pending || s.Status == CreateStepStatus.Running)
+            {
+                s.Status = CreateStepStatus.Done;
+            }
+        }
+
+        var current = Steps[idx];
+        current.Status = CreateStepStatus.Running;
+        current.Detail = report.Detail;
+    }
+
+    private void MarkCurrentStepFailed()
+    {
+        var current = Steps.FirstOrDefault(s => s.Status == CreateStepStatus.Running);
+        if (current != null)
+        {
+            current.Status = CreateStepStatus.Failed;
+        }
+        else
+        {
+            // 失败发生在第一个 Report 之前(校验阶段)→ 第一个 step 标 Failed
+            var first = Steps.FirstOrDefault(s => s.Status == CreateStepStatus.Pending);
+            if (first != null) first.Status = CreateStepStatus.Failed;
         }
     }
 
