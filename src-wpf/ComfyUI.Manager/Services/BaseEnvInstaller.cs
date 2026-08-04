@@ -179,6 +179,34 @@ public class BaseEnvInstaller
             completed++;
         }
 
+        // 终态回写:每个 envId 写 BedProfileId + BedStatus + BedFailedReason
+        // 用户取消 / 失败 / 成功 三种状态都覆盖(失败 dict 里有 envId 即 "failed",
+        // 没有即 "done")。用户在 EnvListVM 看 BED 列即知状态。
+        foreach (var envId in envIds)
+        {
+            try
+            {
+                var envRow = _envRepo.Get(envId);
+                if (envRow is null) continue;
+                envRow.BedProfileId = profile.Id;
+                if (failures.TryGetValue(envId, out var reason))
+                {
+                    envRow.BedStatus = "failed";
+                    envRow.BedFailedReason = reason;
+                }
+                else
+                {
+                    envRow.BedStatus = "done";
+                    envRow.BedFailedReason = null;
+                }
+                _envRepo.Upsert(envRow);
+            }
+            catch
+            {
+                // 单 env 写失败不致命(可能被并发删除);不影响整体结果返回
+            }
+        }
+
         return new BaseEnvInstallResult(
             cancelled, succeeded, failed, failures);
     }
