@@ -12,7 +12,7 @@ namespace ComfyUI.Manager.Data;
 /// <see cref="Settings"/> model the WPF UI uses, so the load/save path and
 /// the view-model bindings share one shape.
 /// </summary>
-public sealed class SettingsRepository
+public class SettingsRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -40,7 +40,7 @@ public sealed class SettingsRepository
         return Path.Combine(appData, "ComfyUI-Manager", "settings.json");
     }
 
-    public Settings Load()
+    public virtual Settings Load()
     {
         if (!File.Exists(_settingsPath))
         {
@@ -57,7 +57,7 @@ public sealed class SettingsRepository
             ?? new Settings();
     }
 
-    public void Save(Settings s)
+    public virtual void Save(Settings s)
     {
         var dir = Path.GetDirectoryName(_settingsPath);
         if (!string.IsNullOrEmpty(dir))

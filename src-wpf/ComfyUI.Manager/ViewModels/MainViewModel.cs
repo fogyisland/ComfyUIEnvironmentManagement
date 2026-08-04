@@ -116,7 +116,7 @@ public class MainViewModel : ViewModelBase
     {
         CurrentView = new SettingsView
         {
-            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, _settings),
+            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings),
         };
     }
 
