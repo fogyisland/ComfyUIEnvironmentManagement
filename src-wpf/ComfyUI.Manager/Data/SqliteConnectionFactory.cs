@@ -152,6 +152,10 @@ public sealed class SqliteConnectionFactory
         // PRAGMA table_info 返回每一列一行,检查列名是否已存在。
         EnsureColumn(conn, "environments", "base_python_path", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(conn, "environments", "python_version", "TEXT NOT NULL DEFAULT ''");
+        // BED 列(无 NOT NULL DEFAULT '' — null = "未装",UI BedDisplay 走 default 分支)
+        EnsureColumn(conn, "environments", "bed_profile_id", "TEXT");
+        EnsureColumn(conn, "environments", "bed_status", "TEXT");
+        EnsureColumn(conn, "environments", "bed_failed_reason", "TEXT");
     }
 
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)

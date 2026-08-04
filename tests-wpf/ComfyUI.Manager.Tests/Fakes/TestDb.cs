@@ -44,7 +44,10 @@ public sealed class TestDb : IDisposable
                 port INTEGER,
                 enabled_node_ids_json TEXT DEFAULT '[]',
                 status TEXT DEFAULT 'stopped',
-                pid INTEGER
+                pid INTEGER,
+                bed_profile_id TEXT,
+                bed_status TEXT,
+                bed_failed_reason TEXT
             );
             CREATE TABLE scanned_nodes (
                 id TEXT PRIMARY KEY,
