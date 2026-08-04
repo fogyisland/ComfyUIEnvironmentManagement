@@ -21,6 +21,7 @@
                 <DataGridTextColumn Header="端口" Binding="{Binding Port}" Width="60" />
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
+                <DataGridTextColumn Header="BED" Binding="{Binding BedDisplay}" Width="220" />
                 <DataGridTemplateColumn Header="操作" Width="260">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
@@ -28,7 +29,9 @@
                                 <Button Content="启动" Margin="2"
                                         Command="{Binding DataContext.StartCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}" />
+                                        CommandParameter="{Binding}"
+                                        ToolTip="{Binding DataContext.StartTooltip,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}" />
                                 <Button Content="停止" Margin="2"
                                         Command="{Binding DataContext.StopCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
