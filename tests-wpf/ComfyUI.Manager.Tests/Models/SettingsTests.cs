@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using Xunit;
 
@@ -57,5 +60,50 @@ public class SettingsTests
         Assert.Equal("D:/python/3.10/python.exe", back.PythonInterpreters[0].Path);
         Assert.Equal("py3.11", back.PythonInterpreters[1].Name);
         Assert.Equal("py3.11", back.ActivePythonInterpreterName);
+    }
+
+    [Fact]
+    public void Migration_FirstLoadFromLegacyTemplatePythonDir_CreatesDefaultEntry()
+    {
+        var json = """
+        {
+          "template_python_dir": "D:/python",
+          "default_python_version": "3.10",
+          "github_token": "abc"
+        }
+        """;
+
+        var s = System.Text.Json.JsonSerializer.Deserialize<Settings>(json)!;
+        SettingsDefaults.Apply(s, AppContext.BaseDirectory);
+
+        Assert.Single(s.PythonInterpreters);
+        Assert.Equal("3.10", s.PythonInterpreters[0].Name);
+        Assert.Equal(Path.Combine("D:/python", "3.10", "python.exe"), s.PythonInterpreters[0].Path);
+        Assert.Equal("3.10", s.ActivePythonInterpreterName);
+        // 老字段保留
+        Assert.Equal("D:/python", s.TemplatePythonDir);
+        Assert.Equal("3.10", s.DefaultPythonVersion);
+    }
+
+    [Fact]
+    public void Migration_NoOp_WhenPythonInterpretersNonEmpty()
+    {
+        var json = """
+        {
+          "python_interpreters": [
+            { "name": "user-added", "path": "E:/custom/python.exe" }
+          ],
+          "active_python_interpreter_name": "user-added",
+          "template_python_dir": "D:/python",
+          "default_python_version": "3.10"
+        }
+        """;
+
+        var s = System.Text.Json.JsonSerializer.Deserialize<Settings>(json)!;
+        SettingsDefaults.Apply(s, AppContext.BaseDirectory);
+
+        Assert.Single(s.PythonInterpreters);
+        Assert.Equal("user-added", s.PythonInterpreters[0].Name);
+        Assert.Equal("user-added", s.ActivePythonInterpreterName);
     }
 }

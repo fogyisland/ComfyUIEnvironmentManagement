@@ -3,17 +3,22 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using Microsoft.Win32;
 
 namespace ComfyUI.Manager.ViewModels;
 
-public class SettingsViewModel : ViewModelBase
+public class SettingsViewModel : ViewModelBase, IDisposable
 {
     private readonly SettingsRepository _repo;
     private readonly GitProxyConfig _proxy;
+    private readonly IPythonInterpreterValidator _validator;
+    private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
     private bool _isAddQuerySourceOpen;
@@ -22,11 +27,20 @@ public class SettingsViewModel : ViewModelBase
     private string _newQuerySourceUrl = "";
     private string _newDownloadSourceName = "";
     private string _newDownloadSourceUrl = "";
+    private string _newPythonInterpreterName = "";
+    private string _newPythonInterpreterPath = "";
+    private string _addPythonInterpreterError = "";
+    private bool _isAddPythonInterpreterOpen;
 
-    public SettingsViewModel(SettingsRepository repo, GitProxyConfig proxy, Settings? sharedSettings = null)
+    public SettingsViewModel(
+        SettingsRepository repo,
+        GitProxyConfig proxy,
+        IPythonInterpreterValidator validator,
+        Settings? sharedSettings = null)
     {
         _repo = repo;
         _proxy = proxy;
+        _validator = validator;
         // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
         // 没有注入时(单元测试)才从 disk 加载。
         _settings = sharedSettings ?? _repo.Load();
@@ -55,6 +69,43 @@ public class SettingsViewModel : ViewModelBase
             _repo.Save(_settings);
             RaisePropertyChanged(nameof(ActiveDownloadSource));
         };
+        PythonInterpreters = new ObservableCollection<PythonInterpreter>(_settings.PythonInterpreters);
+        PythonInterpreters.CollectionChanged += (_, _) =>
+        {
+            _settings.PythonInterpreters = new List<PythonInterpreter>(PythonInterpreters);
+            _repo.Save(_settings);
+            RaisePropertyChanged(nameof(ActivePythonInterpreter));
+        };
+        AddPythonInterpreterCommand = new RelayCommand(_ =>
+        {
+            NewPythonInterpreterName = "";
+            NewPythonInterpreterPath = "";
+            AddPythonInterpreterError = "";
+            IsAddPythonInterpreterOpen = true;
+        });
+        CancelAddPythonInterpreterCommand = new RelayCommand(_ =>
+        {
+            IsAddPythonInterpreterOpen = false;
+            AddPythonInterpreterError = "";
+        });
+        ConfirmAddPythonInterpreterCommand = new RelayCommand(async _ =>
+        {
+            await ConfirmAddPythonInterpreterAsync().ConfigureAwait(false);
+        });
+        RemovePythonInterpreterCommand = new RelayCommand(p =>
+        {
+            if (p is PythonInterpreter pi)
+            {
+                var wasActive = pi.Name == _settings.ActivePythonInterpreterName;
+                PythonInterpreters.Remove(pi);
+                if (wasActive)
+                {
+                    _settings.ActivePythonInterpreterName = PythonInterpreters.FirstOrDefault()?.Name ?? "";
+                    _repo.Save(_settings);
+                    RaisePropertyChanged(nameof(ActivePythonInterpreter));
+                }
+            }
+        });
         AddExtraPathCommand = new RelayCommand(_ => ExtraPaths.Add(new ExtraPath()));
         RemoveExtraPathCommand = new RelayCommand(p =>
         {
@@ -331,6 +382,117 @@ public class SettingsViewModel : ViewModelBase
             UseShellExecute = true,
         });
     });
+
+    // —— 多 Python 解释器(v0.6.5.6) ——
+    public ObservableCollection<PythonInterpreter> PythonInterpreters { get; }
+
+    public PythonInterpreter? ActivePythonInterpreter
+    {
+        get
+        {
+            var name = _settings.ActivePythonInterpreterName;
+            if (string.IsNullOrEmpty(name)) return null;
+            return _settings.PythonInterpreters.FirstOrDefault(p => p.Name == name);
+        }
+        set
+        {
+            _settings.ActivePythonInterpreterName = value?.Name ?? "";
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
+    }
+
+    public string ActivePythonInterpreterName
+    {
+        get => _settings.ActivePythonInterpreterName;
+        set
+        {
+            _settings.ActivePythonInterpreterName = value ?? "";
+            _repo.Save(_settings);
+            RaisePropertyChanged(nameof(ActivePythonInterpreter));
+        }
+    }
+
+    public RelayCommand AddPythonInterpreterCommand { get; }
+    public RelayCommand ConfirmAddPythonInterpreterCommand { get; }
+    public RelayCommand CancelAddPythonInterpreterCommand { get; }
+    public RelayCommand RemovePythonInterpreterCommand { get; }
+
+    public string NewPythonInterpreterName
+    {
+        get => _newPythonInterpreterName;
+        set => SetField(ref _newPythonInterpreterName, value);
+    }
+    public string NewPythonInterpreterPath
+    {
+        get => _newPythonInterpreterPath;
+        set => SetField(ref _newPythonInterpreterPath, value);
+    }
+    public string AddPythonInterpreterError
+    {
+        get => _addPythonInterpreterError;
+        private set
+        {
+            if (SetField(ref _addPythonInterpreterError, value))
+                RaisePropertyChanged(nameof(HasAddPythonInterpreterError));
+        }
+    }
+    public bool HasAddPythonInterpreterError => !string.IsNullOrEmpty(_addPythonInterpreterError);
+    public bool IsAddPythonInterpreterOpen
+    {
+        get => _isAddPythonInterpreterOpen;
+        private set => SetField(ref _isAddPythonInterpreterOpen, value);
+    }
+
+    public async Task ConfirmAddPythonInterpreterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewPythonInterpreterName) ||
+            string.IsNullOrWhiteSpace(NewPythonInterpreterPath))
+        {
+            IsAddPythonInterpreterOpen = false;
+            return;
+        }
+
+        // 测试 / 单入口调用场景下,表单可能没先开。Confirm 时强制打开,
+        // 让验证失败时错误信息有地方显示。
+        IsAddPythonInterpreterOpen = true;
+        AddPythonInterpreterError = "";
+        try
+        {
+            var result = await _validator
+                .ValidateAsync(NewPythonInterpreterPath, _addPythonInterpreterCts.Token)
+                .ConfigureAwait(true);
+            if (!result.IsValid)
+            {
+                AddPythonInterpreterError = result.Error ?? "验证失败";
+                return;  // 表单保持打开
+            }
+
+            var pi = new PythonInterpreter
+            {
+                Name = NewPythonInterpreterName,
+                Path = NewPythonInterpreterPath,
+            };
+            // 先在 _settings 上写 active 名(新增即激活),再 Add,
+            // 让 CollectionChanged 触发的那一次 Save 把"列表+active 名"一并持久化。
+            _settings.ActivePythonInterpreterName = pi.Name;
+            PythonInterpreters.Add(pi);
+
+            IsAddPythonInterpreterOpen = false;
+            NewPythonInterpreterName = "";
+            NewPythonInterpreterPath = "";
+        }
+        catch (OperationCanceledException)
+        {
+            // vm dispose 时取消,静默
+        }
+    }
+
+    public void Dispose()
+    {
+        try { _addPythonInterpreterCts.Cancel(); } catch { }
+        _addPythonInterpreterCts.Dispose();
+    }
 
     // —— File pickers:用 Microsoft.Win32 (违反严格 MVVM,但 win-x64 单平台 OK) ——
     public string? PickFolder()

@@ -87,6 +87,22 @@ public static class SettingsDefaults
         // Catalog 视图:默认值兜底(空枚举/0 表示未设 → 默认 List / 20)
         if (s.CatalogPageSize <= 0) s.CatalogPageSize = DefaultCatalogPageSize;
         // CatalogViewMode 枚举:JSON 反序列化时无效值会落到 0 (List),不需要额外 fallback
+
+        // —— v0.6.5.6:首次加载老 settings.json 时,从老 TemplatePythonDir/DefaultPythonVersion 合成默认条目 ——
+        if (s.PythonInterpreters.Count == 0
+            && !string.IsNullOrWhiteSpace(s.TemplatePythonDir)
+            && !string.IsNullOrWhiteSpace(s.DefaultPythonVersion))
+        {
+            var candidate = Path.Combine(
+                s.TemplatePythonDir, s.DefaultPythonVersion, "python.exe");
+            s.PythonInterpreters.Add(new PythonInterpreter
+            {
+                Name = s.DefaultPythonVersion,
+                Path = candidate,
+            });
+            s.ActivePythonInterpreterName = s.DefaultPythonVersion;
+            // 老字段 TemplatePythonDir / DefaultPythonVersion 保留不动
+        }
     }
 
     /// <summary>

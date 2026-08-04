@@ -11,7 +11,12 @@ namespace ComfyUI.Manager.Services;
 
 public sealed record ValidationResult(bool IsValid, string Version = "", string? Error = null);
 
-public sealed class PythonInterpreterValidator
+public interface IPythonInterpreterValidator
+{
+    Task<ValidationResult> ValidateAsync(string path, CancellationToken ct = default);
+}
+
+public sealed class PythonInterpreterValidator : IPythonInterpreterValidator
 {
     public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
