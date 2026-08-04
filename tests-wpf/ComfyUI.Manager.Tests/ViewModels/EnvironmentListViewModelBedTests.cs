@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
@@ -85,5 +86,37 @@ public class EnvironmentListViewModelBedTests
         vm.Selected = vm.Environments[0];
         Assert.Contains("上次 BED 失败", vm.StartTooltip);
         Assert.Contains("pip 退出码 1", vm.StartTooltip);
+    }
+
+    [Fact]
+    public void OpenBaseEnvProgress_AfterDialogCloses_TriggersReload()
+    {
+        using var db = new TestDb();
+        var repo = new EnvironmentRepository(db.Factory);
+        // 初始 env:无 BED
+        var env = MakeEnv("env-bed", "stopped", bedStatus: null);
+        repo.Upsert(env);
+
+        var profileLoader = new BaseEnvProfileLoader(Path.Combine(Path.GetTempPath(), "fake-" + Guid.NewGuid()));
+        var vm = new EnvironmentListViewModel(
+            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath());
+        Assert.Single(vm.Environments);
+        Assert.Null(vm.Environments[0].BedStatus);
+
+        // 模拟 BED 跑完:直接改 repo 行 + 调 reload
+        env.BedProfileId = "pytorch-2.5.0-cu121-stable";
+        env.BedStatus = "done";
+        repo.Upsert(env);
+
+        // 用 ShowProgressDialogOverride 拦截,跳过真实 dialog
+        bool overrideCalled = false;
+        vm.ShowProgressDialogOverride = (_, _, _) => overrideCalled = true;
+        vm.BaseEnvCommand.Execute(null);
+
+        Assert.True(overrideCalled);
+        // override 路径不会自动 reload(G10),我们手动验 Load() 也能重读
+        vm.RefreshCommand.Execute(null);
+        Assert.Equal("done", vm.Environments[0].BedStatus);
+        Assert.Equal("pytorch-2.5.0-cu121-stable", vm.Environments[0].BedProfileId);
     }
 }

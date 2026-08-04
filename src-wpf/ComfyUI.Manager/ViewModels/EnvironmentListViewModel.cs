@@ -238,6 +238,10 @@ public class EnvironmentListViewModel : ViewModelBase
             return;
         }
         Views.BaseEnvProgressDialog.Show(envIds, profile, _baseEnvInstaller);
+        // BED dialog 关窗后 reload:Installer 末尾已写 env.BedStatus,
+        // UI 立即重读反映新状态(否则用户看到行还是旧的 "未装")
+        Load();
+        RaiseCommandsChanged();
     }
 
     /// <summary>
