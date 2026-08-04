@@ -4,135 +4,145 @@
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
         xmlns:services="clr-namespace:ComfyUI.Manager.Services"
-        Title="新建环境" Height="450" Width="560"
+        Title="新建环境" Height="620" Width="560"
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner">
-    <StackPanel Margin="16">
-        <TextBlock Text="{Binding TemplateWarningMessage}"
-                   Foreground="Orange" FontWeight="SemiBold"
-                   TextWrapping="Wrap" Margin="0,0,0,8"
-                   Visibility="{Binding TemplateWarningMessage, Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
-        <TextBlock Text="名称" />
-        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                 IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
-                 Margin="0,2,0,8" />
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-        <TextBlock Text="布局" />
-        <ComboBox SelectedItem="{Binding Layout}"
-                  ItemsSource="{Binding LayoutOptions}"
-                  IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
-                  Margin="0,2,0,8" />
-
-        <TextBlock Text="Python 解释器 (python.exe)" />
-        <DockPanel Margin="0,2,0,8">
-            <Button DockPanel.Dock="Right" Content="应用模板"
-                    Command="{Binding ApplyTemplateCommand}"
-                    IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
-                    Margin="4,0,0,0" />
-            <Button DockPanel.Dock="Right" Content="浏览..."
-                    Click="BrowsePython"
-                    IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
-                    Margin="4,0,0,0" />
-            <TextBox Text="{Binding PythonExe, UpdateSourceTrigger=PropertyChanged}" />
-        </DockPanel>
-
-        <TextBlock Text="ComfyUI 源(shared 必填,independent 作为拷贝来源)" />
-        <DockPanel Margin="0,2,0,8">
-            <Button DockPanel.Dock="Right" Content="应用模板"
-                    Command="{Binding ApplyTemplateCommand}"
-                    IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
-                    Margin="4,0,0,0" />
-            <Button DockPanel.Dock="Right" Content="浏览..."
-                    Click="BrowseComfyui"
-                    IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
-                    Margin="4,0,0,0" />
-            <TextBox Text="{Binding ComfyuiSource, UpdateSourceTrigger=PropertyChanged}" />
-        </DockPanel>
-
-        <TextBlock Text="端口(留空自动分配,从 8188 起)" />
-        <TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}"
-                 Margin="0,2,0,8" />
-
-        <!-- 步骤进度面板:仅在 IsBusy=true 时显示 -->
-        <Border BorderBrush="#7F888888" BorderThickness="1" CornerRadius="4"
-                Background="#0A888888"
-                Padding="12,8" Margin="0,8,0,0"
-                Visibility="{Binding IsBusy, Converter={x:Static views:InverseBoolToVisibilityConverter.Instance}}"
-                DataContext="{Binding}">
+        <!-- 顶部滚动区:表单 + 进度面板 + 错误 -->
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <TextBlock Text="创建进度"
-                           FontWeight="SemiBold" Foreground="#FF67A4A4"
-                           Margin="0,0,0,6" />
-                <ItemsControl ItemsSource="{Binding Steps}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:CreateStepViewModel}">
-                            <Grid Margin="0,2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="20" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Glyph}"
-                                           VerticalAlignment="Top">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="#FFAAAAAA" />
-                                            <Setter Property="FontWeight" Value="Normal" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Running}">
-                                                    <Setter Property="Foreground" Value="#FF6750A4" />
-                                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Done}">
-                                                    <Setter Property="Foreground" Value="#FF2E7D32" />
-                                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Failed}">
-                                                    <Setter Property="Foreground" Value="#FFC62828" />
-                                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="{Binding Name}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="#FF666666" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Running}">
-                                                        <Setter Property="Foreground" Value="#FF222222" />
-                                                        <Setter Property="FontWeight" Value="SemiBold" />
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Done}">
-                                                        <Setter Property="Foreground" Value="#FF2E7D32" />
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Failed}">
-                                                        <Setter Property="Foreground" Value="#FFC62828" />
-                                                        <Setter Property="FontWeight" Value="SemiBold" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding Detail}"
-                                               Foreground="#FF888888" FontSize="11"
-                                               TextWrapping="Wrap"
-                                               Margin="0,1,0,0"
-                                               Visibility="{Binding Detail, Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
-                                </StackPanel>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <TextBlock Text="{Binding TemplateWarningMessage}"
+                           Foreground="Orange" FontWeight="SemiBold"
+                           TextWrapping="Wrap" Margin="0,0,0,8"
+                           Visibility="{Binding TemplateWarningMessage, Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
+                <TextBlock Text="名称" />
+                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                         IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                         Margin="0,2,0,8" />
+
+                <TextBlock Text="布局" />
+                <ComboBox SelectedItem="{Binding Layout}"
+                          ItemsSource="{Binding LayoutOptions}"
+                          IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                          Margin="0,2,0,8" />
+
+                <TextBlock Text="Python 解释器 (python.exe)" />
+                <DockPanel Margin="0,2,0,8">
+                    <Button DockPanel.Dock="Right" Content="应用模板"
+                            Command="{Binding ApplyTemplateCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                            Margin="4,0,0,0" />
+                    <Button DockPanel.Dock="Right" Content="浏览..."
+                            Click="BrowsePython"
+                            IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                            Margin="4,0,0,0" />
+                    <TextBox Text="{Binding PythonExe, UpdateSourceTrigger=PropertyChanged}" />
+                </DockPanel>
+
+                <TextBlock Text="ComfyUI 源(shared 必填,independent 作为拷贝来源)" />
+                <DockPanel Margin="0,2,0,8">
+                    <Button DockPanel.Dock="Right" Content="应用模板"
+                            Command="{Binding ApplyTemplateCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                            Margin="4,0,0,0" />
+                    <Button DockPanel.Dock="Right" Content="浏览..."
+                            Click="BrowseComfyui"
+                            IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                            Margin="4,0,0,0" />
+                    <TextBox Text="{Binding ComfyuiSource, UpdateSourceTrigger=PropertyChanged}" />
+                </DockPanel>
+
+                <TextBlock Text="端口(留空自动分配,从 8188 起)" />
+                <TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,2,0,8" />
+
+                <!-- 步骤进度面板:仅在 IsBusy=true 时显示 -->
+                <Border BorderBrush="#7F888888" BorderThickness="1" CornerRadius="4"
+                        Background="#0A888888"
+                        Padding="12,8" Margin="0,8,0,0"
+                        Visibility="{Binding IsBusy, Converter={x:Static views:InverseBoolToVisibilityConverter.Instance}}">
+                    <StackPanel>
+                        <TextBlock Text="创建进度"
+                                   FontWeight="SemiBold" Foreground="#FF67A4A4"
+                                   Margin="0,0,0,6" />
+                        <ItemsControl ItemsSource="{Binding Steps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:CreateStepViewModel}">
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Glyph}"
+                                                   VerticalAlignment="Top">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#FFAAAAAA" />
+                                                    <Setter Property="FontWeight" Value="Normal" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Running}">
+                                                            <Setter Property="Foreground" Value="#FF6750A4" />
+                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Done}">
+                                                            <Setter Property="Foreground" Value="#FF2E7D32" />
+                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Failed}">
+                                                            <Setter Property="Foreground" Value="#FFC62828" />
+                                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Name}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#FF666666" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Running}">
+                                                                <Setter Property="Foreground" Value="#FF222222" />
+                                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Done}">
+                                                                <Setter Property="Foreground" Value="#FF2E7D32" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="{x:Static services:CreateStepStatus.Failed}">
+                                                                <Setter Property="Foreground" Value="#FFC62828" />
+                                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Detail}"
+                                                       Foreground="#FF888888" FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,1,0,0"
+                                                       Visibility="{Binding Detail, Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="Red"
+                           TextWrapping="Wrap" Margin="0,4,0,0"
+                           Visibility="{Binding ErrorMessage, Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
             </StackPanel>
-        </Border>
+        </ScrollViewer>
 
-        <TextBlock Text="{Binding ErrorMessage}" Foreground="Red"
-                   TextWrapping="Wrap" Margin="0,4,0,0"
-                   Visibility="{Binding ErrorMessage, Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
-
-        <StackPanel Orientation="Horizontal" Margin="0,16,0,0"
+        <!-- 底部固定按钮行 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,0"
                     HorizontalAlignment="Right">
             <Button Content="创建" Command="{Binding CreateCommand}"
                     Style="{StaticResource MaterialButton}"
@@ -141,5 +151,5 @@
                     Style="{StaticResource MaterialButton}"
                     Margin="8,0,0,0" Width="80" />
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>
