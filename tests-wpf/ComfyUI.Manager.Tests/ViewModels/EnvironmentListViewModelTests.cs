@@ -15,7 +15,7 @@ namespace ComfyUI.Manager.Tests.ViewModels;
 
 public class EnvironmentListViewModelTests
 {
-    private static void SeedEnv(TestDb db, string id, string status)
+    private static void SeedEnv(TestDb db, string id, string status, string? bedStatus = null)
     {
         var repo = new EnvironmentRepository(db.Factory);
         repo.Upsert(new Environment
@@ -25,6 +25,7 @@ public class EnvironmentListViewModelTests
             RootPath = $"C:\\envs\\{id}",
             ComfyuiLayout = "isolated",
             Status = status,
+            BedStatus = bedStatus,
         });
     }
 
@@ -56,7 +57,7 @@ public class EnvironmentListViewModelTests
     public void StartCommand_EnabledOnlyForStoppedEnv()
     {
         using var db = new TestDb();
-        SeedEnv(db, "env-1", "stopped");
+        SeedEnv(db, "env-1", "stopped", "done");
         SeedEnv(db, "env-2", "running");
 
         var vm = new EnvironmentListViewModel(

@@ -67,7 +67,15 @@ public class EnvironmentListViewModel : ViewModelBase
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
             async p => await StartEnvAsync(p as Environment ?? Selected),
-            p => (p as Environment ?? Selected)?.Status == "stopped");
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (env.Status != "stopped") return false;
+                // BED 未装 / 装中 → 禁用
+                if (env.BedStatus is null or "installing") return false;
+                return true;
+            });
         StopCommand = new RelayCommand(
             async p => await StopEnvAsync(p as Environment ?? Selected),
             p => (p as Environment ?? Selected)?.Status == "running");
@@ -91,7 +99,35 @@ public class EnvironmentListViewModel : ViewModelBase
     public Environment? Selected
     {
         get => _selected;
-        set => SetField(ref _selected, value);
+        set
+        {
+            if (SetField(ref _selected, value))
+                RaisePropertyChanged(nameof(StartTooltip));
+        }
+    }
+
+    /// <summary>
+    /// 启动按钮 tooltip 文本:基于 Selected env 的 BED 状态。
+    /// - BedStatus null   → "基础环境未安装"
+    /// - BedStatus "installing" → "BED 安装中,请稍候"
+    /// - BedStatus "failed" → "上次 BED 失败:{BedFailedReason};运行可能也失败"
+    /// - BedStatus "done"  → ""(BED OK,不需要提示)
+    /// - env is null       → ""
+    /// </summary>
+    public string StartTooltip
+    {
+        get
+        {
+            var env = Selected;
+            if (env is null) return "";
+            return env.BedStatus switch
+            {
+                null => "基础环境未安装",
+                "installing" => "BED 安装中,请稍候",
+                "failed" => $"上次 BED 失败:{env.BedFailedReason};运行可能也失败",
+                _ => "",
+            };
+        }
     }
 
     private void Load()
