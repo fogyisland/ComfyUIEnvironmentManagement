@@ -1,0 +1,45 @@
+<Window x:Class="ComfyUI.Manager.Views.CatalogEntryPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="选择节点" Height="500" Width="600"
+        Background="{StaticResource BackgroundBrush}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,8">
+            <TextBlock Text="搜索:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" />
+        </DockPanel>
+
+        <ListBox Grid.Row="1"
+                 ItemsSource="{Binding Entries}"
+                 SelectedItem="{Binding Selected}"
+                 MouseDoubleClick="OnListDoubleClick">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Package}" FontWeight="SemiBold" />
+                        <TextBlock FontSize="11" Foreground="#FF888888">
+                            <Run Text="id: " />
+                            <Run Text="{Binding Id}" />
+                            <Run Text="   latest: " />
+                            <Run Text="{Binding LatestVersion}" />
+                        </TextBlock>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0"
+                    HorizontalAlignment="Right">
+            <Button Content="安装" Command="{Binding OkCommand}"
+                    Style="{StaticResource MaterialButton}" Width="80" />
+            <Button Content="取消" Command="{Binding CancelCommand}"
+                    Style="{StaticResource MaterialButton}" Margin="8,0,0,0" Width="80" />
+        </StackPanel>
+    </Grid>
+</Window>

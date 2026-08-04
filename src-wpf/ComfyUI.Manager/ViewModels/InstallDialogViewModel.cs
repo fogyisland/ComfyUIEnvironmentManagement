@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
@@ -19,14 +20,22 @@ public class InstallDialogViewModel : ViewModelBase
 
     public event Action? CloseRequested;
 
+    /// <summary>
+    /// 预填 env:从 EnvironmentList 行点"安装节点" → 走 CatalogEntryPicker → InstallDialog,
+    /// 想直接装到当前 env,不是让用户从所有 env 里再选一次。null = 不预填,默认选列表第一条。
+    /// </summary>
+    public string? PreselectedEnvId { get; }
+
     public InstallDialogViewModel(
         EnvironmentRepository repo,
         NodeOperations ops,
-        CatalogEntry entry)
+        CatalogEntry entry,
+        string? preselectedEnvId = null)
     {
         _repo = repo;
         _ops = ops;
         Entry = entry;
+        PreselectedEnvId = preselectedEnvId;
         InstallCommand = new RelayCommand(
             async _ => await InstallAsync(),
             _ => SelectedEnv is not null && !Busy);
@@ -47,6 +56,17 @@ public class InstallDialogViewModel : ViewModelBase
     {
         Environments.Clear();
         foreach (var e in _repo.ListAll()) Environments.Add(e);
+        // 优先用 PreselectedEnvId(从 EnvironmentList 行点"安装节点"过来),
+        // 否则默认第一条
+        if (!string.IsNullOrEmpty(PreselectedEnvId))
+        {
+            var match = Environments.FirstOrDefault(e => e.Id == PreselectedEnvId);
+            if (match is not null)
+            {
+                SelectedEnv = match;
+                return;
+            }
+        }
         if (Environments.Count > 0) SelectedEnv = Environments[0];
     }
 

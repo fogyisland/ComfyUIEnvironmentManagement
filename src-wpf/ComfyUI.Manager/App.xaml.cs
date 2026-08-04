@@ -67,6 +67,9 @@ public partial class App : Application
         var envCreator = new EnvCreatorService(
             dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
         var baseEnvInstaller = new BaseEnvInstaller(envRepo);
+        // v0.6.5.x hotfix:Env 删除跑腿 service(stop running + 删目录 + 删 SQLite 行)。
+        // 复用 envRepo 跟 _launcher,跟 EnvironmentListView 共一份。
+        var envDeleter = new EnvDeleterService(envRepo, _launcher);
         // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
         // cache 目录 = %APPDATA%/ComfyUI-Manager(PyTorchVersionCache 直接在此存
         // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。
@@ -76,7 +79,7 @@ public partial class App : Application
         var profileLoader = new BaseEnvProfileLoader(projectRoot, appDataDir, http);
 
         _mainVm = new MainViewModel(
-            dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, settingsRepo, gitProxy,
+            dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot);
 

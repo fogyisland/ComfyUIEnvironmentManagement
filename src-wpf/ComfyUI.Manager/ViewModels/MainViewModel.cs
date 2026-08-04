@@ -14,6 +14,7 @@ public class MainViewModel : ViewModelBase
     private readonly BulkUpdateOrchestrator _orchestrator;
     private readonly NodeOperations _nodeOps;
     private readonly EnvCreatorService _envCreator;
+    private readonly EnvDeleterService _envDeleter;
     private readonly SettingsRepository _settingsRepo;
     private readonly GitProxyConfig _gitProxy;
     private readonly Settings _settings;
@@ -47,6 +48,7 @@ public class MainViewModel : ViewModelBase
         BulkUpdateOrchestrator orchestrator,
         NodeOperations nodeOps,
         EnvCreatorService envCreator,
+        EnvDeleterService envDeleter,
         SettingsRepository settingsRepo,
         GitProxyConfig gitProxy,
         Settings settings,
@@ -64,6 +66,7 @@ public class MainViewModel : ViewModelBase
         _orchestrator = orchestrator;
         _nodeOps = nodeOps;
         _envCreator = envCreator;
+        _envDeleter = envDeleter;
         _settingsRepo = settingsRepo;
         _gitProxy = gitProxy;
         _settings = settings;
@@ -88,7 +91,7 @@ public class MainViewModel : ViewModelBase
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new EnvironmentListView
         {
-            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader, _projectRoot),
+            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader, _envDeleter, _nodeOps, _projectRoot),
         };
     }
 

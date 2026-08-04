@@ -21,6 +21,8 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly BaseEnvInstaller _baseEnvInstaller;
     private readonly Settings _settings;
     private readonly BaseEnvProfileLoader _profileLoader;
+    private readonly EnvDeleterService _envDeleter;
+    private readonly NodeOperations _nodeOps;
     private readonly string _projectRoot;
 
     public ObservableCollection<Environment> Environments { get; } = new();
@@ -30,8 +32,16 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand ShowLogCommand { get; }
     public RelayCommand CreateCommand { get; }
     public RelayCommand BaseEnvCommand { get; }
+    public RelayCommand DeleteCommand { get; }
+    public RelayCommand InstallNodeCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
+
+    /// <summary>
+    /// Test seam — unit tests set this to intercept the confirmation dialog (which would
+    /// call MessageBox.Show and hang in test context). Returns true = user confirmed, false = cancelled.
+    /// </summary>
+    public Func<Environment, bool>? ConfirmDeleteOverride { get; set; }
 
     public EnvironmentListViewModel(
         EnvironmentRepository repo,
@@ -40,6 +50,8 @@ public class EnvironmentListViewModel : ViewModelBase
         BaseEnvInstaller baseEnvInstaller,
         Settings settings,
         BaseEnvProfileLoader profileLoader,
+        EnvDeleterService envDeleter,
+        NodeOperations nodeOps,
         string projectRoot)
     {
         _repo = repo;
@@ -48,6 +60,8 @@ public class EnvironmentListViewModel : ViewModelBase
         _baseEnvInstaller = baseEnvInstaller;
         _settings = settings;
         _profileLoader = profileLoader;
+        _envDeleter = envDeleter;
+        _nodeOps = nodeOps;
         _projectRoot = projectRoot;
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
@@ -64,6 +78,12 @@ public class EnvironmentListViewModel : ViewModelBase
         BaseEnvCommand = new RelayCommand(
             _ => OpenBaseEnvProgress(),
             _ => Environments.Count > 0);
+        DeleteCommand = new RelayCommand(
+            async p => await DeleteEnvAsync(p as Environment ?? Selected),
+            p => (p as Environment ?? Selected) is not null);
+        InstallNodeCommand = new RelayCommand(
+            p => OpenInstallNodePicker(p as Environment ?? Selected),
+            p => (p as Environment ?? Selected) is not null);
         Load();
     }
 
@@ -155,13 +175,6 @@ public class EnvironmentListViewModel : ViewModelBase
         LogViewerDialog.Show(env.Id, logPath);
     }
 
-    private void RaiseCommandsChanged()
-    {
-        StartCommand.RaiseCanExecuteChanged();
-        StopCommand.RaiseCanExecuteChanged();
-        ShowLogCommand.RaiseCanExecuteChanged();
-    }
-
     private void CreateEnv()
     {
         var created = Views.CreateEnvDialog.Show(_envCreator, _settings, _projectRoot, RecentBasePythonPath);
@@ -189,5 +202,85 @@ public class EnvironmentListViewModel : ViewModelBase
             return;
         }
         Views.BaseEnvProgressDialog.Show(envIds, profile, _baseEnvInstaller);
+    }
+
+    /// <summary>
+    /// DeleteEnvAsync:确认 → 调 EnvDeleterService(stop running + 删目录 + 删 SQLite 行)
+    /// → 失败弹 MessageBox,成功 reload + RaiseCommandsChanged。
+    /// </summary>
+    private async System.Threading.Tasks.Task DeleteEnvAsync(Environment? env)
+    {
+        if (env is null) return;
+
+        // Test seam 优先:设了 override 就走它(不论 true/false),不再 fall through
+        // 到 MessageBox — 测试环境没有 UI dispatcher,弹框会挂死。
+        bool confirmed;
+        if (ConfirmDeleteOverride is not null)
+        {
+            confirmed = ConfirmDeleteOverride(env);
+        }
+        else
+        {
+            var result = MessageBox.Show(
+                $"确认删除 env '{env.Name}' 吗?\n此操作会删除 env 目录及所有数据,不可撤销。",
+                "删除环境", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            confirmed = result == MessageBoxResult.Yes;
+        }
+        if (!confirmed) return;
+
+        try
+        {
+            await _envDeleter.DeleteAsync(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+        catch (EnvDeleterService.DeleteException ex)
+        {
+            MessageBox.Show(
+                $"删除 env '{env.Name}' 失败 ({ex.Code}):\n{ex.Message}",
+                "删除失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"删除 env '{env.Name}' 异常:\n{ex.Message}",
+                "删除失败", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// OpenInstallNodePicker:从 env 行点"安装节点" → 弹 CatalogEntryPickerDialog 选条目
+    /// → 弹 InstallDialog(预填 env) → 用户选则 install。
+    /// </summary>
+    private void OpenInstallNodePicker(Environment? env)
+    {
+        if (env is null) return;
+
+        if (OpenInstallPickerOverride is not null)
+        {
+            OpenInstallPickerOverride(env);
+            return;
+        }
+
+        var entry = Views.CatalogEntryPickerDialog.Show();
+        if (entry is null) return;
+
+        Views.InstallDialog.Show(_repo, _nodeOps, entry, preselectedEnvId: env.Id);
+    }
+
+    /// <summary>
+    /// Test seam — unit tests set this to intercept the picker + InstallDialog launch
+    /// (both call Application.Current.MainWindow and would throw in test context).
+    /// Receives the env the command was bound to.
+    /// </summary>
+    public Action<Environment>? OpenInstallPickerOverride { get; set; }
+
+    private void RaiseCommandsChanged()
+    {
+        StartCommand.RaiseCanExecuteChanged();
+        StopCommand.RaiseCanExecuteChanged();
+        ShowLogCommand.RaiseCanExecuteChanged();
+        DeleteCommand.RaiseCanExecuteChanged();
+        InstallNodeCommand.RaiseCanExecuteChanged();
     }
 }

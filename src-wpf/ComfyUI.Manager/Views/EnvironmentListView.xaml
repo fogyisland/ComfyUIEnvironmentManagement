@@ -21,7 +21,7 @@
                 <DataGridTextColumn Header="端口" Binding="{Binding Port}" Width="60" />
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
-                <DataGridTemplateColumn Header="操作" Width="160">
+                <DataGridTemplateColumn Header="操作" Width="260">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
@@ -35,6 +35,14 @@
                                         CommandParameter="{Binding}" />
                                 <Button Content="查看日志" Margin="2"
                                         Command="{Binding DataContext.ShowLogCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="安装节点" Margin="2"
+                                        Command="{Binding DataContext.InstallNodeCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="删除" Margin="2"
+                                        Command="{Binding DataContext.DeleteCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}" />
                             </StackPanel>

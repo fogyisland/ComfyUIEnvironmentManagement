@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Tests.Fakes;
@@ -42,6 +44,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -57,6 +61,8 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -78,6 +84,8 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -105,6 +113,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
             null!);
 
         Assert.False(vm.BaseEnvCommand.CanExecute(null));
@@ -118,6 +128,8 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -141,6 +153,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
+            null!,
+            null!,
             null!);
 
         var launched = false;
@@ -165,6 +179,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
+            null!,
+            null!,
             null!);
 
         IReadOnlyList<string>? capturedEnvIds = null;
@@ -196,6 +212,8 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -243,8 +261,101 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
             null!);
 
         Assert.Equal("/tmp/b.exe", vm.RecentBasePythonPath);
+    }
+
+    [Fact]
+    public async Task DeleteCommand_CallsDeleterWhenConfirmed_AndReloads()
+    {
+        using var db = new TestDb();
+        SeedEnv(db, "env-del", "stopped");
+
+        var repo = new EnvironmentRepository(db.Factory);
+        var processStateRepo = new ProcessStateRepository(db.Factory);
+        var launcher = new ProcessLauncher(Path.GetTempPath(), db.Factory, repo, processStateRepo);
+        var deleter = new EnvDeleterService(repo, launcher);
+
+        var vm = new EnvironmentListViewModel(
+            repo,
+            launcher,
+            null!,
+            null!,
+            null!,
+            null!,
+            deleter,
+            null!,
+            Path.GetTempPath())
+        {
+            ConfirmDeleteOverride = _ => true,
+        };
+
+        vm.Selected = vm.Environments[0];
+        vm.DeleteCommand.Execute(vm.Environments[0]);
+
+        // deleter 真删了 → repo 空 → Load 重读后 vm 也空
+        await Task.Delay(50);
+        Assert.Empty(vm.Environments);
+    }
+
+    [Fact]
+    public async Task DeleteCommand_DoesNothingWhenCancelled()
+    {
+        using var db = new TestDb();
+        SeedEnv(db, "env-keep", "stopped");
+
+        var repo = new EnvironmentRepository(db.Factory);
+        var processStateRepo = new ProcessStateRepository(db.Factory);
+        var launcher = new ProcessLauncher(Path.GetTempPath(), db.Factory, repo, processStateRepo);
+        var deleter = new EnvDeleterService(repo, launcher);
+
+        var vm = new EnvironmentListViewModel(
+            repo,
+            launcher,
+            null!,
+            null!,
+            null!,
+            null!,
+            deleter,
+            null!,
+            Path.GetTempPath())
+        {
+            ConfirmDeleteOverride = _ => false,
+        };
+
+        vm.Selected = vm.Environments[0];
+        vm.DeleteCommand.Execute(vm.Environments[0]);
+
+        await Task.Delay(50);
+        Assert.Single(vm.Environments);
+    }
+
+    [Fact]
+    public void InstallNodeCommand_PassesBoundEnvToPickerOverride()
+    {
+        using var db = new TestDb();
+        SeedEnv(db, "env-x", "stopped");
+
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            Path.GetTempPath());
+
+        Environment? captured = null;
+        vm.OpenInstallPickerOverride = env => captured = env;
+
+        vm.InstallNodeCommand.Execute(vm.Environments[0]);
+
+        Assert.NotNull(captured);
+        Assert.Equal("env-x", captured!.Id);
     }
 }
