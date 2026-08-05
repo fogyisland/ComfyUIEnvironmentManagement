@@ -26,6 +26,8 @@ public class Settings
     [JsonPropertyName("default_python_version")] public string DefaultPythonVersion { get; set; } = "3.10";
     [JsonPropertyName("envs_dir")] public string EnvsDir { get; set; } = "";
     [JsonPropertyName("global_nodes_dir")] public string GlobalNodesDir { get; set; } = "";
+    // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,默认子目录名 "local-nodes"。
+    [JsonPropertyName("local_node_directory")] public string LocalNodeDirectory { get; set; } = "";
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";

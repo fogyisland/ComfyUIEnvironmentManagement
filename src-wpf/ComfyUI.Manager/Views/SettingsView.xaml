@@ -174,6 +174,15 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
+            <TextBlock Text="本地节点目录(Catalog 主页「下载」按钮的目标)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseLocalNodeDir"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding LocalNodeDirectory, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
             <!-- ============ Python 解释器(v0.6.5.6) ============ -->
             <TextBlock Text="Python 解释器" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="可定义多个,选一个作为新建环境 auto-fill 的默认解释器"

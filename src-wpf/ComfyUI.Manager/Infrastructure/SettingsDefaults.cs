@@ -35,6 +35,7 @@ public static class SettingsDefaults
     public const string TemplateComfyuiSubdir = "ComfyUI";
     public const string EnvsSubdir = "envs";
     public const string GlobalNodesSubdir = "global-nodes";
+    public const string LocalNodesSubdir = "local-nodes";
     public const string DefaultQuerySourceName = "comfyui manager";
     public const string DefaultQuerySourceUrl =
         "https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json";
@@ -61,6 +62,8 @@ public static class SettingsDefaults
         s.TemplateComfyuiDir = Resolve(s.TemplateComfyuiDir, TemplateComfyuiSubdir, projectRoot);
         s.EnvsDir = MigrateOnly(s.EnvsDir, projectRoot);
         s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
+        // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,空字段自动填子目录名。
+        s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
 
         // 节点源:空列表 → 装默认 "comfyui manager";空 active → 回落到列表第一条
         if (s.QuerySources is null || s.QuerySources.Count == 0)

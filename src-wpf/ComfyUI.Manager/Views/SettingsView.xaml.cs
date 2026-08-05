@@ -58,6 +58,15 @@ public partial class SettingsView : UserControl
         }
     }
 
+    private void BrowseLocalNodeDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.LocalNodeDirectory = picked;
+        }
+    }
+
     private void BrowsePythonVenvBaseline(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)

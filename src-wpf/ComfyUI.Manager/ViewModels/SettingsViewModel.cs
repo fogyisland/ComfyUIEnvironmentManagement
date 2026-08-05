@@ -254,6 +254,17 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         get => _settings.GlobalNodesDir;
         set { _settings.GlobalNodesDir = value; _repo.Save(_settings); RaisePropertyChanged(); }
     }
+    // v0.6.5.9: Catalog 主页「下载」按钮的目标目录
+    public string LocalNodeDirectory
+    {
+        get => _settings.LocalNodeDirectory;
+        set
+        {
+            _settings.LocalNodeDirectory = value ?? "";
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
+    }
 
     // —— 环境 / 工具 ——
     public string PythonVenvBaseline
@@ -518,6 +529,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(EnvsDir));
         RaisePropertyChanged(nameof(DefaultPythonVersion));
         RaisePropertyChanged(nameof(GlobalNodesDir));
+        RaisePropertyChanged(nameof(LocalNodeDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
         RaisePropertyChanged(nameof(GitProxyUrl));

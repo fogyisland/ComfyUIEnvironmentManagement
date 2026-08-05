@@ -44,6 +44,16 @@ public partial class App : Application
         SettingsDefaults.Apply(settings, projectRoot);
         settingsRepo.Save(settings);
 
+        // v0.6.5.9: 首次启动预创建本地节点目录,失败静默(用户运行期 DownloadAsync 还会再兜底 CreateDirectory)。
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(projectRoot, settings.LocalNodeDirectory));
+        }
+        catch
+        {
+            // 权限/盘满/路径非法 → 静默,运行时再 CreateDirectory 兜底
+        }
+
         // M5.2-T6: bulk update 在 WPF 端直接跑 git pull,git exe 优先用
         // bin/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
         // settings.GitExe 优先,settings 是空则走默认。
