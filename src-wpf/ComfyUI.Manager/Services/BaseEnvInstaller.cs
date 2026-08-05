@@ -111,6 +111,23 @@ public class BaseEnvInstaller
                 continue;
             }
 
+            // G1: 进入 pip 之前立刻写 installing,UI 立刻看到 ⏳ 装中,
+            // 同一行 StartCommand 立即 disabled(已有 v0.6.5.7 门控)。
+            // 单 env 写失败不致命(envRepo 不可写概率几乎 0,跟终态回写 try/catch 一致)。
+            try
+            {
+                var live = _envRepo.Get(envId);
+                if (live is not null)
+                {
+                    live.BedStatus = "installing";
+                    _envRepo.Upsert(live);
+                }
+            }
+            catch
+            {
+                // 写失败不致命,继续装(终态回写仍会写 done/failed)
+            }
+
             progress?.Report(new BaseEnvProgress(
                 BaseEnvStatus.Running, completed, total,
                 envId, env.Name, 0, $"开始安装 ({env.Name})", null));
