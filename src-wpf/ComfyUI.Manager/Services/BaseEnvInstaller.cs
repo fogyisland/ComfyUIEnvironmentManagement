@@ -403,4 +403,40 @@ public class BaseEnvInstaller
     {
         try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
     }
+
+    /// <summary>
+    /// 启动 reconciliation:把所有 BedStatus == "installing" 的 env 翻成
+    /// "failed" + BedFailedReason = "上次未完成"。
+    ///
+    /// WPF 重启后没有跨进程 job 持久化,这些行只能来自:
+    ///   1) 上次 WPF 强杀(任务管理器 / 断电 / OS 重启),pip 进程已死
+    ///   2) 上次 WPF 正常退出但 pip 还在跑(理论上 OnExit 应 cancel + drain,
+    ///      但 v0.6.5.6 之前没这个保证)
+    /// 不做更细的判断(无法知道 venv 是否真的有 torch),统一标 failed 让
+    /// 用户重跑,启动按钮 enabled + tooltip 提示 "上次未完成"。
+    /// </summary>
+    public static int ReconcileStaleOnStartup(EnvironmentRepository envRepo)
+    {
+        if (envRepo is null) throw new ArgumentNullException(nameof(envRepo));
+
+        var stale = 0;
+        foreach (var env in envRepo.ListAll())
+        {
+            if (env.BedStatus == "installing")
+            {
+                env.BedStatus = "failed";
+                env.BedFailedReason = "上次未完成";
+                try
+                {
+                    envRepo.Upsert(env);
+                    stale++;
+                }
+                catch
+                {
+                    // 单行写失败不致命,下次启动再翻
+                }
+            }
+        }
+        return stale;
+    }
 }

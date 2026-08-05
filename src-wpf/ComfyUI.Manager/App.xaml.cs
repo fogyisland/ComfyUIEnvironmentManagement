@@ -28,6 +28,12 @@ public partial class App : Application
 
         var dbFactory = new SqliteConnectionFactory();
         var envRepo = new EnvironmentRepository(dbFactory);
+
+        // v0.6.5.8: 启动 reconciliation — 把上次未装完的 "installing" 行翻成
+        // "failed" + "上次未完成"。必须先于 MainViewModel.Load(),否则 UI 看到
+        // ⏳ 装中 几秒后变 ❌ 闪烁。
+        BaseEnvInstaller.ReconcileStaleOnStartup(envRepo);
+
         var nodeRepo = new NodeRepository(dbFactory);
         var processStateRepo = new ProcessStateRepository(dbFactory);
         _launcher = new ProcessLauncher(
