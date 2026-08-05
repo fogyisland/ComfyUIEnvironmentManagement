@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
@@ -25,7 +26,7 @@ public sealed class RequirementsInstallerTests : IDisposable
         try { Directory.Delete(_tempRoot, recursive: true); } catch { }
     }
 
-    private Environment SeedEnv(string id, string root, string venvPath)
+    private Environment SeedEnv(string id, string root, string venvPath, string? comfyuiSource = null)
     {
         // 写一个假的 venv python 文件,避免 ResolveVenvPython 抛
         Directory.CreateDirectory(venvPath);
@@ -36,6 +37,10 @@ public sealed class RequirementsInstallerTests : IDisposable
             Id = id,
             Name = id,
             RootPath = root,
+            // 默认 ComfyuiSource = root(模拟 shared 布局,ComfyUI 源路径 =
+            // env.RootPath — 测试 fixture 在该目录下建 requirements.txt)。
+            // 独立布局测试可以显式覆盖 comfyuiSource。
+            ComfyuiSource = comfyuiSource ?? root,
             VenvPath = venvPath,
             PythonExecutable = fakePy,
             CustomNodesPath = Path.Combine(root, "nodes"),
@@ -210,11 +215,138 @@ public sealed class RequirementsInstallerTests : IDisposable
             fake.InstallAsync(null!, logProgress: null, CancellationToken.None));
     }
 
+    // ----- v0.6.5.17 hotfix:requirements.txt 候选路径(ComfyuiSource 优先) -----
+
+    [Fact]
+    public async Task InstallAsync_IndependentLayout_PrefersComfyuiSourceRequirementsTxt()
+    {
+        // 独立布局:ComfyuiSource = <env-root>/ComfyUI,文件写在 <env-root>/ComfyUI/requirements.txt
+        // 跟根目录同名文件不混淆 — 候选路径应当只解析到 ComfyuiSource 那份。
+        var rootComfyui = Path.Combine(_tempRoot, "ComfyUI");
+        Directory.CreateDirectory(rootComfyui);
+        File.WriteAllLines(Path.Combine(rootComfyui, "requirements.txt"),
+            new[] { "FROM_COMFYUI_SOURCE" });
+        // 根目录放一个无关文件,确保候选不会错选它。
+        File.WriteAllLines(Path.Combine(_tempRoot, "requirements.txt"),
+            new[] { "FROM_ROOT_FALLBACK" });
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"),
+            comfyuiSource: rootComfyui);
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+
+        await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.NotEmpty(fake.CapturedPipArgs);
+        // pip args 包含 -r <path>,path 是 filtered 文件。
+        var rIndex = fake.CapturedPipArgs.IndexOf("-r");
+        Assert.True(rIndex >= 0 && rIndex + 1 < fake.CapturedPipArgs.Count);
+        var rPath = fake.CapturedPipArgs[rIndex + 1];
+        var filteredPath = Path.Combine(_tempRoot, RequirementsInstaller.FilteredRequirementsFileName);
+        Assert.Equal(filteredPath, rPath);
+        // filtered 内容来自 ComfyuiSource 那份(FROM_COMFYUI_SOURCE),
+        // 不是根目录那份(FROM_ROOT_FALLBACK)。
+        Assert.Contains("FROM_COMFYUI_SOURCE", fake.CapturedFilteredContent);
+        Assert.DoesNotContain("FROM_ROOT_FALLBACK", fake.CapturedFilteredContent);
+        // 过滤文件已清理
+        Assert.False(File.Exists(filteredPath));
+    }
+
+    [Fact]
+    public async Task InstallAsync_NoComfyuiSource_FallsBackToRootPath()
+    {
+        // 老 env(ComfyuiSource 为空)— fallback 到 <env-root>/requirements.txt
+        WriteRequirements(_tempRoot, "SQLAlchemy");
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        env.ComfyuiSource = null;  // 清掉默认
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+
+        var result = await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.True(RequirementsInstaller.IsInstalled(env));
+    }
+
+    [Fact]
+    public async Task InstallAsync_NoComfyuiSource_FallsBackToRootComfyUIDir()
+    {
+        // 老 env(ComfyuiSource 为空)但 <env-root>/ComfyUI/requirements.txt 存在
+        // → 应当 fallback 到那里,不是根目录。
+        var rootComfyui = Path.Combine(_tempRoot, "ComfyUI");
+        Directory.CreateDirectory(rootComfyui);
+        File.WriteAllLines(Path.Combine(rootComfyui, "requirements.txt"),
+            new[] { "FROM_ROOT_COMFYUI_DIR" });
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        env.ComfyuiSource = null;
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+
+        await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.NotEmpty(fake.CapturedPipArgs);
+        var rIndex = fake.CapturedPipArgs.IndexOf("-r");
+        var rPath = fake.CapturedPipArgs[rIndex + 1];
+        var filteredPath = Path.Combine(_tempRoot, RequirementsInstaller.FilteredRequirementsFileName);
+        Assert.Equal(filteredPath, rPath);
+        Assert.Contains("FROM_ROOT_COMFYUI_DIR", fake.CapturedFilteredContent);
+    }
+
+    [Fact]
+    public async Task InstallAsync_NoRequirementsAnywhere_ListsAllTriedPathsInError()
+    {
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        var fake = new FakeRequirementsInstaller();
+
+        var result = await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.NotNull(result.Reason);
+        // 错误信息列出所有尝试路径,方便用户诊断(env.ComfyuiSource +
+        // <env-root>/ComfyUI/requirements.txt + <env-root>/requirements.txt)
+        Assert.Contains("requirements.txt", result.Reason);
+        Assert.Contains("ComfyUI", result.Reason);
+    }
+
+    [Fact]
+    public void ResolveRequirementsCandidates_ComfyuiSourceFirst()
+    {
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"),
+            comfyuiSource: Path.Combine(_tempRoot, "ComfyUI"));
+
+        var candidates = RequirementsInstaller.ResolveRequirementsCandidates(env);
+
+        Assert.Equal(3, candidates.Count);
+        Assert.Equal(Path.Combine(_tempRoot, "ComfyUI", "requirements.txt"), candidates[0]);
+        Assert.Equal(Path.Combine(_tempRoot, "ComfyUI", "requirements.txt"), candidates[1]);
+        Assert.Equal(Path.Combine(_tempRoot, "requirements.txt"), candidates[2]);
+    }
+
+    [Fact]
+    public void ResolveRequirementsCandidates_NoComfyuiSource_OnlyRootPaths()
+    {
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        env.ComfyuiSource = null;
+
+        var candidates = RequirementsInstaller.ResolveRequirementsCandidates(env);
+
+        Assert.Equal(2, candidates.Count);
+        Assert.Equal(Path.Combine(_tempRoot, "ComfyUI", "requirements.txt"), candidates[0]);
+        Assert.Equal(Path.Combine(_tempRoot, "requirements.txt"), candidates[1]);
+    }
+
     private sealed class FakeRequirementsInstaller : RequirementsInstaller
     {
         public PipResult NextResult { get; set; } = new(0, false);
         public int RunCount { get; private set; }
         public List<string> CapturedPipArgs { get; } = new();
+
+        /// <summary>
+        /// 跑 pip 时(InstallAsync 已写完 filtered 文件)读取并捕获,
+        /// 让测试能验证 InstallAsync 选了哪个源的 requirements.txt。
+        /// FakeInstaller 不真跑 pip,InstallAsync 后续会清掉 filtered 文件,
+        /// 所以这里读一次就存住。
+        /// </summary>
+        public string? CapturedFilteredContent { get; private set; }
 
         protected override Task<PipResult> RunPipAsync(
             string pythonExe,
@@ -224,6 +356,17 @@ public sealed class RequirementsInstallerTests : IDisposable
         {
             RunCount++;
             foreach (var a in pipArgs) CapturedPipArgs.Add(a);
+            // pipArgs 是 ["install", "-r", filteredPath, ...],IReadOnlyList 没 IndexOf,转成 List。
+            var asList = pipArgs as IList<string> ?? pipArgs.ToList();
+            var rIdx = asList.IndexOf("-r");
+            if (rIdx >= 0 && rIdx + 1 < asList.Count)
+            {
+                var p = asList[rIdx + 1];
+                if (File.Exists(p))
+                {
+                    CapturedFilteredContent = File.ReadAllText(p);
+                }
+            }
             return Task.FromResult(NextResult);
         }
     }

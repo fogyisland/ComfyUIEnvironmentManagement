@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -82,10 +83,11 @@ public class RequirementsInstaller
 
         _logger?.Info("requirements", $"env='{env.Name}' 开始装 requirements.txt");
 
-        var requirementsPath = Path.Combine(env.RootPath, "requirements.txt");
-        if (!File.Exists(requirementsPath))
+        var candidates = ResolveRequirementsCandidates(env);
+        var requirementsPath = candidates.FirstOrDefault(File.Exists);
+        if (requirementsPath is null)
         {
-            var reason = $"找不到 requirements.txt(已尝试:{requirementsPath})";
+            var reason = $"找不到 ComfyUI 的 requirements.txt(已尝试:{string.Join(" | ", candidates)})";
             LogResult(env.Name, "failed", reason);
             return new RequirementsInstallResult(
                 Success: false,
@@ -178,6 +180,32 @@ public class RequirementsInstaller
             : $"env='{envName}' {status} — {reason}";
         if (status == "succeeded") _logger.Info("requirements", msg);
         else _logger.Error("requirements", msg);
+    }
+
+    /// <summary>
+    /// 列出 env 里 requirements.txt 的可能路径,按优先级排序。
+    /// <list type="number">
+    /// <item><c>env.ComfyuiSource/requirements.txt</c> — env-create 设置的 ComfyUI
+    ///   源路径(independent = <c>&lt;env-root&gt;/ComfyUI</c>,shared = 用户指定的
+    ///   原始源)。装的是这个 ComfyUI 的依赖,放第一。</item>
+    /// <item><c>&lt;env-root&gt;/ComfyUI/requirements.txt</c> — 老 env 没填
+    ///   <c>ComfyuiSource</c> 字段,但 env 根下确实有 ComfyUI 子目录。</item>
+    /// <item><c>&lt;env-root&gt;/requirements.txt</c> — 老 env 把 requirements.txt
+    ///   直接放在 env 根目录(v0.6.5.12 之前的 fallback)。</item>
+    /// </list>
+    /// 返回的列表原样给调用方遍历,第一个存在的文件被选中;全部都不存在时
+    /// 错误消息会列出全部尝试路径,方便用户诊断。
+    /// </summary>
+    internal static IReadOnlyList<string> ResolveRequirementsCandidates(Environment env)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(env.ComfyuiSource))
+        {
+            candidates.Add(Path.Combine(env.ComfyuiSource, "requirements.txt"));
+        }
+        candidates.Add(Path.Combine(env.RootPath, "ComfyUI", "requirements.txt"));
+        candidates.Add(Path.Combine(env.RootPath, "requirements.txt"));
+        return candidates;
     }
 
     private static string ResolveVenvPython(Environment env)

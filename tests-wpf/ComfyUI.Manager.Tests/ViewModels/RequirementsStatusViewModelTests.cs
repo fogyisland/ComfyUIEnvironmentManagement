@@ -129,7 +129,7 @@ public sealed class RequirementsStatusViewModelTests : IDisposable
 
         Assert.True(vm.IsComplete);
         Assert.True(vm.HasError);
-        Assert.Contains("找不到 requirements.txt", vm.Error);
+        Assert.Contains("找不到 ComfyUI 的 requirements.txt", vm.Error);
     }
 
     [Fact]
