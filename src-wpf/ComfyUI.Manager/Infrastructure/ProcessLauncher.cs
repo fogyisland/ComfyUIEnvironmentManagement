@@ -82,7 +82,19 @@ public sealed class ProcessLauncher : IDisposable
     /// - TimeoutException:30s 内 port 未 listen(进程会被 kill)
     /// - ServiceLaunchException:Process.Start 失败 / 返回 null
     /// </summary>
-    public async Task StartEnvAsync(Environment env, CancellationToken ct = default)
+    public Task StartEnvAsync(Environment env, CancellationToken ct = default)
+        => StartEnvAsync(env, stageProgress: null, logProgress: null, ct);
+
+    /// <summary>
+    /// 重载:带 stage + log progress 报告。
+    /// stageProgress 在 3 个里程碑被调用(激活本地环境 / 在环境中启用 / 完成),
+    /// logProgress 在每行 stdout/stderr 被调用。
+    /// </summary>
+    public async Task StartEnvAsync(
+        Environment env,
+        IProgress<string>? stageProgress,
+        IProgress<string>? logProgress,
+        CancellationToken ct = default)
     {
         if (env is null) throw new ArgumentNullException(nameof(env));
         if (_disposed) throw new ObjectDisposedException(nameof(ProcessLauncher));
@@ -96,109 +108,123 @@ public sealed class ProcessLauncher : IDisposable
             }
         }
 
-        var pythonExe = ResolvePythonExecutable(env);
-        var mainPy = ResolveMainPy(env);
-        if (!File.Exists(mainPy))
-        {
-            throw new InvalidOperationException(
-                $"找不到 main.py(已尝试:{mainPy})");
-        }
-
-        var port = env.Port
-            ?? throw new ArgumentException(
-                $"env '{env.Name}' 未配置 Port", nameof(env));
-
-        if (IsPortInUse("127.0.0.1", port))
-        {
-            throw new ServiceLaunchException(
-                $"端口 {port} 已被占用,无法启动 env '{env.Name}'");
-        }
-
-        var logPath = LogFilePath(env.Id);
-        Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = pythonExe,
-            WorkingDirectory = Path.GetDirectoryName(mainPy)!,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add(mainPy);
-        psi.ArgumentList.Add("--port");
-        psi.ArgumentList.Add(port.ToString());
-        psi.ArgumentList.Add("--listen");
-        psi.ArgumentList.Add("127.0.0.1");
-        psi.EnvironmentVariables["PYTHONPATH"] =
-            $"{_projectRoot};{Path.Combine(_projectRoot, "src")}";
-
-        Process? process = null;
         try
         {
-            process = Process.Start(psi);
+            var pythonExe = ResolvePythonExecutable(env);
+            stageProgress?.Report("stage:激活本地环境");
+            var mainPy = ResolveMainPy(env);
+            if (!File.Exists(mainPy))
+            {
+                throw new InvalidOperationException(
+                    $"找不到 main.py(已尝试:{mainPy})");
+            }
+
+            var port = env.Port
+                ?? throw new ArgumentException(
+                    $"env '{env.Name}' 未配置 Port", nameof(env));
+
+            if (IsPortInUse("127.0.0.1", port))
+            {
+                throw new ServiceLaunchException(
+                    $"端口 {port} 已被占用,无法启动 env '{env.Name}'");
+            }
+
+            var logPath = LogFilePath(env.Id);
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = pythonExe,
+                WorkingDirectory = Path.GetDirectoryName(mainPy)!,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add(mainPy);
+            psi.ArgumentList.Add("--port");
+            psi.ArgumentList.Add(port.ToString());
+            psi.ArgumentList.Add("--listen");
+            psi.ArgumentList.Add("127.0.0.1");
+            psi.EnvironmentVariables["PYTHONPATH"] =
+                $"{_projectRoot};{Path.Combine(_projectRoot, "src")}";
+
+            Process? process = null;
+            try
+            {
+                process = Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                throw new ServiceLaunchException(
+                    $"无法启动 python 进程: {ex.Message}", ex);
+            }
+
+            if (process is null)
+            {
+                throw new ServiceLaunchException(
+                    $"Process.Start 返回 null(env '{env.Name}')");
+            }
+
+            stageProgress?.Report("stage:在环境中启用");
+
+            var entry = new ProcessEntry(process, logPath);
+            lock (_runningLock)
+            {
+                _running[env.Id] = entry;
+            }
+
+            // 后台 reader + Exited 监听 —— 必须在 WaitForPort 之前挂上,
+            // 否则端口 listen 后 stdout 早就写到 pipe 里会丢。
+            AttachStdoutReader(entry, logProgress);
+            AttachStderrReader(entry, logProgress);
+            AttachExitedHandler(env.Id, env.Name, entry);
+
+            try
+            {
+                await WaitForPortAsync("127.0.0.1", port, TimeSpan.FromSeconds(30), ct);
+            }
+            catch
+            {
+                // 端口没起来:kill 进程、清空状态、清理 _running
+                TryKillProcessTree(process);
+                lock (_runningLock)
+                {
+                    _running.Remove(env.Id);
+                }
+                throw;
+            }
+
+            stageProgress?.Report("stage:完成");
+
+            // 成功路径:写 process_state + environments
+            var now = DateTime.UtcNow;
+            _processStateRepo.Upsert(new ProcessState
+            {
+                EnvId = env.Id,
+                Pid = process.Id,
+                Port = port,
+                StartedAt = now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            });
+
+            // 更新 env row(用最新状态,避免覆盖其它字段)
+            var fresh = _envRepo.Get(env.Id) ?? env;
+            fresh.Status = "running";
+            fresh.Pid = process.Id;
+            try
+            {
+                _envRepo.Upsert(fresh);
+            }
+            catch
+            {
+                // env row 写失败不致命 —— 进程已启动,后续 reload 也能查到 process_state
+            }
         }
         catch (Exception ex)
         {
-            throw new ServiceLaunchException(
-                $"无法启动 python 进程: {ex.Message}", ex);
-        }
-
-        if (process is null)
-        {
-            throw new ServiceLaunchException(
-                $"Process.Start 返回 null(env '{env.Name}')");
-        }
-
-        var entry = new ProcessEntry(process, logPath);
-        lock (_runningLock)
-        {
-            _running[env.Id] = entry;
-        }
-
-        // 后台 reader + Exited 监听 —— 必须在 WaitForPort 之前挂上,
-        // 否则端口 listen 后 stdout 早就写到 pipe 里会丢。
-        AttachStdoutReader(entry);
-        AttachStderrReader(entry);
-        AttachExitedHandler(env.Id, env.Name, entry);
-
-        try
-        {
-            await WaitForPortAsync("127.0.0.1", port, TimeSpan.FromSeconds(30), ct);
-        }
-        catch
-        {
-            // 端口没起来:kill 进程、清空状态、清理 _running
-            TryKillProcessTree(process);
-            lock (_runningLock)
-            {
-                _running.Remove(env.Id);
-            }
+            stageProgress?.Report($"stage:激活本地环境");
+            logProgress?.Report($"[error] {ex.Message}");
             throw;
-        }
-
-        // 成功路径:写 process_state + environments
-        var now = DateTime.UtcNow;
-        _processStateRepo.Upsert(new ProcessState
-        {
-            EnvId = env.Id,
-            Pid = process.Id,
-            Port = port,
-            StartedAt = now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
-        });
-
-        // 更新 env row(用最新状态,避免覆盖其它字段)
-        var fresh = _envRepo.Get(env.Id) ?? env;
-        fresh.Status = "running";
-        fresh.Pid = process.Id;
-        try
-        {
-            _envRepo.Upsert(fresh);
-        }
-        catch
-        {
-            // env row 写失败不致命 —— 进程已启动,后续 reload 也能查到 process_state
         }
     }
 
@@ -328,7 +354,7 @@ public sealed class ProcessLauncher : IDisposable
         return nested;
     }
 
-    private void AttachStdoutReader(ProcessEntry entry)
+    private void AttachStdoutReader(ProcessEntry entry, IProgress<string>? logProgress = null)
     {
         var process = entry.Process;
         var logPath = entry.LogFilePath;
@@ -346,6 +372,7 @@ public sealed class ProcessLauncher : IDisposable
                 string? line;
                 while ((line = await process.StandardOutput.ReadLineAsync()) is not null)
                 {
+                    logProgress?.Report(line);
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
                     await writer.WriteLineAsync($"[{ts}] [pid {pid}] OUT: {line}");
                 }
@@ -357,7 +384,7 @@ public sealed class ProcessLauncher : IDisposable
         });
     }
 
-    private void AttachStderrReader(ProcessEntry entry)
+    private void AttachStderrReader(ProcessEntry entry, IProgress<string>? logProgress = null)
     {
         var process = entry.Process;
         var logPath = entry.LogFilePath;
@@ -375,6 +402,7 @@ public sealed class ProcessLauncher : IDisposable
                 string? line;
                 while ((line = await process.StandardError.ReadLineAsync()) is not null)
                 {
+                    logProgress?.Report(line);
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
                     await writer.WriteLineAsync($"[{ts}] [pid {pid}] ERR: {line}");
                 }

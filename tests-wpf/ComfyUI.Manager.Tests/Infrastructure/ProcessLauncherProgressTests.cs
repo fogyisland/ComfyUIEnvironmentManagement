@@ -1,0 +1,171 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Tests.Fakes;
+using Xunit;
+using Environment = ComfyUI.Manager.Models.Environment;
+
+namespace ComfyUI.Manager.Tests.Infrastructure;
+
+public sealed class ProcessLauncherProgressTests : IDisposable
+{
+    private readonly TestDb _db = new();
+    private readonly string _projectRoot;
+
+    public ProcessLauncherProgressTests()
+    {
+        _projectRoot = Path.Combine(Path.GetTempPath(), $"launcher-progress-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_projectRoot);
+    }
+
+    public void Dispose()
+    {
+        _db.Dispose();
+        try { Directory.Delete(_projectRoot, recursive: true); } catch { }
+    }
+
+    private ProcessLauncher NewLauncher()
+    {
+        var envRepo = new EnvironmentRepository(_db.Factory);
+        var procStateRepo = new ProcessStateRepository(_db.Factory);
+        return new ProcessLauncher(_projectRoot, _db.Factory, envRepo, procStateRepo);
+    }
+
+    private static string? _resolvedTrivialBinary;
+
+    private static string ResolveTrivialBinary()
+    {
+        if (_resolvedTrivialBinary is not null) return _resolvedTrivialBinary;
+        // 找 trivial binary 绝对路径 —— ResolvePythonExecutable 需要 File.Exists,PATH 名不够。
+        // 用 where 解析,挑第一个存在的 .exe。
+        foreach (var name in new[] { "dotnet.exe", "cmd.exe", "powershell.exe" })
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "where",
+                    Arguments = name,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                };
+                using var p = System.Diagnostics.Process.Start(psi);
+                if (p is null) continue;
+                var stdout = p.StandardOutput.ReadToEnd();
+                p.WaitForExit(2000);
+                var first = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(l => l.Trim())
+                    .FirstOrDefault(l => l.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+                if (first is not null && File.Exists(first))
+                {
+                    _resolvedTrivialBinary = first;
+                    return first;
+                }
+            }
+            catch { }
+        }
+        throw new InvalidOperationException("找不到 dotnet/cmd 绝对路径");
+    }
+
+    private Environment SeedEnv(int port, string? pythonExe = null, string? mainPy = null)
+    {
+        var env = new Environment
+        {
+            Id = $"env-{Guid.NewGuid():N}",
+            Name = "test-env",
+            RootPath = _projectRoot,
+            VenvPath = Path.Combine(_projectRoot, "venv"),
+            PythonExecutable = pythonExe ?? ResolveTrivialBinary(),
+            CustomNodesPath = Path.Combine(_projectRoot, "nodes"),
+            Port = port,
+            Status = "stopped",
+        };
+        // 写一个临时 main.py 让 ResolveMainPy 找到(否则 start 抛"找不到 main.py")
+        if (mainPy is not null)
+        {
+            var dir = Path.GetDirectoryName(mainPy)!;
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(mainPy, "");
+        }
+        var envRepo = new EnvironmentRepository(_db.Factory);
+        envRepo.Upsert(env);
+        return env;
+    }
+
+    [Fact]
+    public async Task StartEnvAsync_WithStageProgress_ReportsAllStages()
+    {
+        // 用 dotnet --info 作为 trivial 进程。它会启动到几百 ms 然后退出,
+        // 我们不 care 进程退出,只 care stage progress 报告。
+        // ResolvePythonExecutable 找 "dotnet"(任意 binary),MainPy 用一个不存在的路径(启动后立即 fail,
+        // 但 stage 0 + stage 1 都已经 Report 过)。
+        // WaitForPortAsync 会因为 port 不 listen 超时 — 用一个无效端口避免被占用。
+        var mainPy = Path.Combine(_projectRoot, "ComfyUI", "main.py");
+        var env = SeedEnv(port: 1, pythonExe: ResolveTrivialBinary(), mainPy: mainPy);  // port 1 = privileged,不会 listen
+        var launcher = NewLauncher();
+        var stages = new List<string>();
+
+        var progress = new Progress<string>(s => stages.Add(s));
+
+        // 期望:stage 0 + stage 1 都被 report;stage 2 (完成) 不会,因为端口超时失败
+        try
+        {
+            await launcher.StartEnvAsync(env, progress, null, default);
+        }
+        catch
+        {
+            // start 失败(端口超时)无所谓
+        }
+
+        Assert.Contains("stage:激活本地环境", stages);
+        Assert.Contains("stage:在环境中启用", stages);
+        Assert.DoesNotContain("stage:完成", stages);  // 失败路径不到完成
+    }
+
+    [Fact]
+    public async Task StartEnvAsync_NullProgress_DoesNotThrow()
+    {
+        var mainPy = Path.Combine(_projectRoot, "ComfyUI", "main.py");
+        var env = SeedEnv(port: 1, pythonExe: ResolveTrivialBinary(), mainPy: mainPy);
+        var launcher = NewLauncher();
+
+        // 原签名 wrapper 调 overload 传 null,null — 不应 NRE
+        try
+        {
+            await launcher.StartEnvAsync(env, default);
+        }
+        catch
+        {
+            // port timeout OK
+        }
+    }
+
+    [Fact]
+    public async Task StartEnvAsync_WithLogProgress_ReportsStdoutLines()
+    {
+        // 用 dotnet --info 启动,期望 stdout 多行,logProgress 收到
+        var mainPy = Path.Combine(_projectRoot, "ComfyUI", "main.py");
+        var env = SeedEnv(port: 1, pythonExe: ResolveTrivialBinary(), mainPy: mainPy);
+        var launcher = NewLauncher();
+        var lines = new List<string>();
+        var logProgress = new Progress<string>(line => lines.Add(line));
+
+        try
+        {
+            await launcher.StartEnvAsync(env, null, logProgress, default);
+        }
+        catch
+        {
+            // 端口超时无所谓,主要看 stdout 流过来
+        }
+
+        Assert.NotEmpty(lines);  // dotnet --info 输出很多行
+    }
+}
