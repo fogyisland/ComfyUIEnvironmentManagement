@@ -92,11 +92,12 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     // ----- Hardcoded defaults (renamed from GetDefaults_*) -----
 
     [Fact]
-    public void GetHardcodedDefaults_ReturnsExactlyFiveProfiles()
+    public void GetHardcodedDefaults_ReturnsExactlySevenProfiles()
     {
+        // v0.6.5.18: hardcoded 路径生成 5 stable (cu118/121/124/126/128) + 1 nightly cu121 + 1 cpu
         var loader = new BaseEnvProfileLoader(_tempDir);
         var defaults = loader.GetHardcodedDefaults();
-        Assert.Equal(5, defaults.Count);
+        Assert.Equal(7, defaults.Count);
     }
 
     [Fact]
@@ -107,8 +108,32 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         Assert.Contains("pytorch-2.1-cu118-stable", ids);
         Assert.Contains("pytorch-2.1-cu121-stable", ids);
         Assert.Contains("pytorch-2.1-cu124-stable", ids);
+        Assert.Contains("pytorch-2.1-cu126-stable", ids);
+        Assert.Contains("pytorch-2.1-cu128-stable", ids);
         Assert.Contains("pytorch-nightly-cu121", ids);
         Assert.Contains("pytorch-2.1-cpu", ids);
+    }
+
+    [Fact]
+    public void GetHardcodedDefaults_Cu128Profile_HasExpectedFields()
+    {
+        // v0.6.5.18: cu128 加进 hardcoded defaults(fallback 路径也得有)
+        var loader = new BaseEnvProfileLoader(_tempDir);
+        var p = loader.GetHardcodedDefaults().Single(x => x.Id == "pytorch-2.1-cu128-stable");
+        Assert.Equal("2.1.0", p.TorchVersion);
+        Assert.Equal("cu128", p.CudaVersion);
+        Assert.Equal("stable", p.Channel);
+        Assert.Equal(new[] { "torch", "torchaudio", "torchvision", "xformers" }, p.Packages);
+    }
+
+    [Fact]
+    public void GetHardcodedDefaults_FirstProfileIsCu118_ForBackwardCompat()
+    {
+        // 历史默认一直是 cu118(v0.6.5 之前),保留第一项让已有 env 的 BED 列还能
+        // 显示,用户手动重选才能改 CUDA。
+        var loader = new BaseEnvProfileLoader(_tempDir);
+        var first = loader.GetHardcodedDefaults()[0];
+        Assert.Equal("cu118", first.CudaVersion);
     }
 
     [Fact]
@@ -149,10 +174,10 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public async Task LoadAsync_FallsBackWhenFileMissing()
     {
-        // File does not exist, no HttpClient → hardcoded defaults (5 profiles).
+        // File does not exist, no HttpClient → hardcoded defaults (7 profiles).
         var loader = new BaseEnvProfileLoader(_tempDir);
         var profiles = await loader.LoadAsync();
-        Assert.Equal(5, profiles.Count);
+        Assert.Equal(7, profiles.Count);
         Assert.Contains(profiles, p => p.Id == "pytorch-2.1-cu118-stable");
     }
 
@@ -205,7 +230,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         var profiles = await loader.LoadAsync();
 
         // Graceful fallback to hardcoded defaults (no HttpClient).
-        Assert.Equal(5, profiles.Count);
+        Assert.Equal(7, profiles.Count);
         Assert.Contains(profiles, p => p.Id == "pytorch-2.1-cu118-stable");
     }
 
@@ -218,7 +243,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         var loader = new BaseEnvProfileLoader(_tempDir);
         var profiles = await loader.LoadAsync();
 
-        Assert.Equal(5, profiles.Count);
+        Assert.Equal(7, profiles.Count);
     }
 
     [Fact]
@@ -239,7 +264,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         var loader = new BaseEnvProfileLoader(_tempDir);
         using var cts = new CancellationTokenSource();
         var profiles = await loader.LoadAsync(cts.Token);
-        Assert.Equal(5, profiles.Count);
+        Assert.Equal(7, profiles.Count);
     }
 
     [Fact]
@@ -268,21 +293,24 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     }
 
     [Fact]
-    public async Task GetLiveDefaults_GeneratesSixProfiles()
+    public async Task GetLiveDefaults_GeneratesSevenProfiles()
     {
+        // v0.6.5.18: live 路径默认生成 5 stable (cu118/121/124/126/128) + 1 nightly cu126 + 1 cpu
         var loader = new BaseEnvProfileLoader(_tempDir, FreshCacheDir(), MockedHttpClient(SampleHtml));
 
         var profiles = await loader.GetLiveDefaultsAsync();
 
-        Assert.Equal(6, profiles.Count);
+        Assert.Equal(7, profiles.Count);
         var cudas = profiles.Select(p => p.CudaVersion).ToList();
         Assert.Contains("cu118", cudas);
         Assert.Contains("cu121", cudas);
         Assert.Contains("cu124", cudas);
         Assert.Contains("cu126", cudas);
+        Assert.Contains("cu128", cudas);
         Assert.Contains("cpu", cudas);
         Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu126");
         Assert.Contains(profiles, p => p.Id == "pytorch-2.13.0-cu126-stable");
+        Assert.Contains(profiles, p => p.Id == "pytorch-2.13.0-cu128-stable");
     }
 
     [Fact]
@@ -302,13 +330,13 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public async Task GetLiveDefaults_FallsBackOnFetcherReturnsNull()
     {
-        // 404 → fetcher returns null → hardcoded 5 profiles (nightly cu121).
+        // 404 → fetcher returns null → hardcoded 7 profiles (nightly cu121).
         var loader = new BaseEnvProfileLoader(
             _tempDir, FreshCacheDir(), MockedHttpClient("not found", HttpStatusCode.NotFound));
 
         var profiles = await loader.GetLiveDefaultsAsync();
 
-        Assert.Equal(5, profiles.Count);
+        Assert.Equal(7, profiles.Count);
         Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu121");
         Assert.Contains(profiles, p => p.Id == "pytorch-2.1-cu118-stable");
     }
@@ -332,7 +360,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
 
         // Cache hit → HTTP never called → cached "2.9.9" used, not fetched "2.13.0".
         Assert.Equal(0, httpCalls);
-        Assert.Equal(6, profiles.Count);
+        Assert.Equal(7, profiles.Count);
         Assert.All(profiles.Where(p => p.Channel == "stable"), p => Assert.Equal("2.9.9", p.TorchVersion));
     }
 
@@ -366,7 +394,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
 
         var profiles = await loader.GetLiveDefaultsAsync();
 
-        Assert.Equal(5, profiles.Count);
+        Assert.Equal(7, profiles.Count);
         Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu121");
     }
 

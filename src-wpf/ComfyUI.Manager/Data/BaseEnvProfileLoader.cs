@@ -108,8 +108,10 @@ public sealed class BaseEnvProfileLoader
     }
 
     /// <summary>
-    /// v0.6.5 硬编码 5 个默认 profile(fetcher 失败 / 无 HTTP 时回退)。
-    /// 先后顺序即 UI 展示顺序。字面量 "2.1.0" / "nightly" 刻意保留。
+    /// v0.6.5 硬编码 6 个默认 profile(fetcher 失败 / 无 HTTP 时回退)。
+    /// 先后顺序即 UI 展示顺序;cu118 第一个是历史默认(v0.6.5 之前一直
+    /// 是这个,保持兼容性 — 已有 env 的 BED 列还能显示)。字面量
+    /// "2.1.0" / "nightly" 刻意保留。
     /// </summary>
     public IReadOnlyList<BaseEnvProfile> GetHardcodedDefaults()
     {
@@ -147,6 +149,26 @@ public sealed class BaseEnvProfileLoader
             },
             new()
             {
+                Id = "pytorch-2.1-cu126-stable",
+                Name = "PyTorch 2.1 + CUDA 12.6 (stable)",
+                Description = "稳定版 PyTorch 2.1.0,搭配 CUDA 12.6,带 xformers",
+                TorchVersion = "2.1.0",
+                CudaVersion = "cu126",
+                Channel = "stable",
+                Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
+            },
+            new()
+            {
+                Id = "pytorch-2.1-cu128-stable",
+                Name = "PyTorch 2.1 + CUDA 12.8 (stable)",
+                Description = "稳定版 PyTorch 2.1.0,搭配 CUDA 12.8,带 xformers",
+                TorchVersion = "2.1.0",
+                CudaVersion = "cu128",
+                Channel = "stable",
+                Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
+            },
+            new()
+            {
                 Id = "pytorch-nightly-cu121",
                 Name = "PyTorch Nightly + CUDA 12.1",
                 Description = "PyTorch nightly,搭配 CUDA 12.1(不带 xformers)",
@@ -169,9 +191,11 @@ public sealed class BaseEnvProfileLoader
     }
 
     /// <summary>
-    /// 用运行时拉取的 stable 版本生成 6 个默认 profile(spec §4.5):
-    /// 4 个 stable CUDA(cu118/cu121/cu124/cu126)+ 1 个 nightly cu126 + 1 个 CPU。
+    /// 用运行时拉取的 stable 版本生成 7 个默认 profile(spec §4.5):
+    /// 5 个 stable CUDA(cu118/cu121/cu124/cu126/cu128)+ 1 个 nightly cu126 + 1 个 CPU。
     /// 所有 stable profile 共用 <paramref name="v"/>.Stable;nightly 保留字面量 "nightly"。
+    /// v0.6.5.18 加 cu128(pytorch.org wheel 路径有,Get Started 页 release 块不列,但属于
+    /// 当前 PyTorch 2.1 wheel 实际可用 CUDA 范围)。
     /// </summary>
     private static IReadOnlyList<BaseEnvProfile> BuildLiveDefaults(PyTorchLiveVersions v)
     {
@@ -192,6 +216,7 @@ public sealed class BaseEnvProfileLoader
             stableProfile("cu121", "12.1"),
             stableProfile("cu124", "12.4"),
             stableProfile("cu126", "12.6"),
+            stableProfile("cu128", "12.8"),
             new()
             {
                 Id = "pytorch-nightly-cu126",
