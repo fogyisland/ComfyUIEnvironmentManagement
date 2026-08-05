@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -165,24 +166,30 @@ public class EnvironmentListViewModel : ViewModelBase
     private async System.Threading.Tasks.Task StartEnvAsync(Environment? env)
     {
         if (env is null) return;
+        var status = new EnvStartStatusViewModel();
+        StartStatus = status;
+        RaisePropertyChanged(nameof(StartStatus));
+        status.Begin();
         try
         {
-            await _launcher.StartEnvAsync(env);
+            await _launcher.StartEnvAsync(env, status, status, default);
+            status.Complete();
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            status.Hide();
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"启动 env '{env.Name}' 失败:\n{ex.Message}",
-                "启动失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            status.Fail($"启动失败:{ex.Message}");
+            // 不收起,等用户手动关 — 用户能看到错误
         }
         finally
         {
-            // 不论成败都 reload —— start 失败可能已经 partial 改了 status,
-            // start 成功也拿到新的 pid/status
             Load();
             RaiseCommandsChanged();
         }
     }
+
+    public EnvStartStatusViewModel? StartStatus { get; private set; }
 
     private async System.Threading.Tasks.Task StopEnvAsync(Environment? env)
     {
