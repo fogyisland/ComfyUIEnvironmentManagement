@@ -98,7 +98,7 @@ public class EnvironmentListViewModel : ViewModelBase
             p => OpenInstallNodePicker(p as Environment ?? Selected),
             p => (p as Environment ?? Selected) is not null);
         InstallRequirementsCommand = new RelayCommand(
-            p => OpenRequirementsProgress(p as Environment ?? Selected),
+            async p => await InstallRequirementsAsync(p as Environment ?? Selected),
             p => (p as Environment ?? Selected) is not null);
         Load();
     }
@@ -242,9 +242,6 @@ public class EnvironmentListViewModel : ViewModelBase
     // Application.Current.MainWindow + ShowDialog() and would throw in test context).
     public Action<IReadOnlyList<string>, BaseEnvProfile, BaseEnvInstaller>? ShowProgressDialogOverride { get; set; }
 
-    // Test seam — intercepts RequirementsProgressDialog (避免在测试环境弹真实 WPF dialog)。
-    public Action<Environment, RequirementsInstaller>? ShowRequirementsDialogOverride { get; set; }
-
     private void OpenBaseEnvProgress()
     {
         if (Selected is null && Environments.Count == 0) return;
@@ -269,23 +266,30 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 装 ComfyUI requirements.txt(过滤 torch 行)。开 progress dialog,
-    /// 完成后用户手动关。成功写 marker 文件;env-list 后续可据此判断
-    /// "已装依赖"。
+    /// 装 ComfyUI requirements.txt(过滤 torch 行)。inline 状态面板(跟 env-start 同一行)显示
+    /// 阶段 + 日志 + 错误,失败时面板持续可见等用户手动关。
+    ///
+    /// 取代之前的 RequirementsProgressDialog(dialog 模式用户看不到状态 — 改 inline 跟
+    /// env-start 一致)。
     /// </summary>
-    private void OpenRequirementsProgress(Environment? env)
+    private async System.Threading.Tasks.Task InstallRequirementsAsync(Environment? env)
     {
         if (env is null) return;
-        if (ShowRequirementsDialogOverride is not null)
+        var status = new RequirementsStatusViewModel(env, _requirementsInstaller);
+        RequirementsStatus = status;
+        RaisePropertyChanged(nameof(RequirementsStatus));
+        await status.RunAsync();
+        // 成功 → 2s 后收起;失败/取消 → 不收起,等用户手动关(UI 提供 ✕ 按钮)
+        if (status.IsComplete && !status.HasError)
         {
-            ShowRequirementsDialogOverride(env, _requirementsInstaller);
-            return;
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            status.Hide();
         }
-        Views.RequirementsProgressDialog.Show(env, _requirementsInstaller);
-        // 关窗后 reload:看 marker 文件是否存在(UI 暂未显示 marker,后续若加
-        // "已装依赖" 列可以直接读 RequirementsInstaller.IsInstalled(env))
         Load();
+        RaiseCommandsChanged();
     }
+
+    public RequirementsStatusViewModel? RequirementsStatus { get; private set; }
 
     /// <summary>
     /// DeleteEnvAsync:确认 → 调 EnvDeleterService(stop running + 删目录 + 删 SQLite 行)
