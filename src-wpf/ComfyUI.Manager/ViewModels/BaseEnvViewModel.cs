@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -139,6 +140,11 @@ public class BaseEnvViewModel : ViewModelBase
     /// 单测可赋值来拦截 ShowDialog 调用、断言参数。
     /// </summary>
     public Action<IReadOnlyList<string>, BaseEnvProfile, BaseEnvInstaller>? ShowDialogOverride { get; set; }
+
+    /// <summary>
+    /// 测试 seam:生产代码弹 MessageBox("已安装" 提示),单测可赋值 trap 避免挂死。
+    /// </summary>
+    public Action<string>? MessageBoxOverride { get; set; }
 
     /// <summary>
     /// 加载 profiles(envs)并填充 ObservableCollection。
@@ -320,10 +326,30 @@ public class BaseEnvViewModel : ViewModelBase
     /// <summary>
     /// Start 按钮执行:取第一个选中的 profile,弹 BaseEnvProgressDialog。
     /// 多 profile 选择简化(G5):只跑第一个;后续 hotfix 可拓展为逐个。
+    /// <para>
+    /// 全部选中 env 已 <c>BedStatus == "done"</c> 时弹"已安装"消息,跳过 install dialog
+    /// (v0.6.5.19 hotfix — 用户报"完成后再点 BED 再次安装" → 期望弹已安装提示)。
+    /// </para>
     /// </summary>
     public void Start()
     {
         if (_selectedProfiles.Count == 0 || _selectedEnvIds.Count == 0) return;
+
+        // 全部 selected envIds 都能查到 且 BedStatus == "done" → 跳过 install,
+        // 弹"已安装"提示。利用 _envRepo 实时读 — checkbox 跟 sqlite 状态可能
+        // 跟界面 Load 不同步(用户上次装后没重新进 BED 页面)。
+        var existingEnvs = _selectedEnvIds
+            .Select(id => _envRepo.Get(id))
+            .Where(e => e is not null)
+            .ToList();
+        if (existingEnvs.Count == _selectedEnvIds.Count
+            && existingEnvs.All(e => e!.BedStatus == "done"))
+        {
+            var names = string.Join(", ", existingEnvs.Select(e => e!.Name));
+            ShowAlreadyInstalled(
+                $"所选 env 已安装基础环境,无需再装:{names}");
+            return;
+        }
 
         var profile = _selectedProfiles[0];
         var envIds = _selectedEnvIds.ToList();
@@ -336,6 +362,18 @@ public class BaseEnvViewModel : ViewModelBase
         {
             BaseEnvProgressDialog.Show(envIds, profile, _installer);
         }
+    }
+
+    private void ShowAlreadyInstalled(string message)
+    {
+        if (MessageBoxOverride is not null)
+        {
+            MessageBoxOverride(message);
+            return;
+        }
+        MessageBox.Show(
+            message, "已安装",
+            MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private bool CanStart()

@@ -75,6 +75,7 @@ public sealed class EnvironmentListViewModelRequirementsTests : IDisposable
     {
         public PipResult NextResult { get; set; } = new(0, false);
         public List<string> EmittedLines { get; } = new();
+        public int CallCount { get; private set; }
 
         protected override Task<PipResult> RunPipAsync(
             string pythonExe,
@@ -82,6 +83,7 @@ public sealed class EnvironmentListViewModelRequirementsTests : IDisposable
             Action<string> onLine,
             CancellationToken ct)
         {
+            CallCount++;
             onLine("Looking in indexes: https://pypi.org/simple");
             onLine("Collecting SQLAlchemy");
             EmittedLines.AddRange(EmittedLines);
@@ -164,6 +166,46 @@ public sealed class EnvironmentListViewModelRequirementsTests : IDisposable
         var vm = NewVm();
         vm.InstallRequirementsCommand.RaiseCanExecuteChanged();
         Assert.True(vm.InstallRequirementsCommand.CanExecute(vm.Environments[0]));
+    }
+
+    [Fact]
+    public async Task InstallRequirementsCommand_AlreadyInstalled_ShortCircuitsAndDoesNotRunPip()
+    {
+        // v0.6.5.19 hotfix: 已装过(marker 文件存在)再次点击应显示已安装状态,
+        // 不重复跑 pip — pip install -r 幂等但慢,且混淆"装过没装过"的判断。
+        var env = SeedEnv("env-a");
+        var markerPath = Path.Combine(env.RootPath, RequirementsInstaller.MarkerFileName);
+        File.WriteAllText(markerPath, "2026-08-05T19:50:00Z");
+        var fake = new FakeInstaller();
+        var vm = NewVm(fake);
+
+        await InvokeAsync(vm, env);
+
+        var status = vm.RequirementsStatus!;
+        Assert.True(status.IsComplete);
+        Assert.False(status.HasError);
+        Assert.Contains("已安装依赖", status.StatusText);
+        Assert.Contains("2026-08-05T19:50:00Z", status.StatusText);
+        Assert.Equal(0, fake.CallCount);  // 关键:pip 没跑
+    }
+
+    [Fact]
+    public async Task InstallRequirementsCommand_AlreadyInstalled_MarkerEmpty_FallsBackToUnknown()
+    {
+        // marker 文件存在但内容为空 — UI 仍显示已安装,timestamp 回退 "未知"
+        var env = SeedEnv("env-a");
+        var markerPath = Path.Combine(env.RootPath, RequirementsInstaller.MarkerFileName);
+        File.WriteAllText(markerPath, "");
+        var fake = new FakeInstaller();
+        var vm = NewVm(fake);
+
+        await InvokeAsync(vm, env);
+
+        var status = vm.RequirementsStatus!;
+        Assert.True(status.IsComplete);
+        Assert.Contains("已安装", status.StatusText);
+        Assert.Contains("未知", status.StatusText);
+        Assert.Equal(0, fake.CallCount);
     }
 
     /// <summary>

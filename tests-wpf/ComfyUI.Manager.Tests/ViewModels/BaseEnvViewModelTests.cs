@@ -254,6 +254,79 @@ public sealed class BaseEnvViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Start_ShowsAlreadyInstalled_AndSkipsDialog_WhenAllEnvsDone()
+    {
+        // v0.6.5.19 hotfix: BED 完成后再次点击 BED 应弹"已安装"提示,不重跑 install。
+        var vm = MakeVm();
+        var env = FakeEnv("env-a");
+        env.BedStatus = "done";
+        _envRepo.Upsert(env);
+        vm.SetSelectedProfiles(new[] { new BaseEnvProfile { Id = "p1" } });
+        vm.SetSelectedEnvIds(new[] { env });
+
+        bool dialogCalled = false;
+        vm.ShowDialogOverride = (_, _, _) => dialogCalled = true;
+        string? messageShown = null;
+        vm.MessageBoxOverride = msg => messageShown = msg;
+
+        vm.StartCommand.Execute(null);
+
+        Assert.False(dialogCalled);
+        Assert.NotNull(messageShown);
+        Assert.Contains("已安装", messageShown);
+        Assert.Contains("env-a", messageShown);
+    }
+
+    [Fact]
+    public void Start_ProceedsToInstallDialog_WhenSomeEnvsNotDone()
+    {
+        // v0.6.5.19 hotfix: 选了已装 + 未装的混合 env → 仍走 install dialog
+        // (dialog 里的 BaseEnvInstaller 会跳过已装的不重复 pip,只装未装的;
+        // 详细行为由 BaseEnvInstaller 决定,VM 这里不细分)。
+        var vm = MakeVm();
+        var done = FakeEnv("env-done");
+        done.BedStatus = "done";
+        var pending = FakeEnv("env-pending");
+        pending.BedStatus = null;
+        _envRepo.Upsert(done);
+        _envRepo.Upsert(pending);
+        vm.SetSelectedProfiles(new[] { new BaseEnvProfile { Id = "p1" } });
+        vm.SetSelectedEnvIds(new[] { done, pending });
+
+        bool dialogCalled = false;
+        bool msgCalled = false;
+        vm.ShowDialogOverride = (_, _, _) => dialogCalled = true;
+        vm.MessageBoxOverride = _ => msgCalled = true;
+
+        vm.StartCommand.Execute(null);
+
+        Assert.True(dialogCalled);
+        Assert.False(msgCalled);
+    }
+
+    [Fact]
+    public void Start_ProceedsToInstallDialog_WhenAllEnvsFailed()
+    {
+        // v0.6.5.19 hotfix: 全部 failed → 不算"已安装",正常走 install dialog
+        // (用户期望:再点一次重试)。
+        var vm = MakeVm();
+        var env = FakeEnv("env-failed");
+        env.BedStatus = "failed";
+        env.BedFailedReason = "pip 退出码 1";
+        _envRepo.Upsert(env);
+        vm.SetSelectedProfiles(new[] { new BaseEnvProfile { Id = "p1" } });
+        vm.SetSelectedEnvIds(new[] { env });
+
+        bool dialogCalled = false;
+        vm.ShowDialogOverride = (_, _, _) => dialogCalled = true;
+        vm.MessageBoxOverride = _ => { };
+
+        vm.StartCommand.Execute(null);
+
+        Assert.True(dialogCalled);
+    }
+
+    [Fact]
     public void Ctor_NullArguments_Throw()
     {
         var dir = new FakeDirectory(entries: null, scratchDir: _appDataDir);

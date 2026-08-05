@@ -271,10 +271,26 @@ public class EnvironmentListViewModel : ViewModelBase
     ///
     /// 取代之前的 RequirementsProgressDialog(dialog 模式用户看不到状态 — 改 inline 跟
     /// env-start 一致)。
+    ///
+    /// v0.6.5.19 hotfix:已装过(marker 文件 <c>.requirements_installed</c> 存在)不重跑 pip,
+    /// 直接显示"已安装依赖(timestamp)"状态。pip install -r 是幂等的,但重复跑慢且
+    /// 容易混淆"装过没装过"的判断。
     /// </summary>
     private async System.Threading.Tasks.Task InstallRequirementsAsync(Environment? env)
     {
         if (env is null) return;
+
+        // 已装过 → 显示已安装状态,不重跑 pip
+        if (RequirementsInstaller.IsInstalled(env))
+        {
+            var timestamp = await ReadMarkerTimestampAsync(env);
+            var alreadyInstalled = new RequirementsStatusViewModel(env, _requirementsInstaller);
+            RequirementsStatus = alreadyInstalled;
+            RaisePropertyChanged(nameof(RequirementsStatus));
+            alreadyInstalled.MarkAlreadyInstalled(timestamp);
+            return;
+        }
+
         var status = new RequirementsStatusViewModel(env, _requirementsInstaller);
         RequirementsStatus = status;
         RaisePropertyChanged(nameof(RequirementsStatus));
@@ -287,6 +303,25 @@ public class EnvironmentListViewModel : ViewModelBase
         }
         Load();
         RaiseCommandsChanged();
+    }
+
+    /// <summary>
+    /// 读取 <c>.requirements_installed</c> marker 文件里的时间戳。失败 / 文件空内容 → 回退
+    /// "未知"(读不出来也不阻塞 UI — 升级路径上 marker 可能是空文件或非标内容)。
+    /// </summary>
+    private static async Task<string> ReadMarkerTimestampAsync(Environment env)
+    {
+        var path = Path.Combine(env.RootPath, RequirementsInstaller.MarkerFileName);
+        if (!File.Exists(path)) return "未知";
+        try
+        {
+            var content = (await File.ReadAllTextAsync(path)).Trim();
+            return string.IsNullOrEmpty(content) ? "未知" : content;
+        }
+        catch
+        {
+            return "未知";
+        }
     }
 
     public RequirementsStatusViewModel? RequirementsStatus { get; private set; }

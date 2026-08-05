@@ -177,4 +177,22 @@ public sealed class RequirementsStatusViewModelTests : IDisposable
         Assert.True(vm.HasError);
         Assert.Equal("用户取消", vm.Error);
     }
+
+    [Fact]
+    public void MarkAlreadyInstalled_SetsVisibleAndTimestamp()
+    {
+        // v0.6.5.19 hotfix: env-list 已装依赖后再点 → panel 直接显示已安装状态,
+        // IsVisible=true, IsComplete=true, StatusText 含时间戳,不调 RunPipAsync
+        // (FakeInstaller 不会被调,无错误抛出因为根本不走 RunAsync)。
+        var env = SeedEnv();
+        var vm = new RequirementsStatusViewModel(env, new FakeInstaller());
+
+        vm.MarkAlreadyInstalled("2026-08-05T19:50:00Z");
+
+        Assert.True(vm.IsVisible);
+        Assert.True(vm.IsComplete);
+        Assert.False(vm.HasError);
+        Assert.Contains("已安装依赖", vm.StatusText);
+        Assert.Contains("2026-08-05T19:50:00Z", vm.StatusText);
+    }
 }

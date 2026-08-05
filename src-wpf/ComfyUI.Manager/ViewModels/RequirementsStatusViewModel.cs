@@ -131,4 +131,23 @@ public sealed class RequirementsStatusViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasError));
         RaisePropertyChanged(nameof(StatusText));
     }
+
+    /// <summary>
+    /// 直接把面板切换到"已安装"状态(v0.6.5.19 hotfix):env 已存在
+    /// <c>.requirements_installed</c> marker 文件,不再跑 pip,显示安装时间戳。
+    /// 不写 marker — InstallAsync 才是写 marker 的入口(marker 是"实际跑过 pip 成功"的
+    /// 证据,光读它不行)。
+    /// </summary>
+    public void MarkAlreadyInstalled(string timestamp)
+    {
+        IsVisible = true;
+        IsComplete = true;
+        Error = null;
+        StatusText = $"{_env.Name} — 已安装依赖({timestamp})";
+        RaisePropertyChanged(nameof(IsVisible));
+        RaisePropertyChanged(nameof(IsComplete));
+        RaisePropertyChanged(nameof(Error));
+        RaisePropertyChanged(nameof(HasError));
+        RaisePropertyChanged(nameof(StatusText));
+    }
 }
