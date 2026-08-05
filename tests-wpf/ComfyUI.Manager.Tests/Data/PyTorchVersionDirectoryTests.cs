@@ -201,7 +201,7 @@ public sealed class PyTorchVersionDirectoryTests : IDisposable
         var stable213 = result.FirstOrDefault(e => !e.IsNightly && e.Version == "2.13.0");
         Assert.NotNull(stable213);
         Assert.NotNull(stable213!.StableMetadata);
-        Assert.Equal(new[] { "cu118", "cu121", "cu124", "cu126" }, stable213.StableMetadata!.CudaVariants);
+        Assert.Equal(new[] { "cu126", "cu130", "cu132" }, stable213.StableMetadata!.CudaVariants);
         Assert.True(stable213.StableMetadata.HasCpu);
     }
 

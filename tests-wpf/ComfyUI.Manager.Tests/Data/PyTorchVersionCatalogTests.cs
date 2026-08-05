@@ -88,7 +88,7 @@ public sealed class PyTorchVersionCatalogTests
         }
         """;
 
-    private static readonly string[] AllCuda = new[] { "cu118", "cu121", "cu126" };
+    private static readonly string[] AllCuda = new[] { "cu126", "cu130", "cu132" };
 
     // ----- ParseCudaVariantsFromHtml tests -----
 
@@ -97,7 +97,7 @@ public sealed class PyTorchVersionCatalogTests
     {
         var result = PyTorchVersionCatalog.ParseCudaVariantsFromHtml(SampleHtml);
 
-        Assert.Equal(new[] { "cu118", "cu121", "cu126" }, result);
+        Assert.Equal(new[] { "cu126", "cu130", "cu132" }, result);
     }
 
     [Fact]
@@ -141,14 +141,56 @@ public sealed class PyTorchVersionCatalogTests
     [Fact]
     public void ParseCudaVariantsFromHtml_PartialRelease_ReturnsPresentLetters()
     {
-        // Only cuda.x in release block → only cu118 returned.
+        // Only cuda.x in release block → only cu126 returned.
         const string html = """
             var pt_version_map = {"release":{"cuda.x":["cuda","12.6"]},"nightly":{"cuda.x":["cuda","12.6"],"cuda.y":["cuda","13.0"]}};
             """;
 
         var result = PyTorchVersionCatalog.ParseCudaVariantsFromHtml(html);
 
-        Assert.Equal(new[] { "cu118" }, result);
+        Assert.Equal(new[] { "cu126" }, result);
+    }
+
+    [Fact]
+    public void ParseCudaVariantsFromHtml_CudaEntryMissingVersion_Skipped()
+    {
+        // cuda.z 在 release 块但没 version 字段(防御 pytorch.org 改格式)→ 跳过。
+        const string html = """
+            var pt_version_map = {"release":{"cuda.x":["cuda","12.6"],"cuda.z":["rocm","7.2"]}};
+            """;
+
+        var result = PyTorchVersionCatalog.ParseCudaVariantsFromHtml(html);
+
+        // cuda.x → cu126;cuda.z 是 rocm 不是 cuda,正则不匹配,跳过。
+        Assert.Equal(new[] { "cu126" }, result);
+    }
+
+    [Fact]
+    public void ParseCudaVariantsFromHtml_DeduplicatesRepeatedLetter()
+    {
+        // pytorch.org 不会重复 letter,但防御:同一 letter 多次出现 → 去重,
+        // 只保留首次出现的 tag。
+        const string html = """
+            var pt_version_map = {"release":{"cuda.x":["cuda","12.6"],"cuda.x":["cuda","12.6"]}};
+            """;
+
+        var result = PyTorchVersionCatalog.ParseCudaVariantsFromHtml(html);
+
+        Assert.Equal(new[] { "cu126" }, result);
+    }
+
+    [Fact]
+    public void ParseCudaVariantsFromHtml_PreservesHtmlOrder()
+    {
+        // pytorch.org 字母顺序可能乱(cuda.z 先于 cuda.y),但 dropdown 应
+        // 按 HTML 出现顺序保留(稳定 CUDA 推荐顺序)。
+        const string html = """
+            var pt_version_map = {"release":{"cuda.z":["cuda","13.2"],"cuda.x":["cuda","12.6"],"cuda.y":["cuda","13.0"]}};
+            """;
+
+        var result = PyTorchVersionCatalog.ParseCudaVariantsFromHtml(html);
+
+        Assert.Equal(new[] { "cu132", "cu126", "cu130" }, result);
     }
 
     // ----- ParsePypiJson tests -----
@@ -160,7 +202,7 @@ public sealed class PyTorchVersionCatalogTests
 
         Assert.NotNull(result);
         var latest = Assert.Single(result!, x => x.Version == "2.13.0");
-        Assert.Equal(new[] { "cu118", "cu121", "cu126" }, latest.CudaVariants);
+        Assert.Equal(new[] { "cu126", "cu130", "cu132" }, latest.CudaVariants);
         Assert.True(latest.HasCpu);
     }
 
@@ -345,7 +387,7 @@ public sealed class PyTorchVersionCatalogTests
         Assert.NotEmpty(result!);
         // Stable 2.13.0 should appear with CUDA list from pytorch.org HTML.
         var v213 = result!.Single(x => x.Version == "2.13.0");
-        Assert.Equal(new[] { "cu118", "cu121", "cu126" }, v213.CudaVariants);
+        Assert.Equal(new[] { "cu126", "cu130", "cu132" }, v213.CudaVariants);
         Assert.True(v213.HasCpu);
         // Pre-release must be filtered out.
         Assert.DoesNotContain(result!, x => x.Version == "2.6.0rc1");

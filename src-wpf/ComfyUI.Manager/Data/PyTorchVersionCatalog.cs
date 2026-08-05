@@ -53,34 +53,23 @@ public class PyTorchVersionCatalog
     /// </summary>
     public const string PytorchOrgPageUrl = "https://pytorch.org/get-started/locally/";
 
-    /// <summary>
-    /// pytorch.org <c>pt_version_map.release</c> 里 <c>cuda.{letter}</c>
-    /// key 的 letter → <c>cuNNN</c> tag 映射。letter 是 pytorch.org 自己
-    /// 用的代号(<c>x</c> / <c>y</c> / <c>z</c>),不一定是 CUDA 数字顺序。
-    /// 如果哪天 pytorch.org 改了 CUDA 编号,只改这里 + 顶层 letter key。
-    /// </summary>
-    private static readonly IReadOnlyDictionary<char, string> CudaLetterToTag =
-        new Dictionary<char, string>
-        {
-            ['x'] = "cu118",
-            ['y'] = "cu121",
-            ['z'] = "cu126",
-        };
-
     // regex:从整个 pt_version_map 字符串里抽出所有 cuda.x / cuda.y /
-    // cuda.z key(扁平结构)。pt_version_map.nightly 也是同样 flat 结构,
-    // 所以先抽 release 块边界,再在块内找 cuda key。
+    // cuda.z entry(扁平结构,值是 ["cuda","<version>"] 二元组)。
+    // pt_version_map.nightly 也是同样 flat 结构,所以先抽 release 块边界,
+    // 再在块内找 cuda entry。
     // 块边界:从 "release":{ 到 下一个顶层 },(用非贪婪找最近的 })。
     // 因为 release 块里没有嵌套 { (key 都是数组值如 [...]),
     // 所以 "[^}]*" 可以安全吃到块尾。
-    // 块内 cuda key regex: "cuda\.([xyz])"\s*:
-    // Group 1 = letter("x" / "y" / "z")。
+    // 块内 cuda entry regex 抓整个 ["cuda","12.6"]:
+    //   Group "letter" = "x" / "y" / "z"(目前 pytorch.org 固定这三个代号)
+    //   Group "ver" = "12.6" / "13.0" 等真实 CUDA 数字版本
+    // 拼装 cuNNN tag 时把 "12.6" 去点 → "126" → "cu126"。
     private static readonly Regex ReleaseBlockRegex = new(
         @"""release""\s*:\s*\{(?<body>[^}]*)\}",
         RegexOptions.Compiled);
 
-    private static readonly Regex ReleaseCudaLetterRegex = new(
-        @"""cuda\.(?<letter>[xyz])""\s*:",
+    private static readonly Regex ReleaseCudaEntryRegex = new(
+        @"""cuda\.(?<letter>[xyz])""\s*:\s*\[\s*""cuda""\s*,\s*""(?<ver>\d+\.\d+)""\s*\]",
         RegexOptions.Compiled);
 
     private static readonly Regex CpuTagRegex = new(
@@ -134,17 +123,21 @@ public class PyTorchVersionCatalog
 
     /// <summary>
     /// 从 pytorch.org HTML 提取 <c>pt_version_map.release</c> 块里的
-    /// <c>cuda.x</c> / <c>cuda.y</c> / <c>cuda.z</c> key,映射成
-    /// <c>cuNNN</c> tag 列表(按 <see cref="CudaLetterToTag"/> 字典定义)。
+    /// <c>cuda.x</c> / <c>cuda.y</c> / <c>cuda.z</c> entry,从
+    /// <c>["cuda","12.6"]</c> 二元组里的 version 字段拼出 <c>cuNNN</c> tag。
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
     /// <item>HTML 空 → 空列表(不抛)。</item>
     /// <item>没有 <c>"release"</c> 块 → 空列表(nightly 单独存在不算)。</item>
-    /// <item>只 release 块里有 cuda.{letter} 才计入;nightly 块不算。</item>
-    /// <item>未知 letter (不在 <see cref="CudaLetterToTag"/> 里)→ 静默跳过。</item>
-    /// <item>结果按 <see cref="CudaLetterToTag"/> 字典插入顺序排序
-    ///   (cu118 → cu121 → cu126),不是字母序。</item>
+    /// <item>只 release 块里有 cuda.{letter} entry 才计入;nightly 块不算。</item>
+    /// <item>cuNNN tag 从 entry 第二字段(如 <c>"12.6"</c>)去点拼装
+    ///   (<c>"cu"</c> + <c>"126"</c>),所以 pytorch.org 改 CUDA 数字
+    ///   自动反映(无需硬编码 letter → tag 映射)。</item>
+    /// <item>entry 不含第二字段 / version 不是 <c>MAJOR.MINOR</c> 数字 →
+    ///   静默跳过(防御 pytorch.org 改格式)。</item>
+    /// <item>结果按 pytorch.org HTML 出现顺序排列(cuda.x → cuda.y → cuda.z),
+    ///   与 stable CUDA 推荐顺序一致。</item>
     /// </list>
     /// </remarks>
     internal static IReadOnlyList<string> ParseCudaVariantsFromHtml(string html)
@@ -163,11 +156,11 @@ public class PyTorchVersionCatalog
 
         var releaseBody = blockMatch.Groups["body"].Value;
 
-        // 第二步:在 release 块内容里找所有 cuda.x / cuda.y / cuda.z key。
-        // 因为 release 块里的值都是数组([cuda","12.6"]),没有嵌套 {} ,
-        // 所以 [^}]* 把 release 块切到下一个 } 是安全的(夜间的 cuda key
-        // 在 sibling 对象里,不会被误抓)。
-        var matches = ReleaseCudaLetterRegex.Matches(releaseBody);
+        // 第二步:在 release 块内容里找所有 cuda.x/y/z entry,正则抓
+        // 整个 ["cuda","12.6"] 二元组。因为 release 块里值都是数组,
+        // 没有嵌套 {} ,所以 [^}]* 把 release 块切到下一个 } 是安全的
+        // (nightly 块 cuda key 在 sibling 对象里,不会被误抓)。
+        var matches = ReleaseCudaEntryRegex.Matches(releaseBody);
         if (matches.Count == 0)
         {
             return Array.Empty<string>();
@@ -177,8 +170,14 @@ public class PyTorchVersionCatalog
         var result = new List<string>();
         foreach (Match m in matches)
         {
-            var letter = m.Groups["letter"].Value[0];
-            if (CudaLetterToTag.TryGetValue(letter, out var tag) && seen.Add(tag))
+            var ver = m.Groups["ver"].Value;
+            if (string.IsNullOrEmpty(ver))
+            {
+                // 防御:pytorch.org 改了 entry 结构(没 version 字段) → 跳过。
+                continue;
+            }
+            var tag = "cu" + ver.Replace(".", "");
+            if (seen.Add(tag))
             {
                 result.Add(tag);
             }

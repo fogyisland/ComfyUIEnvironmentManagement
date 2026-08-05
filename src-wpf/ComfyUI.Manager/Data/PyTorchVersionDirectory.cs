@@ -157,12 +157,13 @@ public class PyTorchVersionDirectory
     }
 
     /// <summary>
-    /// 内置 v0.6.5.2 兼容 fallback。跟 v0.6.5.2 真实
-    /// <c>pt_published_versions.latest_stable</c> 对齐:<c>2.13.0</c>
-    /// 是 stable,CUDA 变体 <c>cu118 / cu121 / cu124 / cu126</c>,
-    /// CPU wheel = true。日期 = 一个占位常量(用户原话 "fallback 是
-    /// 硬编码默认值就好,不需要真时间")— 用 <c>DateTimeOffset.MinValue</c>
-    /// 加一年当 sentinel,确保 release date 排序仍能 deterministic 输出。
+    /// 内置 v0.6.5.16 兼容 fallback。跟 live pytorch.org
+    /// <c>pt_version_map.release</c> 对齐:<c>2.13.0</c> 是 stable,
+    /// CUDA 变体 <c>cu126 / cu130 / cu132</c>(cuda.x/y/z 后面的真实
+    /// CUDA 数字 12.6 / 13.0 / 13.2 去点拼装),CPU wheel = true。
+    /// 日期 = 一个占位常量(用户原话 "fallback 是硬编码默认值就好,
+    /// 不需要真时间")— 用 <c>DateTimeOffset</c> sentinel,确保
+    /// release date 排序仍能 deterministic 输出。
     /// </summary>
     /// <remarks>
     /// 不通过 <see cref="System.Reflection"/> / 私有字段共享:这条路径
@@ -182,7 +183,7 @@ public class PyTorchVersionDirectory
             {
                 Version = "2.13.0",
                 ReleaseDate = fallbackRelease,
-                CudaVariants = new[] { "cu118", "cu121", "cu124", "cu126" },
+                CudaVariants = new[] { "cu126", "cu130", "cu132" },
                 HasCpu = true,
             },
         };
