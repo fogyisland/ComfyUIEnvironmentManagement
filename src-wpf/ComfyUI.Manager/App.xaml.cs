@@ -31,6 +31,12 @@ public partial class App : Application
 
         // v0.6.5.13: 集中日志 — 所有 subsystem 写到 projectRoot/Logs/YYYY-MM-DD.log
         var logger = new AppLogger(projectRoot);
+        // 启动时清理 >30 天的日志(用户原话:30 天保留)
+        int cleaned = AppLogger.CleanupOlderThan(projectRoot, 30);
+        if (cleaned > 0)
+        {
+            logger.Info("app-startup", $"清理 {cleaned} 个 >30 天的旧日志");
+        }
 
         // v0.6.5.8: 启动 reconciliation — 把上次未装完的 "installing" 行翻成
         // "failed" + "上次未完成"。必须先于 MainViewModel.Load(),否则 UI 看到
