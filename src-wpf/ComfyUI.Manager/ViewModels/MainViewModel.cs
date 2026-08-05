@@ -27,6 +27,7 @@ public class MainViewModel : ViewModelBase
     private readonly string _appDataDir;
     private readonly string _projectRoot;
     private readonly RequirementsInstaller _requirementsInstaller;
+    private readonly SystemInfoCollector _systemInfoCollector;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -42,6 +43,7 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowBaseEnvCommand { get; }
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
+    public RelayCommand ShowSystemStatusCommand { get; }
 
     public MainViewModel(
         SqliteConnectionFactory dbFactory,
@@ -61,7 +63,8 @@ public class MainViewModel : ViewModelBase
         PyTorchVersionDirectory pytorchVersionDirectory,
         string appDataDir,
         string projectRoot,
-        RequirementsInstaller requirementsInstaller)
+        RequirementsInstaller requirementsInstaller,
+        SystemInfoCollector systemInfoCollector)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -81,12 +84,14 @@ public class MainViewModel : ViewModelBase
         _appDataDir = appDataDir;
         _projectRoot = projectRoot;
         _requirementsInstaller = requirementsInstaller;
+        _systemInfoCollector = systemInfoCollector;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
         ShowBaseEnvCommand = new RelayCommand(_ => ShowBaseEnv());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
+        ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
     }
 
     private void ShowEnvironments()
@@ -144,5 +149,14 @@ public class MainViewModel : ViewModelBase
         }).ToList();
         vm.LoadEnvs(envRows);
         BulkUpdateDialog.Show(vm);
+    }
+
+    private void ShowSystemStatus()
+    {
+        // SystemStatusViewModel 构造时自动 RefreshAsync()(用户进 tab 立即看到数据)
+        CurrentView = new SystemStatusView
+        {
+            DataContext = new SystemStatusViewModel(_systemInfoCollector),
+        };
     }
 }

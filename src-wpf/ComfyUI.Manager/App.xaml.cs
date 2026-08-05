@@ -33,10 +33,7 @@ public partial class App : Application
         var logger = new AppLogger(projectRoot);
         // 启动时清理 >30 天的日志(用户原话:30 天保留)
         int cleaned = AppLogger.CleanupOlderThan(projectRoot, 30);
-        if (cleaned > 0)
-        {
-            logger.Info("app-startup", $"清理 {cleaned} 个 >30 天的旧日志");
-        }
+        logger.Info("app-startup", $"App 启动 cleaned={cleaned} projectRoot={projectRoot}");
 
         // v0.6.5.8: 启动 reconciliation — 把上次未装完的 "installing" 行翻成
         // "failed" + "上次未完成"。必须先于 MainViewModel.Load(),否则 UI 看到
@@ -105,12 +102,14 @@ public partial class App : Application
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "ComfyUI-Manager");
         var profileLoader = new BaseEnvProfileLoader(projectRoot, appDataDir, http);
+        // v0.6.5.x: 系统状态 tab 数据收集器(进入 tab 时拉一次 OS/CPU/Mem/Disk/GPU/CUDA)
+        var systemInfoCollector = new SystemInfoCollector();
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
-            requirementsInstaller);
+            requirementsInstaller, systemInfoCollector);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

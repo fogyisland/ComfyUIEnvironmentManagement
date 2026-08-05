@@ -1,0 +1,150 @@
+<UserControl x:Class="ComfyUI.Manager.Views.SystemStatusView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             xmlns:models="clr-namespace:ComfyUI.Manager.Models"
+             mc:Ignorable="d"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DataContext="{d:DesignInstance Type=vm:SystemStatusViewModel}"
+             Background="{StaticResource BackgroundBrush}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+        <StackPanel>
+            <DockPanel Margin="0,0,0,16">
+                <TextBlock Text="系统状态" FontSize="20" FontWeight="Bold"
+                           VerticalAlignment="Center" />
+                <Button DockPanel.Dock="Right" Content="刷新"
+                        Command="{Binding RefreshCommand}"
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource MaterialButton}"
+                        MinWidth="80" />
+                <TextBlock Text="{Binding Info.CollectedAt, StringFormat='上次刷新:{0:yyyy-MM-dd HH:mm:ss}'}"
+                           Foreground="Gray" Margin="16,0,0,0" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <TextBlock Text="{Binding LastError}" Foreground="#FF6B6B"
+                       Margin="0,0,0,8"
+                       Visibility="{Binding LastError, Converter={StaticResource NullToVisibility}}" />
+
+            <TextBlock Text="加载中..." Foreground="Gray"
+                       Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- 加载完成后显示面板 -->
+            <StackPanel Visibility="{Binding Info, Converter={StaticResource NullToVisibility}}">
+                <!-- OS -->
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                        Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="操作系统" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Text="{Binding Info.OsBuild}" />
+                        <TextBlock Text="{Binding Info.OsVersion}" Foreground="Gray" />
+                    </StackPanel>
+                </Border>
+
+                <!-- CPU -->
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                        Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="CPU" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Text="{Binding Info.CpuName}" TextWrapping="Wrap" />
+                        <TextBlock Foreground="Gray">
+                            <Run Text="核心数:" />
+                            <Run Text="{Binding Info.CpuCores, Mode=OneWay}" />
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <!-- Memory -->
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                        Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="内存" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock>
+                            <Run Text="总:" />
+                            <Run Text="{Binding Info.TotalMemoryDisplay, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock>
+                            <Run Text="可用:" />
+                            <Run Text="{Binding Info.AvailableMemoryDisplay, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Foreground="Gray"
+                                   Text="{Binding Info.MemoryUsagePercent, StringFormat='使用率:{0}'}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Disks -->
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                        Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="磁盘" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <ItemsControl ItemsSource="{Binding Info.Disks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="60" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding DriveLetter}" FontWeight="Bold" />
+                                        <TextBlock Grid.Column="1">
+                                            <Run Text="总:" />
+                                            <Run Text="{Binding TotalDisplay, Mode=OneWay}" />
+                                            <Run Text="  可用:" />
+                                            <Run Text="{Binding AvailableDisplay, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="2" Foreground="Gray"
+                                                   Text="{Binding UsagePercent, StringFormat='使用率:{0}'}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- GPU -->
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                        Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="GPU" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Text="未检测到 Nvidia GPU(需要 nvidia-smi 在 PATH)"
+                                   Foreground="Gray"
+                                   Visibility="{Binding Info.Gpus.Count, Converter={StaticResource ZeroCountToVisibility}}" />
+                        <ItemsControl ItemsSource="{Binding Info.Gpus}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:GpuInfo}">
+                                    <StackPanel Margin="0,2">
+                                        <TextBlock>
+                                            <Run Text="GPU " />
+                                            <Run Text="{Binding Index, Mode=OneWay}" />
+                                            <Run Text=": " />
+                                            <Run Text="{Binding Name, Mode=OneWay}" FontWeight="Bold" />
+                                        </TextBlock>
+                                        <TextBlock Foreground="Gray">
+                                            <Run Text="驱动:" />
+                                            <Run Text="{Binding DriverVersion, Mode=OneWay}" />
+                                            <Run Text="  显存:" />
+                                            <Run Text="{Binding MemoryDisplay, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- CUDA -->
+                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                        Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="CUDA" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock>
+                            <Run Text="CUDA 版本:" />
+                            <Run Text="{Binding Info.CudaVersion, TargetNullValue='未安装', Mode=OneWay}" />
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

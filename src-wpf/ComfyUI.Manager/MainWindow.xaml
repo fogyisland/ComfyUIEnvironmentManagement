@@ -42,6 +42,10 @@
                         Command="{Binding OpenBulkUpdateCommand}"
                         Style="{StaticResource MaterialButton}"
                         HorizontalAlignment="Stretch" />
+                <Button Content="系统状态" Margin="0,4"
+                        Command="{Binding ShowSystemStatusCommand}"
+                        Style="{StaticResource MaterialButton}"
+                        HorizontalAlignment="Stretch" />
             </StackPanel>
         </Border>
 

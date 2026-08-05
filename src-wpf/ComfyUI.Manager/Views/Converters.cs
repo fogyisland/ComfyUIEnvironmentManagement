@@ -111,3 +111,23 @@ public class InverseBoolConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => value is bool b && !b;
 }
+
+/// <summary>
+/// ZeroCountToVisibilityConverter:int → Visibility(0 → Visible,>0 → Collapsed)。
+/// 用于 "列表为空时显示提示" 模式(Gpus.Count == 0 时显示 "未检测到 Nvidia GPU")。
+/// </summary>
+public sealed class ZeroCountToVisibilityConverter : IValueConverter
+{
+    public static readonly ZeroCountToVisibilityConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var count = value is int n ? n : 0;
+        return count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
