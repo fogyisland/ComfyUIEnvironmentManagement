@@ -27,7 +27,7 @@
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
                 <DataGridTextColumn Header="基础环境" Binding="{Binding BedDisplay}" Width="220" />
-                <DataGridTemplateColumn Header="操作" Width="260">
+                <DataGridTemplateColumn Header="操作" Width="320">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
@@ -45,6 +45,11 @@
                                         Command="{Binding DataContext.ShowLogCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}" />
+                                <Button Content="装依赖" Margin="2"
+                                        Command="{Binding DataContext.InstallRequirementsCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="运行 pip install -r requirements.txt(过滤 torch 行)" />
                                 <Button Content="安装节点" Margin="2"
                                         Command="{Binding DataContext.InstallNodeCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"

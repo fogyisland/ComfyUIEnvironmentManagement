@@ -26,6 +26,7 @@ public class MainViewModel : ViewModelBase
     private readonly PyTorchVersionDirectory _pytorchVersionDirectory;
     private readonly string _appDataDir;
     private readonly string _projectRoot;
+    private readonly RequirementsInstaller _requirementsInstaller;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -59,7 +60,8 @@ public class MainViewModel : ViewModelBase
         BaseEnvProfileLoader profileLoader,
         PyTorchVersionDirectory pytorchVersionDirectory,
         string appDataDir,
-        string projectRoot)
+        string projectRoot,
+        RequirementsInstaller requirementsInstaller)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -78,6 +80,7 @@ public class MainViewModel : ViewModelBase
         _pytorchVersionDirectory = pytorchVersionDirectory;
         _appDataDir = appDataDir;
         _projectRoot = projectRoot;
+        _requirementsInstaller = requirementsInstaller;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -91,7 +94,7 @@ public class MainViewModel : ViewModelBase
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new EnvironmentListView
         {
-            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader, _envDeleter, _nodeOps, _projectRoot),
+            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader, _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller),
         };
     }
 

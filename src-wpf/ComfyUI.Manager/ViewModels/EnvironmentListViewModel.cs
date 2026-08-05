@@ -24,6 +24,7 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly BaseEnvProfileLoader _profileLoader;
     private readonly EnvDeleterService _envDeleter;
     private readonly NodeOperations _nodeOps;
+    private readonly RequirementsInstaller _requirementsInstaller;
     private readonly string _projectRoot;
 
     public ObservableCollection<Environment> Environments { get; } = new();
@@ -35,6 +36,7 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand BaseEnvCommand { get; }
     public RelayCommand DeleteCommand { get; }
     public RelayCommand InstallNodeCommand { get; }
+    public RelayCommand InstallRequirementsCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
 
@@ -53,7 +55,8 @@ public class EnvironmentListViewModel : ViewModelBase
         BaseEnvProfileLoader profileLoader,
         EnvDeleterService envDeleter,
         NodeOperations nodeOps,
-        string projectRoot)
+        string projectRoot,
+        RequirementsInstaller requirementsInstaller)
     {
         _repo = repo;
         _launcher = launcher;
@@ -64,6 +67,7 @@ public class EnvironmentListViewModel : ViewModelBase
         _envDeleter = envDeleter;
         _nodeOps = nodeOps;
         _projectRoot = projectRoot;
+        _requirementsInstaller = requirementsInstaller;
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -92,6 +96,9 @@ public class EnvironmentListViewModel : ViewModelBase
             p => (p as Environment ?? Selected) is not null);
         InstallNodeCommand = new RelayCommand(
             p => OpenInstallNodePicker(p as Environment ?? Selected),
+            p => (p as Environment ?? Selected) is not null);
+        InstallRequirementsCommand = new RelayCommand(
+            p => OpenRequirementsProgress(p as Environment ?? Selected),
             p => (p as Environment ?? Selected) is not null);
         Load();
     }
@@ -235,6 +242,9 @@ public class EnvironmentListViewModel : ViewModelBase
     // Application.Current.MainWindow + ShowDialog() and would throw in test context).
     public Action<IReadOnlyList<string>, BaseEnvProfile, BaseEnvInstaller>? ShowProgressDialogOverride { get; set; }
 
+    // Test seam — intercepts RequirementsProgressDialog (避免在测试环境弹真实 WPF dialog)。
+    public Action<Environment, RequirementsInstaller>? ShowRequirementsDialogOverride { get; set; }
+
     private void OpenBaseEnvProgress()
     {
         if (Selected is null && Environments.Count == 0) return;
@@ -256,6 +266,25 @@ public class EnvironmentListViewModel : ViewModelBase
         // UI 立即重读反映新状态(否则用户看到行还是旧的 "未装")
         Load();
         RaiseCommandsChanged();
+    }
+
+    /// <summary>
+    /// 装 ComfyUI requirements.txt(过滤 torch 行)。开 progress dialog,
+    /// 完成后用户手动关。成功写 marker 文件;env-list 后续可据此判断
+    /// "已装依赖"。
+    /// </summary>
+    private void OpenRequirementsProgress(Environment? env)
+    {
+        if (env is null) return;
+        if (ShowRequirementsDialogOverride is not null)
+        {
+            ShowRequirementsDialogOverride(env, _requirementsInstaller);
+            return;
+        }
+        Views.RequirementsProgressDialog.Show(env, _requirementsInstaller);
+        // 关窗后 reload:看 marker 文件是否存在(UI 暂未显示 marker,后续若加
+        // "已装依赖" 列可以直接读 RequirementsInstaller.IsInstalled(env))
+        Load();
     }
 
     /// <summary>
@@ -336,5 +365,6 @@ public class EnvironmentListViewModel : ViewModelBase
         ShowLogCommand.RaiseCanExecuteChanged();
         DeleteCommand.RaiseCanExecuteChanged();
         InstallNodeCommand.RaiseCanExecuteChanged();
+        InstallRequirementsCommand.RaiseCanExecuteChanged();
     }
 }

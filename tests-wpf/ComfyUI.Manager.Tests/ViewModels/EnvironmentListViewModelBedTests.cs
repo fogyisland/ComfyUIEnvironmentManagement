@@ -16,7 +16,7 @@ public class EnvironmentListViewModelBedTests
         var repo = new EnvironmentRepository(db.Factory);
         if (seedEnv is not null) repo.Upsert(seedEnv);
         return new EnvironmentListViewModel(
-            repo, null!, null!, null!, null!, null!, null!, null!, Path.GetTempPath());
+            repo, null!, null!, null!, null!, null!, null!, null!, Path.GetTempPath(), null!);
     }
 
     private static Environment MakeEnv(string id, string status, string? bedStatus) =>
@@ -99,7 +99,7 @@ public class EnvironmentListViewModelBedTests
 
         var profileLoader = new BaseEnvProfileLoader(Path.Combine(Path.GetTempPath(), "fake-" + Guid.NewGuid()));
         var vm = new EnvironmentListViewModel(
-            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath());
+            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!);
         Assert.Single(vm.Environments);
         Assert.Null(vm.Environments[0].BedStatus);
 

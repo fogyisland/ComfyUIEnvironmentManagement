@@ -86,6 +86,9 @@ public partial class App : Application
         // v0.6.5.x hotfix:Env 删除跑腿 service(stop running + 删目录 + 删 SQLite 行)。
         // 复用 envRepo 跟 _launcher,跟 EnvironmentListView 共一份。
         var envDeleter = new EnvDeleterService(envRepo, _launcher);
+        // v0.6.5.12: requirements.txt 装依赖(runs `pip install -r <env-root>/requirements.txt`,
+        // 跳过 torch 行 — torch 版本由 BED profile 锁)
+        var requirementsInstaller = new RequirementsInstaller();
         // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
         // cache 目录 = %APPDATA%/ComfyUI-Manager(PyTorchVersionCache 直接在此存
         // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。
@@ -97,7 +100,8 @@ public partial class App : Application
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
-            profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot);
+            profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
+            requirementsInstaller);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

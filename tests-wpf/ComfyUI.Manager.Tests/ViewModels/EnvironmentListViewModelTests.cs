@@ -47,6 +47,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -62,6 +63,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -85,6 +87,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -116,6 +119,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         Assert.False(vm.BaseEnvCommand.CanExecute(null));
@@ -129,6 +133,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -156,6 +161,7 @@ public class EnvironmentListViewModelTests
             profileLoader,
             null!,
             null!,
+            null!,
             null!);
 
         var launched = false;
@@ -180,6 +186,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
+            null!,
             null!,
             null!,
             null!);
@@ -213,6 +220,7 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
             null!,
             null!,
             null!,
@@ -264,6 +272,7 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
             null!);
 
         Assert.Equal("/tmp/b.exe", vm.RecentBasePythonPath);
@@ -289,7 +298,8 @@ public class EnvironmentListViewModelTests
             null!,
             deleter,
             null!,
-            Path.GetTempPath())
+            Path.GetTempPath(),
+            null!)
         {
             ConfirmDeleteOverride = _ => true,
         };
@@ -322,7 +332,8 @@ public class EnvironmentListViewModelTests
             null!,
             deleter,
             null!,
-            Path.GetTempPath())
+            Path.GetTempPath(),
+            null!)
         {
             ConfirmDeleteOverride = _ => false,
         };
@@ -349,7 +360,8 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
-            Path.GetTempPath());
+            Path.GetTempPath(),
+            null!);
 
         Environment? captured = null;
         vm.OpenInstallPickerOverride = env => captured = env;
