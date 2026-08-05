@@ -84,7 +84,7 @@ public class EnvironmentListViewModelBedTests
         env.BedFailedReason = "pip 退出码 1";
         var vm = NewVm(db, env);
         vm.Selected = vm.Environments[0];
-        Assert.Contains("上次 BED 失败", vm.StartTooltip);
+        Assert.Contains("上次基础环境部署失败", vm.StartTooltip);
         Assert.Contains("pip 退出码 1", vm.StartTooltip);
     }
 

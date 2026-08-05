@@ -109,8 +109,8 @@ public class EnvironmentListViewModel : ViewModelBase
     /// <summary>
     /// 启动按钮 tooltip 文本:基于 Selected env 的 BED 状态。
     /// - BedStatus null   → "基础环境未安装"
-    /// - BedStatus "installing" → "BED 安装中,请稍候"
-    /// - BedStatus "failed" → "上次 BED 失败:{BedFailedReason};运行可能也失败"
+    /// - BedStatus "installing" → "基础环境安装中,请稍候"
+    /// - BedStatus "failed" → "上次基础环境部署失败:{BedFailedReason};运行可能也失败"
     /// - BedStatus "done"  → ""(BED OK,不需要提示)
     /// - env is null       → ""
     /// </summary>
@@ -123,8 +123,8 @@ public class EnvironmentListViewModel : ViewModelBase
             return env.BedStatus switch
             {
                 null => "基础环境未安装",
-                "installing" => "BED 安装中,请稍候",
-                "failed" => $"上次 BED 失败:{env.BedFailedReason};运行可能也失败",
+                "installing" => "基础环境安装中,请稍候",
+                "failed" => $"上次基础环境部署失败:{env.BedFailedReason};运行可能也失败",
                 _ => "",
             };
         }

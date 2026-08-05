@@ -21,7 +21,7 @@
                 <DataGridTextColumn Header="端口" Binding="{Binding Port}" Width="60" />
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
-                <DataGridTextColumn Header="BED" Binding="{Binding BedDisplay}" Width="220" />
+                <DataGridTextColumn Header="基础环境" Binding="{Binding BedDisplay}" Width="220" />
                 <DataGridTemplateColumn Header="操作" Width="260">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
