@@ -163,6 +163,117 @@ public class NodeOperations
         return NodeOperationResult.Ok(headSha);
     }
 
+    /// <summary>
+    /// git clone &lt;repoUrl&gt; &lt;localDir/nodeId&gt;。纯下载,不查 env,不写 ScannedNode。
+    ///
+    /// <paramref name="targetTag"/> 非空时:clone 完再 <c>git checkout &lt;tag&gt;</c>。
+    ///
+    /// 失败语义跟 <see cref="InstallAsync"/> 一致:用户取消 → "用户取消",
+    /// git 退出非零 → stderr 首行,启动失败 → 异常消息。
+    ///
+    /// 与 <see cref="InstallAsync"/> 的区别:目标目录来自 Settings 的本地节点目录
+    /// 而不是某个 env 的 custom_nodes;下载完不注册到任何 env。
+    /// </summary>
+    public virtual async Task<NodeOperationResult> DownloadAsync(
+        string localDir, string nodeId, string repoUrl,
+        string? targetTag = null,
+        CancellationToken ct = default)
+    {
+        // 本地目录没配是常见的用户态错误,返 Fail 让 UI 弹提示,不抛异常
+        if (string.IsNullOrWhiteSpace(localDir))
+        {
+            return NodeOperationResult.Fail("本地节点目录为空,请先在 Settings 配置");
+        }
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return NodeOperationResult.Fail("node id 不能为空");
+        }
+
+        if (string.IsNullOrWhiteSpace(repoUrl))
+        {
+            // 回落到 active download source 的 URL 模板(同 InstallAsync)
+            var activeName = _settings.ActiveDownloadSourceName;
+            var src = _settings.DownloadSources.FirstOrDefault(s => s.Name == activeName);
+            if (src is null || string.IsNullOrWhiteSpace(src.Url))
+            {
+                return NodeOperationResult.Fail("未配置下载源,请在 Settings 添加");
+            }
+            repoUrl = NodeUrlResolver.Resolve(src.Url, nodeId);
+            if (string.IsNullOrWhiteSpace(repoUrl))
+            {
+                return NodeOperationResult.Fail("下载源 URL 解析为空");
+            }
+        }
+
+        Directory.CreateDirectory(localDir);
+        var targetDir = Path.Combine(localDir, nodeId);
+        if (Directory.Exists(targetDir))
+        {
+            return NodeOperationResult.Fail($"目录已存在:{targetDir}");
+        }
+
+        GitResult result;
+        try
+        {
+            result = await _git.RunAsync(
+                localDir,
+                new[] { "clone", "--", repoUrl, nodeId },
+                DefaultPerCallTimeout, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return NodeOperationResult.Fail("用户取消");
+        }
+        catch (Exception ex)
+        {
+            return NodeOperationResult.Fail($"启动 git 失败:{ex.Message}");
+        }
+
+        if (!result.Ok)
+        {
+            // clone 失败前可能已经 mkdir 了一个空目录,清掉避免挡住重试
+            TryDelete(targetDir);
+            return NodeOperationResult.Fail(FirstLine(result.Stderr, result.Stdout)
+                ?? $"git 退出码 {result.ExitCode}");
+        }
+
+        // 可选:钉到指定 tag / sha
+        // 注意:不能用 "--" (会变成 pathspec),直接传 ref 让 git 自己解析
+        if (!string.IsNullOrWhiteSpace(targetTag))
+        {
+            GitResult checkoutResult;
+            try
+            {
+                checkoutResult = await _git.RunAsync(
+                    targetDir,
+                    new[] { "checkout", targetTag },
+                    DefaultPerCallTimeout, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                TryDelete(targetDir);
+                return NodeOperationResult.Fail("用户取消");
+            }
+            catch (Exception ex)
+            {
+                TryDelete(targetDir);
+                return NodeOperationResult.Fail($"启动 git checkout 失败:{ex.Message}");
+            }
+
+            if (!checkoutResult.Ok)
+            {
+                var reason = FirstLine(checkoutResult.Stderr, checkoutResult.Stdout)
+                    ?? $"git checkout 退出码 {checkoutResult.ExitCode}";
+                TryDelete(targetDir);
+                return NodeOperationResult.Fail($"checkout {targetTag} 失败:{reason}");
+            }
+        }
+
+        // 取 HEAD sha 作为 version;不写 ScannedNode(纯下载,跟 env 解耦)
+        var downloadedSha = await TryReadHeadShaAsync(targetDir, ct);
+        return NodeOperationResult.Ok(downloadedSha);
+    }
+
     private static void TryDelete(string dir)
     {
         if (!Directory.Exists(dir)) return;
