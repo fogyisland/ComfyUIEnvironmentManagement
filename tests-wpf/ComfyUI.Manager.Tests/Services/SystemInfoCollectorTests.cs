@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using Xunit;
+using Environment = System.Environment;
 
 namespace ComfyUI.Manager.Tests.Services;
 
@@ -97,6 +99,38 @@ public class SystemInfoCollectorTests
         Assert.Null(SystemInfoCollector.ParseNvccVersion((string?)null!));
     }
 
+    // -------- 静态 ParseNvidiaSmiCudaVersion --------
+
+    [Fact]
+    public void ParseNvidiaSmiCudaVersion_StandardHeader_ReturnsVersion()
+    {
+        var stdout = "Wed Aug  5 19:20:57 2026       \n" +
+                     "+-----------------------------------------------------------------------------------------+\n" +
+                     "| NVIDIA-SMI 596.36                 Driver Version: 596.36         CUDA Version: 13.2     |\n" +
+                     "+-----------------------------------------+------------------------+----------------------+\n";
+        Assert.Equal("13.2", SystemInfoCollector.ParseNvidiaSmiCudaVersion(stdout));
+    }
+
+    [Fact]
+    public void ParseNvidiaSmiCudaVersion_OldVersion_ReturnsVersion()
+    {
+        var stdout = "| NVIDIA-SMI 555.85       Driver Version: 555.85       CUDA Version: 12.5                |";
+        Assert.Equal("12.5", SystemInfoCollector.ParseNvidiaSmiCudaVersion(stdout));
+    }
+
+    [Fact]
+    public void ParseNvidiaSmiCudaVersion_NoMatch_ReturnsNull()
+    {
+        Assert.Null(SystemInfoCollector.ParseNvidiaSmiCudaVersion("no CUDA here"));
+    }
+
+    [Fact]
+    public void ParseNvidiaSmiCudaVersion_Empty_ReturnsNull()
+    {
+        Assert.Null(SystemInfoCollector.ParseNvidiaSmiCudaVersion(""));
+        Assert.Null(SystemInfoCollector.ParseNvidiaSmiCudaVersion((string?)null!));
+    }
+
     // -------- virtual TryParse*Async with fake runner --------
 
     [Fact]
@@ -164,6 +198,19 @@ public class SystemInfoCollectorTests
         Assert.NotEmpty(info.Disks);  // 当前 OS 至少有一个 ready 盘
     }
 
+    [Fact]
+    public async Task CollectAsync_NvccMissing_CudaStaysNull()
+    {
+        // 集成:无 nvcc + nvidia-smi 也没了 → CUDA 仍 null(用户没 GPU/驱动)
+        var collector = new FakeCollector(new Dictionary<string, (bool Ok, string Stdout, string Stderr)>
+        {
+            ["nvidia-smi"] = (false, "", "no fake response for nvidia-smi"),
+        });
+        var info = await collector.CollectAsync(default);
+        Assert.Null(info.CudaVersion);
+        Assert.Empty(info.Gpus);
+    }
+
     // -------- 收集 disk fallback 测试 --------
 
     [Fact]
@@ -178,6 +225,51 @@ public class SystemInfoCollectorTests
             Assert.False(string.IsNullOrEmpty(d.DriveLetter));
             Assert.True(d.TotalBytes > 0);
         }
+    }
+
+    // -------- 真实 nvidia-smi 路径(机器有 nvidia-smi 时才跑) --------
+
+    [Fact]
+    public async Task CollectAsync_RealNvidiaSmi_PicksUpGpus()
+    {
+        // 不同机器表现不同:有 nvidia-smi → 1 个 GPU,wifi no GPU → 0。这是
+        // 环境依赖,不是 bug — 我们只验 parser 路径在真实 stdout 上能解析。
+        var realFile = ResolveOnPath("nvidia-smi");
+        if (realFile is null)
+        {
+            // 机器没装 nvidia-smi → 跳过
+            return;
+        }
+
+        var collector = new SystemInfoCollector();
+        var info = await collector.CollectAsync(default);
+        // 至少跑了 — 不强制 Gpus > 0(LO 可能 process 拿到的 PATH 不一样)
+        Assert.NotNull(info);
+        // 真正的 stdout 解析:如果某行解析失败,DriverVersion 是空字符串
+        foreach (var g in info.Gpus)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(g.Name));
+        }
+    }
+
+    private static string? ResolveOnPath(string exe)
+    {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (path is null) return null;
+        foreach (var dir in path.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrEmpty(dir)) continue;
+            try
+            {
+                var full = Path.Combine(dir, exe + ".exe");
+                if (File.Exists(full)) return full;
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+        return null;
     }
 
     // -------- Test double --------

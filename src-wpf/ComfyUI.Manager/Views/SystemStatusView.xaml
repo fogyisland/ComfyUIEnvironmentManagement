@@ -120,10 +120,10 @@
                                             <Run Text=": " />
                                             <Run Text="{Binding Name, Mode=OneWay}" FontWeight="Bold" />
                                         </TextBlock>
-                                        <TextBlock Foreground="Gray">
-                                            <Run Text="驱动:" />
-                                            <Run Text="{Binding DriverVersion, Mode=OneWay}" />
-                                            <Run Text="  显存:" />
+                                        <TextBlock>
+                                            <Run Text="驱动版本:" />
+                                            <Run Text="{Binding DriverVersion, Mode=OneWay}" FontWeight="Bold" />
+                                            <Run Text="    显存:" />
                                             <Run Text="{Binding MemoryDisplay, Mode=OneWay}" />
                                         </TextBlock>
                                     </StackPanel>
@@ -140,8 +140,10 @@
                         <TextBlock Text="CUDA" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
                         <TextBlock>
                             <Run Text="CUDA 版本:" />
-                            <Run Text="{Binding Info.CudaVersion, TargetNullValue='未安装', Mode=OneWay}" />
+                            <Run Text="{Binding Info.CudaVersion, TargetNullValue='未安装', Mode=OneWay}" FontWeight="Bold" />
                         </TextBlock>
+                        <TextBlock Foreground="Gray" FontSize="11"
+                                   Text="取自 nvidia-smi 驱动最高支持的 CUDA 版本(无需 nvcc 在 PATH)" />
                     </StackPanel>
                 </Border>
             </StackPanel>

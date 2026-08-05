@@ -31,8 +31,19 @@ namespace ComfyUI.Manager.Services;
 /// </summary>
 public class SystemInfoCollector
 {
+    private readonly AppLogger? _logger;
+
+    public SystemInfoCollector(AppLogger? logger = null)
+    {
+        _logger = logger;
+    }
+
     private static readonly Regex CudaVersionPattern = new(
         @"release\s+(?<v>\d+\.\d+)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex NvsmiCudaVersionPattern = new(
+        @"CUDA Version:\s*(?<v>\d+\.\d+)",
         RegexOptions.Compiled);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
@@ -145,7 +156,13 @@ public class SystemInfoCollector
         CancellationToken ct)
     {
         var gpus = await TryParseNvidiaSmiAsync(ct);
-        var cuda = await TryParseNvccVersionAsync(ct);
+        // CUDA version 优先从 nvidia-smi header 拿(用户不一定装 nvcc),
+        // 拿不到再 fallback 到 nvcc --version。
+        var cuda = await TryParseCudaFromNvidiaSmiAsync(ct);
+        if (string.IsNullOrEmpty(cuda))
+        {
+            cuda = await TryParseNvccVersionAsync(ct);
+        }
         return (gpus, cuda);
     }
 
@@ -155,15 +172,18 @@ public class SystemInfoCollector
     /// </summary>
     protected virtual async Task<IReadOnlyList<GpuInfo>> TryParseNvidiaSmiAsync(CancellationToken ct)
     {
-        var (ok, stdout, _) = await RunProcessAsync(
+        var (ok, stdout, stderr) = await RunProcessAsync(
             "nvidia-smi",
             "--query-gpu=index,name,driver_version,memory.total --format=csv,noheader,nounits",
             TimeSpan.FromSeconds(5), ct);
+        _logger?.Info("system-info-gpu", $"nvidia-smi ok={ok} stdoutLen={stdout.Length} stderr={stderr.Trim()}");
         if (!ok || string.IsNullOrWhiteSpace(stdout))
         {
             return Array.Empty<GpuInfo>();
         }
-        return ParseNvidiaSmi(stdout);
+        var gpus = ParseNvidiaSmi(stdout);
+        _logger?.Info("system-info-gpu", $"nvidia-smi 解析 {gpus.Count} 个 GPU");
+        return gpus;
     }
 
     /// <summary>
@@ -171,13 +191,33 @@ public class SystemInfoCollector
     /// </summary>
     protected virtual async Task<string?> TryParseNvccVersionAsync(CancellationToken ct)
     {
-        var (ok, stdout, _) = await RunProcessAsync(
+        var (ok, stdout, stderr) = await RunProcessAsync(
             "nvcc", "--version", TimeSpan.FromSeconds(5), ct);
+        _logger?.Info("system-info-cuda", $"nvcc ok={ok} stdoutLen={stdout.Length} stderr={stderr.Trim()}");
         if (!ok || string.IsNullOrWhiteSpace(stdout))
         {
             return null;
         }
-        return ParseNvccVersion(stdout);
+        var version = ParseNvccVersion(stdout);
+        _logger?.Info("system-info-cuda", $"nvcc 解析版本={version ?? "null"}");
+        return version;
+    }
+
+    /// <summary>
+    /// 跑 `nvidia-smi`(无参),从 header 行 `CUDA Version: X.Y` 提取 CUDA 版本。
+    /// 用户不一定装 nvcc,所以这条路径是主源;nvcc 是 fallback。
+    /// </summary>
+    protected virtual async Task<string?> TryParseCudaFromNvidiaSmiAsync(CancellationToken ct)
+    {
+        var (ok, stdout, _) = await RunProcessAsync(
+            "nvidia-smi", "", TimeSpan.FromSeconds(5), ct);
+        if (!ok || string.IsNullOrWhiteSpace(stdout))
+        {
+            return null;
+        }
+        var version = ParseNvidiaSmiCudaVersion(stdout);
+        _logger?.Info("system-info-cuda", $"nvidia-smi header 解析 CUDA={version ?? "null"}");
+        return version;
     }
 
     /// <summary>
@@ -260,6 +300,16 @@ public class SystemInfoCollector
     {
         if (string.IsNullOrWhiteSpace(stdout)) return null;
         var m = CudaVersionPattern.Match(stdout);
+        return m.Success ? m.Groups["v"].Value : null;
+    }
+
+    /// <summary>
+    /// 解析 `nvidia-smi`(无参) header 行 `CUDA Version: X.Y`。
+    /// </summary>
+    public static string? ParseNvidiaSmiCudaVersion(string stdout)
+    {
+        if (string.IsNullOrWhiteSpace(stdout)) return null;
+        var m = NvsmiCudaVersionPattern.Match(stdout);
         return m.Success ? m.Groups["v"].Value : null;
     }
 }

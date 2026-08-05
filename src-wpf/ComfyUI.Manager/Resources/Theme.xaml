@@ -8,6 +8,7 @@
     <views:NullToVisibilityConverter x:Key="NullToVisibility" />
     <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
     <views:InverseBoolConverter x:Key="InverseBool" />
+    <views:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibility" />
 
     <!-- Material You Purple -->
     <Color x:Key="PrimaryColor">#6750A4</Color>

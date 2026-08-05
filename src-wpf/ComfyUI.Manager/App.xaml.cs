@@ -103,7 +103,7 @@ public partial class App : Application
             "ComfyUI-Manager");
         var profileLoader = new BaseEnvProfileLoader(projectRoot, appDataDir, http);
         // v0.6.5.x: 系统状态 tab 数据收集器(进入 tab 时拉一次 OS/CPU/Mem/Disk/GPU/CUDA)
-        var systemInfoCollector = new SystemInfoCollector();
+        var systemInfoCollector = new SystemInfoCollector(logger);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
