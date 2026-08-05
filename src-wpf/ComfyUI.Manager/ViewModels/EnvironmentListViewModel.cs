@@ -170,9 +170,16 @@ public class EnvironmentListViewModel : ViewModelBase
         StartStatus = status;
         RaisePropertyChanged(nameof(StartStatus));
         status.Begin();
+        // 把 status 包成 Progress<string>:Progress<T> 构造时捕获当前
+        // SynchronizationContext(UI 线程),Report 回调自动 marshal 回 UI 线程。
+        // ProcessLauncher.AttachStdoutReader / AttachStderrReader 跑在 Task.Run
+        // 后台线程,直接传 status 会在后台线程改 LogLines ObservableCollection,
+        // 触发 WPF "某个 itemscontrol 与它的项源不一致"。
+        var stageProgress = new Progress<string>(s => status.Report(s));
+        var logProgress = new Progress<string>(line => status.Report(line));
         try
         {
-            await _launcher.StartEnvAsync(env, status, status, default);
+            await _launcher.StartEnvAsync(env, stageProgress, logProgress, default);
             status.Complete();
             await Task.Delay(TimeSpan.FromSeconds(2));
             status.Hide();
