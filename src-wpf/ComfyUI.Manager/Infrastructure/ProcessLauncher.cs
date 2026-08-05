@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using Environment = ComfyUI.Manager.Models.Environment;
 
 namespace ComfyUI.Manager.Infrastructure;
@@ -26,6 +27,7 @@ public sealed class ProcessLauncher : IDisposable
     private readonly SqliteConnectionFactory _dbFactory;
     private readonly EnvironmentRepository _envRepo;
     private readonly ProcessStateRepository _processStateRepo;
+    private readonly AppLogger? _logger;
     private readonly Dictionary<string, ProcessEntry> _running = new();
     private readonly object _runningLock = new();
     private bool _disposed;
@@ -34,12 +36,14 @@ public sealed class ProcessLauncher : IDisposable
         string projectRoot,
         SqliteConnectionFactory dbFactory,
         EnvironmentRepository envRepo,
-        ProcessStateRepository processStateRepo)
+        ProcessStateRepository processStateRepo,
+        AppLogger? logger = null)
     {
         _projectRoot = projectRoot;
         _dbFactory = dbFactory;
         _envRepo = envRepo;
         _processStateRepo = processStateRepo;
+        _logger = logger;
     }
 
     public string ProjectRoot => _projectRoot;
@@ -107,6 +111,8 @@ public sealed class ProcessLauncher : IDisposable
                     $"env '{env.Name}' 已在运行中");
             }
         }
+
+        _logger?.Info("env-start", $"env='{env.Name}' 开始启动 port={env.Port}");
 
         try
         {
@@ -219,11 +225,13 @@ public sealed class ProcessLauncher : IDisposable
             {
                 // env row 写失败不致命 —— 进程已启动,后续 reload 也能查到 process_state
             }
+            _logger?.Info("env-start", $"env='{env.Name}' 启动成功 pid={process.Id} port={port}");
         }
         catch (Exception ex)
         {
             stageProgress?.Report($"stage:激活本地环境");
             logProgress?.Report($"[error] {ex.Message}");
+            _logger?.Error("env-start", $"env='{env.Name}' 启动失败", ex);
             throw;
         }
     }
@@ -240,6 +248,8 @@ public sealed class ProcessLauncher : IDisposable
     {
         if (env is null) throw new ArgumentNullException(nameof(env));
         if (_disposed) throw new ObjectDisposedException(nameof(ProcessLauncher));
+
+        _logger?.Info("env-stop", $"env='{env.Name}' 停止请求 timeout={timeoutSeconds}s");
 
         ProcessEntry? entry;
         lock (_runningLock)
@@ -287,6 +297,8 @@ public sealed class ProcessLauncher : IDisposable
             _envRepo.Upsert(fresh);
         }
         catch { }
+
+        _logger?.Info("env-stop", $"env='{env.Name}' 已停止");
     }
 
     public void Dispose()

@@ -29,6 +29,9 @@ public partial class App : Application
         var dbFactory = new SqliteConnectionFactory();
         var envRepo = new EnvironmentRepository(dbFactory);
 
+        // v0.6.5.13: 集中日志 — 所有 subsystem 写到 projectRoot/Logs/YYYY-MM-DD.log
+        var logger = new AppLogger(projectRoot);
+
         // v0.6.5.8: 启动 reconciliation — 把上次未装完的 "installing" 行翻成
         // "failed" + "上次未完成"。必须先于 MainViewModel.Load(),否则 UI 看到
         // ⏳ 装中 几秒后变 ❌ 闪烁。
@@ -37,7 +40,7 @@ public partial class App : Application
         var nodeRepo = new NodeRepository(dbFactory);
         var processStateRepo = new ProcessStateRepository(dbFactory);
         _launcher = new ProcessLauncher(
-            projectRoot, dbFactory, envRepo, processStateRepo);
+            projectRoot, dbFactory, envRepo, processStateRepo, logger);
 
         var settingsRepo = new SettingsRepository();
         var settings = settingsRepo.Load();
@@ -69,7 +72,7 @@ public partial class App : Application
         // 共享同一份 GitProxyConfig,SettingsViewModel 改它会立即影响下一次 git 调用。
         var gitProxy = GitProxyConfig.From(settings);
         var gitRunner = new GitRunner(gitExe, gitProxy);
-        var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings);
+        var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings, logger);
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes);
         var catalogCacheStore = new CatalogCacheStore();
@@ -79,16 +82,16 @@ public partial class App : Application
         var catalogRefreshService = new CatalogRefreshService(
             catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
-            projectRoot, gitExe, envRepo, nodeRepo, gitProxy);
+            projectRoot, gitExe, envRepo, nodeRepo, gitProxy, logger);
         var envCreator = new EnvCreatorService(
             dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
-        var baseEnvInstaller = new BaseEnvInstaller(envRepo);
+        var baseEnvInstaller = new BaseEnvInstaller(envRepo, logger);
         // v0.6.5.x hotfix:Env 删除跑腿 service(stop running + 删目录 + 删 SQLite 行)。
         // 复用 envRepo 跟 _launcher,跟 EnvironmentListView 共一份。
         var envDeleter = new EnvDeleterService(envRepo, _launcher);
         // v0.6.5.12: requirements.txt 装依赖(runs `pip install -r <env-root>/requirements.txt`,
         // 跳过 torch 行 — torch 版本由 BED profile 锁)
-        var requirementsInstaller = new RequirementsInstaller();
+        var requirementsInstaller = new RequirementsInstaller(logger);
         // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
         // cache 目录 = %APPDATA%/ComfyUI-Manager(PyTorchVersionCache 直接在此存
         // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。

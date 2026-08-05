@@ -34,17 +34,20 @@ public class NodeOperations
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeRepository _nodeRepo;
     private readonly Settings _settings;
+    private readonly AppLogger? _logger;
 
     public NodeOperations(
         GitRunner git,
         EnvironmentRepository envRepo,
         NodeRepository nodeRepo,
-        Settings settings)
+        Settings settings,
+        AppLogger? logger = null)
     {
         _git = git ?? throw new ArgumentNullException(nameof(git));
         _envRepo = envRepo ?? throw new ArgumentNullException(nameof(envRepo));
         _nodeRepo = nodeRepo ?? throw new ArgumentNullException(nameof(nodeRepo));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _logger = logger;
     }
 
     /// <summary>
@@ -62,6 +65,7 @@ public class NodeOperations
         string? targetTag = null,
         CancellationToken ct = default)
     {
+        _logger?.Info("node-install", $"env='{envId}' node='{nodeId}' 开始安装");
         var env = RequireEnv(envId);
         if (string.IsNullOrWhiteSpace(env.CustomNodesPath))
         {
@@ -160,6 +164,7 @@ public class NodeOperations
             Status = "enabled",
             LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
         });
+        _logger?.Info("node-install", $"env='{envId}' node='{nodeId}' 安装成功 sha={(headSha is null ? "?" : headSha[..Math.Min(8, headSha.Length)])}");
         return NodeOperationResult.Ok(headSha);
     }
 
@@ -179,6 +184,8 @@ public class NodeOperations
         string? targetTag = null,
         CancellationToken ct = default)
     {
+        _logger?.Info("node-download", $"dir='{localDir}' node='{nodeId}' 开始下载");
+
         // 本地目录没配是常见的用户态错误,返 Fail 让 UI 弹提示,不抛异常
         if (string.IsNullOrWhiteSpace(localDir))
         {
@@ -271,6 +278,7 @@ public class NodeOperations
 
         // 取 HEAD sha 作为 version;不写 ScannedNode(纯下载,跟 env 解耦)
         var downloadedSha = await TryReadHeadShaAsync(targetDir, ct);
+        _logger?.Info("node-download", $"dir='{localDir}' node='{nodeId}' 下载成功");
         return NodeOperationResult.Ok(downloadedSha);
     }
 
@@ -303,6 +311,7 @@ public class NodeOperations
     public virtual async Task<NodeOperationResult> UpgradeAsync(
         string envId, string nodeId, CancellationToken ct = default)
     {
+        _logger?.Info("node-upgrade", $"env='{envId}' node='{nodeId}' 开始升级");
         var node = _nodeRepo.Get(nodeId);
         if (node is null || string.IsNullOrWhiteSpace(node.PackagePath))
         {
@@ -343,6 +352,7 @@ public class NodeOperations
             node.LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
             try { _nodeRepo.Upsert(node); } catch { }
         }
+        _logger?.Info("node-upgrade", $"env='{envId}' node='{nodeId}' 升级成功");
         return NodeOperationResult.Ok(headSha);
     }
 
@@ -353,6 +363,7 @@ public class NodeOperations
         string envId, string nodeId, string sha,
         CancellationToken ct = default)
     {
+        _logger?.Info("node-rollback", $"env='{envId}' node='{nodeId}' 开始回滚 sha={sha}");
         if (string.IsNullOrWhiteSpace(sha))
         {
             return NodeOperationResult.Fail("sha 不能为空");
@@ -393,6 +404,7 @@ public class NodeOperations
         node.Version = sha;
         node.LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
         try { _nodeRepo.Upsert(node); } catch { }
+        _logger?.Info("node-rollback", $"env='{envId}' node='{nodeId}' 回滚成功 sha={sha}");
         return NodeOperationResult.Ok(sha);
     }
 

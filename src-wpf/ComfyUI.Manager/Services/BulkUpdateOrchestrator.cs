@@ -35,6 +35,7 @@ public sealed class BulkUpdateOrchestrator
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeRepository _nodeRepo;
     private readonly GitProxyConfig? _proxy;
+    private readonly AppLogger? _logger;
 
     private CancellationTokenSource? _runCts;
     private readonly object _runLock = new();
@@ -63,7 +64,8 @@ public sealed class BulkUpdateOrchestrator
         string gitExe,
         EnvironmentRepository envRepo,
         NodeRepository nodeRepo,
-        GitProxyConfig? proxy = null)
+        GitProxyConfig? proxy = null,
+        AppLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(projectRoot))
         {
@@ -78,6 +80,7 @@ public sealed class BulkUpdateOrchestrator
         _envRepo = envRepo;
         _nodeRepo = nodeRepo;
         _proxy = proxy;
+        _logger = logger;
     }
 
     /// <summary>
@@ -131,6 +134,8 @@ public sealed class BulkUpdateOrchestrator
         CancellationToken ct,
         CancellationTokenSource linkedCts)
     {
+        _logger?.Info("bulk-update", $"开始 bulkId={bulkId[..8]} envs={envIds.Count} nodes={nodeIds.Count}");
+
         var logPath = Path.Combine(_projectRoot, "logs", $"bulk-update-{bulkId}.log");
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
         // 全 run 共享一个流,而不是每次 (env,node) 重新打开 ——
@@ -245,6 +250,12 @@ public sealed class BulkUpdateOrchestrator
             Skipped: skipped,
             Failed: failed,
             Rows: rows);
+
+        var summaryMsg = $"bulkId={bulkId[..8]} total={summary.Total} ok={summary.Succeeded} skip={summary.Skipped} fail={summary.Failed}";
+        if (cancelledByUser || summary.Failed > 0)
+            _logger?.Error("bulk-update", summaryMsg);
+        else
+            _logger?.Info("bulk-update", summaryMsg);
 
         // 顺序:Completed 先(订阅者拿 summary),然后 Cancelled(如果真的是取消)。
         // 订阅者的 Completed 处理通常把 Mode 切到 Summary。

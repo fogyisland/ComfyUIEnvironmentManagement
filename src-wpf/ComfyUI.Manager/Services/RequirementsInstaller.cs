@@ -34,6 +34,13 @@ public class RequirementsInstaller
         @"^\s*#?\s*(torch|torchvision|torchaudio|torchtext|torchdata)(\s|$|[=<>!~])",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    private readonly AppLogger? _logger;
+
+    public RequirementsInstaller(AppLogger? logger = null)
+    {
+        _logger = logger;
+    }
+
     /// <summary>
     /// 检查 env 是否已经装过 requirements.txt(marker 文件存在)。
     /// </summary>
@@ -73,13 +80,17 @@ public class RequirementsInstaller
         if (string.IsNullOrWhiteSpace(env.RootPath))
             throw new ArgumentException("env.RootPath 为空", nameof(env));
 
+        _logger?.Info("requirements", $"env='{env.Name}' 开始装 requirements.txt");
+
         var requirementsPath = Path.Combine(env.RootPath, "requirements.txt");
         if (!File.Exists(requirementsPath))
         {
+            var reason = $"找不到 requirements.txt(已尝试:{requirementsPath})";
+            LogResult(env.Name, "failed", reason);
             return new RequirementsInstallResult(
                 Success: false,
                 Cancelled: false,
-                Reason: $"找不到 requirements.txt(已尝试:{requirementsPath})",
+                Reason: reason,
                 InstalledCount: 0);
         }
 
@@ -90,6 +101,7 @@ public class RequirementsInstaller
         }
         catch (Exception ex)
         {
+            LogResult(env.Name, "failed", $"读取 requirements.txt 失败:{ex.Message}");
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false,
                 Reason: $"读取 requirements.txt 失败:{ex.Message}",
@@ -104,6 +116,7 @@ public class RequirementsInstaller
         }
         catch (Exception ex)
         {
+            LogResult(env.Name, "failed", $"写过滤文件失败:{ex.Message}");
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false,
                 Reason: $"写过滤文件失败:{ex.Message}",
@@ -122,6 +135,7 @@ public class RequirementsInstaller
 
         if (pipResult.WasCancelled || ct.IsCancellationRequested)
         {
+            LogResult(env.Name, "cancelled", "用户取消");
             return new RequirementsInstallResult(
                 Success: false, Cancelled: true,
                 Reason: "用户取消",
@@ -130,9 +144,11 @@ public class RequirementsInstaller
 
         if (pipResult.ExitCode != 0)
         {
+            var reason = $"pip 退出码 {pipResult.ExitCode}";
+            LogResult(env.Name, "failed", reason);
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false,
-                Reason: $"pip 退出码 {pipResult.ExitCode}",
+                Reason: reason,
                 InstalledCount: 0);
         }
 
@@ -147,10 +163,21 @@ public class RequirementsInstaller
             // marker 写失败不致命 — 下次用户再点还是会跳过已经装好的包(pip 自带幂等)
         }
 
+        LogResult(env.Name, "succeeded", null);
         return new RequirementsInstallResult(
             Success: true, Cancelled: false,
             Reason: null,
             InstalledCount: filtered.Count);
+    }
+
+    private void LogResult(string envName, string status, string? reason)
+    {
+        if (_logger is null) return;
+        var msg = reason is null
+            ? $"env='{envName}' {status}"
+            : $"env='{envName}' {status} — {reason}";
+        if (status == "succeeded") _logger.Info("requirements", msg);
+        else _logger.Error("requirements", msg);
     }
 
     private static string ResolveVenvPython(Environment env)

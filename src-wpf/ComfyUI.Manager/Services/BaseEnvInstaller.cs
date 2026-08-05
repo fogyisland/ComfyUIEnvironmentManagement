@@ -35,10 +35,12 @@ public class BaseEnvInstaller
         RegexOptions.Compiled);
 
     private readonly IEnvironmentRepository _envRepo;
+    private readonly AppLogger? _logger;
 
-    public BaseEnvInstaller(IEnvironmentRepository envRepo)
+    public BaseEnvInstaller(IEnvironmentRepository envRepo, AppLogger? logger = null)
     {
         _envRepo = envRepo ?? throw new ArgumentNullException(nameof(envRepo));
+        _logger = logger;
     }
 
     /// <summary>
@@ -59,6 +61,9 @@ public class BaseEnvInstaller
             return new BaseEnvInstallResult(false, 0, 0,
                 new Dictionary<string, string>());
         }
+
+        _logger?.Info("bed-install",
+            $"开始安装 profile={profile.Id} cuda={profile.CudaVersion} torch={profile.TorchVersion} envs={envIds.Count}");
 
         var failures = new Dictionary<string, string>();
         var succeeded = 0;
@@ -149,6 +154,7 @@ public class BaseEnvInstaller
                     cancelled = true;
                     failures[envId] = "用户取消";
                     failed++;
+                    LogTerminal(envId, env.Name, "cancelled", "用户取消");
                     progress?.Report(new BaseEnvProgress(
                         BaseEnvStatus.Cancelled, completed + 1, total,
                         envId, env.Name, null, null, "用户取消"));
@@ -159,6 +165,7 @@ public class BaseEnvInstaller
                 if (result.ExitCode == 0)
                 {
                     succeeded++;
+                    LogTerminal(envId, env.Name, "succeeded", null);
                     progress?.Report(new BaseEnvProgress(
                         BaseEnvStatus.Succeeded, completed + 1, total,
                         envId, env.Name, 100, null, null));
@@ -166,7 +173,9 @@ public class BaseEnvInstaller
                 else
                 {
                     failed++;
-                    failures[envId] = $"pip 退出码 {result.ExitCode}";
+                    var reason = $"pip 退出码 {result.ExitCode}";
+                    failures[envId] = reason;
+                    LogTerminal(envId, env.Name, "failed", reason);
                     progress?.Report(new BaseEnvProgress(
                         BaseEnvStatus.Failed, completed + 1, total,
                         envId, env.Name, null, null,
@@ -178,6 +187,7 @@ public class BaseEnvInstaller
                 cancelled = true;
                 failures[envId] = "用户取消";
                 failed++;
+                LogTerminal(envId, env.Name, "cancelled", "用户取消");
                 progress?.Report(new BaseEnvProgress(
                     BaseEnvStatus.Cancelled, completed + 1, total,
                     envId, env.Name, null, null, "用户取消"));
@@ -188,6 +198,7 @@ public class BaseEnvInstaller
             {
                 failed++;
                 failures[envId] = ex.Message;
+                LogTerminal(envId, env.Name, "failed", ex.Message);
                 progress?.Report(new BaseEnvProgress(
                     BaseEnvStatus.Failed, completed + 1, total,
                     envId, env.Name, null, null, ex.Message));
@@ -224,8 +235,27 @@ public class BaseEnvInstaller
             }
         }
 
+        if (_logger is not null)
+        {
+            var summary = cancelled
+                ? $"安装被取消 succeeded={succeeded} failed={failed}"
+                : $"安装完成 succeeded={succeeded} failed={failed}";
+            if (cancelled || failed > 0) _logger.Error("bed-install", summary);
+            else _logger.Info("bed-install", summary);
+        }
+
         return new BaseEnvInstallResult(
             cancelled, succeeded, failed, failures);
+    }
+
+    private void LogTerminal(string envId, string envName, string status, string? reason)
+    {
+        if (_logger is null) return;
+        var msg = reason is null
+            ? $"env='{envName}' {status}"
+            : $"env='{envName}' {status} — {reason}";
+        if (status == "succeeded") _logger.Info("bed-install", msg);
+        else _logger.Error("bed-install", msg);
     }
 
     /// <summary>
