@@ -44,7 +44,7 @@ v0.6.5.8 P0-A (BED installing 状态写活 + 启动 reconciliation) T1 完成、
 | G9 | `SettingsView` 新 UI 行放在 `GlobalNodesDir` 行**之后**(「路径」section 内),TextBox + 浏览按钮 layout 跟 `EnvsDir`/`GlobalNodesDir` 完全一致 | spec §4.2 |
 | G10 | 无 version bump,无 release zip,无 ledger commit(per `feedback_no_zip.md` + v0.6.5.8 P0-A hotfix 偏好一致) | spec §8 + memory |
 | G11 | `App.xaml.cs:44` `SettingsDefaults.Apply(settings, projectRoot)` 后可选加 `Directory.CreateDirectory(Path.Combine(projectRoot, settings.LocalNodeDirectory))`,确保首次启动预创建 | spec §4.1 + 现有 `App.xaml.cs` |
-| G12 | 测试用 `FakeGitRunner` pattern(已有,看 `tests-wpf/.../Services/NodeOperationsTests.cs`),不真跑 git | spec §6.2 |
+| G12 | 测试沿用 `tests-wpf/.../Services/NodeOperationsTests.cs` 的真 git + 本地 bare repo pattern(`InitRepoPair` / `FindGit()` helper,无 git 环境降级),不引入 `FakeGitRunner`(plan 初稿误述 `FakeGitRunner` 已有,实则 `GitRunner` 是 `sealed` 且无接口;抽出 `IGitRunner` 会波及 12 处生产代码,不在本 spec 范围) | spec §6.2 + NodeOperationsTests 现有 pattern |
 | G13 | `NodeOperations.DownloadAsync` 是 `public virtual`(跟 `InstallAsync` 一致,允许测试 subclass override `GitRunner` 行为) | spec §4.3 + 现有 `NodeOperations.cs` 风格 |
 | G14 | `NodeOperations.DownloadAsync` 入口对 `localDir` 空做 early-return Fail,跟 `InstallAsync` 对 `envId` 的 `RequireEnv` 抛异常风格不同(后者是抛,前者是返 Fail,因为本地目录配置错误对用户更友好应该 InfoMessage 提示而不是 throw) | spec §4.3 |
 
@@ -140,7 +140,7 @@ v0.6.5.8 P0-A (BED installing 状态写活 + 启动 reconciliation) T1 完成、
   ```
   语义:纯 git clone(可选 checkout tag),不查 env,不写 ScannedNode,失败语义跟 InstallAsync 一致。
 
-- [ ] **Step 1: Write failing tests** (verbatim from spec §6.2 — 7 tests):
+- [ ] **Step 1: Write failing tests** (verbatim from spec §6.2 — 7 tests,用真 git + 本地 bare repo pattern):
   - `DownloadAsync_ClonesRepoIntoLocalDir`
   - `DownloadAsync_DoesNotWriteScannedNode`
   - `DownloadAsync_TargetTag_ChecksOutAfterClone`
