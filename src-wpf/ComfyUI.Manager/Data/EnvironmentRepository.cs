@@ -8,21 +8,19 @@ namespace ComfyUI.Manager.Data;
 
 /// <summary>
 /// EnvironmentRepository:CRUD for the <c>environments</c> table.
-/// v0.6.5.8: 移除 sealed,Upsert/Get/ListAll 改 virtual,允许测试子类包装
-/// (例如 FlakyEnvironmentRepository 模拟写失败)。
+/// v0.6.5.8: 实现 <see cref="IEnvironmentRepository"/>,让测试可 composition 包装
+/// (例如 FlakyEnvironmentRepository 模拟写失败),不需要改 sealed/non-virtual。
 /// </summary>
-public class EnvironmentRepository
+public sealed class EnvironmentRepository : IEnvironmentRepository
 {
     private readonly SqliteConnectionFactory _factory;
-
-    public SqliteConnectionFactory Factory => _factory;
 
     public EnvironmentRepository(SqliteConnectionFactory factory)
     {
         _factory = factory;
     }
 
-    public virtual List<Environment> ListAll()
+    public List<Environment> ListAll()
     {
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
@@ -43,7 +41,7 @@ public class EnvironmentRepository
         return list;
     }
 
-    public virtual Environment? Get(string envId)
+    public Environment? Get(string envId)
     {
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
@@ -59,7 +57,7 @@ public class EnvironmentRepository
         return reader.Read() ? Read(reader) : null;
     }
 
-    public virtual void Upsert(Environment env)
+    public void Upsert(Environment env)
     {
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();

@@ -34,9 +34,9 @@ public class BaseEnvInstaller
         (?<p3>\d+) %",
         RegexOptions.Compiled);
 
-    private readonly EnvironmentRepository _envRepo;
+    private readonly IEnvironmentRepository _envRepo;
 
-    public BaseEnvInstaller(EnvironmentRepository envRepo)
+    public BaseEnvInstaller(IEnvironmentRepository envRepo)
     {
         _envRepo = envRepo ?? throw new ArgumentNullException(nameof(envRepo));
     }

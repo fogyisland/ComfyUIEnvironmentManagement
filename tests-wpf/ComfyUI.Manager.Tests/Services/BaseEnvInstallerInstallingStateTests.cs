@@ -162,9 +162,9 @@ public sealed class BaseEnvInstallerInstallingStateTests : IDisposable
         public int RunCount { get; private set; }
         public Action? AssertOnFirstRun { get; set; }
         public bool AssertOnFirstRunCalled { get; private set; }
-        private readonly EnvironmentRepository _repo;
+        private readonly IEnvironmentRepository _repo;
 
-        public FakeBaseEnvInstallerPartial(EnvironmentRepository repo) : base(repo) { _repo = repo; }
+        public FakeBaseEnvInstallerPartial(IEnvironmentRepository repo) : base(repo) { _repo = repo; }
 
         protected override Task<PipResult> RunPipAsync(
             string pythonExe, IReadOnlyList<string> pipArgs,
@@ -181,22 +181,19 @@ public sealed class BaseEnvInstallerInstallingStateTests : IDisposable
         }
     }
 
-    private sealed class FlakyEnvironmentRepository : EnvironmentRepository
+    private sealed class FlakyEnvironmentRepository : IEnvironmentRepository
     {
-        private readonly EnvironmentRepository _inner;
+        private readonly IEnvironmentRepository _inner;
         private int _upsertCalls;
         private readonly bool _failFirstUpsert;
 
-        public FlakyEnvironmentRepository(EnvironmentRepository inner, bool failFirstUpsert)
-            : base(inner.Factory)
+        public FlakyEnvironmentRepository(IEnvironmentRepository inner, bool failFirstUpsert)
         {
             _inner = inner;
             _failFirstUpsert = failFirstUpsert;
         }
 
-        public new SqliteConnectionFactory Factory => _inner.Factory;
-
-        public override void Upsert(Environment env)
+        public void Upsert(Environment env)
         {
             if (_failFirstUpsert && _upsertCalls++ == 0)
             {
@@ -205,8 +202,8 @@ public sealed class BaseEnvInstallerInstallingStateTests : IDisposable
             _inner.Upsert(env);
         }
 
-        public override Environment? Get(string id) => _inner.Get(id);
-        public override System.Collections.Generic.List<Environment> ListAll() => _inner.ListAll();
+        public Environment? Get(string id) => _inner.Get(id);
+        public System.Collections.Generic.List<Environment> ListAll() => _inner.ListAll();
     }
 
     private sealed class RecordingProgress : IProgress<BaseEnvProgress>
