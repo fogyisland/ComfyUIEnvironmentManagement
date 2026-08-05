@@ -98,11 +98,10 @@ public class MainViewModel : ViewModelBase
     private void ShowCatalog()
     {
         var catRepo = new CatalogRepository(_catalogCacheStore);
-        var envRepo = new EnvironmentRepository(_dbFactory);
         var versionRepo = new NodeVersionRepository(_catalogCacheStore);
         CurrentView = new CatalogView
         {
-            DataContext = new CatalogViewModel(catRepo, versionRepo, envRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo),
+            DataContext = new CatalogViewModel(catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot),
         };
     }
 

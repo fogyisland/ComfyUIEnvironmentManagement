@@ -165,9 +165,9 @@
                             </TextBlock>
                             <TextBlock Text="{Binding SelectedDescription}" Margin="0,12,0,0"
                                        TextWrapping="Wrap" Foreground="#444" />
-                            <Button Content="{Binding InstallButtonLabel}" Margin="0,16,0,0" HorizontalAlignment="Left"
+                            <Button Content="{Binding DownloadButtonLabel}" Margin="0,16,0,0" HorizontalAlignment="Left"
                                     Padding="20,6"
-                                    Command="{Binding InstallCommand}"
+                                    Command="{Binding DownloadCommand}"
                                     CommandParameter="{Binding Selected}"
                                     Style="{StaticResource MaterialButton}" />
                         </StackPanel>

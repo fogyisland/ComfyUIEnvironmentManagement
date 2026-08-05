@@ -46,7 +46,7 @@ public class CatalogViewModelTests : IDisposable
     public void Dispose() => _db.Dispose();
 
     private CatalogViewModel NewVm() =>
-        new CatalogViewModel(_catRepo, _versionRepo, _envRepo, _nodeOps, _refreshService, _settings, _settingsRepo);
+        new CatalogViewModel(_catRepo, _versionRepo, _nodeOps, _refreshService, _settings, _settingsRepo, @"D:\ToolDevelop\ComfyUI");
 
     private void SeedCatalog(string package)
     {
@@ -274,17 +274,17 @@ public class CatalogViewModelTests : IDisposable
     }
 
     [Fact]
-    public void InstallButtonLabel_NoVersions_ReturnsInstall()
+    public void DownloadButtonLabel_NoVersions_ReturnsDownload()
     {
         SeedCatalog("pkg-no-versions");
         var vm = NewVm();
         vm.Selected = vm.PagedEntries.First(e => e.Package == "pkg-no-versions");
 
-        Assert.Equal("安装", vm.InstallButtonLabel);
+        Assert.Equal("下载", vm.DownloadButtonLabel);
     }
 
     [Fact]
-    public void InstallButtonLabel_WithVersions_DefaultsToLatest()
+    public void DownloadButtonLabel_WithVersions_DefaultsToLatest()
     {
         SeedCatalog("pkg-with-versions");
         SeedVersions("pkg-with-versions",
@@ -295,11 +295,11 @@ public class CatalogViewModelTests : IDisposable
         vm.Selected = vm.PagedEntries.First(e => e.Package == "pkg-with-versions");
 
         // ListByNode returns DESC by published_at → v2.0.0 排第一个 → 自动默认
-        Assert.Equal("安装 v2.0.0", vm.InstallButtonLabel);
+        Assert.Equal("下载 v2.0.0", vm.DownloadButtonLabel);
     }
 
     [Fact]
-    public void InstallButtonLabel_UpdatesWhenSelectedVersionChanges()
+    public void DownloadButtonLabel_UpdatesWhenSelectedVersionChanges()
     {
         SeedCatalog("pkg-switch");
         SeedVersions("pkg-switch",
@@ -309,17 +309,17 @@ public class CatalogViewModelTests : IDisposable
         var vm = NewVm();
         vm.Selected = vm.PagedEntries.First(e => e.Package == "pkg-switch");
 
-        Assert.Equal("安装 v2.0.0", vm.InstallButtonLabel);
+        Assert.Equal("下载 v2.0.0", vm.DownloadButtonLabel);
 
         vm.SelectedVersion = vm.SelectedVersions.Last();  // 切到 v1.0.0
-        Assert.Equal("安装 v1.0.0", vm.InstallButtonLabel);
+        Assert.Equal("下载 v1.0.0", vm.DownloadButtonLabel);
 
         vm.SelectedVersion = vm.SelectedVersions.First();  // 切回 v2.0.0
-        Assert.Equal("安装 v2.0.0", vm.InstallButtonLabel);
+        Assert.Equal("下载 v2.0.0", vm.DownloadButtonLabel);
     }
 
     [Fact]
-    public void InstallButtonLabel_ClearedWhenSelectionCleared()
+    public void DownloadButtonLabel_ClearedWhenSelectionCleared()
     {
         SeedCatalog("pkg-clear");
         SeedVersions("pkg-clear", ("v9.9.9", "2025-06-01T00:00:00Z", false));
@@ -327,9 +327,9 @@ public class CatalogViewModelTests : IDisposable
         var vm = NewVm();
         var entry = vm.PagedEntries.First(e => e.Package == "pkg-clear");
         vm.Selected = entry;
-        Assert.Equal("安装 v9.9.9", vm.InstallButtonLabel);
+        Assert.Equal("下载 v9.9.9", vm.DownloadButtonLabel);
 
         vm.Selected = null;
-        Assert.Equal("安装", vm.InstallButtonLabel);
+        Assert.Equal("下载", vm.DownloadButtonLabel);
     }
 }

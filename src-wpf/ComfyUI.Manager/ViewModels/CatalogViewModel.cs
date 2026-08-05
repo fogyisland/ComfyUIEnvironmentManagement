@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,18 +15,18 @@ public class CatalogViewModel : ViewModelBase
 {
     private readonly CatalogRepository _repo;
     private readonly NodeVersionRepository _versionRepo;
-    private readonly EnvironmentRepository _envRepo;
     private readonly NodeOperations _nodeOps;
     private readonly CatalogRefreshService _refreshService;
     private readonly Settings _settings;
     private readonly SettingsRepository _settingsRepo;
+    private readonly string _projectRoot;
 
     private List<CatalogEntry> _allEntries = new();
 
     public ObservableCollection<CatalogEntry> PagedEntries { get; } = new();
     public ObservableCollection<VersionInfo> SelectedVersions { get; } = new();
     public RelayCommand RefreshCommand { get; }
-    public RelayCommand InstallCommand { get; }
+    public RelayCommand DownloadCommand { get; }
     public RelayCommand NextPageCommand { get; }
     public RelayCommand PrevPageCommand { get; }
     public RelayCommand SetListViewCommand { get; }
@@ -96,7 +97,7 @@ public class CatalogViewModel : ViewModelBase
         SelectedVersion = null;
         RaisePropertyChanged(nameof(HasVersions));
         RaisePropertyChanged(nameof(SelectedVersionDate));
-        RaisePropertyChanged(nameof(InstallButtonLabel));
+        RaisePropertyChanged(nameof(DownloadButtonLabel));
         if (_selected is null) return;
         var versions = _versionRepo.ListByNode(_selected.Id);
         foreach (var v in versions) SelectedVersions.Add(v);
@@ -126,7 +127,7 @@ public class CatalogViewModel : ViewModelBase
             if (SetField(ref _selectedVersion, value))
             {
                 RaisePropertyChanged(nameof(SelectedVersionDate));
-                RaisePropertyChanged(nameof(InstallButtonLabel));
+                RaisePropertyChanged(nameof(DownloadButtonLabel));
             }
         }
     }
@@ -140,8 +141,8 @@ public class CatalogViewModel : ViewModelBase
         }
     }
 
-    public string InstallButtonLabel =>
-        _selectedVersion is null ? "安装" : $"安装 {_selectedVersion.Tag}";
+    public string DownloadButtonLabel =>
+        _selectedVersion is null ? "下载" : $"下载 {_selectedVersion.Tag}";
 
     private string? _errorMessage;
     public string? ErrorMessage
@@ -185,24 +186,24 @@ public class CatalogViewModel : ViewModelBase
     public CatalogViewModel(
         CatalogRepository repo,
         NodeVersionRepository versionRepo,
-        EnvironmentRepository envRepo,
         NodeOperations nodeOps,
         CatalogRefreshService refreshService,
         Settings settings,
-        SettingsRepository settingsRepo)
+        SettingsRepository settingsRepo,
+        string projectRoot)
     {
         _repo = repo;
         _versionRepo = versionRepo;
-        _envRepo = envRepo;
         _nodeOps = nodeOps;
         _refreshService = refreshService;
         _settings = settings;
         _settingsRepo = settingsRepo;
+        _projectRoot = projectRoot;
 
         RefreshCommand = new RelayCommand(_ => _ = RefreshAsync(), _ => !IsBusy);
         CancelRefreshCommand = new RelayCommand(_ => _refreshCts?.Cancel(), _ => IsBusy);
-        InstallCommand = new RelayCommand(
-            async p => await InstallAsync(p as CatalogEntry ?? Selected),
+        DownloadCommand = new RelayCommand(
+            async p => await DownloadAsync(p as CatalogEntry ?? Selected),
             p => (p as CatalogEntry ?? Selected) is not null);
         NextPageCommand = new RelayCommand(_ => GoToPage(CurrentPage + 1), _ => CanNextPage);
         PrevPageCommand = new RelayCommand(_ => GoToPage(CurrentPage - 1), _ => CanPrevPage);
@@ -307,27 +308,35 @@ public class CatalogViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasEntries));
     }
 
-    private async Task InstallAsync(CatalogEntry? entry)
+    private async Task DownloadAsync(CatalogEntry? entry)
     {
         if (entry is null) return;
-        var templateUrl = ExtractRepoUrl(entry);
-        if (string.IsNullOrWhiteSpace(templateUrl))
+        var repoUrl = ExtractRepoUrl(entry);
+        if (string.IsNullOrWhiteSpace(repoUrl))
         {
             ErrorMessage = "catalog 条目缺 repository url";
             return;
         }
-        var envs = _envRepo.ListAll();
-        if (envs.Count == 0)
+        // 本地节点目录为空 / 全空白 → 提示用户去 Settings 配置,直接 return 不调 NodeOperations。
+        // 这里先看原始字段,不要 Path.Combine 之后再判断(Path.Combine 单边空只会
+        // 返回另一边,localDir 永远不会 IsNullOrWhiteSpace,达不到短路效果)。
+        if (string.IsNullOrWhiteSpace(_settings.LocalNodeDirectory))
         {
-            ErrorMessage = "没有 env 可安装,先创建一个";
+            ErrorMessage = "本地节点目录为空,请先在 Settings 配置";
             return;
         }
-        var env = envs[0];
-        var result = await _nodeOps.InstallAsync(
-            env.Id, entry.Package, templateUrl,
+        var localDir = Path.Combine(_projectRoot, _settings.LocalNodeDirectory);
+        var result = await _nodeOps.DownloadAsync(
+            localDir, entry.Package, repoUrl,
             SelectedVersion?.Tag);
-        if (!result.Success) ErrorMessage = $"安装失败:{result.Reason}";
-        else ErrorMessage = $"已安装 {entry.Package} → version={result.Version}";
+        if (!result.Success)
+        {
+            ErrorMessage = $"下载失败:{result.Reason}";
+        }
+        else
+        {
+            InfoMessage = $"已下载 {entry.Package} → version={result.Version}";
+        }
     }
 
     private static string? ExtractRepoUrl(CatalogEntry entry)
