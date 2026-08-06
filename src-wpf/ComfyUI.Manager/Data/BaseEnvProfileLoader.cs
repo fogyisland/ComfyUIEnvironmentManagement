@@ -109,10 +109,14 @@ public sealed class BaseEnvProfileLoader
     }
 
     /// <summary>
-    /// v0.6.5 硬编码 6 个默认 profile(fetcher 失败 / 无 HTTP 时回退)。
+    /// v0.6.5 硬编码 7 个默认 profile(fetcher 失败 / 无 HTTP 时回退)。
     /// 先后顺序即 UI 展示顺序;cu118 第一个是历史默认(v0.6.5 之前一直
-    /// 是这个,保持兼容性 — 已有 env 的 BED 列还能显示)。字面量
-    /// "2.1.0" / "nightly" 刻意保留。
+    /// 是这个,保持兼容性 — 已有 env 的 BED 列还能显示)。
+    /// v0.6.5.22 (Fix Round 1):<c>TorchVersion</c> 从 "2.1.0" 升到 "2.4.1"
+    /// —— comfy_kitchen 用了 <c>@torch.library.custom_op</c>(PyTorch 2.4 引入),
+    /// 装 2.1.x 后启动 ComfyUI 抛 <c>AttributeError: module 'torch.library'
+    /// has no attribute 'custom_op'</c>。nightly 字面量 "nightly" 不变;
+    /// CPU profile 也跟着升 2.4.1。
     /// v0.6.5.22: 返回前过 <see cref="MarkIncompatibleOlderVersions"/>
     /// 标 <c>torch &lt; 2.4</c> 的 profile 不推荐(comfy_kitchen 不兼容)。
     /// </summary>
@@ -122,50 +126,50 @@ public sealed class BaseEnvProfileLoader
         {
             new()
             {
-                Id = "pytorch-2.1-cu118-stable",
-                Name = "PyTorch 2.1 + CUDA 11.8 (stable)",
-                Description = "稳定版 PyTorch 2.1.0,搭配 CUDA 11.8,带 xformers",
-                TorchVersion = "2.1.0",
+                Id = "pytorch-2.4.1-cu118-stable",
+                Name = "PyTorch 2.4.1 + CUDA 11.8 (stable)",
+                Description = "稳定版 PyTorch 2.4.1,搭配 CUDA 11.8,带 xformers",
+                TorchVersion = "2.4.1",
                 CudaVersion = "cu118",
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
             },
             new()
             {
-                Id = "pytorch-2.1-cu121-stable",
-                Name = "PyTorch 2.1 + CUDA 12.1 (stable)",
-                Description = "稳定版 PyTorch 2.1.0,搭配 CUDA 12.1,带 xformers",
-                TorchVersion = "2.1.0",
+                Id = "pytorch-2.4.1-cu121-stable",
+                Name = "PyTorch 2.4.1 + CUDA 12.1 (stable)",
+                Description = "稳定版 PyTorch 2.4.1,搭配 CUDA 12.1,带 xformers",
+                TorchVersion = "2.4.1",
                 CudaVersion = "cu121",
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
             },
             new()
             {
-                Id = "pytorch-2.1-cu124-stable",
-                Name = "PyTorch 2.1 + CUDA 12.4 (stable)",
-                Description = "稳定版 PyTorch 2.1.0,搭配 CUDA 12.4,带 xformers",
-                TorchVersion = "2.1.0",
+                Id = "pytorch-2.4.1-cu124-stable",
+                Name = "PyTorch 2.4.1 + CUDA 12.4 (stable)",
+                Description = "稳定版 PyTorch 2.4.1,搭配 CUDA 12.4,带 xformers",
+                TorchVersion = "2.4.1",
                 CudaVersion = "cu124",
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
             },
             new()
             {
-                Id = "pytorch-2.1-cu126-stable",
-                Name = "PyTorch 2.1 + CUDA 12.6 (stable)",
-                Description = "稳定版 PyTorch 2.1.0,搭配 CUDA 12.6,带 xformers",
-                TorchVersion = "2.1.0",
+                Id = "pytorch-2.4.1-cu126-stable",
+                Name = "PyTorch 2.4.1 + CUDA 12.6 (stable)",
+                Description = "稳定版 PyTorch 2.4.1,搭配 CUDA 12.6,带 xformers",
+                TorchVersion = "2.4.1",
                 CudaVersion = "cu126",
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
             },
             new()
             {
-                Id = "pytorch-2.1-cu128-stable",
-                Name = "PyTorch 2.1 + CUDA 12.8 (stable)",
-                Description = "稳定版 PyTorch 2.1.0,搭配 CUDA 12.8,带 xformers",
-                TorchVersion = "2.1.0",
+                Id = "pytorch-2.4.1-cu128-stable",
+                Name = "PyTorch 2.4.1 + CUDA 12.8 (stable)",
+                Description = "稳定版 PyTorch 2.4.1,搭配 CUDA 12.8,带 xformers",
+                TorchVersion = "2.4.1",
                 CudaVersion = "cu128",
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
@@ -182,10 +186,10 @@ public sealed class BaseEnvProfileLoader
             },
             new()
             {
-                Id = "pytorch-2.1-cpu",
-                Name = "PyTorch 2.1 (CPU only)",
-                Description = "仅 CPU 的 PyTorch 2.1.0,适合无 NVIDIA 显卡环境",
-                TorchVersion = "2.1.0",
+                Id = "pytorch-2.4.1-cpu",
+                Name = "PyTorch 2.4.1 (CPU only)",
+                Description = "仅 CPU 的 PyTorch 2.4.1,适合无 NVIDIA 显卡环境",
+                TorchVersion = "2.4.1",
                 CudaVersion = "cpu",
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision" },
@@ -201,6 +205,11 @@ public sealed class BaseEnvProfileLoader
     /// 当前 PyTorch 2.1 wheel 实际可用 CUDA 范围)。
     /// v0.6.5.22: 返回前过 <see cref="MarkIncompatibleOlderVersions"/>
     /// 标 <c>torch &lt; 2.4</c> 的 profile 不推荐(comfy_kitchen 不兼容)。
+    /// v0.6.5.22 (Fix Round 1):如果 <paramref name="v"/>.Stable &lt; 2.4
+    /// (pytorch.org 的 <c>latest_stable</c> 字段 stale 或异常),在返回的
+    /// list 顶部 prepend 一个 hardcoded <c>torch==2.4.1+cu118</c> profile —
+    /// 确保用户点"新建环境"时 dropdown 第一项是 comfy_kitchen 兼容的版本,
+    /// 不会因为网络 stale 兜底到 2.1.0 然后启动炸。
     /// </summary>
     private static IReadOnlyList<BaseEnvProfile> BuildLiveDefaults(PyTorchLiveVersions v)
     {
@@ -215,7 +224,7 @@ public sealed class BaseEnvProfileLoader
             Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
         });
 
-        return MarkIncompatibleOlderVersions(new List<BaseEnvProfile>
+        var profiles = new List<BaseEnvProfile>
         {
             stableProfile("cu118", "11.8"),
             stableProfile("cu121", "12.1"),
@@ -242,7 +251,42 @@ public sealed class BaseEnvProfileLoader
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision" },
             },
-        });
+        };
+
+        // 防御:pytorch.org 的 latest_stable 可能 stale(比如它缓存旧版本
+        // HTML),如果返回的 stable < 2.4,dropdown 第一项就会是不兼容版本,
+        // 用户不读文字直接 Enter 会触发 comfy_kitchen 错误。prepend 一个
+        // hardcoded 2.4.1+cu118 顶在首位让默认一定兼容。
+        if (IsStableIncompatible(v.Stable))
+        {
+            profiles.Insert(0, new BaseEnvProfile
+            {
+                Id = "pytorch-2.4.1-cu118-stable",
+                Name = "PyTorch 2.4.1 + CUDA 11.8 (stable)",
+                Description = "稳定版 PyTorch 2.4.1,搭配 CUDA 11.8,带 xformers(comfy_kitchen 兼容)",
+                TorchVersion = "2.4.1",
+                CudaVersion = "cu118",
+                Channel = "stable",
+                Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
+            });
+        }
+
+        return MarkIncompatibleOlderVersions(profiles);
+    }
+
+    /// <summary>
+    /// 判定 <paramref name="stable"/> 字符串是不是 torch &lt; 2.4
+    /// (用 regex 抓 MAJOR.MINOR)。nightly / 空 / 无法解析 → false
+    /// (不前置,nightly 永远新,空无法判定)。
+    /// </summary>
+    private static bool IsStableIncompatible(string? stable)
+    {
+        if (string.IsNullOrWhiteSpace(stable)) return false;
+        var match = Regex.Match(stable, @"(\d+)\.(\d+)");
+        if (!match.Success) return false;
+        var major = int.Parse(match.Groups[1].Value);
+        var minor = int.Parse(match.Groups[2].Value);
+        return major < 2 || (major == 2 && minor < 4);
     }
 
     /// <summary>
@@ -409,7 +453,7 @@ public sealed class BaseEnvProfileLoader
 
     /// <summary>
     /// 给 <paramref name="profiles"/> 中 <c>TorchVersion &lt; 2.4</c> 的
-    /// stable profile 加 <c>(不推荐 — comfy_kitchen 不兼容)</c> 后缀。
+    /// stable profile 加 <c>(不推荐 — comfy_kitchen 不兼容)</c> 后缀到 Name。
     /// 纯函数:不修改输入 list,生成新 list。
     /// </summary>
     /// <remarks>
@@ -423,10 +467,17 @@ public sealed class BaseEnvProfileLoader
     ///   视为不兼容。</item>
     /// <item>无法解析(<c>null</c> / regex miss / nightly 字面量)→ 原样保留
     ///   (nightly 永远新于 2.4,无需标记)。</item>
-    /// <item>仅修改 <c>Id</c> + <c>Name</c> 字段(不修改 <c>TorchVersion</c> /
-    ///   <c>CudaVersion</c> / <c>Channel</c> / <c>Packages</c>),所以
-    ///   <see cref="BaseEnvProfile.BuildPipArgs"/> 不会受影响 — pip install
-    ///   命令还是 pin 实际 torch 版本,只是 dropdown 显示文本带警告。</item>
+    /// <item>v0.6.5.22 (Fix Round 1):只修改 <c>Name</c> 字段,<c>Id</c> 不动。
+    ///   原因:<c>Id</c> 会在安装时被持久化到 SQLite
+    ///   (<c>Environment.BedProfileId</c>),改了 Id 之后,老 env 行里存的
+    ///   是 "pytorch-2.1-cu118-stable",但新生成的 profile Id 是
+    ///   "pytorch-2.1-cu118-stable (不推荐 — ...)" — 这不影响功能
+    ///   (BedProfileId 只是显示用,不做 Id 比较),但 BED 列会显示带后缀
+    ///   的旧 Id,看起来很怪。所以保持 Id 干净,只在 Name(下拉框显示
+    ///   用,<c>BaseEnvView.xaml:48 Text="{Binding Name}"</c>)上做警告。</item>
+    /// <item>不修改 <c>TorchVersion</c> / <c>CudaVersion</c> / <c>Channel</c>
+    ///   / <c>Packages</c>,所以 <see cref="BaseEnvProfile.BuildPipArgs"/>
+    ///   不会受影响 — pip install 命令还是 pin 实际 torch 版本。</item>
     /// <item>user override JSON 文件(<c>base_env_profiles.json</c>)由
     ///   <see cref="LoadAsync"/> 直接反序列化,不经此方法 — 用户在 JSON 里
     ///   明知 2.1 不可用还写,UI 应忠实显示用户选择,不强行加后缀。</item>
@@ -460,10 +511,10 @@ public sealed class BaseEnvProfileLoader
 
             if (major < 2 || (major == 2 && minor < 4))
             {
-                // 重建 profile 副本,只改 Id + Name(其他字段透传保持一致)
+                // 重建 profile 副本,只改 Name(Id 保持不变,见 remarks)
                 result.Add(new BaseEnvProfile
                 {
-                    Id = p.Id + Suffix,
+                    Id = p.Id,
                     Name = p.Name + Suffix,
                     Description = p.Description,
                     TorchVersion = p.TorchVersion,

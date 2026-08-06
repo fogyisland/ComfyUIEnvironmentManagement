@@ -103,28 +103,30 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public void GetHardcodedDefaults_ContainsExpectedIds()
     {
-        // v0.6.5.22: torch 2.1.x profile 的 Id 被 MarkIncompatibleOlderVersions
-        // 追加了 (不推荐) 后缀;nightly 不追加。改用 StartsWith 验证。
+        // v0.6.5.22 (Fix Round 1): torch 升 2.4.1,Id 是 pytorch-2.4.1-...;
+        //   MarkIncompatibleOlderVersions 只改 Name 不改 Id,所以这里用精确匹配。
+        //   (所有 stable profile TorchVersion >= 2.4,Name 不带后缀,Id 也干净。)
         var loader = new BaseEnvProfileLoader(_tempDir);
         var ids = loader.GetHardcodedDefaults().Select(p => p.Id).ToList();
-        Assert.Contains(ids, id => id.StartsWith("pytorch-2.1-cu118-stable", StringComparison.Ordinal));
-        Assert.Contains(ids, id => id.StartsWith("pytorch-2.1-cu121-stable", StringComparison.Ordinal));
-        Assert.Contains(ids, id => id.StartsWith("pytorch-2.1-cu124-stable", StringComparison.Ordinal));
-        Assert.Contains(ids, id => id.StartsWith("pytorch-2.1-cu126-stable", StringComparison.Ordinal));
-        Assert.Contains(ids, id => id.StartsWith("pytorch-2.1-cu128-stable", StringComparison.Ordinal));
-        Assert.Contains(ids, id => id.StartsWith("pytorch-nightly-cu121", StringComparison.Ordinal));
-        Assert.Contains(ids, id => id.StartsWith("pytorch-2.1-cpu", StringComparison.Ordinal));
+        Assert.Contains("pytorch-2.4.1-cu118-stable", ids);
+        Assert.Contains("pytorch-2.4.1-cu121-stable", ids);
+        Assert.Contains("pytorch-2.4.1-cu124-stable", ids);
+        Assert.Contains("pytorch-2.4.1-cu126-stable", ids);
+        Assert.Contains("pytorch-2.4.1-cu128-stable", ids);
+        Assert.Contains("pytorch-nightly-cu121", ids);
+        Assert.Contains("pytorch-2.4.1-cpu", ids);
     }
 
     [Fact]
     public void GetHardcodedDefaults_Cu128Profile_HasExpectedFields()
     {
         // v0.6.5.18: cu128 加进 hardcoded defaults(fallback 路径也得有)
-        // v0.6.5.22: Id 改用 CudaVersion 定位(MarkIncompatibleOlderVersions
-        //   会给 Id 追加 (不推荐) 后缀,不能直接 .Single(Id == ...))
+        // v0.6.5.22 (Fix Round 1): TorchVersion 从 2.1.0 升到 2.4.1
+        //   (comfy_kitchen 兼容)。Id 改用 CudaVersion 定位
+        //   (MarkIncompatibleOlderVersions 改 Name 不改 Id,但 Name 现在带后缀)。
         var loader = new BaseEnvProfileLoader(_tempDir);
         var p = loader.GetHardcodedDefaults().Single(x => x.CudaVersion == "cu128" && x.Channel == "stable");
-        Assert.Equal("2.1.0", p.TorchVersion);
+        Assert.Equal("2.4.1", p.TorchVersion);
         Assert.Equal("cu128", p.CudaVersion);
         Assert.Equal("stable", p.Channel);
         Assert.Equal(new[] { "torch", "torchaudio", "torchvision", "xformers" }, p.Packages);
@@ -143,10 +145,10 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public void GetHardcodedDefaults_Cu118Profile_HasExpectedFields()
     {
-        // v0.6.5.22: Id 用 CudaVersion 定位(MarkIncompatibleOlderVersions 追加后缀)
+        // v0.6.5.22 (Fix Round 1): TorchVersion 升 2.4.1
         var loader = new BaseEnvProfileLoader(_tempDir);
         var p = loader.GetHardcodedDefaults().Single(x => x.CudaVersion == "cu118" && x.Channel == "stable");
-        Assert.Equal("2.1.0", p.TorchVersion);
+        Assert.Equal("2.4.1", p.TorchVersion);
         Assert.Equal("cu118", p.CudaVersion);
         Assert.Equal("stable", p.Channel);
         Assert.Equal(new[] { "torch", "torchaudio", "torchvision", "xformers" }, p.Packages);
@@ -155,6 +157,8 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public void GetHardcodedDefaults_NightlyProfile_HasExpectedFields()
     {
+        // v0.6.5.22 (Fix Round 1): nightly Id 不变(pytorch-nightly-cu121),
+        //   nightly TorchVersion 是字面量 "nightly",不参与兼容判定,Name 不加后缀。
         var loader = new BaseEnvProfileLoader(_tempDir);
         var p = loader.GetHardcodedDefaults().Single(x => x.Id == "pytorch-nightly-cu121");
         Assert.Equal("nightly", p.TorchVersion);
@@ -166,11 +170,10 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public void GetHardcodedDefaults_CpuProfile_HasExpectedFields()
     {
-        // v0.6.5.22: Id 用 CudaVersion == "cpu" 定位(MarkIncompatibleOlderVersions
-        //   会给 2.1.0+cpu 也追加 (不推荐) 后缀)
+        // v0.6.5.22 (Fix Round 1): CPU profile TorchVersion 跟 stable 一起升 2.4.1。
         var loader = new BaseEnvProfileLoader(_tempDir);
         var p = loader.GetHardcodedDefaults().Single(x => x.CudaVersion == "cpu" && x.Channel == "stable");
-        Assert.Equal("2.1.0", p.TorchVersion);
+        Assert.Equal("2.4.1", p.TorchVersion);
         Assert.Equal("cpu", p.CudaVersion);
         Assert.Equal("stable", p.Channel);
         Assert.Equal(new[] { "torch", "torchaudio", "torchvision" }, p.Packages);
@@ -182,7 +185,8 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     public async Task LoadAsync_FallsBackWhenFileMissing()
     {
         // File does not exist, no HttpClient → hardcoded defaults (7 profiles).
-        // v0.6.5.22: 2.1.x profile Id 被追加 (不推荐) 后缀,改用 CudaVersion 定位。
+        // v0.6.5.22 (Fix Round 1): hardcoded 都升 torch 2.4.1,
+        //   MarkIncompatibleOlderVersions 不会再标,Id 干净。
         var loader = new BaseEnvProfileLoader(_tempDir);
         var profiles = await loader.LoadAsync();
         Assert.Equal(7, profiles.Count);
@@ -238,7 +242,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         var profiles = await loader.LoadAsync();
 
         // Graceful fallback to hardcoded defaults (no HttpClient).
-        // v0.6.5.22: 2.1.x profile Id 被追加 (不推荐) 后缀,改用 CudaVersion 定位。
+        // v0.6.5.22 (Fix Round 1): hardcoded 升 torch 2.4.1,Id 干净。
         Assert.Equal(7, profiles.Count);
         Assert.Contains(profiles, p => p.CudaVersion == "cu118" && p.Channel == "stable");
     }
@@ -339,8 +343,9 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public async Task GetLiveDefaults_FallsBackOnFetcherReturnsNull()
     {
-        // 404 → fetcher returns null → hardcoded 7 profiles (nightly cu121).
-        // v0.6.5.22: 2.1.x profile Id 被追加 (不推荐) 后缀,改用 CudaVersion 定位。
+        // 404 → fetcher returns null → hardcoded 7 profiles (nightly cu121)。
+        // v0.6.5.22 (Fix Round 1): hardcoded 升 torch 2.4.1,Id 干净,
+        //   仍含 pytorch-nightly-cu121 (nightly 字面量 Id 不变)。
         var loader = new BaseEnvProfileLoader(
             _tempDir, FreshCacheDir(), MockedHttpClient("not found", HttpStatusCode.NotFound));
 
@@ -349,6 +354,35 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         Assert.Equal(7, profiles.Count);
         Assert.Contains(profiles, p => p.Id == "pytorch-nightly-cu121");
         Assert.Contains(profiles, p => p.CudaVersion == "cu118" && p.Channel == "stable");
+    }
+
+    [Fact]
+    public async Task GetLiveDefaults_StaleStable210_PrependsTorch241First()
+    {
+        // v0.6.5.22 (Fix Round 1):pytorch.org 的 latest_stable 可能 stale
+        //   (缓存老 HTML / 网络异常返旧版),如果 BuildLiveDefaults 拿到的
+        //   Stable < 2.4,默认 dropdown 第一项会是不兼容版本 → 用户不读文字
+        //   直接 Enter → 装 torch 2.1 → comfy_kitchen 启动炸。修法:在
+        //   BuildLiveDefaults 顶部 prepend hardcoded torch 2.4.1+cu118,
+        //   确保 default 第一项永远是兼容版本。
+        var cacheDir = FreshCacheDir();
+        WriteCache(cacheDir, new PyTorchLiveVersions
+        {
+            Stable = "2.1.0",  // stale — pytorch.org 缓存旧版
+            HasNightlyCu126 = true,
+            FetchedAt = DateTimeOffset.UtcNow,
+        });
+
+        var loader = new BaseEnvProfileLoader(
+            _tempDir, cacheDir, MockedHttpClient(SampleHtml));
+
+        var profiles = await loader.GetLiveDefaultsAsync();
+
+        // 第一项必须是 comfy_kitchen 兼容版本
+        Assert.Equal("2.4.1", profiles[0].TorchVersion);
+        Assert.Equal("cu118", profiles[0].CudaVersion);
+        // 兼容 Id(无后缀,无 stale 2.1)
+        Assert.Equal("pytorch-2.4.1-cu118-stable", profiles[0].Id);
     }
 
     [Fact]
@@ -567,7 +601,9 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     public void MarkIncompatibleOlderVersions_Torch21_AppendsIncompatibleSuffix()
     {
         // v0.6.5.22: torch < 2.4 跟 comfy_kitchen 的 @torch.library.custom_op
-        // 不兼容(decorator 是 PyTorch 2.4 引入),Id + Name 加 (不推荐) 后缀。
+        // 不兼容(decorator 是 PyTorch 2.4 引入),Name 加 (不推荐) 后缀。
+        // v0.6.5.22 (Fix Round 1):Id 保持不变(BedProfileId 持久化
+        //   到 SQLite 跟 Id 一致,改 Id 会让老 env BED 列显示带后缀)。
         var profile = new BaseEnvProfile
         {
             Id = "torch==2.1.0+cu118",
@@ -580,7 +616,9 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         var result = BaseEnvProfileLoader.MarkIncompatibleOlderVersions(new[] { profile });
 
         var p = Assert.Single(result);
-        Assert.Equal("torch==2.1.0+cu118 (不推荐 — comfy_kitchen 不兼容)", p.Id);
+        // Id 透传 — 不动
+        Assert.Equal("torch==2.1.0+cu118", p.Id);
+        // Name 加后缀
         Assert.EndsWith(" (不推荐 — comfy_kitchen 不兼容)", p.Name);
         // 关键字段透传:不影响 pip install 命令
         Assert.Equal("2.1.0", p.TorchVersion);
@@ -612,7 +650,8 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
     [Fact]
     public void MarkIncompatibleOlderVersions_Torch15_AppendsIncompatibleSuffix()
     {
-        // torch 1.5 是 major<2 边界 → 同样加后缀(无论 minor 多少)
+        // torch 1.5 是 major<2 边界 → 同样加 Name 后缀(无论 minor 多少)
+        // v0.6.5.22 (Fix Round 1):Id 不动,只 Name 加后缀
         var profile = new BaseEnvProfile
         {
             Id = "torch==1.5.0+cpu",
@@ -625,7 +664,8 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         var result = BaseEnvProfileLoader.MarkIncompatibleOlderVersions(new[] { profile });
 
         var p = Assert.Single(result);
-        Assert.Equal("torch==1.5.0+cpu (不推荐 — comfy_kitchen 不兼容)", p.Id);
+        Assert.Equal("torch==1.5.0+cpu", p.Id);
+        Assert.EndsWith(" (不推荐 — comfy_kitchen 不兼容)", p.Name);
         Assert.Equal("1.5.0", p.TorchVersion);
     }
 }
