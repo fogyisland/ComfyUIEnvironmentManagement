@@ -14,6 +14,7 @@ public class BaseEnvProfile
     public string Description { get; set; } = "";              // 用户可见的简介
     public string TorchVersion { get; set; } = "";             // "2.1.0" / "nightly"
     public string CudaVersion { get; set; } = "cu118";         // cu118 / cu121 / cu124 / cpu
+    public string CudaVariant { get; set; } = "";              // v0.6.6 picker 用:跟 CudaVersion 同义(保留给 picker view 读)
     public string Channel { get; set; } = "stable";            // stable / nightly
     public List<string> Packages { get; set; } = new()
     {
