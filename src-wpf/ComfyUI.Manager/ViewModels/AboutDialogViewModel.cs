@@ -39,6 +39,7 @@ public sealed class AboutDialogViewModel : ViewModelBase
     {
         _projectRoot = projectRoot;
         Version = (Assembly.GetExecutingAssembly().GetName().Version?.ToString()) ?? "0.0.0";
+        Title = GetString("About_Title");
         Description = GetString("About_Description");
         LicenseText = LicenseTextValue;
         RepositoryUrl = RepositoryUrlValue;
@@ -50,6 +51,7 @@ public sealed class AboutDialogViewModel : ViewModelBase
     }
 
     public string Version { get; }
+    public string Title { get; }
     public string Description { get; }
     public string LicenseText { get; }
     public string RepositoryUrl { get; }

@@ -1,0 +1,86 @@
+<Window x:Class="ComfyUI.Manager.Views.AboutDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="关于 ComfyUI Manager" Width="360" Height="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="False">
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </Window.InputBindings>
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题 + 版本 -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Version}"
+                       FontSize="14" Foreground="Gray" VerticalAlignment="Bottom" />
+            <TextBlock Text="{Binding Title}"
+                       FontSize="24" FontWeight="Bold" />
+        </DockPanel>
+
+        <!-- 描述 -->
+        <TextBlock Grid.Row="1" Text="{Binding Description}"
+                   FontSize="12" Foreground="Gray" TextWrapping="Wrap"
+                   Margin="0,0,0,16" />
+
+        <!-- 授权 -->
+        <TextBlock Grid.Row="2" Margin="0,0,0,8">
+            <Run Text="授权:" FontWeight="Bold" />
+            <Run Text="{Binding LicenseText, Mode=OneWay}" />
+        </TextBlock>
+
+        <!-- 仓库 -->
+        <TextBlock Grid.Row="3" Margin="0,0,0,4">
+            <Run Text="仓库:" FontWeight="Bold" />
+            <Hyperlink NavigateUri="{Binding RepositoryUrl}" RequestNavigate="OnHyperlinkRequestNavigate">
+                <Run Text="{Binding RepositoryUrl, Mode=OneWay}" />
+            </Hyperlink>
+        </TextBlock>
+
+        <!-- 问题反馈 -->
+        <TextBlock Grid.Row="4" Margin="0,0,0,16">
+            <Run Text="问题反馈:" FontWeight="Bold" />
+            <Hyperlink NavigateUri="{Binding IssuesUrl}" RequestNavigate="OnHyperlinkRequestNavigate">
+                <Run Text="{Binding IssuesUrl, Mode=OneWay}" />
+            </Hyperlink>
+        </TextBlock>
+
+        <Separator Grid.Row="5" Margin="0,0,0,12" />
+
+        <!-- 赞助 -->
+        <TextBlock Grid.Row="6" Text="扫码赞助(微信)"
+                   FontSize="12" Foreground="Gray" Margin="0,0,0,8" />
+
+        <Grid Grid.Row="7" Margin="0,0,0,8">
+            <Image x:Name="DonateImage" Width="180" Height="180"
+                   Visibility="{Binding HasDonateImage, Converter={StaticResource BoolToVisibility}}" />
+            <!-- ↑ Source 在 code-behind Loaded 事件里手动设 CreateDonateImage()(BitmapImage 不能从 DataContext 走 XAML 简洁绑定) -->
+            <TextBlock Text="{Binding DonatePlaceholder}" TextWrapping="Wrap"
+                       FontSize="11" Foreground="Gray" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" MaxWidth="180"
+                       Visibility="{Binding HasDonateImage, Converter={StaticResource InverseBoolToVisibility}}" />
+        </Grid>
+
+        <TextBlock Grid.Row="8" Text="感谢你的支持 ❤"
+                   FontSize="11" Foreground="Gray" HorizontalAlignment="Center"
+                   Margin="0,0,0,16" />
+
+        <!-- 关闭 -->
+        <Button Grid.Row="11" Content="关闭" Command="{Binding CloseCommand}"
+                Style="{StaticResource MaterialButton}" HorizontalAlignment="Right"
+                MinWidth="80" />
+    </Grid>
+</Window>
