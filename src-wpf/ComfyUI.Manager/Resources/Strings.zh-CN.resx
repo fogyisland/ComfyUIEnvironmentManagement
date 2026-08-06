@@ -159,4 +159,22 @@
   <data name="SettingsPage_默认_Python_路径" xml:space="preserve">
     <value>默认 Python 路径</value>
   </data>
+  <data name="Menu_File" xml:space="preserve">
+    <value>文件</value>
+  </data>
+  <data name="Menu_Settings" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="Menu_About" xml:space="preserve">
+    <value>关于</value>
+  </data>
+  <data name="About_Title" xml:space="preserve">
+    <value>ComfyUI Manager</value>
+  </data>
+  <data name="About_Description" xml:space="preserve">
+    <value>一站式 ComfyUI 环境管理工具</value>
+  </data>
+  <data name="About_DonatePlaceholder" xml:space="preserve">
+    <value>二维码未配置,请联系作者</value>
+  </data>
 </root>
