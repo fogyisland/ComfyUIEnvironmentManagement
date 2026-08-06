@@ -34,6 +34,12 @@ public class MainViewModel : ViewModelBase
     private readonly RequirementsInstaller _requirementsInstaller;
     private readonly SystemInfoCollector _systemInfoCollector;
     private readonly UiPreferencesService _uiPreferencesService;
+    // v0.6.5.22: 卸载 service — 跟 BaseEnvInstaller / RequirementsInstaller 同生命周期。
+    // 传 EnvListVM 给行内"卸载基础环境" / "卸载依赖"按钮 + per-env mutex 用。
+    // 字段类型可空:测试可不传(EnvListVM 自己有 null-fallback ?? new);
+    // App.xaml.cs 总是传非 null 实例。
+    private readonly BaseEnvUninstaller? _baseEnvUninstaller;
+    private readonly RequirementsUninstaller? _requirementsUninstaller;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -111,7 +117,9 @@ public class MainViewModel : ViewModelBase
         string projectRoot,
         RequirementsInstaller requirementsInstaller,
         SystemInfoCollector systemInfoCollector,
-        UiPreferencesService uiPreferencesService)
+        UiPreferencesService uiPreferencesService,
+        BaseEnvUninstaller? baseEnvUninstaller = null,
+        RequirementsUninstaller? requirementsUninstaller = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -134,6 +142,8 @@ public class MainViewModel : ViewModelBase
         _systemInfoCollector = systemInfoCollector;
         _uiPreferencesService = uiPreferencesService
             ?? throw new ArgumentNullException(nameof(uiPreferencesService));
+        _baseEnvUninstaller = baseEnvUninstaller;
+        _requirementsUninstaller = requirementsUninstaller;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -162,7 +172,8 @@ public class MainViewModel : ViewModelBase
             var envRepo = new EnvironmentRepository(_dbFactory);
             _environmentsViewModel = new EnvironmentListViewModel(
                 envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader,
-                _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller);
+                _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller,
+                _baseEnvUninstaller, _requirementsUninstaller);
             _environmentsView = EnvironmentsViewFactory is null
                 ? new EnvironmentListView { DataContext = _environmentsViewModel }
                 : EnvironmentsViewFactory(_environmentsViewModel) as EnvironmentListView;

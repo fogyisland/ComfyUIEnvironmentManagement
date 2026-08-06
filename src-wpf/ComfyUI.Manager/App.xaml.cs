@@ -13,6 +13,11 @@ public partial class App : Application
 {
     private MainViewModel? _mainVm;
     private ProcessLauncher? _launcher;
+    // v0.6.5.22: 卸载 service(BED reset + requirements pip uninstall)。
+    // 在 OnStartup 构造后传给 MainViewModel,跟 BaseEnvInstaller / RequirementsInstaller
+    // 同一份 _logger;测试可注入自己 derived 类的实例。
+    private BaseEnvUninstaller? _baseEnvUninstaller;
+    private RequirementsUninstaller? _requirementsUninstaller;
 
     /// <summary>
     /// v0.6.5.21:挂在静态以便 MainWindow.OnClosing 写回(G7)— 无主项目别的地方
@@ -101,6 +106,10 @@ public partial class App : Application
         // v0.6.5.12: requirements.txt 装依赖(runs `pip install -r <env-root>/requirements.txt`,
         // 跳过 torch 行 — torch 版本由 BED profile 锁)
         var requirementsInstaller = new RequirementsInstaller(logger);
+        // v0.6.5.22: 卸载 service(BED reset 跟 requirements pip uninstall)。
+        // EnvListVM 行内"卸载基础环境" / "卸载依赖"按钮 + 互斥 mutex 用这两份。
+        _baseEnvUninstaller = new BaseEnvUninstaller(logger);
+        _requirementsUninstaller = new RequirementsUninstaller(logger);
         // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
         // cache 目录 = %APPDATA%/ComfyUI-Manager(PyTorchVersionCache 直接在此存
         // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。
@@ -123,7 +132,8 @@ public partial class App : Application
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
-            requirementsInstaller, systemInfoCollector, uiPreferencesService);
+            requirementsInstaller, systemInfoCollector, uiPreferencesService,
+            _baseEnvUninstaller, _requirementsUninstaller);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

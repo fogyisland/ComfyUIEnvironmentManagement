@@ -189,4 +189,16 @@
   <data name="Donate_Placeholder" xml:space="preserve">
     <value>二维码未配置,请联系作者</value>
   </data>
+  <data name="EnvList_UninstallBaseEnv" xml:space="preserve">
+    <value>卸载基础环境</value>
+  </data>
+  <data name="EnvList_UninstallRequirements" xml:space="preserve">
+    <value>卸载依赖</value>
+  </data>
+  <data name="UninstallBaseEnv_Title" xml:space="preserve">
+    <value>正在卸载基础环境</value>
+  </data>
+  <data name="UninstallRequirements_Title" xml:space="preserve">
+    <value>正在卸载依赖</value>
+  </data>
 </root>
