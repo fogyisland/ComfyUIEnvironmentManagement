@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
@@ -112,10 +113,12 @@ public sealed class BaseEnvProfileLoader
     /// 先后顺序即 UI 展示顺序;cu118 第一个是历史默认(v0.6.5 之前一直
     /// 是这个,保持兼容性 — 已有 env 的 BED 列还能显示)。字面量
     /// "2.1.0" / "nightly" 刻意保留。
+    /// v0.6.5.22: 返回前过 <see cref="MarkIncompatibleOlderVersions"/>
+    /// 标 <c>torch &lt; 2.4</c> 的 profile 不推荐(comfy_kitchen 不兼容)。
     /// </summary>
     public IReadOnlyList<BaseEnvProfile> GetHardcodedDefaults()
     {
-        return new List<BaseEnvProfile>
+        return MarkIncompatibleOlderVersions(new List<BaseEnvProfile>
         {
             new()
             {
@@ -187,7 +190,7 @@ public sealed class BaseEnvProfileLoader
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision" },
             },
-        };
+        });
     }
 
     /// <summary>
@@ -196,6 +199,8 @@ public sealed class BaseEnvProfileLoader
     /// 所有 stable profile 共用 <paramref name="v"/>.Stable;nightly 保留字面量 "nightly"。
     /// v0.6.5.18 加 cu128(pytorch.org wheel 路径有,Get Started 页 release 块不列,但属于
     /// 当前 PyTorch 2.1 wheel 实际可用 CUDA 范围)。
+    /// v0.6.5.22: 返回前过 <see cref="MarkIncompatibleOlderVersions"/>
+    /// 标 <c>torch &lt; 2.4</c> 的 profile 不推荐(comfy_kitchen 不兼容)。
     /// </summary>
     private static IReadOnlyList<BaseEnvProfile> BuildLiveDefaults(PyTorchLiveVersions v)
     {
@@ -210,7 +215,7 @@ public sealed class BaseEnvProfileLoader
             Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
         });
 
-        return new List<BaseEnvProfile>
+        return MarkIncompatibleOlderVersions(new List<BaseEnvProfile>
         {
             stableProfile("cu118", "11.8"),
             stableProfile("cu121", "12.1"),
@@ -237,7 +242,7 @@ public sealed class BaseEnvProfileLoader
                 Channel = "stable",
                 Packages = new List<string> { "torch", "torchaudio", "torchvision" },
             },
-        };
+        });
     }
 
     /// <summary>
@@ -400,5 +405,79 @@ public sealed class BaseEnvProfileLoader
             }
         }
         return cuda;
+    }
+
+    /// <summary>
+    /// 给 <paramref name="profiles"/> 中 <c>TorchVersion &lt; 2.4</c> 的
+    /// stable profile 加 <c>(不推荐 — comfy_kitchen 不兼容)</c> 后缀。
+    /// 纯函数:不修改输入 list,生成新 list。
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item>comfy_kitchen 用了 <c>@torch.library.custom_op</c>,该 decorator
+    ///   在 PyTorch 2.4 引入(参见 v0.6.5.22 plan G5)。装 torch 2.1/2.2/2.3
+    ///   后启动 ComfyUI 会抛 <c>AttributeError: module 'torch.library' has no
+    ///   attribute 'custom_op'</c>。</item>
+    /// <item>判定依据:regex 抓 <c>TorchVersion</c> 前两段作为 <c>major</c>/
+    ///   <c>minor</c>;<c>major &lt; 2</c> 或 <c>major == 2 &amp;&amp; minor &lt; 4</c>
+    ///   视为不兼容。</item>
+    /// <item>无法解析(<c>null</c> / regex miss / nightly 字面量)→ 原样保留
+    ///   (nightly 永远新于 2.4,无需标记)。</item>
+    /// <item>仅修改 <c>Id</c> + <c>Name</c> 字段(不修改 <c>TorchVersion</c> /
+    ///   <c>CudaVersion</c> / <c>Channel</c> / <c>Packages</c>),所以
+    ///   <see cref="BaseEnvProfile.BuildPipArgs"/> 不会受影响 — pip install
+    ///   命令还是 pin 实际 torch 版本,只是 dropdown 显示文本带警告。</item>
+    /// <item>user override JSON 文件(<c>base_env_profiles.json</c>)由
+    ///   <see cref="LoadAsync"/> 直接反序列化,不经此方法 — 用户在 JSON 里
+    ///   明知 2.1 不可用还写,UI 应忠实显示用户选择,不强行加后缀。</item>
+    /// </list>
+    /// </remarks>
+    public static IReadOnlyList<BaseEnvProfile> MarkIncompatibleOlderVersions(
+        IReadOnlyList<BaseEnvProfile> profiles)
+    {
+        const string Suffix = " (不推荐 — comfy_kitchen 不兼容)";
+
+        var result = new List<BaseEnvProfile>(profiles.Count);
+        foreach (var p in profiles)
+        {
+            if (string.IsNullOrWhiteSpace(p.TorchVersion))
+            {
+                // nightly / null → 跳过(no regex parse possible)
+                result.Add(p);
+                continue;
+            }
+
+            var match = Regex.Match(p.TorchVersion, @"(\d+)\.(\d+)");
+            if (!match.Success)
+            {
+                // nightly 字面量等非 MAJOR.MINOR 形式 → 原样保留
+                result.Add(p);
+                continue;
+            }
+
+            var major = int.Parse(match.Groups[1].Value);
+            var minor = int.Parse(match.Groups[2].Value);
+
+            if (major < 2 || (major == 2 && minor < 4))
+            {
+                // 重建 profile 副本,只改 Id + Name(其他字段透传保持一致)
+                result.Add(new BaseEnvProfile
+                {
+                    Id = p.Id + Suffix,
+                    Name = p.Name + Suffix,
+                    Description = p.Description,
+                    TorchVersion = p.TorchVersion,
+                    CudaVersion = p.CudaVersion,
+                    Channel = p.Channel,
+                    Packages = new List<string>(p.Packages),
+                    ExtraArgs = p.ExtraArgs,
+                });
+            }
+            else
+            {
+                result.Add(p);
+            }
+        }
+        return result;
     }
 }
