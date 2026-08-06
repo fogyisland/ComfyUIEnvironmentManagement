@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
@@ -38,6 +39,13 @@ public class EnvironmentListViewModel : ViewModelBase
     private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete }
 
     private readonly Dictionary<string, BusyKind> _envBusy = new();
+
+    /// <summary>
+    /// v0.6.5.22 fix-wave:卸载依赖 CancellationTokenSource — 跨 invocation 重建,
+    /// finally 里 Dispose + null,避免上一个 invocation 的 CTS 留在 status VM 里让
+    /// CancelCommand.CanExecute 误返 true 但实际 Cancel 无效(按钮绑了也不通)。
+    /// </summary>
+    private CancellationTokenSource? _uninstallCts;
 
     private bool IsEnvBusy(Environment env)
         => env is not null && _envBusy.ContainsKey(env.RootPath);
@@ -371,19 +379,42 @@ public class EnvironmentListViewModel : ViewModelBase
             return;
         }
 
+        // v0.6.5.22 fix-wave:per-env mutex — 目标 env 上有任意 busy(BED install /
+        // uninstall / req / start / stop / delete)→ 拒,不弹 dialog。对话框本身是模
+        // 态会阻塞用户,但 Install 命令可能在另一个线程跑(单 env 选中的场景),这
+        // 个 guard 防止 dialog 关闭后 BaseEnvInstaller.Upsert(BedStatus="done")
+        // 复活刚被 uninstall 清空的字段。
+        var busyEnv = existingEnvs.FirstOrDefault(e => e is not null && IsEnvBusy(e!));
+        if (busyEnv is not null)
+        {
+            ShowInfoDialog(
+                $"env '{busyEnv.Name}' 正在执行其他操作,请稍候",
+                "无法部署基础环境");
+            return;
+        }
+
         var profile = _profileLoader.GetHardcodedDefaults().FirstOrDefault();
         if (profile is null) return;
 
-        if (ShowProgressDialogOverride is not null)
+        // 锁住所有目标 env,dialog 关闭(成功/失败/取消)后释放。
+        foreach (var e in existingEnvs) MarkEnvBusy(e!, BusyKind.BEDInstall);
+        try
         {
-            ShowProgressDialogOverride(envIds, profile, _baseEnvInstaller);
-            return;
+            if (ShowProgressDialogOverride is not null)
+            {
+                ShowProgressDialogOverride(envIds, profile, _baseEnvInstaller);
+                return;
+            }
+            Views.BaseEnvProgressDialog.Show(envIds, profile, _baseEnvInstaller);
         }
-        Views.BaseEnvProgressDialog.Show(envIds, profile, _baseEnvInstaller);
-        // BED dialog 关窗后 reload:Installer 末尾已写 env.BedStatus,
-        // UI 立即重读反映新状态(否则用户看到行还是旧的 "未装")
-        Load();
-        RaiseCommandsChanged();
+        finally
+        {
+            foreach (var e in existingEnvs) UnmarkEnvBusy(e!);
+            // BED dialog 关窗后 reload:Installer 末尾已写 env.BedStatus,
+            // UI 立即重读反映新状态(否则用户看到行还是旧的 "未装")
+            Load();
+            RaiseCommandsChanged();
+        }
     }
 
     private void ShowAlreadyInstalled(string message)
@@ -595,21 +626,30 @@ public class EnvironmentListViewModel : ViewModelBase
 
     /// <summary>
     /// UninstallRequirementsAsync:env 行点"卸载依赖" → confirm dialog → 调
-    /// RequirementsUninstaller.UninstallAsync(env, progress) 跑 pip uninstall -y -r
-    /// → 成功后删 marker。复用 v0.6.5.15 的 RequirementsStatus VM(单阶段 + Hide
-    /// 在 Begin 里清空,跨 invocation reuse)。per-env mutex 防并发。
+    /// RequirementsUninstaller.UninstallAsync(env, progress, ct) 跑 pip uninstall -y -r
+    /// → 成功后删 marker。
+    ///
+    /// v0.6.5.22 fix-wave:每次调用 new 一个 fresh RequirementsStatusViewModel(原
+    /// 来 ??= reuse 会让 StatusText 显示上一次的 env 名),CTS 每次新建 + finally
+    /// Dispose + null(原来传 default token,上次的 _cts 留在 VM 里让 CancelCommand
+    /// 误返 true)。
     /// </summary>
     private async System.Threading.Tasks.Task UninstallRequirementsAsync(Environment? env)
     {
         if (env is null) return;
         if (IsEnvBusy(env)) return;
 
-        // 复用既有 RequirementsStatus property(RequirementsStatusViewModel 是
-        // sealed,不可重复 new — 同一 VM 多次 Begin/Hide;Begin 已经清空 LogLines)
-        var status = RequirementsStatus ??= new RequirementsStatusViewModel(env, _requirementsInstaller);
-        status.Begin();
+        // 每次 new 一个 fresh VM(RequirementsStatusViewModel 持有 _env 字段,
+        // 复用会让 StatusText 显示上一次的 env 名)
+        var status = new RequirementsStatusViewModel(env, _requirementsInstaller);
+        RequirementsStatus = status;
         RaisePropertyChanged(nameof(RequirementsStatus));
+        status.Begin();
         MarkEnvBusy(env, BusyKind.ReqUninstall);
+        // 每次新建 CTS,finally 里 Dispose + null。传给 UninstallAsync 的 token
+        // 是真的可取消的(原来传 default 是死 token,Cancel 调也没用)。
+        _uninstallCts = new CancellationTokenSource();
+        var ct = _uninstallCts.Token;
         try
         {
             // 早退:没装过(marker 不存在)→ 直接显示 fail,不调 uninstaller。
@@ -643,7 +683,7 @@ public class EnvironmentListViewModel : ViewModelBase
             // v0.6.5.11:Progress<T> 包装捕获 SynchronizationContext,后台线程自动
             // marshal 回 UI 线程,避免 LogLines 在后台线程改触发 WPF 不一致。
             var progress = new Progress<string>(line => status.AppendLog(line));
-            var result = await _requirementsUninstaller.UninstallAsync(env, progress, default);
+            var result = await _requirementsUninstaller.UninstallAsync(env, progress, ct);
             if (result.AlreadyUninstalled)
             {
                 status.Fail("env 未装依赖,无需卸载");
@@ -664,6 +704,10 @@ public class EnvironmentListViewModel : ViewModelBase
         }
         finally
         {
+            // Dispose + null:避免下次 invocation 启动时 CancelCommand.CanExecute
+            // 返 true 但 Cancel 实际不命中(指向已 disposed 的 CTS)
+            _uninstallCts?.Dispose();
+            _uninstallCts = null;
             UnmarkEnvBusy(env);
             Load();
             RaiseCommandsChanged();
