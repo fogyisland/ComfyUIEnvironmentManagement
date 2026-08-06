@@ -1,10 +1,14 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Views;
+using Microsoft.Win32;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -29,6 +33,7 @@ public class MainViewModel : ViewModelBase
     private readonly string _projectRoot;
     private readonly RequirementsInstaller _requirementsInstaller;
     private readonly SystemInfoCollector _systemInfoCollector;
+    private readonly UiPreferencesService _uiPreferencesService;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -72,6 +77,17 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
+    public RelayCommand SaveUiPreferencesCommand { get; }
+    public RelayCommand LoadUiPreferencesCommand { get; }
+    public RelayCommand OpenProjectFolderCommand { get; }
+    public RelayCommand OpenLogFolderCommand { get; }
+    public RelayCommand ExitAppCommand { get; }
+    public RelayCommand ShowAboutCommand { get; }
+
+    internal Action<string>? OpenFolderOverride { get; set; }  // test seam
+    internal Action? ExitAppOverride { get; set; }            // test seam
+    internal Func<string, UiPreferences, bool>? SaveUiPreferencesDialogOverride { get; set; }
+    internal Func<string, bool>? LoadUiPreferencesDialogOverride { get; set; }
 
     public MainViewModel(
         SqliteConnectionFactory dbFactory,
@@ -92,7 +108,8 @@ public class MainViewModel : ViewModelBase
         string appDataDir,
         string projectRoot,
         RequirementsInstaller requirementsInstaller,
-        SystemInfoCollector systemInfoCollector)
+        SystemInfoCollector systemInfoCollector,
+        UiPreferencesService uiPreferencesService)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -113,6 +130,8 @@ public class MainViewModel : ViewModelBase
         _projectRoot = projectRoot;
         _requirementsInstaller = requirementsInstaller;
         _systemInfoCollector = systemInfoCollector;
+        _uiPreferencesService = uiPreferencesService
+            ?? throw new ArgumentNullException(nameof(uiPreferencesService));
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -120,6 +139,17 @@ public class MainViewModel : ViewModelBase
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
         ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
+        SaveUiPreferencesCommand = new RelayCommand(_ => SaveUiPreferences(_uiPreferencesService));
+        LoadUiPreferencesCommand = new RelayCommand(_ => LoadUiPreferences(_uiPreferencesService));
+        OpenProjectFolderCommand = new RelayCommand(_ => OpenFolder(_projectRoot));
+        OpenLogFolderCommand = new RelayCommand(_ => OpenFolder(Path.Combine(_projectRoot, "Logs")));
+        ExitAppCommand = new RelayCommand(_ => DoExit());
+        ShowAboutCommand = new RelayCommand(_ =>
+        {
+            var owner = Application.Current?.MainWindow;
+            if (owner is null) return;
+            AboutDialog.Show(owner, _projectRoot);
+        });
     }
 
     private void ShowEnvironments()
@@ -191,6 +221,88 @@ public class MainViewModel : ViewModelBase
         CurrentView = new SystemStatusView
         {
             DataContext = new SystemStatusViewModel(_systemInfoCollector),
+        };
+    }
+
+    private void OpenFolder(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);  // 目录不存在先建(OpenLogFolder 适用)
+            if (OpenFolderOverride is not null) { OpenFolderOverride(path); return; }
+            Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            // log 到 ErrorBanner 不抛(用户原话没要弹窗)
+            ErrorBanner.Add("open-folder", $"打开文件夹失败:{ex.Message}", ErrorSeverity.Warn);
+        }
+    }
+
+    private void DoExit()
+    {
+        if (ExitAppOverride is not null) { ExitAppOverride(); return; }
+        Application.Current?.Shutdown();
+    }
+
+    private void SaveUiPreferences(UiPreferencesService svc)
+    {
+        // 收集当前 prefs(Window 尺寸 / LastSelectedEnvId 在 MainWindow code-behind 维护 —
+        // 这里简化为只写 prefs.LastViewName,MainWindow.Closing 覆盖完整版)
+        var prefs = new UiPreferences { LastViewName = ResolveCurrentViewName() };
+        string path;
+        if (SaveUiPreferencesDialogOverride is not null)
+        {
+            path = svc.DefaultPath;
+            if (!SaveUiPreferencesDialogOverride(path, prefs)) return;
+        }
+        else
+        {
+            var dlg = new SaveFileDialog
+            {
+                Filter = "JSON (*.json)|*.json",
+                FileName = "ui-preferences.json",
+                InitialDirectory = Path.GetDirectoryName(svc.DefaultPath),
+            };
+            if (dlg.ShowDialog() != true) return;
+            path = dlg.FileName;
+        }
+        svc.SaveToFile(path, prefs);
+    }
+
+    private void LoadUiPreferences(UiPreferencesService svc)
+    {
+        string path;
+        if (LoadUiPreferencesDialogOverride is not null)
+        {
+            path = svc.DefaultPath;
+            if (!LoadUiPreferencesDialogOverride(path)) return;
+        }
+        else
+        {
+            var dlg = new OpenFileDialog
+            {
+                Filter = "JSON (*.json)|*.json",
+                InitialDirectory = Path.GetDirectoryName(svc.DefaultPath),
+            };
+            if (dlg.ShowDialog() != true) return;
+            path = dlg.FileName;
+        }
+        svc.LoadFromFile(path);  // 触发 Loaded 事件,订阅者应用
+    }
+
+    private string? ResolveCurrentViewName()
+    {
+        if (CurrentView is null) return null;
+        var t = CurrentView.GetType().Name;
+        return t switch
+        {
+            "EnvironmentListView" => "Environments",
+            "CatalogView"         => "Catalog",
+            "BaseEnvView"         => "BaseEnv",
+            "SettingsView"        => "Settings",
+            "SystemStatusView"    => "SystemStatus",
+            _                     => t,
         };
     }
 }

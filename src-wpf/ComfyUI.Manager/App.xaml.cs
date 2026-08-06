@@ -104,12 +104,15 @@ public partial class App : Application
         var profileLoader = new BaseEnvProfileLoader(projectRoot, appDataDir, http);
         // v0.6.5.x: 系统状态 tab 数据收集器(进入 tab 时拉一次 OS/CPU/Mem/Disk/GPU/CUDA)
         var systemInfoCollector = new SystemInfoCollector(logger);
+        // v0.6.5.21: UI 偏好持久化(<projectRoot>/config/ui-preferences.json)— Menu 的
+        // Save/Load UI 偏好命令 + MainWindow Window 尺寸 / LastViewName 应用都靠它。
+        var uiPreferencesService = new UiPreferencesService(projectRoot, logger);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
-            requirementsInstaller, systemInfoCollector);
+            requirementsInstaller, systemInfoCollector, uiPreferencesService);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.Show();

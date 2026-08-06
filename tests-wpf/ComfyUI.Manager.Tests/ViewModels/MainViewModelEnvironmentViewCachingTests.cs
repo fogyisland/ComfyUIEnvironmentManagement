@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -19,17 +20,31 @@ namespace ComfyUI.Manager.Tests.ViewModels;
 /// "两次调"返回同一 VM + 同一 View 引用即可,不依赖 Launcher / EnvCreator 等
 /// 真实组件。
 /// </summary>
-public sealed class MainViewModelEnvironmentViewCachingTests
+public sealed class MainViewModelEnvironmentViewCachingTests : IDisposable
 {
-    private static MainViewModel NewMainVm(TestDb db)
+    private readonly string _projectRoot;
+
+    public MainViewModelEnvironmentViewCachingTests()
+    {
+        _projectRoot = Path.Combine(Path.GetTempPath(), "env-cache-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_projectRoot);
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_projectRoot, recursive: true); } catch { }
+    }
+
+    private MainViewModel NewMainVm(TestDb db)
     {
         // 任何 ShowEnvironments 不会实际触发的 service 都传 null(VM ctor 不调用它们);
         // 唯一真用的是 SqliteConnectionFactory + EnvironmentRepository(构造时读 env 表)。
+        // v0.6.5.21:加 UiPreferencesService 20th param(非 null,VM ctor 抛 ArgumentNullException)。
         return new MainViewModel(
             db.Factory,
             null!, null!, null!, null!, null!, null!, null!,
             new Settings(), null!, null!, null!, null!, null!,
-            null!, "", "", null!, null!);
+            null!, "", "", null!, null!, new UiPreferencesService(_projectRoot));
     }
 
     [Fact]
