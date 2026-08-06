@@ -242,6 +242,12 @@ public class EnvironmentListViewModel : ViewModelBase
     // Application.Current.MainWindow + ShowDialog() and would throw in test context).
     public Action<IReadOnlyList<string>, BaseEnvProfile, BaseEnvInstaller>? ShowProgressDialogOverride { get; set; }
 
+    /// <summary>
+    /// 测试 seam:生产代码弹 MessageBox("已安装" 提示),单测可赋值 trap 避免 STA 挂死。
+    /// v0.6.5.19.1 hotfix 加。
+    /// </summary>
+    public Action<string>? MessageBoxOverride { get; set; }
+
     private void OpenBaseEnvProgress()
     {
         if (Selected is null && Environments.Count == 0) return;
@@ -249,6 +255,22 @@ public class EnvironmentListViewModel : ViewModelBase
             ? new List<string> { Selected.Id }
             : Environments.Select(e => e.Id).ToList();
         if (envIds.Count == 0) return;
+
+        // v0.6.5.19.1 hotfix: env-list 工具栏"基础环境部署"按钮也加 all-done 短路 —
+        // v0.6.5.19 只修了 BaseEnv tab 的 StartCommand,这个入口漏修。BedStatus 全部
+        // "done" → 弹"已安装",不弹 install dialog,跟 BaseEnvViewModel.Start 行为一致。
+        var existingEnvs = envIds
+            .Select(id => _repo.Get(id))
+            .Where(e => e is not null)
+            .ToList();
+        if (existingEnvs.Count == envIds.Count
+            && existingEnvs.All(e => e!.BedStatus == "done"))
+        {
+            var names = string.Join(", ", existingEnvs.Select(e => e!.Name));
+            ShowAlreadyInstalled(
+                $"所选 env 已安装基础环境,无需再装:{names}");
+            return;
+        }
 
         var profile = _profileLoader.GetHardcodedDefaults().FirstOrDefault();
         if (profile is null) return;
@@ -263,6 +285,18 @@ public class EnvironmentListViewModel : ViewModelBase
         // UI 立即重读反映新状态(否则用户看到行还是旧的 "未装")
         Load();
         RaiseCommandsChanged();
+    }
+
+    private void ShowAlreadyInstalled(string message)
+    {
+        if (MessageBoxOverride is not null)
+        {
+            MessageBoxOverride(message);
+            return;
+        }
+        MessageBox.Show(
+            message, "已安装",
+            MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     /// <summary>
