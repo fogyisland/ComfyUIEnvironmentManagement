@@ -208,7 +208,15 @@ public class RequirementsInstaller
         return candidates;
     }
 
-    private static string ResolveVenvPython(Environment env)
+    /// <summary>
+    /// 定位 env 的 venv python 解释器。优先 <c>env.PythonExecutable</c>(存在时直接用),
+    /// 否则从 <c>env.VenvPath</c> 拼平台相对路径(Windows <c>Scripts/python.exe</c>,
+    /// 其他 <c>bin/python</c>)。两者都不可用时抛 <see cref="InvalidOperationException"/>。
+    ///
+    /// v0.6.5.22:由 <c>private</c> 提升为 <c>public</c>,让 <see cref="RequirementsUninstaller"/>
+    /// 跨类复用同一套解析规则(避免两处逻辑漂移)。
+    /// </summary>
+    public static string ResolveVenvPython(Environment env)
     {
         if (!string.IsNullOrWhiteSpace(env.PythonExecutable)
             && File.Exists(env.PythonExecutable))
