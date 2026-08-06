@@ -14,6 +14,12 @@ public partial class App : Application
     private MainViewModel? _mainVm;
     private ProcessLauncher? _launcher;
 
+    /// <summary>
+    /// v0.6.5.21:挂在静态以便 MainWindow.OnClosing 写回(G7)— 无主项目别的地方
+    /// 需要直接读 svc,从 ctor 注入到 MainViewModel 已足够。
+    /// </summary>
+    public static UiPreferencesService? UiPreferencesService { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -107,6 +113,11 @@ public partial class App : Application
         // v0.6.5.21: UI 偏好持久化(<projectRoot>/config/ui-preferences.json)— Menu 的
         // Save/Load UI 偏好命令 + MainWindow Window 尺寸 / LastViewName 应用都靠它。
         var uiPreferencesService = new UiPreferencesService(projectRoot, logger);
+        // 挂到静态属性 → MainWindow.OnClosing 写回时(G7)用;App 进程内单例 OK。
+        UiPreferencesService = uiPreferencesService;
+        // 启动加载:先 LoadFromFile 再 instance MainWindow — MainWindow.OnSourceInitialized
+        // 根据 _startupPrefs 应用位置 / 尺寸(G6:ApplyStartupPreferences 必须在 Show() 之前)。
+        var uiPrefs = uiPreferencesService.LoadFromFile(uiPreferencesService.DefaultPath);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
@@ -115,6 +126,7 @@ public partial class App : Application
             requirementsInstaller, systemInfoCollector, uiPreferencesService);
 
         var main = new MainWindow { DataContext = _mainVm };
+        main.ApplyStartupPreferences(uiPrefs);
         main.Show();
     }
 
