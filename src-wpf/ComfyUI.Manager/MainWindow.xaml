@@ -6,6 +6,7 @@
         Background="{StaticResource BackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -14,8 +15,34 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
+        <!-- 顶部菜单条(新) -->
+        <Menu Grid.Row="0" Grid.ColumnSpan="2">
+            <MenuItem Header="_文件(_F)">
+                <MenuItem Header="_保存环境..."
+                          Command="{Binding SaveUiPreferencesCommand}" />
+                <MenuItem Header="_加载环境..."
+                          Command="{Binding LoadUiPreferencesCommand}" />
+                <Separator />
+                <MenuItem Header="打开项目文件夹"
+                          Command="{Binding OpenProjectFolderCommand}" />
+                <MenuItem Header="查看日志目录"
+                          Command="{Binding OpenLogFolderCommand}" />
+                <Separator />
+                <MenuItem Header="_退出"
+                          Command="{Binding ExitAppCommand}" />
+            </MenuItem>
+            <MenuItem Header="_设置(_S)">
+                <MenuItem Header="设置..."
+                          Command="{Binding ShowSettingsCommand}" />
+            </MenuItem>
+            <MenuItem Header="_关于(_H)">
+                <MenuItem Header="关于 ComfyUI Manager..."
+                          Command="{Binding ShowAboutCommand}" />
+            </MenuItem>
+        </Menu>
+
         <!-- 侧边栏 -->
-        <Border Grid.Row="0" Grid.Column="0"
+        <Border Grid.Row="1" Grid.Column="0"
                 Background="{StaticResource SurfaceBrush}"
                 Padding="8">
             <StackPanel>
@@ -50,11 +77,11 @@
         </Border>
 
         <!-- 内容区 -->
-        <ContentControl Grid.Row="0" Grid.Column="1"
+        <ContentControl Grid.Row="1" Grid.Column="1"
                         Content="{Binding CurrentView}" />
 
         <!-- 底部 ErrorBanner -->
-        <views:ErrorBanner Grid.Row="1" Grid.ColumnSpan="2"
+        <views:ErrorBanner Grid.Row="2" Grid.ColumnSpan="2"
                            DataContext="{Binding ErrorBanner}"
                            MaxHeight="120" />
     </Grid>
