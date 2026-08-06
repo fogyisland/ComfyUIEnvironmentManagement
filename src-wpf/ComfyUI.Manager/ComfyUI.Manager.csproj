@@ -27,6 +27,15 @@
     </Resource>
   </ItemGroup>
   <ItemGroup>
+    <!-- v0.6.5.21 hotfix:把仓库根的 asset/(单数)拷到输出 — 微信支付收款码
+         receiveMark.jpg 由 AboutDialogViewModel + DonateQrViewModel 运行时读。
+         Link 节点保留 asset/ 相对路径(运行时 projectRoot/asset/receiveMark.jpg)。 -->
+    <None Include="..\..\asset\**\*">
+      <Link>asset\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="ComfyUI.Manager.Tests" />
   </ItemGroup>
 </Project>

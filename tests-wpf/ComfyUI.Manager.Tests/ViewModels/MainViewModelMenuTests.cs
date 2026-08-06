@@ -30,6 +30,7 @@ public class MainViewModelMenuTests : IDisposable
     {
         public string? Folder;
         public bool ExitInvoked;
+        public bool DonateQrInvoked;
     }
 
     private MainViewModel NewMainVm(Capture cap)
@@ -42,12 +43,14 @@ public class MainViewModelMenuTests : IDisposable
         main.EnvironmentsViewFactory = vm => new object();  // 避 STA,跟 v0.6.5.20 同款
         main.OpenFolderOverride = p => cap.Folder = p;
         main.ExitAppOverride = () => cap.ExitInvoked = true;
+        main.ShowDonateQrOverride = () => cap.DonateQrInvoked = true;  // v0.6.5.21 hotfix
         return main;
     }
 
     [Fact]
-    public void AllSixMenuCommands_CanExecuteIsTrue()
+    public void AllSevenMenuCommands_CanExecuteIsTrue()
     {
+        // v0.6.5.21 hotfix:加 ShowDonateQrCommand(共 7 个 menu command)
         var cap = new Capture();
         var main = NewMainVm(cap);
         Assert.True(main.SaveUiPreferencesCommand.CanExecute(null));
@@ -56,6 +59,7 @@ public class MainViewModelMenuTests : IDisposable
         Assert.True(main.OpenLogFolderCommand.CanExecute(null));
         Assert.True(main.ExitAppCommand.CanExecute(null));
         Assert.True(main.ShowAboutCommand.CanExecute(null));
+        Assert.True(main.ShowDonateQrCommand.CanExecute(null));
     }
 
     [Fact]
@@ -115,5 +119,15 @@ public class MainViewModelMenuTests : IDisposable
         main.LoadUiPreferencesDialogOverride = path => { capturedPath = path; return true; };
         main.LoadUiPreferencesCommand.Execute(null);
         Assert.NotNull(capturedPath);
+    }
+
+    [Fact]
+    public void ShowDonateQrCommand_DelegatesToShowDonateQrOverride()
+    {
+        // v0.6.5.21 hotfix:菜单"赞助作者..."绑 ShowDonateQrCommand,测试 seam 替代真弹窗
+        var cap = new Capture();
+        var main = NewMainVm(cap);
+        main.ShowDonateQrCommand.Execute(null);
+        Assert.True(cap.DonateQrInvoked);
     }
 }

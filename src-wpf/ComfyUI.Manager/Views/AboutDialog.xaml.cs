@@ -13,8 +13,9 @@ public partial class AboutDialog : Window
     }
 
     /// <summary>
-    /// 弹模态 About 对话框。Owner 通常 <c>Application.Current.MainWindow</c>。
-    /// v0.6.5.21 spec G9。projectRoot 用于定位 <c>assets/wechat-donate.png</c>。
+    /// 弹非模态 About 对话框(独立窗口,不阻塞主窗口 — v0.6.5.21 hotfix)。
+    /// Owner 通常 <c>Application.Current.MainWindow</c>(用于位置关联 + WindowStartupLocation=CenterOwner)。
+    /// projectRoot 用于定位 <c>asset/receiveMark.jpg</c>(QR 单独从 DonateQrWindow 打开)。
     /// </summary>
     public static void Show(Window owner, string projectRoot)
     {
@@ -25,15 +26,12 @@ public partial class AboutDialog : Window
             DataContext = vm,
         };
         vm.RequestClose += (_, _) => dlg.Close();
-        dlg.Loaded += (_, _) =>
+        vm.OpenDonateQrRequested += (_, _) =>
         {
-            // UI 线程同步创建 BitmapImage,缺位 null → Image 隐藏(Visibility 已经按 HasDonateImage 走)
-            if (vm.HasDonateImage)
-            {
-                dlg.DonateImage.Source = vm.CreateDonateImage();
-            }
+            // 在 AboutDialog 上点"查看赞助二维码"→ 弹独立 DonateQrWindow(也非模态)
+            DonateQrWindow.Show(dlg, projectRoot);
         };
-        dlg.ShowDialog();
+        dlg.Show();  // 非模态:不阻塞主窗口,用户可一边看 About 一边操作主界面
     }
 
     /// <summary>Hyperlink 点击 → 用默认浏览器开 URL。</summary>

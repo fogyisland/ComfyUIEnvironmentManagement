@@ -27,6 +27,8 @@
                           Command="{Binding OpenProjectFolderCommand}" />
                 <MenuItem Header="查看日志目录"
                           Command="{Binding OpenLogFolderCommand}" />
+                <MenuItem Header="赞助作者..."
+                          Command="{Binding ShowDonateQrCommand}" />
                 <Separator />
                 <MenuItem Header="_退出"
                           Command="{Binding ExitAppCommand}" />

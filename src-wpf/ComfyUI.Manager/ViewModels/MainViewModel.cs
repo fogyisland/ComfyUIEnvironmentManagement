@@ -83,11 +83,13 @@ public class MainViewModel : ViewModelBase
     public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand ExitAppCommand { get; }
     public RelayCommand ShowAboutCommand { get; }
+    public RelayCommand ShowDonateQrCommand { get; }   // v0.6.5.21 hotfix:菜单直接打开赞助二维码独立窗口
 
     internal Action<string>? OpenFolderOverride { get; set; }  // test seam
     internal Action? ExitAppOverride { get; set; }            // test seam
     internal Func<string, UiPreferences, bool>? SaveUiPreferencesDialogOverride { get; set; }
     internal Func<string, bool>? LoadUiPreferencesDialogOverride { get; set; }
+    internal Action? ShowDonateQrOverride { get; set; }       // v0.6.5.21 hotfix test seam
 
     public MainViewModel(
         SqliteConnectionFactory dbFactory,
@@ -150,6 +152,7 @@ public class MainViewModel : ViewModelBase
             if (owner is null) return;
             AboutDialog.Show(owner, _projectRoot);
         });
+        ShowDonateQrCommand = new RelayCommand(_ => ShowDonateQr());
     }
 
     private void ShowEnvironments()
@@ -243,6 +246,14 @@ public class MainViewModel : ViewModelBase
     {
         if (ExitAppOverride is not null) { ExitAppOverride(); return; }
         Application.Current?.Shutdown();
+    }
+
+    private void ShowDonateQr()
+    {
+        if (ShowDonateQrOverride is not null) { ShowDonateQrOverride(); return; }
+        var owner = Application.Current?.MainWindow;
+        if (owner is null) return;
+        DonateQrWindow.Show(owner, _projectRoot);  // 非模态独立窗口
     }
 
     private void SaveUiPreferences(UiPreferencesService svc)

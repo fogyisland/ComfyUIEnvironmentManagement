@@ -35,27 +35,36 @@ public class AboutDialogViewModelTests : IDisposable
     }
 
     [Fact]
-    public void HasDonateImage_TrueWhenPngExists()
+    public void DonateImageFileName_IsReceiveMarkJpg()
     {
-        var assetsDir = Path.Combine(_projectRoot, "assets");
-        Directory.CreateDirectory(assetsDir);
-        File.WriteAllBytes(Path.Combine(assetsDir, "wechat-donate.png"), new byte[] { 0x89, 0x50, 0x4E, 0x47 });
-        var vm = new AboutDialogViewModel(_projectRoot);
-        Assert.True(vm.HasDonateImage);
+        // v0.6.5.21 hotfix:用户桌面 `asset/receiveMark.jpg` 是微信支付收款码
+        Assert.Equal("receiveMark.jpg", AboutDialogViewModel.DonateImageFileName);
     }
 
     [Fact]
-    public void HasDonateImage_FalseWhenPngMissing()
+    public void DonateImageSubdirectory_IsAssetSingular()
     {
-        // assets/ 不存在或文件缺位
-        var vm = new AboutDialogViewModel(_projectRoot);
-        Assert.False(vm.HasDonateImage);
+        // v0.6.5.21 hotfix:用单数 `asset/`(不是 v0.6.5.21 创建的复数 `assets/`)
+        Assert.Equal("asset", AboutDialogViewModel.DonateImageSubdirectory);
     }
 
     [Fact]
-    public void CreateDonateImage_ReturnsNullWhenPngMissing()
+    public void OpenDonateQrCommand_Execute_FiresOpenDonateQrRequested()
     {
         var vm = new AboutDialogViewModel(_projectRoot);
-        Assert.Null(vm.CreateDonateImage());
+        var fired = false;
+        vm.OpenDonateQrRequested += (_, _) => fired = true;
+        vm.OpenDonateQrCommand.Execute(null);
+        Assert.True(fired);
+    }
+
+    [Fact]
+    public void CloseCommand_Execute_FiresRequestClose()
+    {
+        var vm = new AboutDialogViewModel(_projectRoot);
+        var fired = false;
+        vm.RequestClose += (_, _) => fired = true;
+        vm.CloseCommand.Execute(null);
+        Assert.True(fired);
     }
 }
