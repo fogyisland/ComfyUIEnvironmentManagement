@@ -14,6 +14,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" MinHeight="0" />
+                <RowDefinition Height="Auto" MinHeight="0" />
             </Grid.RowDefinitions>
             <DataGrid Grid.Row="0" ItemsSource="{Binding Environments}"
                   SelectedItem="{Binding Selected}"
@@ -50,6 +51,16 @@
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
                                         ToolTip="运行 pip install -r requirements.txt(过滤 torch 行)" />
+                                <Button Content="卸载基础环境" Margin="2"
+                                        Command="{Binding DataContext.UninstallBaseEnvCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="重置 BedStatus,保留 venv 文件,可重新部署基础环境" />
+                                <Button Content="卸载依赖" Margin="2"
+                                        Command="{Binding DataContext.UninstallRequirementsCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="卸载 ComfyUI requirements.txt 已装的包(SQLAlchemy/einops/transformers 等,不动 torch 系列)" />
                                 <Button Content="安装节点" Margin="2"
                                         Command="{Binding DataContext.InstallNodeCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -123,6 +134,35 @@
                     <TextBlock Text="{Binding Error}" Foreground="#FF6B6B" Margin="0,4,0,0" FontWeight="Bold"
                                TextWrapping="Wrap"
                                Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+        <!-- 卸载基础环境 状态面板 (v0.6.5.22 T5) -->
+        <StackPanel Grid.Row="2" Margin="0,8,0,0">
+            <Border Padding="8" Background="#2A1A1A" CornerRadius="4"
+                    Visibility="{Binding BaseEnvUninstallStatus.IsVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                    DataContext="{Binding BaseEnvUninstallStatus}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="卸载基础环境" FontWeight="Bold" FontSize="14" Foreground="#FFB8B8" />
+                        <Button Grid.Column="1" Content="✕" Width="20" Height="20"
+                                Command="{Binding CloseCommand}" />
+                    </Grid>
+                    <ScrollViewer Height="100" Margin="0,4" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding LogLines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11" Foreground="#FFB8B8" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <TextBlock Text="{Binding Error}" Foreground="#FF6B6B" Margin="0,4,0,0" TextWrapping="Wrap"
+                               Visibility="{Binding Error, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
                 </StackPanel>
             </Border>
         </StackPanel>
