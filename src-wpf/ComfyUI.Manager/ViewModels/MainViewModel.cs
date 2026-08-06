@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -37,6 +38,33 @@ public class MainViewModel : ViewModelBase
         get => _currentView;
         set => SetField(ref _currentView, value);
     }
+
+    // v0.6.5.20 hotfix:缓存环境页 VM/View,离开"环境"再回来时复用同一实例,
+    // 这样进行中的装依赖状态(RequirementsStatus)不会随页面销毁丢失。
+    // 之前每次 ShowEnvironments 都 new 一个新 VM,InstallRequirementsAsync 仍
+    // 在后台跑 pip,但前台的 RequirementsStatus 已被新实例覆盖,用户回到"环境"
+    // 时看到空面板,再点"装依赖"就并发触发第二次 pip。
+    // Catalog / BaseEnv / Settings / SystemStatus 暂不缓存(它们是无状态的目录)。
+    private EnvironmentListViewModel? _environmentsViewModel;
+    private EnvironmentListView? _environmentsView;
+
+    /// <summary>
+    /// 测试 seam:构造 <see cref="EnvironmentListView"/> 的工厂 hook。
+    /// 默认 new 真实 View;测试可注入 null 或 stub,绕开 WPF STA 初始化。
+    /// </summary>
+    internal Func<EnvironmentListViewModel, object?>? EnvironmentsViewFactory { get; set; }
+
+    /// <summary>
+    /// 测试用:获取当前缓存的"环境"页 VM(若有)。用于断言 ShowEnvironments
+    /// 复用同一实例。
+    /// </summary>
+    internal EnvironmentListViewModel? CurrentEnvironmentsViewModel => _environmentsViewModel;
+
+    /// <summary>
+    /// 测试用:获取当前缓存的"环境"页 View 引用,验证 CurrentView 切回去时
+    /// 仍是同一份(否则 XAML ContentControl 重新解析会丢绑定的状态)。
+    /// </summary>
+    internal object? CurrentEnvironmentsView => _environmentsView;
 
     public RelayCommand ShowEnvironmentsCommand { get; }
     public RelayCommand ShowCatalogCommand { get; }
@@ -96,11 +124,17 @@ public class MainViewModel : ViewModelBase
 
     private void ShowEnvironments()
     {
-        var envRepo = new EnvironmentRepository(_dbFactory);
-        CurrentView = new EnvironmentListView
+        if (_environmentsViewModel is null)
         {
-            DataContext = new EnvironmentListViewModel(envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader, _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller),
-        };
+            var envRepo = new EnvironmentRepository(_dbFactory);
+            _environmentsViewModel = new EnvironmentListViewModel(
+                envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader,
+                _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller);
+            _environmentsView = EnvironmentsViewFactory is null
+                ? new EnvironmentListView { DataContext = _environmentsViewModel }
+                : EnvironmentsViewFactory(_environmentsViewModel) as EnvironmentListView;
+        }
+        CurrentView = _environmentsView;
     }
 
     private void ShowCatalog()
