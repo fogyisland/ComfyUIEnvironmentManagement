@@ -47,6 +47,35 @@ public sealed class RequirementsStatusViewModel : ViewModelBase
     public RelayCommand CancelCommand { get; }
 
     /// <summary>
+    /// v0.6.5.22 T4:把面板重置成"开始..."状态(清空 LogLines + Error + IsComplete,
+    /// 设 IsVisible=true,StatusText="准备开始..."),为后续 AppendLog / Fail / Complete
+    /// 做准备。跟 <see cref="BaseEnvUninstallStatusViewModel.Begin"/> 同模式,给
+    /// 卸载流程复用(RequirementsStatus VM 是 sealed,跨 install/uninstall 共用)。
+    /// </summary>
+    public void Begin()
+    {
+        Error = null;
+        IsComplete = false;
+        LogLines.Clear();
+        StatusText = "准备开始...";
+        IsVisible = true;
+        RaisePropertyChanged(nameof(Error));
+        RaisePropertyChanged(nameof(IsComplete));
+        RaisePropertyChanged(nameof(StatusText));
+        RaisePropertyChanged(nameof(IsVisible));
+    }
+
+    /// <summary>
+    /// v0.6.5.22 T4:追加一行 pip 日志(给 uninstall 用;install 流程由 RunAsync 内部
+    /// Progress&lt;string&gt; 自动 OnLogLine)。
+    /// </summary>
+    public void AppendLog(string line)
+    {
+        LogLines.Add(line);
+        while (LogLines.Count > MaxLogLines) LogLines.RemoveAt(0);
+    }
+
+    /// <summary>
     /// 触发整个装依赖流程。InstallAsync 失败 / 取消 / 成功都通过返回值 / Error 反映,
     /// 不抛异常给调用方。
     /// </summary>
@@ -116,6 +145,22 @@ public sealed class RequirementsStatusViewModel : ViewModelBase
         RaisePropertyChanged(nameof(Error));
         RaisePropertyChanged(nameof(HasError));
         RaisePropertyChanged(nameof(IsComplete));
+    }
+
+    /// <summary>
+    /// v0.6.5.22 T4:卸载成功完成(RequirementsUninstaller 跑 pip uninstall 成功 +
+    /// marker 删除)— 设 IsComplete + StatusText,等调用方 2s 后 Hide。跟
+    /// <see cref="BaseEnvUninstallStatusViewModel.Complete"/> 同模式。
+    /// </summary>
+    public void Complete()
+    {
+        IsComplete = true;
+        Error = null;
+        StatusText = $"{_env.Name} — 卸载依赖完成";
+        RaisePropertyChanged(nameof(IsComplete));
+        RaisePropertyChanged(nameof(Error));
+        RaisePropertyChanged(nameof(HasError));
+        RaisePropertyChanged(nameof(StatusText));
     }
 
     public void Hide()

@@ -17,7 +17,7 @@ namespace ComfyUI.Manager.Services;
 /// **EnvWasRunning**:env.Status == "running" 时拒绝卸载(避免用户卸到一半
 /// 进程还引用 venv 锁文件)。VM 应该先 Stop 再回来点。
 /// </summary>
-public sealed class BaseEnvUninstaller
+public class BaseEnvUninstaller
 {
     private readonly AppLogger? _logger;
 
@@ -29,7 +29,7 @@ public sealed class BaseEnvUninstaller
     public static bool IsInstalled(Environment env)
         => env.BedStatus is "done" or "failed" or "installing";
 
-    public BaseEnvUninstallResult Uninstall(Environment env)
+    public virtual BaseEnvUninstallResult Uninstall(Environment env)
     {
         if (env is null)
         {
