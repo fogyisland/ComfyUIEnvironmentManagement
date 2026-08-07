@@ -31,6 +31,7 @@
                     Style="{StaticResource MaterialButton}"
                     Width="80" />
             <Button x:Name="CloseButton" Content="关闭" Click="OnCloseClicked"
+                    IsEnabled="{Binding !IsInstallRunning}"
                     Style="{StaticResource MaterialButton}"
                     Width="80" Margin="8,0,0,0" />
         </StackPanel>

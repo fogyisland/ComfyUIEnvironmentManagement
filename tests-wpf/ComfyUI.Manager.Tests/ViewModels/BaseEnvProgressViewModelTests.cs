@@ -110,6 +110,80 @@ public sealed class BaseEnvProgressViewModelTests : IDisposable
         Assert.Contains("line 2", vm.LogTail);
     }
 
+    // v0.6.6.2 hotfix:install dialog 在跑期间不能被关掉(IsInstallRunning 派生自 OverallStatus)
+    [Fact]
+    public void IsInstallRunning_InitiallyTrue_BeforeAnyProgressReport()
+    {
+        var installer = new FakeBaseEnvInstaller(_envRepo);
+        var vm = new BaseEnvProgressViewModel(
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
+
+        // 刚创建,OverallStatus = Pending → IsInstallRunning = true → Close 按钮禁用。
+        Assert.Equal(BaseEnvStatus.Pending, vm.OverallStatus);
+        Assert.True(vm.IsInstallRunning);
+    }
+
+    [Fact]
+    public void IsInstallRunning_RemainsTrue_DuringRunningProgressEvents()
+    {
+        var installer = new FakeBaseEnvInstaller(_envRepo);
+        var vm = new BaseEnvProgressViewModel(
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
+
+        // 安装中途持续报 Running 进度 — VM 不把 Running 写进 OverallStatus(只写终态),
+        // 所以 Pending 期间任何 progress 都不会让 IsInstallRunning 翻 false。
+        vm.OnProgress(new BaseEnvProgress(
+            BaseEnvStatus.Running, 0, 1, "env-a", "env-a", 30, "downloading", null));
+        vm.OnProgress(new BaseEnvProgress(
+            BaseEnvStatus.Running, 0, 1, "env-a", "env-a", 60, "installing", null));
+        vm.OnProgress(new BaseEnvProgress(
+            BaseEnvStatus.Running, 0, 1, "env-a", "env-a", 90, "finishing", null));
+
+        Assert.True(vm.IsInstallRunning);  // 终态还没到 → 还不让关
+    }
+
+    [Fact]
+    public void IsInstallRunning_BecomesFalse_AfterSucceeded()
+    {
+        var installer = new FakeBaseEnvInstaller(_envRepo);
+        var vm = new BaseEnvProgressViewModel(
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
+
+        vm.OnProgress(new BaseEnvProgress(
+            BaseEnvStatus.Succeeded, 1, 1, "env-a", "env-a", 100, null, null));
+
+        Assert.Equal(BaseEnvStatus.Succeeded, vm.OverallStatus);
+        Assert.False(vm.IsInstallRunning);  // 成功 → 让关
+    }
+
+    [Fact]
+    public void IsInstallRunning_BecomesFalse_AfterFailed()
+    {
+        var installer = new FakeBaseEnvInstaller(_envRepo);
+        var vm = new BaseEnvProgressViewModel(
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
+
+        vm.OnProgress(new BaseEnvProgress(
+            BaseEnvStatus.Failed, 1, 1, "env-a", "env-a", null, null, "pip exit 1"));
+
+        Assert.Equal(BaseEnvStatus.Failed, vm.OverallStatus);
+        Assert.False(vm.IsInstallRunning);  // 失败 → 让关
+    }
+
+    [Fact]
+    public void IsInstallRunning_BecomesFalse_AfterCancelled()
+    {
+        var installer = new FakeBaseEnvInstaller(_envRepo);
+        var vm = new BaseEnvProgressViewModel(
+            new[] { "env-a" }, new BaseEnvProfile(), installer);
+
+        vm.OnProgress(new BaseEnvProgress(
+            BaseEnvStatus.Cancelled, 1, 1, "env-a", "env-a", null, null, "用户取消"));
+
+        Assert.Equal(BaseEnvStatus.Cancelled, vm.OverallStatus);
+        Assert.False(vm.IsInstallRunning);  // 取消 → 让关
+    }
+
     /// <summary>
     /// Minimal local fake: T4's FakeBaseEnvInstaller is a private nested class in
     /// BaseEnvInstallerTests, so it is not reachable here. These tests only exercise

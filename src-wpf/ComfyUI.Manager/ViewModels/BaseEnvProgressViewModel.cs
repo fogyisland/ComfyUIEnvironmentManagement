@@ -51,6 +51,15 @@ public class BaseEnvProgressViewModel : ViewModelBase
 
     public RelayCommand CancelCommand { get; }
 
+    /// <summary>
+    /// v0.6.6.2 hotfix:install 还在跑(Pending 或 Running)→ true,Close 按钮禁用 +
+    /// Window.Closing 拦截。install 完成(Succeeded / Failed / Cancelled)→ false,
+    /// Close 按钮才能用。在此之前用户点击 ✕ / 关闭 都是 no-op,避免 dialog 关掉后
+    /// install 在后台 fire-and-forget 跑导致 env-list BED 列卡在 ⏳ 看不到终态。
+    /// </summary>
+    public bool IsInstallRunning =>
+        OverallStatus == BaseEnvStatus.Pending || OverallStatus == BaseEnvStatus.Running;
+
     public Task<BaseEnvInstallResult> RunAsync()
     {
         _cts = new CancellationTokenSource();
@@ -109,5 +118,7 @@ public class BaseEnvProgressViewModel : ViewModelBase
         RaisePropertyChanged(nameof(EnvPercent));
         RaisePropertyChanged(nameof(StatusText));
         RaisePropertyChanged(nameof(OverallStatus));
+        // IsInstallRunning 派生自 OverallStatus,需要在每次变更时也 raise 让 XAML 绑定刷新。
+        RaisePropertyChanged(nameof(IsInstallRunning));
     }
 }
