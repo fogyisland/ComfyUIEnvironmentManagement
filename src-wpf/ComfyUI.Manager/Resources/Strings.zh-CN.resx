@@ -201,4 +201,13 @@
   <data name="UninstallRequirements_Title" xml:space="preserve">
     <value>正在卸载依赖</value>
   </data>
+  <data name="Picker_Title" xml:space="preserve">
+    <value>选择基础环境组合</value>
+  </data>
+  <data name="Picker_Ok" xml:space="preserve">
+    <value>确定</value>
+  </data>
+  <data name="Picker_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
 </root>
