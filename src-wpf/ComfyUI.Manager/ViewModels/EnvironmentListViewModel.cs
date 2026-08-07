@@ -69,6 +69,7 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand UninstallBaseEnvCommand { get; }
     public RelayCommand UninstallRequirementsCommand { get; }
     public RelayCommand ReportComponentsCommand { get; }
+    public RelayCommand OpenBrowserCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
 
@@ -101,6 +102,12 @@ public class EnvironmentListViewModel : ViewModelBase
     /// 交给默认浏览器;测试拦下来只记录路径,避免真的弹浏览器。
     /// </summary>
     public Action<string>? OpenReportFileOverride { get; set; }
+
+    /// <summary>
+    /// v0.6.7.2:打开 ComfyUI 页面的 seam(参数 = 完整 URL)。生产路径优先用 Chrome,
+    /// 找不到 Chrome 则回退系统默认浏览器;测试拦下来只记录 URL。
+    /// </summary>
+    public Action<string>? OpenBrowserUrlOverride { get; set; }
 
     /// <summary>
     /// BED 卸载 inline 状态面板(env-list 操作列"卸载基础环境"按钮触发后)。单 VM,
@@ -161,6 +168,14 @@ public class EnvironmentListViewModel : ViewModelBase
         ShowLogCommand = new RelayCommand(
             p => ShowLog(p as Environment ?? Selected),
             p => (p as Environment ?? Selected)?.Status == "running");
+        OpenBrowserCommand = new RelayCommand(
+            p => OpenBrowser(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                // 只有跑起来且知道端口才有页面可开。
+                return env is { Status: "running" } && env.Port.HasValue;
+            });
         CreateCommand = new RelayCommand(_ => CreateEnv());
         BaseEnvCommand = new RelayCommand(
             async _ => await OpenBaseEnvProgressAsync(),
@@ -871,6 +886,60 @@ public class EnvironmentListViewModel : ViewModelBase
         return new string(chars);
     }
 
+    /// <summary>
+    /// v0.6.7.2:打开运行中 ComfyUI 的页面(用户原话"用 Chrome 浏览器开启")。
+    /// 只在 env.Status == "running" 且 env.Port 有值时按钮才 enabled(CanExecute gate),
+    /// 所以走到这里就有 url。优先 Chrome.exe,找不到或启动失败则回退系统默认浏览器。
+    /// </summary>
+    private void OpenBrowser(Environment? env)
+    {
+        if (env?.Port is not int port) return;
+        var url = $"http://127.0.0.1:{port}";
+        (OpenBrowserUrlOverride ?? DefaultOpenBrowser)(url);
+    }
+
+    private static void DefaultOpenBrowser(string url)
+    {
+        var chrome = ResolveChromePath();
+        if (chrome is not null)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = chrome,
+                    Arguments = url,
+                    UseShellExecute = true,
+                });
+                return;
+            }
+            catch
+            {
+                // Chrome 装在但启动失败 → 回退默认浏览器
+            }
+        }
+
+        // 回退:用系统默认浏览器打开
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = url,
+            UseShellExecute = true,
+        });
+    }
+
+    private static string? ResolveChromePath()
+    {
+        var candidates = new[]
+        {
+            @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                @"Google\Chrome\Application\chrome.exe"),
+        };
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
     private void RaiseCommandsChanged()
     {
         StartCommand.RaiseCanExecuteChanged();
@@ -882,5 +951,6 @@ public class EnvironmentListViewModel : ViewModelBase
         UninstallBaseEnvCommand.RaiseCanExecuteChanged();
         UninstallRequirementsCommand.RaiseCanExecuteChanged();
         ReportComponentsCommand.RaiseCanExecuteChanged();
+        OpenBrowserCommand.RaiseCanExecuteChanged();
     }
 }

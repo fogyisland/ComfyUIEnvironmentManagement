@@ -28,7 +28,7 @@
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
                 <DataGridTextColumn Header="基础环境" Binding="{Binding BedDisplay}" Width="220" />
-                <DataGridTemplateColumn Header="操作" Width="470">
+                <DataGridTemplateColumn Header="操作" Width="560">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
@@ -46,6 +46,11 @@
                                         Command="{Binding DataContext.ShowLogCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}" />
+                                <Button Content="打开浏览器" Margin="2"
+                                        Command="{Binding DataContext.OpenBrowserCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
                                 <Button Content="装依赖" Margin="2"
                                         Command="{Binding DataContext.InstallRequirementsCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
