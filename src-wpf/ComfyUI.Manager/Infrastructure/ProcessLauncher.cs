@@ -28,6 +28,7 @@ public sealed class ProcessLauncher : IDisposable
     private readonly EnvironmentRepository _envRepo;
     private readonly ProcessStateRepository _processStateRepo;
     private readonly AppLogger? _logger;
+    private readonly int _startupTimeoutSeconds;
     private readonly Dictionary<string, ProcessEntry> _running = new();
     private readonly object _runningLock = new();
     private bool _disposed;
@@ -37,16 +38,24 @@ public sealed class ProcessLauncher : IDisposable
         SqliteConnectionFactory dbFactory,
         EnvironmentRepository envRepo,
         ProcessStateRepository processStateRepo,
-        AppLogger? logger = null)
+        AppLogger? logger = null,
+        int startupTimeoutSeconds = 600)
     {
         _projectRoot = projectRoot;
         _dbFactory = dbFactory;
         _envRepo = envRepo;
         _processStateRepo = processStateRepo;
         _logger = logger;
+        // v0.6.7.1: <=0 视作没配置,回落 600。
+        _startupTimeoutSeconds = startupTimeoutSeconds > 0 ? startupTimeoutSeconds : 600;
     }
 
     public string ProjectRoot => _projectRoot;
+
+    /// <summary>
+    /// v0.6.7.1: 实际生效的启动就绪超时(秒)。对外暴露方便 App / 测试诊断。
+    /// </summary>
+    public int StartupTimeoutSeconds => _startupTimeoutSeconds;
 
     /// <summary>
     /// log 文件路径:&lt;projectRoot&gt;/logs/&lt;env-id&gt;.log。
@@ -83,8 +92,8 @@ public sealed class ProcessLauncher : IDisposable
     /// 抛出:
     /// - ArgumentException:env 缺关键字段(VenvPath / Port 等)
     /// - InvalidOperationException:env 已运行、main.py 找不到
-    /// - TimeoutException:30s 内 port 未 listen(进程会被 kill)
-    /// - ServiceLaunchException:Process.Start 失败 / 返回 null
+    /// - TimeoutException:配置的超时时间内未就绪(端口未 listen 且未见就绪日志行,进程会被 kill)
+    /// - ServiceLaunchException:Process.Start 失败 / 返回 null / 进程提前退出
     /// </summary>
     public Task StartEnvAsync(Environment env, CancellationToken ct = default)
         => StartEnvAsync(env, stageProgress: null, logProgress: null, ct);
@@ -188,11 +197,13 @@ public sealed class ProcessLauncher : IDisposable
 
             try
             {
-                await WaitForPortAsync("127.0.0.1", port, TimeSpan.FromSeconds(30), ct);
+                // v0.6.7.1: 就绪 = 端口 listen 或 stdout 出现就绪行,任一先到即可。
+                var timeout = TimeSpan.FromSeconds(_startupTimeoutSeconds);
+                await WaitForReadyAsync(entry, "127.0.0.1", port, timeout, ct);
             }
             catch
             {
-                // 端口没起来:kill 进程、清空状态、清理 _running
+                // 没就绪:kill 进程、清空状态、清理 _running
                 TryKillProcessTree(process);
                 lock (_runningLock)
                 {
@@ -385,6 +396,7 @@ public sealed class ProcessLauncher : IDisposable
                 while ((line = await process.StandardOutput.ReadLineAsync()) is not null)
                 {
                     logProgress?.Report(line);
+                    if (IsReadyLine(line)) entry.ReadySignal.TrySetResult();
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
                     await writer.WriteLineAsync($"[{ts}] [pid {pid}] OUT: {line}");
                 }
@@ -415,6 +427,7 @@ public sealed class ProcessLauncher : IDisposable
                 while ((line = await process.StandardError.ReadLineAsync()) is not null)
                 {
                     logProgress?.Report(line);
+                    if (IsReadyLine(line)) entry.ReadySignal.TrySetResult();
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
                     await writer.WriteLineAsync($"[{ts}] [pid {pid}] ERR: {line}");
                 }
@@ -523,6 +536,99 @@ public sealed class ProcessLauncher : IDisposable
             $"端口 {port} 在 {timeout.TotalSeconds:0}s 内未 listen");
     }
 
+    /// <summary>
+    /// v0.6.7.1: 就绪 = 端口 listen 或 stdout 出现就绪行,任一先到即可。
+    /// 之前只等端口且硬编码 30s,ComfyUI 首次启动(编译 kernel / 加载模型)几分钟很常见。
+    /// </summary>
+    private static async Task WaitForReadyAsync(
+        ProcessEntry entry, string host, int port, TimeSpan timeout, CancellationToken ct)
+    {
+        using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadlineCts.CancelAfter(timeout);
+
+        // 500ms tick:每次检查 ①端口是否 listen ②进程是否已退出 ③readyTask 是否就绪。
+        // 任一先到即返回。把检查散在 500ms tick 里,而不是 Task.WhenAny(portTask, delay),
+        // 是为了让进程提前退出能即时报错 —— Task.Delay(timeout) 会干等到超时。
+        var deadline = DateTime.UtcNow + timeout;
+        var portTask = WaitForPortAsyncQuietAsync(host, port, deadlineCts.Token);
+        var readyTask = entry.ReadySignal.Task;
+
+        while (true)
+        {
+            if (readyTask.IsCompletedSuccessfully)
+            {
+                return;  // 就绪行先到
+            }
+
+            if (portTask.IsCompletedSuccessfully)
+            {
+                // 端口 task 完成 → 短暂确认(避免 IsCompleted 竞态)
+                if (await portTask.ConfigureAwait(false))
+                {
+                    return;
+                }
+                // 端口 task 因异常/取消完成 → 继续等 timeout 到期
+            }
+
+            // 进程提前退出 + 端口未 listen + 没有就绪行 → 立刻报错。
+            if (entry.Process.HasExited)
+            {
+                int? code = null;
+                try { code = entry.Process.ExitCode; } catch { }
+                throw new ServiceLaunchException(
+                    $"ComfyUI 进程提前退出(exit code {code}),查看日志: {entry.LogFilePath}");
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(ct);
+            }
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new TimeoutException(
+                    $"ComfyUI 在 {timeout.TotalSeconds:0}s 内未就绪(端口 {port} 未 listen 且未见就绪日志)。可在设置中调大「ComfyUI 启动就绪超时」。");
+            }
+
+            try
+            {
+                await Task.Delay(500, deadlineCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // deadline 到期或 caller 取消 — 下一轮检查会抛对应异常
+                if (ct.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(ct);
+                }
+                throw new TimeoutException(
+                    $"ComfyUI 在 {timeout.TotalSeconds:0}s 内未就绪(端口 {port} 未 listen 且未见就绪日志)。可在设置中调大「ComfyUI 启动就绪超时」。");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 包 <see cref="WaitForPortAsync"/>:把 TimeoutException 吃掉,返回 bool
+    /// 让 <see cref="WaitForReadyAsync"/> 统一决定报错文案。
+    /// </summary>
+    private static async Task<bool> WaitForPortAsyncQuietAsync(string host, int port, CancellationToken ct)
+    {
+        try
+        {
+            // 不传 timeout:用 ct 的 deadline 控制;WaitForPortAsync 内的 CancelAfter 由外层 cts 管理。
+            // 这里直接 await 到 connect 成功或 ct 取消。
+            await WaitForPortAsync(host, port, Timeout.InfiniteTimeSpan, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
     public static bool IsPortInUse(string host, int port)
     {
         try
@@ -550,5 +656,25 @@ public sealed class ProcessLauncher : IDisposable
         catch { }
     }
 
-    private sealed record ProcessEntry(Process Process, string LogFilePath);
+    private sealed record ProcessEntry(Process Process, string LogFilePath)
+    {
+        /// <summary>
+        /// v0.6.7.1: stdout/stderr reader 见到就绪行时 TrySetResult。
+        /// </summary>
+        public TaskCompletionSource ReadySignal { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    /// <summary>
+    /// v0.6.7.1: 判断一行 ComfyUI stdout/stderr 是否表示「服务已就绪」。
+    /// ComfyUI 各版本就绪行文案不一,这里匹配几个稳定出现的标志串(大小写不敏感)。
+    /// </summary>
+    public static bool IsReadyLine(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return false;
+        return line.Contains("To see the GUI go to", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Starting server", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Application startup complete", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Uvicorn running on", StringComparison.OrdinalIgnoreCase);
+    }
 }

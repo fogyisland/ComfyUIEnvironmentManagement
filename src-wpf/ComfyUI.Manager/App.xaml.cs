@@ -53,11 +53,16 @@ public partial class App : Application
 
         var nodeRepo = new NodeRepository(dbFactory);
         var processStateRepo = new ProcessStateRepository(dbFactory);
-        _launcher = new ProcessLauncher(
-            projectRoot, dbFactory, envRepo, processStateRepo, logger);
 
+        // v0.6.7.1: 在 launcher 构造前先 Load settings — 让 startupTimeoutSeconds 可读。
+        // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
+        // 不会改 ComfyUiStartupTimeoutSeconds,所以顺序安全。
         var settingsRepo = new SettingsRepository();
         var settings = settingsRepo.Load();
+
+        _launcher = new ProcessLauncher(
+            projectRoot, dbFactory, envRepo, processStateRepo, logger,
+            settings.ComfyUiStartupTimeoutSeconds);
 
         // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
         // 1) 空字段 → 默认子目录名(相对)

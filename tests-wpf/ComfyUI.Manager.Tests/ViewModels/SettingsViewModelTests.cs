@@ -54,6 +54,20 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("en_US", reloaded.Language);
     }
 
+    // v0.6.7.1: ComfyUI 启动就绪超时 setter 持久化。
+    [Fact]
+    public void ComfyUiStartupTimeoutSeconds_SetPersists()
+    {
+        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        Assert.Equal(600, vm.ComfyUiStartupTimeoutSeconds);  // 默认
+
+        vm.ComfyUiStartupTimeoutSeconds = 900;
+        Assert.Equal(900, vm.ComfyUiStartupTimeoutSeconds);
+
+        var reloaded = new SettingsRepository(_path).Load();
+        Assert.Equal(900, reloaded.ComfyUiStartupTimeoutSeconds);
+    }
+
     [Fact]
     public void Defaults_LoadsQuerySourcesAndDownloadSources_FromAppliedDefaults()
     {

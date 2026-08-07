@@ -35,6 +35,10 @@ public class Settings
     [JsonPropertyName("git_proxy_url")] public string GitProxyUrl { get; set; } = "";
     [JsonPropertyName("git_proxy_port")] public int GitProxyPort { get; set; }
     [JsonPropertyName("git_proxy_enabled")] public bool GitProxyEnabled { get; set; }
+    // v0.6.7.1: ComfyUI 启动就绪等待上限(秒)。默认 600(10 分钟)—— 大模型/首次
+    // 编译 kernel 时几分钟很正常,30s 硬编码会误判失败。
+    [JsonPropertyName("comfyui_startup_timeout_seconds")]
+    public int ComfyUiStartupTimeoutSeconds { get; set; } = 600;
 
     // —— 高级:用户自定义 path 表(key=name,value=path)——
     [JsonPropertyName("extra_paths")] public List<ExtraPath> ExtraPaths { get; set; } = new();

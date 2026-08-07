@@ -211,6 +211,12 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         get => _settings.CatalogCacheTtlMinutes;
         set { _settings.CatalogCacheTtlMinutes = value; _repo.Save(_settings); RaisePropertyChanged(); }
     }
+    // v0.6.7.1: ComfyUI 启动就绪超时(秒),默认 600。
+    public int ComfyUiStartupTimeoutSeconds
+    {
+        get => _settings.ComfyUiStartupTimeoutSeconds;
+        set { _settings.ComfyUiStartupTimeoutSeconds = value; _repo.Save(_settings); RaisePropertyChanged(); }
+    }
     public string CompatApiBaseUrl
     {
         get => _settings.CompatApiBaseUrl;
@@ -523,6 +529,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(Language));
         RaisePropertyChanged(nameof(ThemeMode));
         RaisePropertyChanged(nameof(CacheTtlMinutes));
+        RaisePropertyChanged(nameof(ComfyUiStartupTimeoutSeconds));
         RaisePropertyChanged(nameof(CompatApiBaseUrl));
         RaisePropertyChanged(nameof(TemplatePythonDir));
         RaisePropertyChanged(nameof(TemplateComfyuiDir));

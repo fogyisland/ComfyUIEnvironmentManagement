@@ -22,6 +22,15 @@
             <TextBox Text="{Binding CacheTtlMinutes, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource MaterialTextBox}" Width="240"
                      HorizontalAlignment="Left" />
+
+            <!-- v0.6.7.1: ComfyUI 启动就绪超时 -->
+            <TextBlock Text="ComfyUI 启动就绪超时(秒)" Margin="0,8,0,4" />
+            <TextBox Text="{Binding ComfyUiStartupTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource MaterialTextBox}" Width="240"
+                     HorizontalAlignment="Left" />
+            <TextBlock Text="默认 600 秒(10 分钟)。ComfyUI 首次启动编译 kernel / 加载大模型可能需要几分钟。"
+                       FontSize="11" Foreground="Gray" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
             <TextBlock Text="外部冲突 API URL" Margin="0,8,0,4" />
             <TextBox Text="{Binding CompatApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource MaterialTextBox}" Width="480"
