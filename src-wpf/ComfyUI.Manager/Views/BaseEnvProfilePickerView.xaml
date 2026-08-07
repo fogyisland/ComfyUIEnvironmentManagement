@@ -1,0 +1,58 @@
+<UserControl x:Class="ComfyUI.Manager.Views.BaseEnvProfilePickerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             xmlns:models="clr-namespace:ComfyUI.Manager.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DataContext="{d:DesignInstance Type=vm:BaseEnvProfilePickerViewModel}"
+             mc:Ignorable="d"
+             x:Name="Root">
+    <UserControl.Resources>
+        <Style TargetType="TextBlock" x:Key="CaptionStyle">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+    </UserControl.Resources>
+    <DockPanel>
+        <!-- 顶部:torch 版本 ComboBox -->
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <TextBlock Text="torch 版本:" Style="{StaticResource CaptionStyle}" />
+            <ComboBox ItemsSource="{Binding ElementName=Root, Path=ViewModel.Versions}"
+                      SelectedItem="{Binding ElementName=Root, Path=ViewModel.SelectedVersion}"
+                      DisplayMemberPath="DisplayName" />
+        </StackPanel>
+
+        <!-- 中段:当前选中 profile 的 description(单选模式有用) -->
+        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8"
+                   Text="{Binding ElementName=Root, Path=ViewModel.SelectedProfiles[0].Description}"
+                   Foreground="#888" TextWrapping="Wrap"
+                   Visibility="{Binding ElementName=Root, Path=ViewModel.SelectedProfiles.Count, Converter={StaticResource ZeroCountToVisibility}}" />
+
+        <!-- 底部 label -->
+        <TextBlock DockPanel.Dock="Bottom" Text="CUDA 变体:" Style="{StaticResource CaptionStyle}" />
+
+        <!-- 主体:CUDA 变体 ListBox(x:Name 不能叫 ProfileListBox — 跟 code-behind 公共属性同名 CS0102 冲突) -->
+        <ListBox x:Name="ProfileListBoxControl"
+                 ItemsSource="{Binding ElementName=Root, Path=ViewModel.Profiles}"
+                 SelectionMode="Extended"
+                 SelectionChanged="OnListBoxSelectionChanged">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type models:BaseEnvProfile}">
+                    <StackPanel Margin="6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                            <Border Background="#1E88E5" CornerRadius="4"
+                                    Padding="6,2" Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="{Binding CudaVersion}" Foreground="White" FontSize="11" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="{Binding Description}" Foreground="#888"
+                                   TextWrapping="Wrap" Margin="0,2,0,0" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>
