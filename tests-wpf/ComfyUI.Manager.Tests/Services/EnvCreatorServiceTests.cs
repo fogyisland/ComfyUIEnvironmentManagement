@@ -90,6 +90,47 @@ public sealed class EnvCreatorServiceTests : IDisposable
         Assert.False(string.IsNullOrEmpty(env.PythonVersion));
     }
 
+    [Fact]
+    public async Task CreateAsync_WithNotes_PersistsToDb_AndReadBack()
+    {
+        // v0.6.7.2:Notes 字段从 dialog → service → SQLite 端到端 roundtrip。
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+        const string notesText = "测试 SDXL 工作流,验证 ControlNet 节点";
+
+        var env = await _service.CreateAsync(
+            "gamma", "shared", basePy,
+            Path.Combine(_rootDir, "ComfyUI"),
+            port: null,
+            progress: null,
+            CancellationToken.None,
+            notes: notesText);
+
+        Assert.Equal(notesText, env.Notes);
+
+        // DB read-back:开新 connection 模拟"重启后状态恢复"
+        var verifyDb = new SqliteConnectionFactory(_dbPath);
+        var fresh = new EnvironmentRepository(verifyDb).Get(env.Id);
+        Assert.NotNull(fresh);
+        Assert.Equal(notesText, fresh!.Notes);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithNullOrWhitespaceNotes_StoresNull()
+    {
+        // 空 / 全空白 → null(不存空白串)
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+
+        var env = await _service.CreateAsync(
+            "delta", "shared", basePy,
+            Path.Combine(_rootDir, "ComfyUI"),
+            port: null,
+            progress: null,
+            CancellationToken.None,
+            notes: "   \n  \t  ");
+
+        Assert.Null(env.Notes);
+    }
+
     private sealed class FakeVenvCreator : VenvCreator
     {
         public string? LastBasePython { get; private set; }

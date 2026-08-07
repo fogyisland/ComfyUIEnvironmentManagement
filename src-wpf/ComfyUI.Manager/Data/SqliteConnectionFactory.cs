@@ -156,6 +156,8 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "environments", "bed_profile_id", "TEXT");
         EnsureColumn(conn, "environments", "bed_status", "TEXT");
         EnsureColumn(conn, "environments", "bed_failed_reason", "TEXT");
+        // v0.6.7.2:用户备注(在 CreateEnvDialog 输入,默认空)
+        EnsureColumn(conn, "environments", "notes", "TEXT");
     }
 
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)

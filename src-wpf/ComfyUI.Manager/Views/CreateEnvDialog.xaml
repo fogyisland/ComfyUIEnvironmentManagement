@@ -61,6 +61,15 @@
                 <TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,2,0,8" />
 
+                <!-- v0.6.7.2:用户备注(选填)。支持多行换行输入。 -->
+                <TextBlock Text="备注(选填,例如用途说明)" />
+                <TextBox Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         MinHeight="60" MaxHeight="120"
+                         VerticalScrollBarVisibility="Auto"
+                         IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
+                         Margin="0,2,0,8" />
+
                 <!-- 步骤进度面板:仅在 IsBusy=true 时显示 -->
                 <Border BorderBrush="#7F888888" BorderThickness="1" CornerRadius="4"
                         Background="#0A888888"

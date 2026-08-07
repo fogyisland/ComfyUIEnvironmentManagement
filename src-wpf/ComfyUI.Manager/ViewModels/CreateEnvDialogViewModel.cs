@@ -83,6 +83,17 @@ public class CreateEnvDialogViewModel : ViewModelBase
         set { _port = value; RaisePropertyChanged(); RaiseCommandsChanged(); }
     }
 
+    private string _notes = "";
+    /// <summary>
+    /// v0.6.7.2:用户备注(例如"测试 SDXL 工作流")。空字符串视作 null,
+    /// 不写进 DB(避免一长串空白行)。CreateEnvCommand 走 notes 参数传给 service。
+    /// </summary>
+    public string Notes
+    {
+        get => _notes;
+        set { _notes = value; RaisePropertyChanged(); }
+    }
+
     private bool _isBusy;
     public bool IsBusy
     {
@@ -212,7 +223,8 @@ public class CreateEnvDialogViewModel : ViewModelBase
                 string.IsNullOrWhiteSpace(ComfyuiSource) ? null : ComfyuiSource,
                 port,
                 progress,
-                CancellationToken.None);
+                CancellationToken.None,
+                string.IsNullOrWhiteSpace(Notes) ? null : Notes);
             Closed?.Invoke(env);
         }
         catch (EnvCreatorService.CreateEnvException ex)

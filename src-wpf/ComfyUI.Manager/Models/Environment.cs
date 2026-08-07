@@ -44,6 +44,12 @@ public class Environment
     public string? BedStatus { get; set; }
     [JsonPropertyName("bed_failed_reason")]
     public string? BedFailedReason { get; set; }
+    /// <summary>
+    /// v0.6.7.2:用户备注(例如"测试 SDXL 工作流"、"用 ControlNet 验证节点")。
+    /// 新建环境时在 CreateEnvDialog 输入,后续编辑留给 UI 接。
+    /// </summary>
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
 
     /// <summary>
     /// 行 BED 列展示文本:✓ profileId / ✗ 未装 / ⏳ 装中 / ❌ profileId (reason)。

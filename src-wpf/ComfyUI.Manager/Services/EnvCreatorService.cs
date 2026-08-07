@@ -64,7 +64,8 @@ public sealed class EnvCreatorService
         string? comfyuiSource,
         int? port,
         IProgress<CreateStepReport>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? notes = null)
     {
         // 1. 校验输入
         progress?.Report(new CreateStepReport("校验输入", $"python.exe = {pythonExe}"));
@@ -173,6 +174,7 @@ public sealed class EnvCreatorService
             Port = allocatedPort,
             Status = "stopped",
             EnabledNodeIdsJson = "[]",
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
         };
         Directory.CreateDirectory(env.CustomNodesPath!);
         envRepo.Upsert(env);
