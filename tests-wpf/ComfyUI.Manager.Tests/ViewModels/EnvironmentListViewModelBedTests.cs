@@ -105,9 +105,15 @@ public class EnvironmentListViewModelBedTests
 
         // 用 ShowProgressDialogOverride 拦截,跳过真实 dialog
         bool overrideCalled = false;
+        bool pickerCalled = false;
+        // v0.6.6:env-list 工具栏 BED 入口也弹 picker(Single 模式),需要拦截
+        // 选第一个 profile 让代码顺利走到 ShowProgressDialogOverride。
+        var firstProfile = profileLoader.GetHardcodedDefaults()[0];
+        vm.PickerDialogOverride = (_, _, _) => { pickerCalled = true; return new[] { firstProfile }; };
         vm.ShowProgressDialogOverride = (_, _, _) => overrideCalled = true;
         vm.BaseEnvCommand.Execute(null);
 
+        Assert.True(pickerCalled);  // v0.6.6:env-list 工具栏入口也弹 picker
         Assert.True(overrideCalled);  // BedStatus null → 走 dialog(不是 all-done 短路)
         // override 路径不会自动 reload(G10),我们手动验 Load() 也能重读
         // 模拟 BED 跑完:改 repo 行 + reload
@@ -194,13 +200,17 @@ public class EnvironmentListViewModelBedTests
         // 选未装的(Environments[1])→ 走 dialog
         vm.Selected = vm.Environments[1];
 
+        bool pickerCalled = false;
         bool dialogCalled = false;
         bool msgCalled = false;
+        var firstProfile2 = profileLoader.GetHardcodedDefaults()[0];
+        vm.PickerDialogOverride = (_, _, _) => { pickerCalled = true; return new[] { firstProfile2 }; };
         vm.ShowProgressDialogOverride = (_, _, _) => dialogCalled = true;
         vm.MessageBoxOverride = _ => msgCalled = true;
 
         vm.BaseEnvCommand.Execute(null);
 
+        Assert.True(pickerCalled);  // v0.6.6:env-list 工具栏入口也弹 picker
         Assert.True(dialogCalled);
         Assert.False(msgCalled);
     }

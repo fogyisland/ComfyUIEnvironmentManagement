@@ -194,6 +194,9 @@ public class EnvironmentListViewModelTests
         IReadOnlyList<string>? capturedEnvIds = null;
         BaseEnvProfile? capturedProfile = null;
         BaseEnvInstaller? capturedInstaller = null;
+        // v0.6.6:env-list 工具栏入口接 picker,需要设 PickerDialogOverride 选第一个 profile
+        var firstProfile = profileLoader.GetHardcodedDefaults()[0];
+        vm.PickerDialogOverride = (_, _, _) => new[] { firstProfile };
         vm.ShowProgressDialogOverride = (ids, p, i) =>
         {
             capturedEnvIds = ids;

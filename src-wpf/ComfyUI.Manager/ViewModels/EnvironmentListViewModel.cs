@@ -350,6 +350,16 @@ public class EnvironmentListViewModel : ViewModelBase
     public Action<IReadOnlyList<string>, BaseEnvProfile, BaseEnvInstaller>? ShowProgressDialogOverride { get; set; }
 
     /// <summary>
+    /// v0.6.6 测试 seam:覆盖 <see cref="BaseEnvProfilePickerDialog.Show"/>。不设走真实 WPF dialog。
+    /// Func(profiles, preselected, mode) → 选中 list 或 null(取消)。
+    /// </summary>
+    public Func<
+        IReadOnlyList<BaseEnvProfile>,
+        BaseEnvProfile?,
+        PickerSelectionMode,
+        IReadOnlyList<BaseEnvProfile>?>? PickerDialogOverride { get; set; }
+
+    /// <summary>
     /// 测试 seam:生产代码弹 MessageBox("已安装" 提示),单测可赋值 trap 避免 STA 挂死。
     /// v0.6.5.19.1 hotfix 加。
     /// </summary>
@@ -393,8 +403,20 @@ public class EnvironmentListViewModel : ViewModelBase
             return;
         }
 
-        var profile = _profileLoader.GetHardcodedDefaults().FirstOrDefault();
-        if (profile is null) return;
+        // v0.6.6:env-list 工具栏 BED 入口也弹 picker(跟 BaseEnv tab 行为一致)。
+        // Single 模式:用户选一个 torch+CUDA 组合 → 传给 BaseEnvProgressDialog。
+        var profiles = _profileLoader.GetHardcodedDefaults();
+        var preselected = profiles.FirstOrDefault();
+        var picked = PickerDialogOverride is not null
+            ? PickerDialogOverride(profiles, preselected, PickerSelectionMode.Single)
+            : BaseEnvProfilePickerDialog.Show(profiles, preselected, PickerSelectionMode.Single);
+        if (picked is null || picked.Count == 0)
+        {
+            // 用户取消或没选 → 给个轻提示
+            ShowAlreadyInstalled("请选择一个基础环境版本后再部署");
+            return;
+        }
+        var profile = picked.First();
 
         // 锁住所有目标 env,dialog 关闭(成功/失败/取消)后释放。
         foreach (var e in existingEnvs) MarkEnvBusy(e!, BusyKind.BEDInstall);
