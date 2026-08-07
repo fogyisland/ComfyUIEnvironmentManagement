@@ -39,6 +39,13 @@ public class BaseEnvViewModel : ViewModelBase
     private readonly List<string> _selectedEnvIds = new();
 
     /// <summary>
+    /// v0.6.6:全量 profile 缓存,用于 picker dialog。用户 override 模式 = override list;
+    /// 多版本模式 = 所有 torch × CUDA 变体的扁平化(夜维版从夜维版 loader 拉,stable 走
+    /// <see cref="BaseEnvProfileLoader.LoadProfilesForVersionAsync"/>)。
+    /// </summary>
+    private IReadOnlyList<BaseEnvProfile> _allLoadedProfilesCache = Array.Empty<BaseEnvProfile>();
+
+    /// <summary>
     /// 防止 stale async load 覆盖较新的 SelectedVersion 切换结果。
     /// 每次 SelectedVersion 切换自增;older loads 完成后会被丢弃。
     /// </summary>
@@ -76,6 +83,10 @@ public class BaseEnvViewModel : ViewModelBase
         StartCommand = new RelayCommand(
             _ => Start(),
             _ => CanStart());
+
+        ReselectCommand = new RelayCommand(
+            _ => Reselect(),
+            _ => CanReselect());
     }
 
     /// <summary>绑定到 profile ListBox.ItemsSource。</summary>
@@ -136,6 +147,22 @@ public class BaseEnvViewModel : ViewModelBase
     public RelayCommand StartCommand { get; }
 
     /// <summary>
+    /// v0.6.6:弹 picker dialog 重新选 profile(改选... 按钮)。
+    /// CanExecute:Load 完成(profiles 已加载)。
+    /// </summary>
+    public RelayCommand ReselectCommand { get; }
+
+    /// <summary>
+    /// 测试 seam:覆盖 <see cref="BaseEnvProfilePickerDialog.Show"/>;不设走真实 WPF dialog。
+    /// Func(profiles, preselected, mode) → 选中 list 或 null(取消)。
+    /// </summary>
+    public Func<
+        IReadOnlyList<BaseEnvProfile>,
+        BaseEnvProfile?,
+        PickerSelectionMode,
+        IReadOnlyList<BaseEnvProfile>?>? PickerDialogOverride { get; set; }
+
+    /// <summary>
     /// 测试 seam:生产代码走 <see cref="BaseEnvProgressDialog.Show"/> 静态入口。
     /// 单测可赋值来拦截 ShowDialog 调用、断言参数。
     /// </summary>
@@ -145,6 +172,15 @@ public class BaseEnvViewModel : ViewModelBase
     /// 测试 seam:生产代码弹 MessageBox("已安装" 提示),单测可赋值 trap 避免挂死。
     /// </summary>
     public Action<string>? MessageBoxOverride { get; set; }
+
+    /// <summary>
+    /// 当前选择的展示文本(v0.6.6:绑定到 BaseEnvView 顶部 "当前选择:" 旁的
+    /// TextBlock)。XAML 端 <c>Text="{Binding CurrentSelectionDisplay}"</c>。
+    /// </summary>
+    public string CurrentSelectionDisplay =>
+        _selectedProfiles.Count == 0
+            ? "(未选择)"
+            : $"{_selectedProfiles[0].TorchVersion} — {_selectedProfiles.Count} 个 CUDA 变体已选";
 
     /// <summary>
     /// 加载 profiles(envs)并填充 ObservableCollection。
@@ -183,7 +219,9 @@ public class BaseEnvViewModel : ViewModelBase
             ReplaceEnvs(envs);
             _selectedProfiles.Clear();
             _selectedEnvIds.Clear();
+            _allLoadedProfilesCache = userOverrideProfiles;
             StartCommand.RaiseCanExecuteChanged();
+            ReselectCommand.RaiseCanExecuteChanged();
             return;
         }
 
@@ -198,7 +236,31 @@ public class BaseEnvViewModel : ViewModelBase
         ReplaceEnvs(envs);
         _selectedProfiles.Clear();
         _selectedEnvIds.Clear();
+
+        // v0.6.6:把所有 torch 的 profile 都拉下来,合并到 _allLoadedProfilesCache 供
+        // picker dialog 使用。每个 entry 调一次 _loader.LoadProfilesForVersionAsync。
+        var allProfiles = new List<BaseEnvProfile>();
+        foreach (var entry in entries)
+        {
+            IReadOnlyList<BaseEnvProfile> perVersion;
+            if (entry.IsNightly)
+            {
+                perVersion = await _loader
+                    .LoadProfilesForVersionAsync(PyTorchVersionDirectory.NightlyVersion, metadata: null)
+                    .ConfigureAwait(true);
+            }
+            else
+            {
+                perVersion = await _loader
+                    .LoadProfilesForVersionAsync(entry.Version, entry.StableMetadata)
+                    .ConfigureAwait(true);
+            }
+            foreach (var p in perVersion) allProfiles.Add(p);
+        }
+        _allLoadedProfilesCache = allProfiles;
+
         StartCommand.RaiseCanExecuteChanged();
+        ReselectCommand.RaiseCanExecuteChanged();
 
         // 设置 SelectedVersion 之前,先把 generation + 1,让 setter 里的
         // OnSelectedVersionChangedAsync 不会跟我们的后续手动 await 竞争。
@@ -310,6 +372,21 @@ public class BaseEnvViewModel : ViewModelBase
         _selectedProfiles.Clear();
         _selectedProfiles.AddRange(selection);
         StartCommand.RaiseCanExecuteChanged();
+        RaisePropertyChanged(nameof(CurrentSelectionDisplay));
+    }
+
+    /// <summary>
+    /// v0.6.6:由 picker dialog 触发(ReselectCommand)调用。整体替换当前选中的 profiles,
+    /// 同时若新 profile 集合的第一项 torch 版本跟 <see cref="SelectedVersion"/> 不一致,
+    /// 同步 <see cref="SelectedVersion"/> 让顶部 ComboBox 跟上 picker 选择。
+    /// </summary>
+    public void SetSelectedVersion(PyTorchVersionEntry? value)
+    {
+        if (Equals(value, _selectedVersion)) return;
+        Interlocked.Increment(ref _loadGeneration);
+        _selectedVersion = value;
+        RaisePropertyChanged(nameof(SelectedVersion));
+        _lastReloadTask = OnSelectedVersionChangedAsync(value);
     }
 
     /// <summary>
@@ -322,6 +399,38 @@ public class BaseEnvViewModel : ViewModelBase
         _selectedEnvIds.AddRange(selection.Select(e => e.Id));
         StartCommand.RaiseCanExecuteChanged();
     }
+
+    /// <summary>
+    /// v0.6.6:ReselectCommand 执行体。弹 picker dialog 重新选 profile,
+    /// 选中后同步 <see cref="SelectedProfiles"/> + <see cref="SelectedVersion"/>。
+    /// 取消 / 无选择 → 不动当前状态。
+    /// </summary>
+    private void Reselect()
+    {
+        var profiles = _allLoadedProfilesCache;
+        var preselected = _selectedProfiles.FirstOrDefault();
+
+        var picked = PickerDialogOverride is not null
+            ? PickerDialogOverride(profiles, preselected, PickerSelectionMode.Multi)
+            : BaseEnvProfilePickerDialog.Show(profiles, preselected, PickerSelectionMode.Multi);
+
+        if (picked is null || picked.Count == 0) return;
+
+        SetSelectedProfiles(picked);
+        // 同步 SelectedVersion 跟新 profile 的 torch 版本(若 Profiles 里也存在同 version 的 entry)。
+        var newTorch = picked[0].TorchVersion;
+        var matchingVersion = Versions.FirstOrDefault(v => v.Version == newTorch);
+        if (matchingVersion is not null && !ReferenceEquals(matchingVersion, SelectedVersion))
+        {
+            SetSelectedVersion(matchingVersion);
+        }
+        StartCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// ReselectCommand 的 CanExecute:全量 profile 已加载(LoadAsync 完成)。
+    /// </summary>
+    private bool CanReselect() => _allLoadedProfilesCache.Count > 0;
 
     /// <summary>
     /// Start 按钮执行:取第一个选中的 profile,弹 BaseEnvProgressDialog。

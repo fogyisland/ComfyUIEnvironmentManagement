@@ -18,7 +18,7 @@ namespace ComfyUI.Manager.Data;
 /// <see cref="GetHardcodedDefaults"/>(v0.6.5 硬编码 5 个)。
 /// 设计上宁可回退到默认值也不要因为 JSON 损坏 / 网络断就让 UI 空掉。
 /// </summary>
-public sealed class BaseEnvProfileLoader
+public class BaseEnvProfileLoader
 {
     public const string FileName = "base_env_profiles.json";
 
@@ -55,7 +55,7 @@ public sealed class BaseEnvProfileLoader
     /// 文件缺失 / 解析失败 / 空字符串 → 走 <see cref="GetLiveDefaultsAsync"/>。
     /// 有效空数组 "[]" 视为用户明确选择空列表,直接返回(不回退)。
     /// </summary>
-    public async Task<IReadOnlyList<BaseEnvProfile>> LoadAsync(CancellationToken ct = default)
+    public virtual async Task<IReadOnlyList<BaseEnvProfile>> LoadAsync(CancellationToken ct = default)
     {
         var path = Path.Combine(_appDataDir, FileName);
         if (File.Exists(path))
@@ -120,7 +120,7 @@ public sealed class BaseEnvProfileLoader
     /// v0.6.5.22: 返回前过 <see cref="MarkIncompatibleOlderVersions"/>
     /// 标 <c>torch &lt; 2.4</c> 的 profile 不推荐(comfy_kitchen 不兼容)。
     /// </summary>
-    public IReadOnlyList<BaseEnvProfile> GetHardcodedDefaults()
+    public virtual IReadOnlyList<BaseEnvProfile> GetHardcodedDefaults()
     {
         return MarkIncompatibleOlderVersions(new List<BaseEnvProfile>
         {

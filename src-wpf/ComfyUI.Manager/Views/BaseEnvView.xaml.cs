@@ -20,12 +20,6 @@ public partial class BaseEnvView : UserControl
         };
     }
 
-    private void OnProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_vm is null) return;
-        _vm.SetSelectedProfiles(ProfileListBox.SelectedItems.Cast<BaseEnvProfile>());
-    }
-
     private void OnEnvSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_vm is null) return;
