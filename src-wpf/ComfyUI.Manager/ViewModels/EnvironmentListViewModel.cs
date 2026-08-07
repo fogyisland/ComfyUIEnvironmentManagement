@@ -68,6 +68,7 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand InstallRequirementsCommand { get; }
     public RelayCommand UninstallBaseEnvCommand { get; }
     public RelayCommand UninstallRequirementsCommand { get; }
+    public RelayCommand ReportComponentsCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
 
@@ -88,6 +89,18 @@ public class EnvironmentListViewModel : ViewModelBase
     /// v0.6.5.22 T4:卸载/拒绝场景下的信息提示 dialog seam(message, reason)。
     /// </summary>
     public Action<string, string>? ShowMessageBoxOverride { get; set; }
+
+    /// <summary>
+    /// v0.6.7 T2:组件报告 builder seam。null = 生产路径,按 _profileLoader / _repo /
+    /// _settings.GitExe / 程序集版本 现造一个。测试注入子类伪造 BuildAsync。
+    /// </summary>
+    public EnvComponentReportBuilder? ComponentReportBuilderOverride { get; set; }
+
+    /// <summary>
+    /// v0.6.7 T2:打开生成的 HTML seam。生产路径走 Process.Start(UseShellExecute=true)
+    /// 交给默认浏览器;测试拦下来只记录路径,避免真的弹浏览器。
+    /// </summary>
+    public Action<string>? OpenReportFileOverride { get; set; }
 
     /// <summary>
     /// BED 卸载 inline 状态面板(env-list 操作列"卸载基础环境"按钮触发后)。单 VM,
@@ -200,6 +213,14 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (!RequirementsInstaller.IsInstalled(env)) return false;
                 if (IsEnvBusy(env)) return false;
                 return true;
+            });
+        ReportComponentsCommand = new RelayCommand(
+            p => ReportComponentsExecuteWrapper(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                return !IsEnvBusy(env);
             });
         Load();
     }
@@ -776,6 +797,80 @@ public class EnvironmentListViewModel : ViewModelBase
     /// </summary>
     public Action<Environment>? OpenInstallPickerOverride { get; set; }
 
+    /// <summary>
+    /// v0.6.7:生成 env 组件报告 HTML,写到 &lt;projectRoot&gt;/reports/,用默认浏览器打开。
+    /// 报告是只读采集(pip show / pip list / git rev-parse),不改 env,所以不占 per-env
+    /// 互斥锁 —— 但 env 正忙时禁用按钮,避免读到装到一半的状态。
+    /// </summary>
+    private async Task ReportComponentsAsync(Environment? env)
+    {
+        if (env is null) return;
+        try
+        {
+            var builder = ComponentReportBuilderOverride ?? new EnvComponentReportBuilder(
+                _profileLoader, _repo, ResolveGitExeForReport(), ResolveAppVersion());
+            var report = await builder.BuildAsync(env);
+            var html = EnvComponentReportRenderer.Render(report);
+
+            var dir = Path.Combine(_projectRoot, "reports");
+            Directory.CreateDirectory(dir);
+            var fileName = $"env-{SanitizeFileName(env.Name)}-{DateTime.Now:yyyyMMdd-HHmmss}.html";
+            var path = Path.Combine(dir, fileName);
+
+            // 用 UTF-8 BOM 写,否则浏览器可能把中文当 GBK 显示乱码。
+            var utf8Bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+            await File.WriteAllTextAsync(path, html, utf8Bom);
+
+            (OpenReportFileOverride ?? DefaultOpenReportFile)(path);
+        }
+        catch (Exception ex)
+        {
+            ShowInfoDialog($"生成组件报告失败:{ex.Message}", "组件报告");
+        }
+    }
+
+    /// <summary>
+    /// v0.6.7 T2:最近一次 ReportComponentsAsync 的 Task(给测试 await,避免
+    /// async void 风格的 fire-and-forget race)。生产代码无 consumer。
+    /// </summary>
+    internal Task? LastReportTask { get; private set; }
+
+    /// <summary>
+    /// v0.6.7 T2:ReportComponentsCommand 的 execute wrapper — 把 Task 存到
+    /// <see cref="LastReportTask"/> 让测试可以 await,生产环境仍然是 fire-and-forget。
+    /// </summary>
+    private async void ReportComponentsExecuteWrapper(Environment? env)
+    {
+        var task = ReportComponentsAsync(env);
+        LastReportTask = task;
+        try { await task; }
+        catch { /* 已在 ReportComponentsAsync 内部 ShowInfoDialog */ }
+    }
+
+    private static void DefaultOpenReportFile(string path)
+    {
+        // UseShellExecute=true 让 Windows 用默认浏览器打开 .html。
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = path,
+            UseShellExecute = true,
+        });
+    }
+
+    private string ResolveGitExeForReport()
+        => string.IsNullOrWhiteSpace(_settings?.GitExe) ? "git" : _settings.GitExe;
+
+    private static string ResolveAppVersion()
+        => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+
+    private static string SanitizeFileName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "env";
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        return new string(chars);
+    }
+
     private void RaiseCommandsChanged()
     {
         StartCommand.RaiseCanExecuteChanged();
@@ -786,5 +881,6 @@ public class EnvironmentListViewModel : ViewModelBase
         InstallRequirementsCommand.RaiseCanExecuteChanged();
         UninstallBaseEnvCommand.RaiseCanExecuteChanged();
         UninstallRequirementsCommand.RaiseCanExecuteChanged();
+        ReportComponentsCommand.RaiseCanExecuteChanged();
     }
 }

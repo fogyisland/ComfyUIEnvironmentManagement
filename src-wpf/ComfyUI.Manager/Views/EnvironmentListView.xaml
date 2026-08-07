@@ -28,7 +28,7 @@
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
                 <DataGridTextColumn Header="基础环境" Binding="{Binding BedDisplay}" Width="220" />
-                <DataGridTemplateColumn Header="操作" Width="400">
+                <DataGridTemplateColumn Header="操作" Width="470">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
@@ -65,6 +65,11 @@
                                         Command="{Binding DataContext.InstallNodeCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}" />
+                                <Button Content="组件报告" Margin="2"
+                                        Command="{Binding DataContext.ReportComponentsCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
                                 <Button Content="删除" Margin="2"
                                         Command="{Binding DataContext.DeleteCommand,
                                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
