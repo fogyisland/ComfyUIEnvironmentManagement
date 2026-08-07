@@ -20,6 +20,7 @@ namespace ComfyUI.Manager.Services;
 ///   3. 生成 env_id
 ///   4. 创建 env 根目录
 ///   5. 链接 / 复制 ComfyUI(shared → junction,independent → copy)
+///   5.5 链接共享 Models(Settings.SharedModelsDirectory 非空时,models → 共享目录)
 ///   6. 创建 venv(VenvCreator)
 ///   7. 写 extra_model_paths.yaml(占位)
 ///   8. 插 SQLite 行
@@ -135,6 +136,32 @@ public sealed class EnvCreatorService
                 $"copy: {comfyuiSource} → {comfyuiLink}"));
             _linker.CopyDirectory(comfyuiSource, comfyuiLink);
             comfyuiResolved = comfyuiLink;
+        }
+
+        // 5.5 链接共享 Models(若 SharedModelsDirectory 非空)
+        if (!string.IsNullOrWhiteSpace(_settings.SharedModelsDirectory))
+        {
+            var sharedModelsFull = Path.GetFullPath(_settings.SharedModelsDirectory);
+            var modelsLink = Path.Combine(comfyuiLink, "models");
+            progress?.Report(new CreateStepReport("链接共享 Models",
+                $"junction: {modelsLink} → {sharedModelsFull}"));
+            try
+            {
+                if (Directory.Exists(modelsLink))
+                {
+                    // shared layout 时是 junction 链回 <comfyui-source>/models,删 junction 不删源
+                    // independent 时是本地拷贝,删本地没事
+                    Directory.Delete(modelsLink, recursive: true);
+                }
+                await _linker.CreateAsync(modelsLink, sharedModelsFull, ct);
+            }
+            catch (Exception ex)
+            {
+                // 回滚:删 env 根目录,跟 venv 失败同款
+                try { Directory.Delete(rootPath, recursive: true); } catch { }
+                throw new CreateEnvException("CREATE_MODELS_LINK_FAILED",
+                    $"Models junction 创建失败: {ex.Message}");
+            }
         }
 
         // 6. 创建 venv
