@@ -265,19 +265,33 @@ public class MainViewModel : ViewModelBase
 
     /// <summary>
     /// 打开 ComfyUI 配置文件。filename: "comfy.settings.json" 或 "extra_model_paths.yaml"。
-    /// 路径 = &lt;env-root&gt;/ComfyUI/{user/default/comfy.settings.json 或 extra_model_paths.yaml}。
-    /// shared layout 时 ComfyuiSource 是源目录(ComfyUI 就在那)。
+    /// 路径解析按文件名分支:
+    /// - comfy.settings.json 永远在 ComfyUI 根目录下 user/default/(shared layout → env.ComfyuiSource,否则 → env-root/ComfyUI)。
+    /// - extra_model_paths.yaml 永远在 env-root/(跟 layout 无关;DB 列 Environment.ExtraModelPathsYaml 记精确路径)。
     /// </summary>
     private void OpenComfyConfigFile(string filename)
     {
         var env = CurrentEnvironmentsViewModel?.Selected;
         if (env is null) return;
-        var comfyuiRoot = env.ComfyuiLayout == "shared" && env.ComfyuiSource is not null
-            ? env.ComfyuiSource
-            : Path.Combine(env.RootPath, "ComfyUI");
-        string path = filename == "comfy.settings.json"
-            ? Path.Combine(comfyuiRoot, "user", "default", "comfy.settings.json")
-            : Path.Combine(comfyuiRoot, filename);
+
+        string path;
+        if (filename == "comfy.settings.json")
+        {
+            // comfy.settings.json 永远在 ComfyUI 根目录下 user/default/:
+            // - isolated layout → <env-root>/ComfyUI/user/default/comfy.settings.json
+            // - shared layout → <env.ComfyuiSource>/user/default/comfy.settings.json
+            var comfyuiRoot = env.ComfyuiLayout == "shared" && env.ComfyuiSource is not null
+                ? env.ComfyuiSource
+                : Path.Combine(env.RootPath, "ComfyUI");
+            path = Path.Combine(comfyuiRoot, "user", "default", "comfy.settings.json");
+        }
+        else
+        {
+            // extra_model_paths.yaml 永远在 <env-root>/,跟 layout 无关。
+            // DB 列 Environment.ExtraModelPathsYaml 已经记录了精确路径。
+            path = env.ExtraModelPathsYaml
+                ?? Path.Combine(env.RootPath, "extra_model_paths.yaml");
+        }
 
         if (EnsureFileExistsOverride is not null)
         {
@@ -304,7 +318,7 @@ public class MainViewModel : ViewModelBase
 
     /// <summary>
     /// 确保文件存在。comfy.settings.json 不存在 → 写 "{}"。
-    /// extra_model_paths.yaml 不存在 → 写 placeholder。
+    /// extra_model_paths.yaml 不存在 → 写 placeholder(UTF-8 BOM,Windows Notepad 才能正常显示中文注释)。
     /// </summary>
     private void EnsureFileExists(string path)
     {
@@ -317,7 +331,7 @@ public class MainViewModel : ViewModelBase
         }
         else
         {
-            File.WriteAllText(path, "# ComfyUI Models 路径配置\n# 编辑 base_directory 指向共享 Models 目录(配合 Settings.SharedModelsDirectory)\n");
+            File.WriteAllText(path, "# ComfyUI Models 路径配置\n# 编辑 base_directory 指向共享 Models 目录(配合 Settings.SharedModelsDirectory)\n", System.Text.Encoding.UTF8);
         }
     }
 
