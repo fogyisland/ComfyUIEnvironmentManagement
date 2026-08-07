@@ -553,56 +553,70 @@ public sealed class ProcessLauncher : IDisposable
         var portTask = WaitForPortAsyncQuietAsync(host, port, deadlineCts.Token);
         var readyTask = entry.ReadySignal.Task;
 
-        while (true)
+        // 就绪行先到时 portTask 仍在轮询;退出前必须 Cancel,否则它会拿着已 Dispose 的
+        // token 调 Task.Delay 抛 ObjectDisposedException 变成无人观察的 faulted task。
+        try
         {
-            if (readyTask.IsCompletedSuccessfully)
+            while (true)
             {
-                return;  // 就绪行先到
-            }
-
-            if (portTask.IsCompletedSuccessfully)
-            {
-                // 端口 task 完成 → 短暂确认(避免 IsCompleted 竞态)
-                if (await portTask.ConfigureAwait(false))
+                if (readyTask.IsCompletedSuccessfully)
                 {
-                    return;
+                    return;  // 就绪行先到
                 }
-                // 端口 task 因异常/取消完成 → 继续等 timeout 到期
-            }
 
-            // 进程提前退出 + 端口未 listen + 没有就绪行 → 立刻报错。
-            if (entry.Process.HasExited)
-            {
-                int? code = null;
-                try { code = entry.Process.ExitCode; } catch { }
-                throw new ServiceLaunchException(
-                    $"ComfyUI 进程提前退出(exit code {code}),查看日志: {entry.LogFilePath}");
-            }
+                if (portTask.IsCompletedSuccessfully)
+                {
+                    // 端口 task 完成 → 短暂确认(避免 IsCompleted 竞态)
+                    if (await portTask.ConfigureAwait(false))
+                    {
+                        return;
+                    }
+                    // 端口 task 因异常/取消完成 → 继续等 timeout 到期
+                }
 
-            if (ct.IsCancellationRequested)
-            {
-                throw new OperationCanceledException(ct);
-            }
-            if (DateTime.UtcNow >= deadline)
-            {
-                throw new TimeoutException(
-                    $"ComfyUI 在 {timeout.TotalSeconds:0}s 内未就绪(端口 {port} 未 listen 且未见就绪日志)。可在设置中调大「ComfyUI 启动就绪超时」。");
-            }
+                // 进程提前退出 + 端口未 listen + 没有就绪行 → 立刻报错。
+                if (entry.Process.HasExited)
+                {
+                    int? code = null;
+                    try { code = entry.Process.ExitCode; } catch { }
+                    throw new ServiceLaunchException(
+                        $"ComfyUI 进程提前退出(exit code {code}),查看日志: {entry.LogFilePath}");
+                }
 
-            try
-            {
-                await Task.Delay(500, deadlineCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // deadline 到期或 caller 取消 — 下一轮检查会抛对应异常
                 if (ct.IsCancellationRequested)
                 {
                     throw new OperationCanceledException(ct);
                 }
-                throw new TimeoutException(
-                    $"ComfyUI 在 {timeout.TotalSeconds:0}s 内未就绪(端口 {port} 未 listen 且未见就绪日志)。可在设置中调大「ComfyUI 启动就绪超时」。");
+                if (DateTime.UtcNow >= deadline)
+                {
+                    throw new TimeoutException(
+                        $"ComfyUI 在 {timeout.TotalSeconds:0}s 内未就绪(端口 {port} 未 listen 且未见就绪日志)。可在设置中调大「ComfyUI 启动就绪超时」。");
+                }
+
+                try
+                {
+                    await Task.Delay(500, deadlineCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // deadline 到期或 caller 取消 — 下一轮检查会抛对应异常
+                    if (ct.IsCancellationRequested)
+                    {
+                        throw new OperationCanceledException(ct);
+                    }
+                    throw new TimeoutException(
+                        $"ComfyUI 在 {timeout.TotalSeconds:0}s 内未就绪(端口 {port} 未 listen 且未见就绪日志)。可在设置中调大「ComfyUI 启动就绪超时」。");
+                }
             }
+        }
+        finally
+        {
+            deadlineCts.Cancel();
+            _ = portTask.ContinueWith(
+                static t => _ = t.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 
