@@ -67,6 +67,15 @@ public partial class SettingsView : UserControl
         }
     }
 
+    private void BrowseSharedModelsDirectory(object sender, RoutedEventArgs e)
+    {
+        var picked = DataContext is SettingsViewModel vm ? vm.PickFolder() : null;
+        if (!string.IsNullOrEmpty(picked) && DataContext is SettingsViewModel vm2)
+        {
+            vm2.SharedModelsDirectory = picked;
+        }
+    }
+
     private void BrowsePythonVenvBaseline(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)

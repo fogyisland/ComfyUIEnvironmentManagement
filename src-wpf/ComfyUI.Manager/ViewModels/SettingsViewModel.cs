@@ -285,6 +285,12 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
+    // v0.6.7.3: 全局共享 Models 目录。空 = 不共享。
+    public string SharedModelsDirectory
+    {
+        get => _settings.SharedModelsDirectory;
+        set { _settings.SharedModelsDirectory = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
+    }
 
     // —— 环境 / 工具 ——
     public string PythonVenvBaseline
@@ -551,6 +557,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(DefaultPythonVersion));
         RaisePropertyChanged(nameof(GlobalNodesDir));
         RaisePropertyChanged(nameof(LocalNodeDirectory));
+        RaisePropertyChanged(nameof(SharedModelsDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
         RaisePropertyChanged(nameof(GitProxyUrl));

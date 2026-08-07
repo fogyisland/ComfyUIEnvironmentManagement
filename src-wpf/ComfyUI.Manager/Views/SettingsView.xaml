@@ -45,6 +45,19 @@
                      Style="{StaticResource MaterialTextBox}" Width="480"
                      HorizontalAlignment="Left" />
 
+            <!-- v0.6.7.3: 共享 Models 目录 -->
+            <TextBlock Text="共享 Models 目录(留空 = 不共享)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseSharedModelsDirectory"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding SharedModelsDirectory, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+            <TextBlock Text="所有 env 的 ComfyUI/models 都 junction 到此目录;新建 env 自动生效,已建 env 启动时检查并重建。"
+                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+
             <TextBlock Text="GitHub Token(可选 — 配置后刷新 catalog 时会同步拉取各节点最新版本号,留空则不拉)"
                        Margin="0,8,0,4" TextWrapping="Wrap" />
             <PasswordBox x:Name="GitHubTokenBox" Width="480" HorizontalAlignment="Left"
