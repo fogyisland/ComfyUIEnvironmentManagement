@@ -25,8 +25,6 @@
                 <Separator />
                 <MenuItem Header="打开项目文件夹"
                           Command="{Binding OpenProjectFolderCommand}" />
-                <MenuItem Header="查看日志目录"
-                          Command="{Binding OpenLogFolderCommand}" />
                 <MenuItem Header="赞助作者..."
                           Command="{Binding ShowDonateQrCommand}" />
                 <Separator />
@@ -36,6 +34,18 @@
             <MenuItem Header="_设置(_S)">
                 <MenuItem Header="设置..."
                           Command="{Binding ShowSettingsCommand}" />
+            </MenuItem>
+            <!-- TODO(resx): 工具菜单硬编码中文,后续 spec 应统一抽 resx。 -->
+            <MenuItem Header="_工具(_T)">
+                <MenuItem Header="_打开 ComfyUI 设置..."
+                          Command="{Binding OpenComfySettingsJsonCommand}"
+                          InputGestureText="comfy.settings.json" />
+                <MenuItem Header="_打开 Models 配置..."
+                          Command="{Binding OpenExtraModelPathsYamlCommand}"
+                          InputGestureText="extra_model_paths.yaml" />
+                <Separator />
+                <MenuItem Header="打开日志目录"
+                          Command="{Binding OpenLogFolderCommand}" />
             </MenuItem>
             <MenuItem Header="_关于(_H)">
                 <MenuItem Header="关于 ComfyUI Manager..."

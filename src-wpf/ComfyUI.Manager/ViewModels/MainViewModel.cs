@@ -87,6 +87,9 @@ public class MainViewModel : ViewModelBase
     public RelayCommand LoadUiPreferencesCommand { get; }
     public RelayCommand OpenProjectFolderCommand { get; }
     public RelayCommand OpenLogFolderCommand { get; }
+    // v0.6.7.3 T5:打开当前选中 env 的 ComfyUI 配置文件
+    public RelayCommand OpenComfySettingsJsonCommand { get; }
+    public RelayCommand OpenExtraModelPathsYamlCommand { get; }
     public RelayCommand ExitAppCommand { get; }
     public RelayCommand ShowAboutCommand { get; }
     public RelayCommand ShowDonateQrCommand { get; }   // v0.6.5.21 hotfix:菜单直接打开赞助二维码独立窗口
@@ -96,6 +99,9 @@ public class MainViewModel : ViewModelBase
     internal Func<string, UiPreferences, bool>? SaveUiPreferencesDialogOverride { get; set; }
     internal Func<string, bool>? LoadUiPreferencesDialogOverride { get; set; }
     internal Action? ShowDonateQrOverride { get; set; }       // v0.6.5.21 hotfix test seam
+    // v0.6.7.3 T5 test seams
+    internal Action<string>? ProcessStartOverride { get; set; }
+    internal Action<string>? EnsureFileExistsOverride { get; set; }
 
     public MainViewModel(
         SqliteConnectionFactory dbFactory,
@@ -155,6 +161,10 @@ public class MainViewModel : ViewModelBase
         LoadUiPreferencesCommand = new RelayCommand(_ => LoadUiPreferences(_uiPreferencesService));
         OpenProjectFolderCommand = new RelayCommand(_ => OpenFolder(_projectRoot));
         OpenLogFolderCommand = new RelayCommand(_ => OpenFolder(Path.Combine(_projectRoot, "Logs")));
+        // v0.6.7.3 T5:打开 ComfyUI 配置文件 — CanExecute 始终 true,
+        // Selected==null 时 helper 直接 return(no-op)。按钮总可点。
+        OpenComfySettingsJsonCommand = new RelayCommand(_ => OpenComfyConfigFile("comfy.settings.json"));
+        OpenExtraModelPathsYamlCommand = new RelayCommand(_ => OpenComfyConfigFile("extra_model_paths.yaml"));
         ExitAppCommand = new RelayCommand(_ => DoExit());
         ShowAboutCommand = new RelayCommand(_ =>
         {
@@ -250,6 +260,64 @@ public class MainViewModel : ViewModelBase
         {
             // log 到 ErrorBanner 不抛(用户原话没要弹窗)
             ErrorBanner.Add("open-folder", $"打开文件夹失败:{ex.Message}", ErrorSeverity.Warn);
+        }
+    }
+
+    /// <summary>
+    /// 打开 ComfyUI 配置文件。filename: "comfy.settings.json" 或 "extra_model_paths.yaml"。
+    /// 路径 = &lt;env-root&gt;/ComfyUI/{user/default/comfy.settings.json 或 extra_model_paths.yaml}。
+    /// shared layout 时 ComfyuiSource 是源目录(ComfyUI 就在那)。
+    /// </summary>
+    private void OpenComfyConfigFile(string filename)
+    {
+        var env = CurrentEnvironmentsViewModel?.Selected;
+        if (env is null) return;
+        var comfyuiRoot = env.ComfyuiLayout == "shared" && env.ComfyuiSource is not null
+            ? env.ComfyuiSource
+            : Path.Combine(env.RootPath, "ComfyUI");
+        string path = filename == "comfy.settings.json"
+            ? Path.Combine(comfyuiRoot, "user", "default", "comfy.settings.json")
+            : Path.Combine(comfyuiRoot, filename);
+
+        if (EnsureFileExistsOverride is not null)
+        {
+            EnsureFileExistsOverride(path);
+        }
+        else
+        {
+            EnsureFileExists(path);
+        }
+
+        if (ProcessStartOverride is not null)
+        {
+            ProcessStartOverride(path);
+        }
+        else
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+    }
+
+    /// <summary>
+    /// 确保文件存在。comfy.settings.json 不存在 → 写 "{}"。
+    /// extra_model_paths.yaml 不存在 → 写 placeholder。
+    /// </summary>
+    private void EnsureFileExists(string path)
+    {
+        if (File.Exists(path)) return;
+        var dir = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(dir);
+        if (path.EndsWith("comfy.settings.json", StringComparison.OrdinalIgnoreCase))
+        {
+            File.WriteAllText(path, "{}");
+        }
+        else
+        {
+            File.WriteAllText(path, "# ComfyUI Models 路径配置\n# 编辑 base_directory 指向共享 Models 目录(配合 Settings.SharedModelsDirectory)\n");
         }
     }
 
