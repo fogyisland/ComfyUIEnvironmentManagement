@@ -9,13 +9,21 @@ namespace ComfyUI.Manager.Infrastructure;
 
 /// <summary>
 /// LogTailer:按 pollInterval 轮询一个 log 文件,把新追加的行通过 NewLine
-/// 事件推送出去。从文件"当前末尾"开始(不 replay 历史),每次只读新增部分。
+/// 事件推送出去。Start 时先把文件末尾最多 MaxHistoryBytes 的历史行 emit 出来
+/// (从头打开 dialog 也能看见之前跑过的输出),然后接着 tail 增量内容。
 ///
 /// 替代了 M5.1 中 WsClient 的 log push channel —— 现在 WPF 直接 tail
 /// ProcessLauncher 写入的 logs/&lt;env-id&gt;.log 文件。
 /// </summary>
 public sealed class LogTailer : IDisposable
 {
+    /// <summary>
+    /// 启动时回放的最大字节数(从文件末尾向前)。64KB ≈ 500-700 行,匹配
+    /// <see cref="LogViewerViewModel.MaxLines"/> 上限,避免 tailer 输出
+    /// 远超 VM 容量被后续 RemoveAt(0) 浪费 CPU。
+    /// </summary>
+    public const int MaxHistoryBytes = 64 * 1024;
+
     private readonly string _logFilePath;
     private readonly TimeSpan _pollInterval;
     private CancellationTokenSource? _cts;
@@ -40,18 +48,22 @@ public sealed class LogTailer : IDisposable
 
     /// <summary>
     /// 开始 tail。多次调用安全(后续调用 noop)。
+    /// 启动时:如果文件存在,先回放末尾 MaxHistoryBytes 之内的历史行(整文件比
+    /// MaxHistoryBytes 小就读全部),让 stopped env 也能看到上次运行的尾部输出;
+    /// 然后 _offset 设到 file.Length,后续只读新增内容。
     /// </summary>
     public void Start()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(LogTailer));
         if (_cts is not null) return;
 
-        // 从当前末尾开始 —— 不 replay 历史。
         try
         {
             if (File.Exists(_logFilePath))
             {
-                _offset = new FileInfo(_logFilePath).Length;
+                var info = new FileInfo(_logFilePath);
+                EmitHistory(info);
+                _offset = info.Length;
             }
             else
             {
@@ -65,6 +77,48 @@ public sealed class LogTailer : IDisposable
 
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => RunAsync(_cts.Token));
+    }
+
+    /// <summary>
+    /// 回放文件末尾的历史行(整文件较小时全读)。如果从偏移开始读,首行
+    /// 可能被截断 —— 丢弃首 partial 行,避免显示半截内容。
+    /// </summary>
+    private void EmitHistory(FileInfo info)
+    {
+        try
+        {
+            using var fs = info.OpenRead();
+            if (fs.Length == 0) return;
+
+            var startFrom = fs.Length > MaxHistoryBytes ? fs.Length - MaxHistoryBytes : 0L;
+            var truncatedHead = startFrom > 0;
+            fs.Seek(startFrom, SeekOrigin.Begin);
+
+            var len = fs.Length - startFrom;
+            var buf = new byte[len];
+            int read = 0;
+            while (read < buf.Length)
+            {
+                var n = fs.Read(buf, read, buf.Length - read);
+                if (n <= 0) break;
+                read += n;
+            }
+            if (read == 0) return;
+
+            var text = Encoding.UTF8.GetString(buf, 0, read);
+            var lines = text.Split('\n');
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i].TrimEnd('\r');
+                if (truncatedHead && i == 0) continue;  // 截断处首行丢弃
+                if (line.Length == 0) continue;
+                EmitLine(line);
+            }
+        }
+        catch
+        {
+            // 文件读取失败 → 当作无历史,tail 正常继续
+        }
     }
 
     /// <summary>
