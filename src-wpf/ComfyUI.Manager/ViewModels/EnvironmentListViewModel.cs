@@ -150,7 +150,7 @@ public class EnvironmentListViewModel : ViewModelBase
             p => (p as Environment ?? Selected)?.Status == "running");
         CreateCommand = new RelayCommand(_ => CreateEnv());
         BaseEnvCommand = new RelayCommand(
-            _ => OpenBaseEnvProgress(),
+            async _ => await OpenBaseEnvProgressAsync(),
             _ =>
             {
                 if (Environments.Count == 0) return false;
@@ -365,7 +365,7 @@ public class EnvironmentListViewModel : ViewModelBase
     /// </summary>
     public Action<string>? MessageBoxOverride { get; set; }
 
-    private void OpenBaseEnvProgress()
+    private async Task OpenBaseEnvProgressAsync()
     {
         if (Selected is null && Environments.Count == 0) return;
         var envIds = Selected is not null
@@ -405,7 +405,10 @@ public class EnvironmentListViewModel : ViewModelBase
 
         // v0.6.6:env-list 工具栏 BED 入口也弹 picker(跟 BaseEnv tab 行为一致)。
         // Single 模式:用户选一个 torch+CUDA 组合 → 传给 BaseEnvProgressDialog。
-        var profiles = _profileLoader.GetHardcodedDefaults();
+        // v0.6.6.1 hotfix:改用 LoadAsync()(同源 user override JSON → live pytorch.org →
+        // hardcoded fallback)— 之前 sync GetHardcodedDefaults() 只暴露 torch 2.4.1 +
+        // nightly,BaseEnvView tab 已能选全版本,这里也跟上让 user override 也镜像过来。
+        var profiles = await _profileLoader.LoadAsync();
         var preselected = profiles.FirstOrDefault();
         var picked = PickerDialogOverride is not null
             ? PickerDialogOverride(profiles, preselected, PickerSelectionMode.Single)
