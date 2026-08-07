@@ -74,10 +74,21 @@ public partial class BaseEnvProfilePickerView : UserControl
         _suppressSelectionSync = true;
         try
         {
-            ProfileListBox.SelectedItems.Clear();
-            foreach (var p in SelectedProfiles)
+            // WPF 在 SelectionMode.Single 下禁止改 SelectedItems 集合
+            // (InvalidOperationException"只能在多选模式中更改 SelectedItems 集合"),
+            // 必须走 SelectedItem。v0.6.6 T3 的 Single 模式 + 预选路径踩到过。
+            if (ProfileListBox.SelectionMode == System.Windows.Controls.SelectionMode.Single)
             {
-                if (ProfileListBox.Items.Contains(p)) ProfileListBox.SelectedItems.Add(p);
+                var first = SelectedProfiles.FirstOrDefault(p => ProfileListBox.Items.Contains(p));
+                ProfileListBox.SelectedItem = first;
+            }
+            else
+            {
+                ProfileListBox.SelectedItems.Clear();
+                foreach (var p in SelectedProfiles)
+                {
+                    if (ProfileListBox.Items.Contains(p)) ProfileListBox.SelectedItems.Add(p);
+                }
             }
         }
         finally
@@ -98,12 +109,20 @@ public partial class BaseEnvProfilePickerView : UserControl
         }
         catch (ArgumentException)
         {
-            // Single mode 下用户用 Ctrl+Click 多选 → VM 抛异常,UI 状态回滚到第一项
+            // Single mode 下用户用 Ctrl+Click 多选 → VM 抛异常,UI 状态回滚到第一项。
+            // 注意:此分支只在 Single 模式发生,不能碰 SelectedItems 集合(WPF 禁止)。
             _suppressSelectionSync = true;
             try
             {
-                ProfileListBox.SelectedItems.Clear();
-                if (selected.Count > 0) ProfileListBox.SelectedItems.Add(selected[0]);
+                if (ProfileListBox.SelectionMode == System.Windows.Controls.SelectionMode.Single)
+                {
+                    ProfileListBox.SelectedItem = selected.Count > 0 ? selected[0] : null;
+                }
+                else
+                {
+                    ProfileListBox.SelectedItems.Clear();
+                    if (selected.Count > 0) ProfileListBox.SelectedItems.Add(selected[0]);
+                }
             }
             finally
             {
