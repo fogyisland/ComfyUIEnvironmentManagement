@@ -30,6 +30,8 @@ public sealed class ProcessLauncher : IDisposable
     private readonly AppLogger? _logger;
     private readonly int _startupTimeoutSeconds;
     private readonly string _comfyUiLocale;
+    private readonly string _sharedModelsDirectory;
+    private readonly JunctionLinker _linker;
     private readonly Dictionary<string, ProcessEntry> _running = new();
     private readonly object _runningLock = new();
     private bool _disposed;
@@ -40,8 +42,10 @@ public sealed class ProcessLauncher : IDisposable
         EnvironmentRepository envRepo,
         ProcessStateRepository processStateRepo,
         AppLogger? logger = null,
-        int startupTimeoutSeconds = 600,
-        string comfyUiLocale = "")
+        int comfyUiStartupTimeoutSeconds = 600,
+        string comfyUiLocale = "",
+        string sharedModelsDirectory = "",
+        JunctionLinker? linker = null)
     {
         _projectRoot = projectRoot;
         _dbFactory = dbFactory;
@@ -49,10 +53,15 @@ public sealed class ProcessLauncher : IDisposable
         _processStateRepo = processStateRepo;
         _logger = logger;
         // v0.6.7.1: <=0 视作没配置,回落 600。
-        _startupTimeoutSeconds = startupTimeoutSeconds > 0 ? startupTimeoutSeconds : 600;
+        _startupTimeoutSeconds = comfyUiStartupTimeoutSeconds > 0 ? comfyUiStartupTimeoutSeconds : 600;
         // v0.6.7.2: 空 = 不动 ComfyUI 配置(让 ComfyUI 用自身默认);非空就启动前写进
         // <comfyui-root>/user/default/comfy.settings.json 的 Comfy.Locale。
         _comfyUiLocale = comfyUiLocale ?? "";
+        // v0.6.7.3: SharedModelsDirectory 空 = 不动 models 目录(走独立布局);
+        // 非空则启动前 EnsureModelsJunctionAsync 检查/重建 junction。
+        _sharedModelsDirectory = sharedModelsDirectory ?? "";
+        // 默认 real,App 端不传也跑得动;测试可注入 RecordingJunctionLinker。
+        _linker = linker ?? new JunctionLinker();
     }
 
     public string ProjectRoot => _projectRoot;
@@ -147,6 +156,18 @@ public sealed class ProcessLauncher : IDisposable
             {
                 throw new ServiceLaunchException(
                     $"端口 {port} 已被占用,无法启动 env '{env.Name}'");
+            }
+
+            // v0.6.7.3: 启动前检查并重建 Models junction(改 SharedModelsDirectory 后自动生效)。
+            // 失败仅 INFO 日志,不阻塞启动 —— ComfyUI 跑得起来,只是 models 共享不生效。
+            try
+            {
+                var comfyUiRootForModels = Path.GetDirectoryName(mainPy)!;
+                await EnsureModelsJunctionAsync(comfyUiRootForModels, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Info("env-start", $"Models junction 检查失败(继续启动): {ex.Message}");
             }
 
             // v0.6.7.2: 写 ComfyUI UI locale 到 <comfyui-root>/user/default/comfy.settings.json。
@@ -396,6 +417,53 @@ public sealed class ProcessLauncher : IDisposable
 
         // 都不在:返回 nested,File.Exists 检查会失败,start 时抛清晰错误
         return nested;
+    }
+
+    /// <summary>
+    /// v0.6.7.3: 启动前检查 <paramref name="comfyuiRoot"/>/models 是否指向
+    /// _sharedModelsDirectory,不一致则删重建。失败仅 INFO 日志,不阻塞启动。
+    ///
+    /// 触发重建的场景:
+    /// - models 目录不存在(独立布局 / 首次共享)
+    /// - models 是普通目录而不是 junction(早于 v0.6.7.3 的 env 被设成共享时
+    ///   T3 step 5.5 会建 junction;若此前已存在普通目录,需要替换)
+    /// - junction 的 target 不等于 _sharedModelsDirectory(用户在 Settings 改了)
+    /// </summary>
+    internal async Task EnsureModelsJunctionAsync(
+        string comfyuiRoot,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_sharedModelsDirectory)) return;
+
+        var sharedFull = Path.GetFullPath(_sharedModelsDirectory);
+        var modelsLink = Path.Combine(comfyuiRoot, "models");
+
+        bool needsRelink;
+        if (!Directory.Exists(modelsLink))
+        {
+            needsRelink = true;
+        }
+        else
+        {
+            string? existingTarget = null;
+            try { existingTarget = await _linker.GetTargetAsync(modelsLink, ct); }
+            catch { existingTarget = null; }
+
+            needsRelink = existingTarget is null
+                || !string.Equals(
+                    Path.GetFullPath(existingTarget),
+                    sharedFull,
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!needsRelink) return;
+
+        if (Directory.Exists(modelsLink))
+        {
+            Directory.Delete(modelsLink, recursive: true);
+        }
+        await _linker.CreateAsync(modelsLink, sharedFull, ct);
+        _logger?.Info("env-start", $"重新链接 Models: {modelsLink} → {sharedFull}");
     }
 
     private void AttachStdoutReader(ProcessEntry entry, IProgress<string>? logProgress = null)
