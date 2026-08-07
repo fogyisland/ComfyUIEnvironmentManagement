@@ -29,6 +29,7 @@ public sealed class ProcessLauncher : IDisposable
     private readonly ProcessStateRepository _processStateRepo;
     private readonly AppLogger? _logger;
     private readonly int _startupTimeoutSeconds;
+    private readonly string _comfyUiLocale;
     private readonly Dictionary<string, ProcessEntry> _running = new();
     private readonly object _runningLock = new();
     private bool _disposed;
@@ -39,7 +40,8 @@ public sealed class ProcessLauncher : IDisposable
         EnvironmentRepository envRepo,
         ProcessStateRepository processStateRepo,
         AppLogger? logger = null,
-        int startupTimeoutSeconds = 600)
+        int startupTimeoutSeconds = 600,
+        string comfyUiLocale = "")
     {
         _projectRoot = projectRoot;
         _dbFactory = dbFactory;
@@ -48,6 +50,9 @@ public sealed class ProcessLauncher : IDisposable
         _logger = logger;
         // v0.6.7.1: <=0 视作没配置,回落 600。
         _startupTimeoutSeconds = startupTimeoutSeconds > 0 ? startupTimeoutSeconds : 600;
+        // v0.6.7.2: 空 = 不动 ComfyUI 配置(让 ComfyUI 用自身默认);非空就启动前写进
+        // <comfyui-root>/user/default/comfy.settings.json 的 Comfy.Locale。
+        _comfyUiLocale = comfyUiLocale ?? "";
     }
 
     public string ProjectRoot => _projectRoot;
@@ -142,6 +147,22 @@ public sealed class ProcessLauncher : IDisposable
             {
                 throw new ServiceLaunchException(
                     $"端口 {port} 已被占用,无法启动 env '{env.Name}'");
+            }
+
+            // v0.6.7.2: 写 ComfyUI UI locale 到 <comfyui-root>/user/default/comfy.settings.json。
+            // ComfyUI 不接 --lang CLI 参数 —— 只能改这个 json。失败不阻塞启动(用户能看到默认英文)。
+            if (!string.IsNullOrWhiteSpace(_comfyUiLocale))
+            {
+                try
+                {
+                    var comfyUiRoot = Path.GetDirectoryName(mainPy)!;
+                    new ComfySettingsWriter().WriteLocale(comfyUiRoot, _comfyUiLocale);
+                    _logger?.Info("env-start", $"写入 ComfyUI locale={_comfyUiLocale} → {comfyUiRoot}/user/default/comfy.settings.json");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Info("env-start", $"写 ComfyUI locale 失败(继续启动,locale 不阻塞): {ex.Message}");
+                }
             }
 
             var logPath = LogFilePath(env.Id);

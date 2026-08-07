@@ -39,6 +39,10 @@ public class Settings
     // 编译 kernel 时几分钟很正常,30s 硬编码会误判失败。
     [JsonPropertyName("comfyui_startup_timeout_seconds")]
     public int ComfyUiStartupTimeoutSeconds { get; set; } = 600;
+    // v0.6.7.2: ComfyUI UI 语言 locale code(写进 <comfyui>/user/default/comfy.settings.json
+    // 的 Comfy.Locale 字段)。空字符串 = 不动 ComfyUI 配置。
+    [JsonPropertyName("comfyui_locale")]
+    public string ComfyUiLocale { get; set; } = "";
 
     // —— 高级:用户自定义 path 表(key=name,value=path)——
     [JsonPropertyName("extra_paths")] public List<ExtraPath> ExtraPaths { get; set; } = new();

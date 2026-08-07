@@ -217,6 +217,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         get => _settings.ComfyUiStartupTimeoutSeconds;
         set { _settings.ComfyUiStartupTimeoutSeconds = value; _repo.Save(_settings); RaisePropertyChanged(); }
     }
+    // v0.6.7.2: ComfyUI UI locale code(空 = 不动 ComfyUI 配置,其他值写进
+    // <comfyui-root>/user/default/comfy.settings.json 的 Comfy.Locale)。
+    public string ComfyUiLocale
+    {
+        get => _settings.ComfyUiLocale;
+        set { _settings.ComfyUiLocale = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
+    }
+    /// <summary>
+    /// ComfyUI 已知的 locale code 列表 + 空字符串 ("不修改")。ComboBox 显示给用户。
+    /// </summary>
+    public List<string> ComfyUiLocales { get; } = new()
+    {
+        "", "zh", "en", "ja", "ko", "ru", "fr", "es",
+    };
     public string CompatApiBaseUrl
     {
         get => _settings.CompatApiBaseUrl;

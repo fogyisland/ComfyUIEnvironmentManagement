@@ -31,6 +31,15 @@
             <TextBlock Text="默认 600 秒(10 分钟)。ComfyUI 首次启动编译 kernel / 加载大模型可能需要几分钟。"
                        FontSize="11" Foreground="Gray" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
+
+            <!-- v0.6.7.2: ComfyUI UI locale —— 启动前写到 <comfyui>/user/default/comfy.settings.json -->
+            <TextBlock Text="ComfyUI 界面语言" Margin="0,8,0,4" />
+            <ComboBox ItemsSource="{Binding ComfyUiLocales}"
+                      SelectedItem="{Binding ComfyUiLocale}"
+                      Width="240" HorizontalAlignment="Left" />
+            <TextBlock Text="留空 = 不修改 ComfyUI 配置;其他值(zh/en/ja/ko/ru/fr/es)启动 env 时写入 ComfyUI 的 user/default/comfy.settings.json 的 Comfy.Locale 字段。"
+                       FontSize="11" Foreground="Gray" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
             <TextBlock Text="外部冲突 API URL" Margin="0,8,0,4" />
             <TextBox Text="{Binding CompatApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource MaterialTextBox}" Width="480"
