@@ -157,6 +157,25 @@
                                 <Run Text="安装类型:" Foreground="Gray" />
                                 <Run Text="{Binding SelectedInstallType, Mode=OneWay}" />
                             </TextBlock>
+                            <TextBlock Text="{Binding SelectedLastUpdate, StringFormat='最后更新: {0}'}"
+                                       Margin="0,4,0,0" FontSize="11" Foreground="Gray" />
+
+                            <!-- Requirements 列表(v0.6.7.4 T4:IsExpanded=False 默认折叠,避免详情面板过高) -->
+                            <Expander Header="Requirements" Margin="0,8,0,0" IsExpanded="False"
+                                      Visibility="{Binding HasPipRequirements, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl ItemsSource="{Binding SelectedPipRequirements}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="4,2" Margin="0,1" Background="#F5F5F5" CornerRadius="2">
+                                                <TextBlock FontFamily="Consolas" FontSize="11">
+                                                    <Run Text="{Binding Name}" FontWeight="Bold" />
+                                                    <Run Text="{Binding Specifier, TargetNullValue=''}" Foreground="DarkSlateGray" />
+                                                </TextBlock>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
                             <TextBlock Margin="0,8,0,0" TextWrapping="Wrap">
                                 <Hyperlink NavigateUri="{Binding SelectedReferenceUrl}"
                                            RequestNavigate="OnRepoLinkClick">

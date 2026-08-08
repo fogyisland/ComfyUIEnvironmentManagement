@@ -86,6 +86,9 @@ public class CatalogViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(SelectedDescription));
                 RaisePropertyChanged(nameof(SelectedAuthor));
                 RaisePropertyChanged(nameof(SelectedTitle));
+                RaisePropertyChanged(nameof(SelectedLastUpdate));
+                RaisePropertyChanged(nameof(SelectedPipRequirements));
+                RaisePropertyChanged(nameof(HasPipRequirements));
                 LoadVersionsForSelected();
             }
         }
@@ -111,11 +114,15 @@ public class CatalogViewModel : ViewModelBase
     public bool HasSelected => _selected is not null;
     public bool HasVersions => SelectedVersions.Count > 0;
     public string? SelectedTitle => _selected?.RawMetadata?.TryGetValue("title", out var t) == true ? t?.ToString() : _selected?.Package;
-    public string? SelectedAuthor => _selected?.RawMetadata?.TryGetValue("author", out var a) == true ? a?.ToString() : null;
-    public string? SelectedDescription => _selected?.RawMetadata?.TryGetValue("description", out var d) == true ? d?.ToString() : null;
-    public string? SelectedReference => _selected?.RawMetadata?.TryGetValue("reference", out var r) == true ? r?.ToString() : null;
+    public string? SelectedAuthor => _selected?.Author;
+    public string? SelectedDescription => _selected?.Description;
+    public string? SelectedReference => _selected?.Reference;
     public string SelectedReferenceUrl => SelectedReference ?? "";
-    public string? SelectedInstallType => _selected?.RawMetadata?.TryGetValue("install_type", out var i) == true ? i?.ToString() : null;
+    public string? SelectedInstallType => _selected?.InstallType;
+    public string? SelectedLastUpdate => _selected?.LastUpdate;
+    public IReadOnlyList<PipRequirement> SelectedPipRequirements
+        => _selected?.PipRequirements ?? Array.Empty<PipRequirement>();
+    public bool HasPipRequirements => SelectedPipRequirements.Count > 0;
     public string? SelectedLatestVersion => string.IsNullOrEmpty(_selected?.LatestVersion) ? "未知" : _selected!.LatestVersion;
 
     private VersionInfo? _selectedVersion;
