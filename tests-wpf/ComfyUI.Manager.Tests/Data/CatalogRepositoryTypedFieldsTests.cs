@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Tests.Fakes;
@@ -115,5 +116,55 @@ public class CatalogRepositoryTypedFieldsTests : IDisposable
         var list = _repo.Search("", 0);
         Assert.Single(list);
         Assert.Equal("bob", list[0].Author);
+    }
+
+    [Fact]
+    public void UpsertBatch_JsonElementPipArray_RoundTripsViaSqlite()
+    {
+        // 模拟 SQLite 重读后 raw_metadata["pip"] 是 JsonElement (而非 List<object?>)
+        var rawJson = "{\"pip\":[\"numpy>=1.24.0\",\"huggingface-hub\"],\"author\":\"alice\"}";
+        var rawMeta = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+            rawJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? new Dictionary<string, object?>();
+        var entry = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-jsonel",
+            RawMetadata = rawMeta,
+            CachedAt = "2026-08-08T00:00:00Z",
+            ExpiresAt = "2026-08-09T00:00:00Z",
+        };
+        _repo.UpsertBatch(new[] { entry });
+
+        var list = _repo.Search("", 0);
+        Assert.Single(list);
+        Assert.Equal("alice", list[0].Author);
+        // 关键断言 — JsonElement 数组没被识别时这里会是 0
+        Assert.Equal(2, list[0].PipRequirements.Count);
+        Assert.Equal("numpy", list[0].PipRequirements[0].Name);
+        Assert.Equal(">=1.24.0", list[0].PipRequirements[0].Specifier);
+        Assert.Equal("huggingface-hub", list[0].PipRequirements[1].Name);
+        Assert.Null(list[0].PipRequirements[1].Specifier);
+    }
+
+    [Fact]
+    public void ListNonExpired_AfterMigration_ReturnsTypedFields()
+    {
+        var entry = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-listnon",
+            RawMetadata = new Dictionary<string, object?> { ["author"] = "alice" },
+            CachedAt = "2026-08-08T00:00:00Z",
+            ExpiresAt = "2099-01-01T00:00:00Z",  // future, not expired
+        };
+        _repo.UpsertBatch(new[] { entry });
+
+        var list = _repo.ListNonExpired(DateTime.UtcNow);
+        Assert.Single(list);
+        Assert.Equal("alice", list[0].Author);
+        Assert.Empty(list[0].PipRequirements);  // no pip field
     }
 }

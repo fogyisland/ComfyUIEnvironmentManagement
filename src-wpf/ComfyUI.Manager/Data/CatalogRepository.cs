@@ -19,6 +19,14 @@ public sealed class CatalogRepository
 
     private readonly CatalogCacheStore _store;
 
+    /// <summary>
+    /// SELECT 列清单——Search / ListNonExpired 共用,防止跟 <see cref="Read"/>
+    /// 的列索引漂移(v0.6.7.4 加 typed 列时 ListNonExpired 漏改导致越界)。
+    /// </summary>
+    private const string CatalogCacheColumns =
+        "id, source_url, package, raw_metadata, cached_at, expires_at, " +
+        "latest_version, author, description, install_type, reference, last_update, pip_json";
+
     public CatalogRepository(CatalogCacheStore store)
     {
         _store = store;
@@ -31,9 +39,7 @@ public sealed class CatalogRepository
         // limit <= 0 means "no LIMIT clause" (SQLite would treat LIMIT 0 as
         // empty result set otherwise).
         cmd.CommandText = @"
-            SELECT id, source_url, package, raw_metadata, cached_at, expires_at,
-                   latest_version, author, description, install_type, reference,
-                   last_update, pip_json
+            SELECT " + CatalogCacheColumns + @"
             FROM catalog_cache
             WHERE LOWER(package) LIKE @pattern
                OR LOWER(raw_metadata) LIKE @pattern
@@ -55,7 +61,7 @@ public sealed class CatalogRepository
         using var conn = _store.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT id, source_url, package, raw_metadata, cached_at, expires_at
+            SELECT " + CatalogCacheColumns + @"
             FROM catalog_cache
             WHERE expires_at > @now
             ORDER BY package";
@@ -139,13 +145,46 @@ public sealed class CatalogRepository
         var rm = entry.RawMetadata ?? new Dictionary<string, object?>();
         string? Get(string k) => rm.TryGetValue(k, out var v) ? v?.ToString() : null;
 
-        // pip 字段可能已经在 Dictionary 里是 List<object> 形式(JsonElement.Convert 后)
+        // pip 字段有多种形态:
+        //  - List<object?>            —— 刚 fetch 完(CatalogFetcher.ConvertJsonValue 递归转换过)
+        //  - JsonElement(Array)      —— SQLite 往返后(raw_metadata 反序列化成 object? 就是 JsonElement)
+        //  - IEnumerable<object?>     —— 防御性(其他集合类型)
+        //  - string                   —— 防御性(逗号分隔的老数据)
         var pipList = new List<string?>();
-        if (rm.TryGetValue("pip", out var p) && p is List<object?> pl)
+        if (rm.TryGetValue("pip", out var p))
         {
-            foreach (var item in pl)
+            if (p is List<object?> pl)
             {
-                if (item is not null) pipList.Add(item.ToString());
+                foreach (var item in pl)
+                {
+                    if (item is not null) pipList.Add(item.ToString());
+                }
+            }
+            else if (p is JsonElement je && je.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in je.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String)
+                    {
+                        var s = item.GetString();
+                        if (s is not null) pipList.Add(s);
+                    }
+                }
+            }
+            else if (p is IEnumerable<object?> eo)
+            {
+                foreach (var item in eo)
+                {
+                    if (item is not null) pipList.Add(item.ToString());
+                }
+            }
+            else if (p is string ps)
+            {
+                foreach (var part in ps.Split(
+                    ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    pipList.Add(part);
+                }
             }
         }
 
