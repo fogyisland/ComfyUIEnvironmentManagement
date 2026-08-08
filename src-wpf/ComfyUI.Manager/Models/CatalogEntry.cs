@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -23,4 +24,15 @@ public class CatalogEntry
 
     [JsonPropertyName("latest_version")]
     public string? LatestVersion { get; set; }
+
+    // v0.6.7.4: 从 raw_metadata 抽出的 typed 字段(G6:raw_metadata 仍完整保留作 fallback)
+    [JsonIgnore] public string? Author { get; init; }
+    [JsonIgnore] public string? Description { get; init; }
+    [JsonIgnore] public string? InstallType { get; init; }
+    [JsonIgnore] public string? Reference { get; init; }
+    [JsonIgnore] public string? LastUpdate { get; init; }
+
+    // 解析后的 pip requirements 列表(从 pip_json 反序列化)
+    [JsonIgnore] public IReadOnlyList<PipRequirement> PipRequirements { get; init; }
+        = Array.Empty<PipRequirement>();
 }

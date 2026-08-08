@@ -62,6 +62,15 @@ public sealed class CatalogCacheStore
         // PRAGMA table_info 返回每一列一行,检查 latest_version 是否已存在。
         EnsureColumn(conn, "catalog_cache", "latest_version", "TEXT");
 
+        // v0.6.7.4:从 raw_metadata 抽出的 6 个 typed 列 — 加速查询 + UI 展示
+        // raw_metadata 仍完整保留作 fallback(G6)。
+        EnsureColumn(conn, "catalog_cache", "author", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "description", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "install_type", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "reference", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "last_update", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "pip_json", "TEXT");
+
         // v0.6.4+:节点历史 release 列表(tag + 发布时间 + 是否 prerelease)
         using (var tbl = conn.CreateCommand())
         {

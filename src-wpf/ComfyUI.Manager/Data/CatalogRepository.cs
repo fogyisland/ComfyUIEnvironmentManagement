@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using ComfyUI.Manager.Models;
 using Microsoft.Data.Sqlite;
@@ -30,7 +31,9 @@ public sealed class CatalogRepository
         // limit <= 0 means "no LIMIT clause" (SQLite would treat LIMIT 0 as
         // empty result set otherwise).
         cmd.CommandText = @"
-            SELECT id, source_url, package, raw_metadata, cached_at, expires_at, latest_version
+            SELECT id, source_url, package, raw_metadata, cached_at, expires_at,
+                   latest_version, author, description, install_type, reference,
+                   last_update, pip_json
             FROM catalog_cache
             WHERE LOWER(package) LIKE @pattern
                OR LOWER(raw_metadata) LIKE @pattern
@@ -97,10 +100,17 @@ public sealed class CatalogRepository
         cmd.Parameters.Add("@raw_metadata", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Parameters.Add("@cached_at", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Parameters.Add("@expires_at", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@author", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@description", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@install_type", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@reference", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@last_update", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@pip_json", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Prepare();
         int count = 0;
         foreach (var entry in entries)
         {
+            var typed = ExtractTypedFields(entry);
             cmd.Parameters["@id"].Value = entry.Id;
             cmd.Parameters["@source_url"].Value = entry.SourceUrl;
             cmd.Parameters["@package"].Value = entry.Package;
@@ -108,6 +118,12 @@ public sealed class CatalogRepository
                 JsonSerializer.Serialize(entry.RawMetadata, JsonOptions);
             cmd.Parameters["@cached_at"].Value = entry.CachedAt;
             cmd.Parameters["@expires_at"].Value = entry.ExpiresAt;
+            cmd.Parameters["@author"].Value = (object?)typed.author ?? DBNull.Value;
+            cmd.Parameters["@description"].Value = (object?)typed.description ?? DBNull.Value;
+            cmd.Parameters["@install_type"].Value = (object?)typed.installType ?? DBNull.Value;
+            cmd.Parameters["@reference"].Value = (object?)typed.reference ?? DBNull.Value;
+            cmd.Parameters["@last_update"].Value = (object?)typed.lastUpdate ?? DBNull.Value;
+            cmd.Parameters["@pip_json"].Value = typed.pipJson;
             cmd.ExecuteNonQuery();
             count++;
             onUpserted?.Invoke(entry);
@@ -116,18 +132,52 @@ public sealed class CatalogRepository
         return count;
     }
 
+    private static (string? author, string? description, string? installType,
+                    string? reference, string? lastUpdate, string pipJson)
+    ExtractTypedFields(CatalogEntry entry)
+    {
+        var rm = entry.RawMetadata ?? new Dictionary<string, object?>();
+        string? Get(string k) => rm.TryGetValue(k, out var v) ? v?.ToString() : null;
+
+        // pip 字段可能已经在 Dictionary 里是 List<object> 形式(JsonElement.Convert 后)
+        var pipList = new List<string?>();
+        if (rm.TryGetValue("pip", out var p) && p is List<object?> pl)
+        {
+            foreach (var item in pl)
+            {
+                if (item is not null) pipList.Add(item.ToString());
+            }
+        }
+
+        var reqs = PipRequirement.ParseList(pipList);
+        var pipJson = JsonSerializer.Serialize(
+            reqs.Select(r => new { name = r.Name, spec = r.Specifier }),
+            JsonOptions);
+        return (Get("author"), Get("description"), Get("install_type"),
+                Get("reference"), Get("last_update"), pipJson);
+    }
+
     private const string UpsertCommandText = @"
         INSERT INTO catalog_cache
-            (id, source_url, package, raw_metadata, cached_at, expires_at)
+            (id, source_url, package, raw_metadata, cached_at, expires_at,
+             author, description, install_type, reference, last_update, pip_json)
         VALUES
-            (@id, @source_url, @package, @raw_metadata, @cached_at, @expires_at)
+            (@id, @source_url, @package, @raw_metadata, @cached_at, @expires_at,
+             @author, @description, @install_type, @reference, @last_update, @pip_json)
         ON CONFLICT(source_url, package) DO UPDATE SET
             raw_metadata=excluded.raw_metadata,
             cached_at=excluded.cached_at,
-            expires_at=excluded.expires_at";
+            expires_at=excluded.expires_at,
+            author=excluded.author,
+            description=excluded.description,
+            install_type=excluded.install_type,
+            reference=excluded.reference,
+            last_update=excluded.last_update,
+            pip_json=excluded.pip_json";
 
     private static void BindUpsertParameters(SqliteCommand cmd, CatalogEntry entry)
     {
+        var typed = ExtractTypedFields(entry);
         cmd.Parameters.AddWithValue("@id", entry.Id);
         cmd.Parameters.AddWithValue("@source_url", entry.SourceUrl);
         cmd.Parameters.AddWithValue("@package", entry.Package);
@@ -135,6 +185,12 @@ public sealed class CatalogRepository
             JsonSerializer.Serialize(entry.RawMetadata, JsonOptions));
         cmd.Parameters.AddWithValue("@cached_at", entry.CachedAt);
         cmd.Parameters.AddWithValue("@expires_at", entry.ExpiresAt);
+        cmd.Parameters.AddWithValue("@author", (object?)typed.author ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@description", (object?)typed.description ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@install_type", (object?)typed.installType ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@reference", (object?)typed.reference ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@last_update", (object?)typed.lastUpdate ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@pip_json", typed.pipJson);
     }
 
     /// <summary>
@@ -166,6 +222,8 @@ public sealed class CatalogRepository
     private static CatalogEntry Read(SqliteDataReader reader)
     {
         var rawJson = reader.GetString(3);
+        var pipJson = reader.IsDBNull(12) ? "" : reader.GetString(12);
+        var reqs = TryParsePipRequirements(pipJson);
         return new CatalogEntry
         {
             Id = reader.GetString(0),
@@ -176,6 +234,33 @@ public sealed class CatalogRepository
             CachedAt = reader.GetString(4),
             ExpiresAt = reader.GetString(5),
             LatestVersion = reader.IsDBNull(6) ? null : reader.GetString(6),
+            Author = reader.IsDBNull(7) ? null : reader.GetString(7),
+            Description = reader.IsDBNull(8) ? null : reader.GetString(8),
+            InstallType = reader.IsDBNull(9) ? null : reader.GetString(9),
+            Reference = reader.IsDBNull(10) ? null : reader.GetString(10),
+            LastUpdate = reader.IsDBNull(11) ? null : reader.GetString(11),
+            PipRequirements = reqs,
         };
+    }
+
+    private static IReadOnlyList<PipRequirement> TryParsePipRequirements(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return Array.Empty<PipRequirement>();
+        try
+        {
+            var rows = JsonSerializer.Deserialize<List<RawPipRow>>(json, JsonOptions);
+            if (rows is null) return Array.Empty<PipRequirement>();
+            return rows.Select(r => new PipRequirement(r.name ?? "", r.spec)).ToList();
+        }
+        catch
+        {
+            return Array.Empty<PipRequirement>();
+        }
+    }
+
+    private sealed class RawPipRow
+    {
+        public string? name { get; set; }
+        public string? spec { get; set; }
     }
 }
