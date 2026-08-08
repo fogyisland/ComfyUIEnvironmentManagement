@@ -24,60 +24,73 @@ public class CatalogFetcher
 {
     private readonly HttpClient _http;
     private readonly int _cacheTtlMinutes;
+    private readonly AppLogger? _logger;
 
-    public CatalogFetcher(HttpClient http, int cacheTtlMinutes = 60)
+    public CatalogFetcher(HttpClient http, int cacheTtlMinutes = 60, AppLogger? logger = null)
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _cacheTtlMinutes = cacheTtlMinutes;
+        _logger = logger;
     }
 
     public virtual async Task<List<CatalogEntry>> FetchAsync(string url, CancellationToken ct = default)
     {
-        var json = await _http.GetStringAsync(url, ct);
-        var root = JsonSerializer.Deserialize<JsonElement>(json);
-
-        var rawArray = ExtractEntriesArray(root);
-
-        var now = DateTime.UtcNow;
-        var expires = now.AddMinutes(_cacheTtlMinutes);
-        var entries = new List<CatalogEntry>();
-
-        foreach (var element in rawArray.EnumerateArray())
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        _logger?.Info("catalog-fetch", $"开始 fetch url={url}");
+        try
         {
-            string package = "";
-            if (element.TryGetProperty("id", out var idProp))
+            var json = await _http.GetStringAsync(url, ct);
+            var root = JsonSerializer.Deserialize<JsonElement>(json);
+
+            var rawArray = ExtractEntriesArray(root);
+
+            var now = DateTime.UtcNow;
+            var expires = now.AddMinutes(_cacheTtlMinutes);
+            var entries = new List<CatalogEntry>();
+
+            foreach (var element in rawArray.EnumerateArray())
             {
-                package = idProp.GetString() ?? "";
-            }
-            if (string.IsNullOrWhiteSpace(package) &&
-                element.TryGetProperty("title", out var titleProp))
-            {
-                package = titleProp.GetString() ?? "";
-            }
-            if (string.IsNullOrWhiteSpace(package) &&
-                element.TryGetProperty("name", out var nameProp))
-            {
-                package = nameProp.GetString() ?? "";
-            }
-            if (string.IsNullOrWhiteSpace(package))
-            {
-                continue;  // 跳过无 id/title/name 的 row
+                string package = "";
+                if (element.TryGetProperty("id", out var idProp))
+                {
+                    package = idProp.GetString() ?? "";
+                }
+                if (string.IsNullOrWhiteSpace(package) &&
+                    element.TryGetProperty("title", out var titleProp))
+                {
+                    package = titleProp.GetString() ?? "";
+                }
+                if (string.IsNullOrWhiteSpace(package) &&
+                    element.TryGetProperty("name", out var nameProp))
+                {
+                    package = nameProp.GetString() ?? "";
+                }
+                if (string.IsNullOrWhiteSpace(package))
+                {
+                    continue;  // 跳过无 id/title/name 的 row
+                }
+
+                var rawMeta = ParseRawMetadata(element);
+
+                entries.Add(new CatalogEntry
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    SourceUrl = url,
+                    Package = package,
+                    RawMetadata = rawMeta,
+                    CachedAt = now.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                    ExpiresAt = expires.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                });
             }
 
-            var rawMeta = ParseRawMetadata(element);
-
-            entries.Add(new CatalogEntry
-            {
-                Id = Guid.NewGuid().ToString(),
-                SourceUrl = url,
-                Package = package,
-                RawMetadata = rawMeta,
-                CachedAt = now.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                ExpiresAt = expires.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-            });
+            _logger?.Info("catalog-fetch", $"完成 fetch count={entries.Count} duration_ms={sw.ElapsedMilliseconds} url={url}");
+            return entries;
         }
-
-        return entries;
+        catch (Exception ex)
+        {
+            _logger?.Error("catalog-fetch", $"fetch 失败 url={url}", ex);
+            throw;
+        }
     }
 
     /// <summary>

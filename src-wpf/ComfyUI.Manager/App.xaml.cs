@@ -95,13 +95,13 @@ public partial class App : Application
         var gitRunner = new GitRunner(gitExe, gitProxy);
         var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings, logger);
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes);
+        var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes, logger);
         var catalogCacheStore = new CatalogCacheStore();
         var catalogRepo = new CatalogRepository(catalogCacheStore);
         var githubVersionService = new GitHubVersionService(http);
         var nodeVersionRepo = new NodeVersionRepository(catalogCacheStore);
         var catalogRefreshService = new CatalogRefreshService(
-            catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo);
+            catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo, logger);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy, logger);
         var envCreator = new EnvCreatorService(

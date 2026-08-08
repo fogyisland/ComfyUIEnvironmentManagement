@@ -22,19 +22,22 @@ public class CatalogRefreshService
     private readonly NodeVersionRepository? _versionRepo;
     private readonly GitHubVersionService? _versionService;
     private readonly Settings _settings;
+    private readonly AppLogger? _logger;
 
     public CatalogRefreshService(
         CatalogFetcher fetcher,
         CatalogRepository repo,
         Settings settings,
         GitHubVersionService? versionService = null,
-        NodeVersionRepository? versionRepo = null)
+        NodeVersionRepository? versionRepo = null,
+        AppLogger? logger = null)
     {
         _fetcher = fetcher;
         _repo = repo;
         _settings = settings;
         _versionService = versionService;
         _versionRepo = versionRepo;
+        _logger = logger;
     }
 
     public virtual async Task<RefreshResult> RefreshAsync(
@@ -46,8 +49,13 @@ public class CatalogRefreshService
             .FirstOrDefault(s => s.Name == _settings.ActiveQuerySourceName);
         if (src is null || string.IsNullOrWhiteSpace(src.Url))
         {
+            _logger?.Warn("catalog-refresh",
+                $"未配置查询源 active='{_settings.ActiveQuerySourceName}' query_sources_count={_settings.QuerySources.Count}");
             return RefreshResult.Fail("未配置查询源,请先在 Settings 添加");
         }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        _logger?.Info("catalog-refresh", $"开始 refresh url={src.Url} ttl={_settings.CatalogCacheTtlMinutes}min");
 
         int versionCount = 0;
         try
@@ -93,14 +101,18 @@ public class CatalogRefreshService
                 }
             }
 
+            _logger?.Info("catalog-refresh",
+                $"完成 refresh upsert_count={count} version_count={versionCount} duration_ms={sw.ElapsedMilliseconds}");
             return RefreshResult.Ok(count, versionCount);
         }
         catch (OperationCanceledException)
         {
+            _logger?.Warn("catalog-refresh", "refresh 已取消");
             return RefreshResult.Fail("已取消");
         }
         catch (Exception ex)
         {
+            _logger?.Error("catalog-refresh", $"refresh 失败 url={src.Url}", ex);
             return RefreshResult.Fail($"拉取失败: {ex.Message}(本地缓存仍可用)");
         }
     }

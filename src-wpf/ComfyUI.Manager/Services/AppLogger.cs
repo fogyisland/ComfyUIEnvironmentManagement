@@ -62,6 +62,9 @@ public sealed class AppLogger : IDisposable
     public void Info(string subsystem, string message)
         => Write("INFO ", subsystem, message);
 
+    public void Warn(string subsystem, string message)
+        => Write("WARN ", subsystem, message);
+
     public void Error(string subsystem, string message, Exception? ex = null)
         => Write("ERROR", subsystem,
             ex is null ? message : $"{message} — {ex.GetType().Name}: {ex.Message}");
