@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
 using Microsoft.Data.Sqlite;
 
@@ -9,7 +11,7 @@ namespace ComfyUI.Manager.Data;
 /// <summary>
 /// NodeRepository:CRUD for the <c>scanned_nodes</c> table.
 /// </summary>
-public sealed class NodeRepository
+public sealed class NodeRepository : INodeRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -21,6 +23,15 @@ public sealed class NodeRepository
     public NodeRepository(SqliteConnectionFactory factory)
     {
         _factory = factory;
+    }
+
+    public async Task<long> CountAllAsync(CancellationToken ct = default)
+    {
+        await using var conn = _factory.Open();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM scanned_nodes";
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return Convert.ToInt64(result);
     }
 
     public List<ScannedNode> ListByEnv(string envId)

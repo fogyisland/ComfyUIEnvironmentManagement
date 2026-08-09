@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Collections.Generic;
 using System.IO;
 
 namespace ComfyUI.Manager.Services;
@@ -57,6 +58,40 @@ public sealed class AppLogger : IDisposable
         var text = sr.ReadToEnd();
         // split on \n and \r, then strip any trailing \r left from \r\n
         return text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    public IEnumerable<string> ReadRecentLines(int daysBack = 2, int maxLines = 5)
+    {
+        if (daysBack <= 0 || maxLines <= 0) yield break;
+
+        var today = DateTime.Now.Date;
+        for (var dayOffset = 0; dayOffset < daysBack && maxLines > 0; dayOffset++)
+        {
+            var date = today.AddDays(-dayOffset);
+            var path = Path.Combine(_logDir, $"{date:yyyy-MM-dd}.log");
+            if (!File.Exists(path)) continue;
+
+            string[] lines;
+            try
+            {
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                using var sr = new StreamReader(fs);
+                lines = sr.ReadToEnd().Split(
+                    new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            }
+            catch
+            {
+                continue;
+            }
+
+            for (var i = lines.Length - 1; i >= 0 && maxLines > 0; i--)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i])) continue;
+                yield return lines[i];
+                maxLines--;
+            }
+        }
     }
 
     public void Info(string subsystem, string message)
