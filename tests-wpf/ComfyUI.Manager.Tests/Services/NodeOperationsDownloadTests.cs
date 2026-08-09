@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Tests.Fakes;
@@ -23,6 +24,10 @@ namespace ComfyUI.Manager.Tests.Services;
 /// </summary>
 public sealed class NodeOperationsDownloadTests
 {
+    /// <summary>v0.6.7.5: 既有 DownloadAsync 测试不关心 diff — 返 Empty noop service。</summary>
+    private static NodeInstallDiffService NoopDiffService() =>
+        new((_, _, _, _) => Task.FromResult(new ProcessResult(true, 0, "[]", "")));
+
     private static string FindGit()
     {
         var psi = new ProcessStartInfo
@@ -95,7 +100,7 @@ public sealed class NodeOperationsDownloadTests
         var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
         var ops = new NodeOperations(
-            new GitRunner("git"), envRepo, nodeRepo, settings ?? new Settings());
+            new GitRunner("git"), envRepo, nodeRepo, settings ?? new Settings(), NoopDiffService());
         return (ops, nodeRepo);
     }
 

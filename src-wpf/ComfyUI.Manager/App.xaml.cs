@@ -1,6 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -93,7 +96,12 @@ public partial class App : Application
         // 共享同一份 GitProxyConfig,SettingsViewModel 改它会立即影响下一次 git 调用。
         var gitProxy = GitProxyConfig.From(settings);
         var gitRunner = new GitRunner(gitExe, gitProxy);
-        var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings, logger);
+        // v0.6.7.5: 节点安装前的 pip diff check — NodeInstallDiffService 跑 pip list JSON,
+        // 由 NodeOperations.InstallAsync 在 clone 前调。先于 nodeOps 构造,因为 ctor 要拿。
+        var diffService = new NodeInstallDiffService(
+            (exe, args, timeout, ct) => RunProcessForDiffAsync(exe, args, timeout, ct),
+            logger);
+        var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings, diffService, logger: logger);
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes, logger);
         var catalogCacheStore = new CatalogCacheStore();
@@ -175,5 +183,59 @@ public partial class App : Application
         var catalog = new PyTorchVersionCatalog(http);
         var cache = new PyTorchVersionCatalogCache(appDataDir);
         return new PyTorchVersionDirectory(catalog, cache);
+    }
+
+    /// <summary>
+    /// v0.6.7.5: NodeInstallDiffService 跑 pip list 用的进程执行器。
+    /// 走 inline Process.Start(没共享的 ProcessLauncher.RunProcessAsync —
+    /// ProcessLauncher 是 instance class,这里只跑轻量级 pip list,不值得抽 instance)。
+    /// </summary>
+    private static Task<ProcessResult> RunProcessForDiffAsync(
+        string exe, string[] args, TimeSpan timeout, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = exe,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        Process? process;
+        try
+        {
+            process = Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(new ProcessResult(false, -1, "", ex.Message));
+        }
+        if (process is null)
+        {
+            return Task.FromResult(new ProcessResult(false, -1, "", "Process.Start 返回 null"));
+        }
+
+        return Task.Run(async () =>
+        {
+            var stdoutT = process.StandardOutput.ReadToEndAsync();
+            var stderrT = process.StandardError.ReadToEndAsync();
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linkedCts.CancelAfter(timeout);
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return new ProcessResult(false, -1, "", "timeout/cancel");
+            }
+            var stdout = "";
+            var stderr = "";
+            try { stdout = await stdoutT; } catch { }
+            try { stderr = await stderrT; } catch { }
+            return new ProcessResult(process.ExitCode == 0, process.ExitCode, stdout, stderr);
+        });
     }
 }

@@ -77,7 +77,8 @@ public sealed class CatalogViewModelDownloadTests : IDisposable
             : base(new GitRunner("git"),
                    new EnvironmentRepository(new TestDb().Factory),
                    new NodeRepository(new TestDb().Factory),
-                   new Settings())
+                   new Settings(),
+                   new NodeInstallDiffService((_, _, _, _) => Task.FromResult(new ComfyUI.Manager.Infrastructure.ProcessResult(true, 0, "[]", ""))))
         { }
 
         public override Task<NodeOperationResult> DownloadAsync(

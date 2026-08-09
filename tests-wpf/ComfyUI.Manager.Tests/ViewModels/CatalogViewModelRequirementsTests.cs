@@ -139,6 +139,7 @@ public class CatalogViewModelRequirementsTests : IDisposable
     private sealed class NoopNodeOps : NodeOperations
     {
         public NoopNodeOps(EnvironmentRepository envRepo, NodeRepository nodeRepo, Settings settings)
-            : base(new GitRunner("git"), envRepo, nodeRepo, settings) { }
+            : base(new GitRunner("git"), envRepo, nodeRepo, settings,
+                   new NodeInstallDiffService((_, _, _, _) => Task.FromResult(new ComfyUI.Manager.Infrastructure.ProcessResult(true, 0, "[]", "")))) { }
     }
 }

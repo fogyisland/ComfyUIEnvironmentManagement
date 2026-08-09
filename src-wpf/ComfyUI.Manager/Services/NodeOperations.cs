@@ -4,8 +4,11 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.ViewModels;
+using ComfyUI.Manager.Views;
 using Environment = ComfyUI.Manager.Models.Environment;
 
 namespace ComfyUI.Manager.Services;
@@ -34,6 +37,8 @@ public class NodeOperations
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeRepository _nodeRepo;
     private readonly Settings _settings;
+    private readonly NodeInstallDiffService _diffService;
+    private readonly Func<NodeInstallDiffReport, Models.Environment, string, bool> _showDiffDialog;
     private readonly AppLogger? _logger;
 
     public NodeOperations(
@@ -41,13 +46,33 @@ public class NodeOperations
         EnvironmentRepository envRepo,
         NodeRepository nodeRepo,
         Settings settings,
+        NodeInstallDiffService diffService,
+        Func<NodeInstallDiffReport, Models.Environment, string, bool>? showDiffDialog = null,
         AppLogger? logger = null)
     {
         _git = git ?? throw new ArgumentNullException(nameof(git));
         _envRepo = envRepo ?? throw new ArgumentNullException(nameof(envRepo));
         _nodeRepo = nodeRepo ?? throw new ArgumentNullException(nameof(nodeRepo));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _diffService = diffService ?? throw new ArgumentNullException(nameof(diffService));
+        _showDiffDialog = showDiffDialog ?? ShowDiffWarningDialogImpl;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// 默认 modal 显示:弹 <see cref="NodeInstallDiffWarningDialog"/> 拿用户的 Proceed/Cancel。
+    /// 拆成 static delegate 是为了测试可注入 fake(UI 测试里 Application.Current 没有)。
+    /// </summary>
+    private static bool ShowDiffWarningDialogImpl(
+        NodeInstallDiffReport report, Models.Environment env, string nodeId)
+    {
+        var vm = new NodeInstallDiffWarningViewModel(report, nodeId, env.Name);
+        var dlg = new NodeInstallDiffWarningDialog(vm)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+        dlg.ShowDialog();
+        return vm.Proceed;
     }
 
     /// <summary>
@@ -63,10 +88,32 @@ public class NodeOperations
     public virtual async Task<NodeOperationResult> InstallAsync(
         string envId, string nodeId, string repoUrl,
         string? targetTag = null,
+        IReadOnlyList<PipRequirement>? catalogPipReqs = null,
         CancellationToken ct = default)
     {
         _logger?.Info("node-install", $"env='{envId}' node='{nodeId}' 开始安装");
         var env = RequireEnv(envId);
+
+        // v0.6.7.5: Pre-clone diff check(可选 — 仅当 caller 传 catalogPipReqs 时跑)
+        if (catalogPipReqs is not null && catalogPipReqs.Count > 0
+            && !string.IsNullOrEmpty(env.PythonExecutable)
+            && File.Exists(env.PythonExecutable))
+        {
+            var report = await _diffService.CheckAsync(env, catalogPipReqs, ct);
+            if (report.Warnings.Count > 0)
+            {
+                bool proceed = _showDiffDialog(report, env, nodeId);
+                if (!proceed)
+                {
+                    _logger?.Info("node-install",
+                        $"env='{envId}' node='{nodeId}' 用户取消 diff warning(检测到 {report.Warnings.Count} 条)");
+                    return NodeOperationResult.Fail("用户取消(diff warning)");
+                }
+                _logger?.Info("node-install",
+                    $"env='{envId}' node='{nodeId}' 用户接受 {report.Warnings.Count} 条 diff warning,继续");
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(env.CustomNodesPath))
         {
             return NodeOperationResult.Fail("env 缺 custom_nodes_path");

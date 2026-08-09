@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Tests.Fakes;
@@ -19,6 +20,14 @@ namespace ComfyUI.Manager.Tests.Services;
 /// </summary>
 public sealed class NodeOperationsTests
 {
+    /// <summary>
+    /// v0.6.7.5: G5 — 既有 InstallAsync/UpgradeAsync/RollbackAsync 测试不关心 diff check,
+    /// 给一个空返 Empty 的 noop service,跑 CheckAsync 时返 Empty 报告,showDialog 也不会被弹
+    /// (这些测试都不传 catalogPipReqs,InstallAsync 走"无 catalogPipReqs → 跳过 diff"分支)。
+    /// </summary>
+    private static NodeInstallDiffService NoopDiffService() =>
+        new((_, _, _, _) => Task.FromResult(new ProcessResult(true, 0, "[]", "")));
+
     private static string FindGit()
     {
         var psi = new ProcessStartInfo
@@ -121,7 +130,7 @@ public sealed class NodeOperationsTests
 
         using var db = new TestDb();
         var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
 
         var result = await ops.InstallAsync("env-1", "node-a", remote);
         Assert.True(result.Success, $"reason={result.Reason}");
@@ -173,7 +182,7 @@ public sealed class NodeOperationsTests
             Status = "enabled",
         });
 
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
         var result = await ops.UpgradeAsync("env-1", "node-a");
         Assert.True(result.Success, $"reason={result.Reason}");
 
@@ -195,7 +204,7 @@ public sealed class NodeOperationsTests
 
         using var db = new TestDb();
         var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
 
         var result = await ops.InstallAsync("env-1", "node-a", "https://example/repo");
         Assert.False(result.Success);
@@ -235,7 +244,7 @@ public sealed class NodeOperationsTests
             Status = "enabled",
         });
 
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
         // 直接用 HEAD~1(不解析短 sha,git 接受)
         var result = await ops.RollbackAsync("env-1", "node-a", "HEAD~1");
         Assert.True(result.Success, $"reason={result.Reason}");
@@ -262,7 +271,7 @@ public sealed class NodeOperationsTests
             Status = "enabled",
         });
 
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
         ops.Lock("node-x");
         Assert.True(nodeRepo.Get("node-x")!.Locked);
 
@@ -312,7 +321,7 @@ public sealed class NodeOperationsTests
             },
             ActiveDownloadSourceName = "test-source",
         };
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, settings);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, settings, NoopDiffService());
 
         // 传空 repoUrl → 应回落到 active download source,substitute {node}
         var result = await ops.InstallAsync("env-1", "node-a", "");
@@ -338,7 +347,7 @@ public sealed class NodeOperationsTests
             DownloadSources = new(),  // 列表空
             ActiveDownloadSourceName = "nonexistent",
         };
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, settings);
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, settings, NoopDiffService());
 
         var result = await ops.InstallAsync("env-1", "node-a", "");
         Assert.False(result.Success);
@@ -378,7 +387,7 @@ public sealed class NodeOperationsTests
 
         using var db = new TestDb();
         var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
 
         var result = await ops.InstallAsync("env-1", "node-a", remote, targetTag: "v1.0.0");
         Assert.True(result.Success, $"reason={result.Reason}");
@@ -412,7 +421,7 @@ public sealed class NodeOperationsTests
 
         using var db = new TestDb();
         var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
 
         var targetDir = Path.Combine(customNodes, "node-a");
         var result = await ops.InstallAsync("env-1", "node-a", remote, targetTag: "nonexistent-tag-xxx");
@@ -437,7 +446,7 @@ public sealed class NodeOperationsTests
 
         using var db = new TestDb();
         var (envRepo, nodeRepo, _) = SeedEnv(db, customNodes);
-        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings());
+        var ops = new NodeOperations(new GitRunner("git"), envRepo, nodeRepo, new ComfyUI.Manager.Models.Settings(), NoopDiffService());
 
         var result = await ops.InstallAsync("env-1", "node-a", remote, targetTag: null);
         Assert.True(result.Success, $"reason={result.Reason}");

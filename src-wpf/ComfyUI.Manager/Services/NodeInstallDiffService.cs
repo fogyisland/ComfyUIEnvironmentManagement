@@ -16,7 +16,7 @@ namespace ComfyUI.Manager.Services;
 ///
 /// 失败模式(G2):pip list 失败 / 超时 / parse 失败 → 返 Empty report,不抛。
 /// </summary>
-public sealed class NodeInstallDiffService
+public class NodeInstallDiffService
 {
     private static readonly TimeSpan PipListTimeout = TimeSpan.FromSeconds(15);
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -35,7 +35,7 @@ public sealed class NodeInstallDiffService
         _logger = logger;
     }
 
-    public async Task<NodeInstallDiffReport> CheckAsync(
+    public virtual async Task<NodeInstallDiffReport> CheckAsync(
         Environment env,
         IReadOnlyList<PipRequirement> catalogReqs,
         CancellationToken ct)
