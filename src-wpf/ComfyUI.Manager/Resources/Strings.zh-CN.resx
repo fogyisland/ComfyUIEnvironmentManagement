@@ -246,4 +246,25 @@
   <data name="DashboardPage_网络异常" xml:space="preserve">
     <value>⚠ 网络异常</value>
   </data>
+  <data name="SectionName_Dashboard" xml:space="preserve">
+    <value>主页</value>
+  </data>
+  <data name="SectionName_Environments" xml:space="preserve">
+    <value>环境</value>
+  </data>
+  <data name="SectionName_Catalog" xml:space="preserve">
+    <value>节点目录</value>
+  </data>
+  <data name="SectionName_BaseEnv" xml:space="preserve">
+    <value>基础环境</value>
+  </data>
+  <data name="SectionName_Settings" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="SectionName_BulkUpdate" xml:space="preserve">
+    <value>批量更新</value>
+  </data>
+  <data name="SectionName_SystemStatus" xml:space="preserve">
+    <value>系统状态</value>
+  </data>
 </root>
