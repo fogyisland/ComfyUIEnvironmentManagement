@@ -9,6 +9,7 @@ using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
+using ComfyUI.Manager.Views;
 
 namespace ComfyUI.Manager;
 
@@ -21,6 +22,10 @@ public partial class App : Application
     // 同一份 _logger;测试可注入自己 derived 类的实例。
     private BaseEnvUninstaller? _baseEnvUninstaller;
     private RequirementsUninstaller? _requirementsUninstaller;
+    // v0.6.8: Splash 画面引用 — OnStartup 立即 Show,MainWindow 加载好后
+    // NotifyMainWindowReady 触发 fade;FadeCompleted 由 Window self-close raise。
+    private SplashWindow? _splash;
+    private SplashViewModel? _splashVm;
 
     /// <summary>
     /// v0.6.5.21:挂在静态以便 MainWindow.OnClosing 写回(G7)— 无主项目别的地方
@@ -31,6 +36,26 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // v0.6.8: Splash 立即显示 — 必须先于所有服务初始化,保证用户 0ms 看到
+        // (G1)。失败静默,不阻断程序启动(G6 错误处理)。
+        try
+        {
+            _splashVm = new SplashViewModel(
+                title: "ComfyUI Manager",
+                tagline: "智能管理 ComfyUI 环境、节点、依赖",
+                version: AppVersionInfo.Current);
+            _splash = new SplashWindow(_splashVm);
+            _splash.Show();
+        }
+        catch (Exception ex)
+        {
+            _splash = null;
+            _splashVm = null;
+            // Splash 创建失败极端罕见(XAML 错 / VM ctor 错),此时 _logger
+            // 还没建,直接 Debug 输出 — 失败后无 splash 直接走主流程。
+            System.Diagnostics.Debug.WriteLine($"splash failed: {ex.Message}");
+        }
 
         var projectRoot = Path.GetDirectoryName(
             Environment.ProcessPath)!.TrimEnd('\\');
@@ -153,6 +178,9 @@ public partial class App : Application
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
         main.Show();
+
+        // v0.6.8: MainWindow 显示后通知 splash VM 启动最少 3s 计时 + fade
+        _splashVm?.NotifyMainWindowReady();
     }
 
     protected override void OnExit(ExitEventArgs e)
