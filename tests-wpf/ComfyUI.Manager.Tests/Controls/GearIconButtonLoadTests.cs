@@ -1,4 +1,6 @@
 // v0.6.9.3 T3:验证齿轮按钮及主题资源可在 STA 中完成布局。
+// v0.6.9.3 final-review fix:统一走 WpfTestResources(避免 3 个 load test 各自
+// new Application 抛 "不能在同一 AppDomain 中创建多个")。
 using System;
 using System.Threading;
 using System.Windows;
@@ -9,48 +11,16 @@ namespace ComfyUI.Manager.Tests.Controls;
 
 public class GearIconButtonLoadTests
 {
-    private static bool _resourcesLoaded;
-    private static readonly object _lock = new();
-
-    private static void EnsureApplicationResources()
-    {
-        if (_resourcesLoaded) return;
-        lock (_lock)
-        {
-            if (_resourcesLoaded) return;
-            if (Application.Current is null)
-            {
-                _ = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            }
-
-            var theme = new ResourceDictionary
-            {
-                Source = new Uri(
-                    "/ComfyUI.Manager;component/Resources/Theme.xaml",
-                    UriKind.Relative)
-            };
-            var palette = new ResourceDictionary
-            {
-                Source = new Uri(
-                    "/ComfyUI.Manager;component/Themes/Palette.Dark.xaml",
-                    UriKind.Relative)
-            };
-            Application.Current.Resources.MergedDictionaries.Add(theme);
-            Application.Current.Resources.MergedDictionaries.Add(palette);
-            _resourcesLoaded = true;
-        }
-    }
-
     [Fact]
     public void GearIconButton_Instantiation_DoesNotThrow()
     {
-        EnsureApplicationResources();
         Exception? caught = null;
 
         var thread = new Thread(() =>
         {
             try
             {
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
                 var button = new GearIconButton();
                 button.Measure(new Size(32, 32));
                 button.Arrange(new Rect(0, 0, 32, 32));

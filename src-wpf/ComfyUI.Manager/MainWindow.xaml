@@ -4,6 +4,7 @@
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         xmlns:controls="clr-namespace:ComfyUI.Manager.Controls"
         xmlns:behaviors="clr-namespace:ComfyUI.Manager.Behaviors"
+        xmlns:models="clr-namespace:ComfyUI.Manager.Models"
         Title="ComfyUI Manager" Height="700" Width="1100"
         Background="{DynamicResource BackgroundBrush}">
     <Grid>
@@ -62,7 +63,7 @@
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                 <controls:ThemeToggleButton Margin="0,0,4,0" />
                 <controls:GearIconButton Command="{Binding ShowSettingsCommand}"
-                                         ToolTip="设置" />
+                                         ToolTip="{x:Static models:MainWindowLocalizable.GearButtonTooltip}" />
             </StackPanel>
         </Grid>
 
@@ -109,7 +110,7 @@
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=SystemStatus, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <controls:GearIconButton Command="{Binding ShowSettingsCommand}"
-                                         ToolTip="设置"
+                                         ToolTip="{x:Static models:MainWindowLocalizable.GearButtonTooltip}"
                                          Margin="0,16,0,0"
                                          HorizontalAlignment="Right" />
             </StackPanel>

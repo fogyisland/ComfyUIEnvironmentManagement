@@ -1,8 +1,10 @@
 // v0.6.9.3 T4:验证 ThemeToggleButton + SunMoonIconButton 主题切换链路。
 // 用 FakeThemeService 注入避免依赖 Application.Current + 真实 palette dict。
 // 所有断言在 STA 线程内完成(STA-created WPF 元素跨线程访问抛 VerifyAccess)。
+//
+// v0.6.9.3 final-review fix:统一走 WpfTestResources 加载 Theme + Palette.Light
+// (STA helper 内部 new Application 单例,避免 race 抛 InvalidOperationException)。
 using System;
-using System.Collections.Generic;
 using System.Windows;
 using ComfyUI.Manager.Controls;
 using ComfyUI.Manager.Services;
@@ -16,9 +18,16 @@ namespace ComfyUI.Manager.Tests.Controls;
 internal sealed class FakeThemeService : IThemeService
 {
     public ThemeMode Current { get; private set; } = ThemeMode.Dark;
-    public List<ThemeMode> AppliedCalls { get; } = new();
+    public System.Collections.Generic.List<ThemeMode> AppliedCalls { get; } = new();
 
+    // v0.6.9.3 final-review fix:CS0067 — interface 要求声明 event,即使 fake
+    // 不触发也保留(跟 Production ThemeService 同款 event 签名,MainWindow 接
+    // cross-fade overlay 时订阅 Production 的 ThemeChanging;fake 不暴露信号
+    // 给 listener 是 by design,无关测试断言)。
+#pragma warning disable CS0067 // event 永远不被本 fake 触发,接口合约要求保留
     public event EventHandler<ThemeMode>? ThemeChanging;
+#pragma warning restore CS0067
+
     public event EventHandler<ThemeMode>? Applied;
 
     public void Apply(ThemeMode mode)
@@ -134,7 +143,7 @@ public class ThemeToggleButtonTests
         {
             try
             {
-                EnsureTestResources();
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Light);
 
                 // Wrap 在 Window 内 — Loaded 事件需要控件进 visual tree 才 fire,
                 // Measure/Arrange alone 不触发 Loaded。
@@ -174,40 +183,6 @@ public class ThemeToggleButtonTests
         t.Join();
 
         if (caught is not null) throw caught;
-    }
-
-    private static void EnsureTestResources()
-    {
-        if (Application.Current is null)
-        {
-            _ = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
-
-        var alreadyHasTheme = false;
-        foreach (var d in Application.Current.Resources.MergedDictionaries)
-        {
-            if (d.Source is { } src && src.ToString().EndsWith("Theme.xaml", StringComparison.OrdinalIgnoreCase))
-            {
-                alreadyHasTheme = true;
-                break;
-            }
-        }
-        if (alreadyHasTheme) return;
-
-        var theme = new ResourceDictionary
-        {
-            Source = new Uri(
-                "/ComfyUI.Manager;component/Resources/Theme.xaml",
-                UriKind.Relative)
-        };
-        var palette = new ResourceDictionary
-        {
-            Source = new Uri(
-                "/ComfyUI.Manager;component/Themes/Palette.Light.xaml",
-                UriKind.Relative)
-        };
-        Application.Current.Resources.MergedDictionaries.Add(theme);
-        Application.Current.Resources.MergedDictionaries.Add(palette);
     }
 }
 

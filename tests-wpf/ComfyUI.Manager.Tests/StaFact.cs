@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Threading;
 using System.Windows;
 using Xunit;
@@ -10,9 +9,12 @@ namespace ComfyUI.Manager.Tests;
 /// v0.6.6 T2:STA 跑测试 helper。
 /// xunit 2.x 不内置 STA 支持。<see cref="RunOnSTA(System.Action)"/> 把 WPF 元素构造
 /// marshaling 到 STA helper thread,主 runner 线程 Join 等结果;异常 marshal 回去 throw。
-/// 测试环境下手动把 <c>Resources/Theme.xaml</c> 合并到 <see cref="Application.Resources"/>,
-/// 这样裸 <c>new MyView()</c> 能解析到 <c>ZeroCountToVisibility</c> 等 converter;
-/// 生产环境走 App.xaml 的合并,不会进此分支。
+///
+/// 资源加载委托给 <see cref="WpfTestResources.EnsureLoaded"/> —— 所有 load test
+/// 共享同一个 Application 单例,避免 v0.6.9.3 final review 报告的 race:
+/// 多个测试 class 各自 new Application 第二次抛 InvalidOperationException。
+/// 默认走 Light palette 跟 v0.6.9.3 之前的行为一致;SettingsView / GearIconButton
+/// 的 Dark 测试自行调用 <see cref="WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark)"/>。
 ///
 /// <para>
 /// 用法:[Fact] test 方法 body 里调 <see cref="RunOnSTA(System.Action)"/>,在
@@ -22,12 +24,11 @@ namespace ComfyUI.Manager.Tests;
 /// </summary>
 public static class StaFact
 {
-    private static int _themeLoaded;
-
     /// <summary>
-    /// 在 STA thread 上跑 <paramref name="action"/>,并确保 <c>Resources/Theme.xaml</c>
-    /// 已合并到 <see cref="Application.Resources"/>(缺省 Application.Current 在
-    /// 测试下为 null,需要 new 一个占位)。
+    /// 在 STA thread 上跑 <paramref name="action"/>,并确保
+    /// <c>Resources/Theme.xaml</c> + <c>Themes/Palette.Light.xaml</c> 已合并到
+    /// <see cref="Application.Resources"/>(缺省 Application.Current 在测试下为
+    /// null,需要 new 一个占位)。
     /// </summary>
     public static void RunOnSTA(Action action)
     {
@@ -38,7 +39,7 @@ public static class StaFact
         {
             try
             {
-                EnsureAppAndThemeResources();
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Light);
                 action();
             }
             catch (Exception ex)
@@ -50,69 +51,5 @@ public static class StaFact
         t.Start();
         t.Join();
         if (caught is not null) throw caught;
-    }
-
-    private static void EnsureAppAndThemeResources()
-    {
-        if (Interlocked.CompareExchange(ref _themeLoaded, 1, 0) != 0) return;
-
-        if (Application.Current is null)
-        {
-            // 占位 Application,只为让 ResourceDictionary 可以 merge。
-            new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        }
-
-        var already = false;
-        if (Application.Current?.Resources.MergedDictionaries is { } merged)
-        {
-            foreach (var d in merged)
-            {
-                if (d.Source is { } src && src.ToString().EndsWith("Theme.xaml", StringComparison.OrdinalIgnoreCase))
-                {
-                    already = true; break;
-                }
-            }
-        }
-        if (already) return;
-
-        // Resources/Theme.xaml 是 Resource(SatelliteResource),可走 pack URI。
-        var themeUri = new Uri("/ComfyUI.Manager;component/Resources/Theme.xaml", UriKind.Relative);
-        try
-        {
-            Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = themeUri });
-        }
-        catch
-        {
-            // 失败兜底:尝试同源 alt pack URI。不抛 — 测试失败由 assert 接管。
-        }
-
-        // v0.6.9 T1:Theme.xaml 删了 8 colors + 8 brushes,搬到 Themes/Palette.*.xaml。
-        // STA 测试只 merge Theme.xaml 不够,view XAML 仍 StaticResource PrimaryBrush / BackgroundBrush /
-        // SurfaceBrush 等 → 必须再 merge 一个 palette dict(默认 Light 跟现状对齐,
-        // T2 加 ThemeService 后再考虑让 StaFact 也支持按测试切主题)。
-        var paletteAdded = false;
-        if (Application.Current?.Resources.MergedDictionaries is { } mergedDicts)
-        {
-            foreach (var d in mergedDicts)
-            {
-                if (d.Source is { } src && src.ToString().EndsWith(
-                        "Palette.Light.xaml", StringComparison.OrdinalIgnoreCase))
-                {
-                    paletteAdded = true; break;
-                }
-            }
-        }
-        if (!paletteAdded)
-        {
-            var paletteUri = new Uri("/ComfyUI.Manager;component/Themes/Palette.Light.xaml", UriKind.Relative);
-            try
-            {
-                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = paletteUri });
-            }
-            catch
-            {
-                // 失败兜底 — 测试失败由 assert 接管。
-            }
-        }
     }
 }
