@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         xmlns:controls="clr-namespace:ComfyUI.Manager.Controls"
+        xmlns:behaviors="clr-namespace:ComfyUI.Manager.Behaviors"
         Title="ComfyUI Manager" Height="700" Width="1100"
         Background="{DynamicResource BackgroundBrush}">
     <Grid>
@@ -99,9 +100,10 @@
             </StackPanel>
         </Border>
 
-        <!-- 内容区 -->
+        <!-- 内容区(v0.6.9 T8:加 ViewFadeTransitionBehavior,CurrentView 切换时 200ms fade) -->
         <ContentControl Grid.Row="1" Grid.Column="1"
-                        Content="{Binding CurrentView}" />
+                        Content="{Binding CurrentView}"
+                        behaviors:ViewFadeTransitionBehavior.IsEnabled="True" />
 
         <!-- 底部 ErrorBanner -->
         <views:ErrorBanner Grid.Row="2" Grid.ColumnSpan="2"
