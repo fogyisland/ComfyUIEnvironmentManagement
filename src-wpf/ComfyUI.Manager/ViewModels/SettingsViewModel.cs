@@ -18,6 +18,10 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     private readonly SettingsRepository _repo;
     private readonly GitProxyConfig _proxy;
     private readonly IPythonInterpreterValidator _validator;
+    // v0.6.9 T2:接 IThemeService,ThemeMode setter 改即调 Apply 立即预览。
+    // 可空:既有 12+ 测试 callers 不传 themeService 也能跑(Apply no-op)。
+    // 生产路径 App.xaml.cs:217 通过 MainViewModel 间接构造,总是传非 null 实例。
+    private readonly IThemeService? _themeService;
     private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
@@ -36,11 +40,13 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         SettingsRepository repo,
         GitProxyConfig proxy,
         IPythonInterpreterValidator validator,
-        Settings? sharedSettings = null)
+        Settings? sharedSettings = null,
+        IThemeService? themeService = null)
     {
         _repo = repo;
         _proxy = proxy;
         _validator = validator;
+        _themeService = themeService;
         // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
         // 没有注入时(单元测试)才从 disk 加载。
         _settings = sharedSettings ?? _repo.Load();
@@ -204,8 +210,33 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public string ThemeMode
     {
         get => _settings.ThemeMode;
-        set { _settings.ThemeMode = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set
+        {
+            if (_settings.ThemeMode == value) return;
+            _settings.ThemeMode = value;
+            _repo.Save(_settings);
+            // v0.6.9 T2:改即 Apply(立即预览,Settings UI 风格:ComboBox 切换不需 Save)。
+            // _themeService 可空 — 既有测试 callers 不传也能跑(Apply no-op)。
+            _themeService?.Apply(ParseThemeMode(value));
+            RaisePropertyChanged();
+        }
     }
+
+    /// <summary>
+    /// 把 Settings.ThemeMode lowercase 字符串解析成 <see cref="Services.ThemeMode"/> enum。
+    /// "light" → <see cref="Services.ThemeMode.Light"/>;"dark" → <see cref="Services.ThemeMode.Dark"/>;
+    /// "system" → <see cref="Services.ThemeMode.FollowSystem"/>;缺省 / 任何其它值 →
+    /// <see cref="Services.ThemeMode.Dark"/>(G5 缺省 Dark)。
+    /// <see cref="IThemeService.Apply"/> 自带 ResolveMode(把 FollowSystem 落定到
+    /// Light/Dark),所以这里只做 string → enum 翻译,不做 heuristic 决策。
+    /// </summary>
+    public static Services.ThemeMode ParseThemeMode(string value) => value switch
+    {
+        "light" => Services.ThemeMode.Light,
+        "dark" => Services.ThemeMode.Dark,
+        "system" => Services.ThemeMode.FollowSystem,
+        _ => Services.ThemeMode.Dark,
+    };
     public int CacheTtlMinutes
     {
         get => _settings.CatalogCacheTtlMinutes;

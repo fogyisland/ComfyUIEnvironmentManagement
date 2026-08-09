@@ -40,6 +40,8 @@ public class MainViewModel : ViewModelBase
     // App.xaml.cs 总是传非 null 实例。
     private readonly BaseEnvUninstaller? _baseEnvUninstaller;
     private readonly RequirementsUninstaller? _requirementsUninstaller;
+    // v0.6.9 T2:接 IThemeService,传给 SettingsViewModel 让 ThemeMode setter 调 Apply。
+    private readonly IThemeService? _themeService;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -125,7 +127,8 @@ public class MainViewModel : ViewModelBase
         SystemInfoCollector systemInfoCollector,
         UiPreferencesService uiPreferencesService,
         BaseEnvUninstaller? baseEnvUninstaller = null,
-        RequirementsUninstaller? requirementsUninstaller = null)
+        RequirementsUninstaller? requirementsUninstaller = null,
+        IThemeService? themeService = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -150,6 +153,7 @@ public class MainViewModel : ViewModelBase
             ?? throw new ArgumentNullException(nameof(uiPreferencesService));
         _baseEnvUninstaller = baseEnvUninstaller;
         _requirementsUninstaller = requirementsUninstaller;
+        _themeService = themeService;
 
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
@@ -214,7 +218,7 @@ public class MainViewModel : ViewModelBase
     {
         CurrentView = new SettingsView
         {
-            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings),
+            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings, _themeService),
         };
     }
 

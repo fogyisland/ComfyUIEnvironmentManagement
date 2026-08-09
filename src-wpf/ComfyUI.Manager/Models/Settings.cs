@@ -14,7 +14,7 @@ public class Settings
 {
     // —— 基础 / 显示 ——
     [JsonPropertyName("theme")] public string Theme { get; set; } = "material_purple";
-    [JsonPropertyName("theme_mode")] public string ThemeMode { get; set; } = "system";
+    [JsonPropertyName("theme_mode")] public string ThemeMode { get; set; } = "dark";
     [JsonPropertyName("language")] public string Language { get; set; } = "zh_CN";
     [JsonPropertyName("catalog_auto_refresh")] public bool CatalogAutoRefresh { get; set; }
     [JsonPropertyName("catalog_cache_ttl_minutes")] public int CatalogCacheTtlMinutes { get; set; } = 60;

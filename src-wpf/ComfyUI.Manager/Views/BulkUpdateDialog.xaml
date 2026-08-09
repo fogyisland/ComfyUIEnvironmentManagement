@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
         Title="批量更新" Width="900" Height="650"
-        Background="{StaticResource BackgroundBrush}"
+        Background="{DynamicResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <!-- Visibility by BulkUpdateMode via DataTrigger -->
@@ -48,7 +48,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:EnvRow}">
                             <Border Margin="0,2" Padding="6"
-                                    BorderBrush="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource SurfaceBrush}"
                                     BorderThickness="1">
                                 <StackPanel>
                                     <CheckBox Content="{Binding DisplayName}"
@@ -87,7 +87,7 @@
 
         <!-- Summary 区(仅 Summary 模式) -->
         <Border Grid.Row="2" Margin="0,12,0,0" Padding="8"
-                Background="{StaticResource SurfaceBrush}"
+                Background="{DynamicResource SurfaceBrush}"
                 Style="{StaticResource SummaryVisibility}">
             <StackPanel>
                 <TextBlock FontWeight="Bold">

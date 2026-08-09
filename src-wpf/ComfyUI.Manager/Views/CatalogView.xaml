@@ -42,7 +42,7 @@
 
         <!-- 信息条 -->
         <StackPanel DockPanel.Dock="Top" Margin="8,0,8,4">
-            <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource ErrorBrush}"
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource ErrorBrush}"
                        Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}}" />
             <TextBlock Text="{Binding InfoMessage}" Foreground="Green"
                        Visibility="{Binding InfoMessage, Converter={StaticResource NullToVisibility}}" />

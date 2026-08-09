@@ -88,6 +88,12 @@ public partial class App : Application
         var settingsRepo = new SettingsRepository();
         var settings = settingsRepo.Load();
 
+        // v0.6.9 T2:Apply stored theme BEFORE MainWindow.Show,避免先 Dark(默认)再切 Light 闪屏。
+        // 必须早于 _mainVm 构造(MainViewModel 接收 IThemeService 引用),且 Application.Current.Resources
+        // 此时已合并 Theme.xaml + Palette.Dark.xaml(slot 默认 Dark;Settings 存 "light" 时需 Apply)。
+        var themeService = new ThemeService(Application.Current.Resources, logger);
+        themeService.Apply(SettingsViewModel.ParseThemeMode(settings.ThemeMode));
+
         _launcher = new ProcessLauncher(
             projectRoot, dbFactory, envRepo, processStateRepo, logger,
             settings.ComfyUiStartupTimeoutSeconds,
@@ -173,7 +179,8 @@ public partial class App : Application
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
             requirementsInstaller, systemInfoCollector, uiPreferencesService,
-            _baseEnvUninstaller, _requirementsUninstaller);
+            _baseEnvUninstaller, _requirementsUninstaller,
+            themeService);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

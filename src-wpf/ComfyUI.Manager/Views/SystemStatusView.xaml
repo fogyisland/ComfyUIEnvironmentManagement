@@ -7,7 +7,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              d:DataContext="{d:DesignInstance Type=vm:SystemStatusViewModel}"
-             Background="{StaticResource BackgroundBrush}">
+             Background="{DynamicResource BackgroundBrush}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
         <StackPanel>
             <DockPanel Margin="0,0,0,16">
@@ -32,7 +32,7 @@
             <!-- 加载完成后显示面板 -->
             <StackPanel Visibility="{Binding Info, Converter={StaticResource NullToVisibility}}">
                 <!-- OS -->
-                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4"
                         Padding="12" Margin="0,0,0,8">
                     <StackPanel>
                         <TextBlock Text="操作系统" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
@@ -42,7 +42,7 @@
                 </Border>
 
                 <!-- CPU -->
-                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4"
                         Padding="12" Margin="0,0,0,8">
                     <StackPanel>
                         <TextBlock Text="CPU" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
@@ -55,7 +55,7 @@
                 </Border>
 
                 <!-- Memory -->
-                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4"
                         Padding="12" Margin="0,0,0,8">
                     <StackPanel>
                         <TextBlock Text="内存" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
@@ -73,7 +73,7 @@
                 </Border>
 
                 <!-- Disks -->
-                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4"
                         Padding="12" Margin="0,0,0,8">
                     <StackPanel>
                         <TextBlock Text="磁盘" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
@@ -103,7 +103,7 @@
                 </Border>
 
                 <!-- GPU -->
-                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4"
                         Padding="12" Margin="0,0,0,8">
                     <StackPanel>
                         <TextBlock Text="GPU" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />
@@ -134,7 +134,7 @@
                 </Border>
 
                 <!-- CUDA -->
-                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4"
+                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4"
                         Padding="12" Margin="0,0,0,8">
                     <StackPanel>
                         <TextBlock Text="CUDA" FontSize="14" FontWeight="Bold" Margin="0,0,0,4" />

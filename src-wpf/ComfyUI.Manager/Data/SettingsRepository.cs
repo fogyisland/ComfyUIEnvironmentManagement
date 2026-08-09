@@ -53,8 +53,17 @@ public class SettingsRepository
             return new Settings();
         }
 
-        return JsonSerializer.Deserialize<Settings>(json, JsonOptions)
+        var s = JsonSerializer.Deserialize<Settings>(json, JsonOptions)
             ?? new Settings();
+
+        // v0.6.9 T2:G5 缺省 Dark;非法 theme_mode(老 settings.json 残留 "system"
+        // 之外的不可识别值)normalize 到 "dark",避免下游 ParseThemeMode 失败。
+        // "light"/"dark"/"system" 都是合法值,保留原样。
+        if (s.ThemeMode != "light" && s.ThemeMode != "dark" && s.ThemeMode != "system")
+        {
+            s.ThemeMode = "dark";
+        }
+        return s;
     }
 
     public virtual void Save(Settings s)
