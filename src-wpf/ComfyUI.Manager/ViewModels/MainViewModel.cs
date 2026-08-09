@@ -53,6 +53,14 @@ public class MainViewModel : ViewModelBase
     private readonly RequirementsUninstaller? _requirementsUninstaller;
     // v0.6.9 T2:接 IThemeService,传给 SettingsViewModel 让 ThemeMode setter 调 Apply。
     private readonly IThemeService? _themeService;
+    // v0.6.9 T5:接 IDashboardService(由 T4 完成数据聚合),ShowDashboard 调
+    // DashboardViewModel.RefreshAsync。可空保持 12+ MainViewModel 测试兼容 —
+    // App.xaml.cs 总是传非 null,ShowDashboard 内 ?? throw 兜底。
+    private readonly IDashboardService? _dashboardService;
+    // Dashboard VM/View 缓存:ShowDashboard 复用同一实例,避免重复构造 + 保留
+    // 上次 LastSnapshot(用户切走再回来直接看旧数据,后台继续 refresh)。
+    private DashboardViewModel? _dashboardViewModel;
+    private DashboardView? _dashboardView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -147,7 +155,8 @@ public class MainViewModel : ViewModelBase
         UiPreferencesService uiPreferencesService,
         BaseEnvUninstaller? baseEnvUninstaller = null,
         RequirementsUninstaller? requirementsUninstaller = null,
-        IThemeService? themeService = null)
+        IThemeService? themeService = null,
+        IDashboardService? dashboardService = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -173,6 +182,7 @@ public class MainViewModel : ViewModelBase
         _baseEnvUninstaller = baseEnvUninstaller;
         _requirementsUninstaller = requirementsUninstaller;
         _themeService = themeService;
+        _dashboardService = dashboardService;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -199,11 +209,25 @@ public class MainViewModel : ViewModelBase
         ShowDonateQrCommand = new RelayCommand(_ => ShowDonateQr());
     }
 
-    // T3: stub only — T5 fills in DashboardView and DashboardViewModel.
+    // v0.6.9 T5:Dashboard 页 VM/View 缓存复用(同 ShowEnvironments 模式),
+    // 首次进入自动 refresh,后续进入不重复构造 — VM 内部 SemaSlim 二次去重。
     private void ShowDashboard()
     {
         CurrentSection = MainSection.Dashboard;
-        CurrentView = null;
+        if (_dashboardViewModel is null)
+        {
+            // App.xaml.cs 总是传非 null dashboardService;null → 测试或极端 wiring 漏接,
+            // 抛 InvalidOperationException 让问题立刻显形,而不是 NRE 在后台跑。
+            var svc = _dashboardService
+                ?? throw new InvalidOperationException(
+                    "DashboardService not wired — App.xaml.cs 未在 MainViewModel ctor 传 IDashboardService");
+            _dashboardViewModel = new DashboardViewModel(svc);
+            _dashboardView = new DashboardView { DataContext = _dashboardViewModel };
+        }
+        CurrentView = _dashboardView;
+        // fire-and-forget:用户进 tab 立刻看到旧数据(若有)+ 后台拉新。
+        // DashboardViewModel.RefreshAsync 内部 try/catch cover 住失败语义(G8 partial failure)。
+        _ = _dashboardViewModel.RefreshAsync();
     }
 
     private void ShowEnvironments()
@@ -438,6 +462,7 @@ public class MainViewModel : ViewModelBase
         var t = CurrentView.GetType().Name;
         return t switch
         {
+            "DashboardView"       => "Dashboard",
             "EnvironmentListView" => "Environments",
             "CatalogView"         => "Catalog",
             "BaseEnvView"         => "BaseEnv",

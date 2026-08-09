@@ -173,6 +173,10 @@ public partial class App : Application
         // 启动加载:先 LoadFromFile 再 instance MainWindow — MainWindow.OnSourceInitialized
         // 根据 _startupPrefs 应用位置 / 尺寸(G6:ApplyStartupPreferences 必须在 Show() 之前)。
         var uiPrefs = uiPreferencesService.LoadFromFile(uiPreferencesService.DefaultPath);
+        // v0.6.9 T5:Dashboard 数据聚合 service(接 T4,4 个并行 task:
+        // envRepo.ListAll / nodeRepo.CountAllAsync / AppLogger 最近 5 行 / GitHub latest release)。
+        // 复用共享 http(15s 超时)+ envRepo/nodeRepo/logger(跟其他 service 同生命周期)。
+        var dashboardService = new DashboardService(envRepo, nodeRepo, logger, http);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
@@ -180,7 +184,7 @@ public partial class App : Application
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
             requirementsInstaller, systemInfoCollector, uiPreferencesService,
             _baseEnvUninstaller, _requirementsUninstaller,
-            themeService);
+            themeService, dashboardService);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

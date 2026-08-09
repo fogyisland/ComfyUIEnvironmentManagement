@@ -15,6 +15,20 @@ public partial class MainWindow : Window
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
+        // v0.6.9 T5:Dashboard 设为启动默认页。Loaded 在 DataContext 已建立
+        // (MainViewModel via App.OnStartup) 之后 fire,ShowDashboardCommand.Execute
+        // 同步切 CurrentSection=MainSection.Dashboard + CurrentView=DashboardView。
+        Loaded += OnLoaded;
+    }
+
+    private void OnLoaded(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            // RelayCommand.Execute 是 sync Action — ShowDashboard 内部 fire-and-forget
+            // _ = _dashboardViewModel.RefreshAsync(); 走后台,UI 立即可用。
+            vm.ShowDashboardCommand.Execute(null);
+        }
     }
 
     /// <summary>

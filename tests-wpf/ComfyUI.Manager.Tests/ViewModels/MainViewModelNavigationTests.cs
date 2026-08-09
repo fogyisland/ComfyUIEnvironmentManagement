@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Tests;
@@ -27,15 +29,26 @@ public sealed class MainViewModelNavigationTests : IDisposable
         try { Directory.Delete(_projectRoot, recursive: true); } catch { }
     }
 
-    private MainViewModel NewVm()
+    private MainViewModel NewVm(IDashboardService? dashboardService = null)
     {
         var vm = new MainViewModel(
             _db.Factory,
             null!, null!, null!, null!, null!, null!, null!,
             new Settings(), null!, null!, null!, null!, null!,
-            null!, "", _projectRoot, null!, null!, new UiPreferencesService(_projectRoot));
+            null!, "", _projectRoot, null!, null!, new UiPreferencesService(_projectRoot),
+            baseEnvUninstaller: null, requirementsUninstaller: null,
+            themeService: null, dashboardService: dashboardService);
         vm.EnvironmentsViewFactory = _ => new EnvironmentListView();
         return vm;
+    }
+
+    /// <summary>测试桩 — 返回固定 snapshot,避免抛 InvalidOperationException。</summary>
+    private sealed class StubDashboardService : IDashboardService
+    {
+        public Task<DashboardSnapshot> GetSnapshotAsync(CancellationToken ct = default) =>
+            Task.FromResult(new DashboardSnapshot(
+                new EnvironmentCounts(0, 0, 0), 0,
+                Array.Empty<RecentOperation>(), null, false, DateTimeOffset.Now));
     }
 
     private static void ExecuteAllowingViewConstructionFailure(RelayCommand command)
@@ -111,7 +124,9 @@ public sealed class MainViewModelNavigationTests : IDisposable
     {
         StaFact.RunOnSTA(() =>
         {
-            var vm = NewVm();
+            // v0.6.9 T5:ShowDashboard 内部 new DashboardViewModel(IDashboardService) —
+            // App.xaml.cs 总是传非 null 实例,测试也得传桩以避免 InvalidOperationException。
+            var vm = NewVm(dashboardService: new StubDashboardService());
             vm.ShowDashboardCommand.Execute(null);
             Assert.Equal(MainSection.Dashboard, vm.CurrentSection);
         });
