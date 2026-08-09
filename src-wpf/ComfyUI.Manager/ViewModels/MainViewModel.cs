@@ -12,6 +12,17 @@ using Microsoft.Win32;
 
 namespace ComfyUI.Manager.ViewModels;
 
+public enum MainSection
+{
+    Dashboard,
+    Environments,
+    Catalog,
+    BaseEnv,
+    Settings,
+    BulkUpdate,
+    SystemStatus
+}
+
 public class MainViewModel : ViewModelBase
 {
     private readonly SqliteConnectionFactory _dbFactory;
@@ -44,6 +55,13 @@ public class MainViewModel : ViewModelBase
     private readonly IThemeService? _themeService;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
+
+    private MainSection _currentSection = MainSection.Environments;
+    public MainSection CurrentSection
+    {
+        get => _currentSection;
+        private set => SetField(ref _currentSection, value);
+    }
 
     private object? _currentView;
     public object? CurrentView
@@ -79,6 +97,7 @@ public class MainViewModel : ViewModelBase
     /// </summary>
     internal object? CurrentEnvironmentsView => _environmentsView;
 
+    public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowEnvironmentsCommand { get; }
     public RelayCommand ShowCatalogCommand { get; }
     public RelayCommand ShowBaseEnvCommand { get; }
@@ -155,6 +174,7 @@ public class MainViewModel : ViewModelBase
         _requirementsUninstaller = requirementsUninstaller;
         _themeService = themeService;
 
+        ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
         ShowBaseEnvCommand = new RelayCommand(_ => ShowBaseEnv());
@@ -179,8 +199,16 @@ public class MainViewModel : ViewModelBase
         ShowDonateQrCommand = new RelayCommand(_ => ShowDonateQr());
     }
 
+    // T3: stub only — T5 fills in DashboardView and DashboardViewModel.
+    private void ShowDashboard()
+    {
+        CurrentSection = MainSection.Dashboard;
+        CurrentView = null;
+    }
+
     private void ShowEnvironments()
     {
+        CurrentSection = MainSection.Environments;
         if (_environmentsViewModel is null)
         {
             var envRepo = new EnvironmentRepository(_dbFactory);
@@ -197,6 +225,7 @@ public class MainViewModel : ViewModelBase
 
     private void ShowCatalog()
     {
+        CurrentSection = MainSection.Catalog;
         var catRepo = new CatalogRepository(_catalogCacheStore);
         var versionRepo = new NodeVersionRepository(_catalogCacheStore);
         CurrentView = new CatalogView
@@ -207,6 +236,7 @@ public class MainViewModel : ViewModelBase
 
     private void ShowBaseEnv()
     {
+        CurrentSection = MainSection.BaseEnv;
         var envRepo = new EnvironmentRepository(_dbFactory);
         CurrentView = new BaseEnvView
         {
@@ -216,6 +246,7 @@ public class MainViewModel : ViewModelBase
 
     private void ShowSettings()
     {
+        CurrentSection = MainSection.Settings;
         CurrentView = new SettingsView
         {
             DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings, _themeService),
@@ -224,6 +255,7 @@ public class MainViewModel : ViewModelBase
 
     private void OpenBulkUpdate()
     {
+        CurrentSection = MainSection.BulkUpdate;
         var envRepo = new EnvironmentRepository(_dbFactory);
         var nodeRepo = new NodeRepository(_dbFactory);
 
@@ -245,6 +277,7 @@ public class MainViewModel : ViewModelBase
 
     private void ShowSystemStatus()
     {
+        CurrentSection = MainSection.SystemStatus;
         // SystemStatusViewModel 构造时自动 RefreshAsync()(用户进 tab 立即看到数据)
         CurrentView = new SystemStatusView
         {

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         Title="ComfyUI Manager" Height="700" Width="1100"
-        Background="{StaticResource BackgroundBrush}">
+        Background="{DynamicResource BackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -11,7 +11,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="220" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
@@ -56,35 +56,48 @@
         <!-- 侧边栏 -->
         <Border Grid.Row="1" Grid.Column="0"
                 Background="{StaticResource SurfaceBrush}"
-                Padding="8">
+                Padding="12">
             <StackPanel>
                 <TextBlock Text="ComfyUI Manager"
                            FontSize="{StaticResource FontSizeTitle}"
                            FontWeight="Bold" Margin="0,0,0,16" />
-                <Button Content="环境" Margin="0,4"
-                        Command="{Binding ShowEnvironmentsCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        HorizontalAlignment="Stretch" />
-                <Button Content="节点目录" Margin="0,4"
-                        Command="{Binding ShowCatalogCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        HorizontalAlignment="Stretch" />
-                <Button Content="基础环境" Margin="0,4"
-                        Command="{Binding ShowBaseEnvCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        HorizontalAlignment="Stretch" />
-                <Button Content="设置" Margin="0,4"
-                        Command="{Binding ShowSettingsCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        HorizontalAlignment="Stretch" />
-                <Button Content="批量更新" Margin="0,4"
-                        Command="{Binding OpenBulkUpdateCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        HorizontalAlignment="Stretch" />
-                <Button Content="系统状态" Margin="0,4"
-                        Command="{Binding ShowSystemStatusCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        HorizontalAlignment="Stretch" />
+                <TextBox x:Name="SearchBoxPlaceholder"
+                         Text="搜索... Ctrl+K"
+                         IsReadOnly="True"
+                         Margin="0,0,0,12"
+                         Padding="8"
+                         Height="32"
+                         Background="{DynamicResource BackgroundBrush}"
+                         Foreground="{DynamicResource OnSurfaceBrush}"
+                         BorderBrush="{DynamicResource OutlineBrush}" />
+                <RadioButton Content="主页" GroupName="SidebarNav"
+                             Command="{Binding ShowDashboardCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Dashboard, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
+                <RadioButton Content="环境" GroupName="SidebarNav"
+                             Command="{Binding ShowEnvironmentsCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Environments, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
+                <RadioButton Content="节点目录" GroupName="SidebarNav"
+                             Command="{Binding ShowCatalogCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Catalog, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
+                <RadioButton Content="基础环境" GroupName="SidebarNav"
+                             Command="{Binding ShowBaseEnvCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=BaseEnv, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
+                <RadioButton Content="设置" GroupName="SidebarNav"
+                             Command="{Binding ShowSettingsCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
+                <RadioButton Content="批量更新" GroupName="SidebarNav"
+                             Command="{Binding OpenBulkUpdateCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=BulkUpdate, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
+                <RadioButton Content="系统状态" GroupName="SidebarNav"
+                             Command="{Binding ShowSystemStatusCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=SystemStatus, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
             </StackPanel>
         </Border>
 
