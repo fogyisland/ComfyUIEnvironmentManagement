@@ -38,11 +38,30 @@
     <sys:Double x:Key="MotionDurationThemeCrossfadeMs">300</sys:Double>
 
     <!-- Button 样式(v0.6.9 T8:加 ControlTemplate 包裹 ContentPresenter + RippleOverlay Canvas,
-         接 RippleBehavior attached property。保留所有原 setter/trigger 结构。) -->
+         接 RippleBehavior attached property。保留所有原 setter/trigger 结构。
+         v0.6.9.2 hotfix:Style Setter 改 property-element + StaticResource markup extension
+         — attribute syntax 的 {StaticResource PrimaryBrush} 在 v0.6.9 T1 palette 拆分后,
+         Setter apply 时 SetterBaseValueSource 解析失败,Button.Background 变 UnsetValue,
+         模板加载时 Border 的 Background="{TemplateBinding Background}" 拿 UnsetValue → SetValue
+         抛 "UnsetValue 不是 Background 的有效值"。原 v0.6.8 没事是因为 PrimaryBrush 在 Theme.xaml
+         自身(解析时已 in-scope),palette 拆出去后 Setter 解析路径变了。DynamicResource 在
+         Setter 里不受此影响 — 仍按 attribute 写法保留。 -->
     <Style x:Key="MaterialButton" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource OnPrimaryBrush}" />
-        <Setter Property="Padding" Value="{StaticResource PaddingMedium}" />
+        <Setter Property="Background">
+            <Setter.Value>
+                <DynamicResource ResourceKey="PrimaryBrush" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Foreground">
+            <Setter.Value>
+                <DynamicResource ResourceKey="OnPrimaryBrush" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Padding">
+            <Setter.Value>
+                <StaticResource ResourceKey="PaddingMedium" />
+            </Setter.Value>
+        </Setter>
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
@@ -57,8 +76,6 @@
                         <Grid>
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
-                            <!-- Ripple 落点:RippleBehavior.OnPreviewMouseLeftButtonDown 通过
-                                 FindName("RippleOverlay") 拿这个 Canvas 挂 Ellipse。 -->
                             <Canvas x:Name="RippleOverlay"
                                     Background="Transparent"
                                     IsHitTestVisible="False"
