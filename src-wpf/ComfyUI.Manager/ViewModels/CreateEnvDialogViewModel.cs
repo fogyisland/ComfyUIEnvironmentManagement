@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 
@@ -17,19 +18,22 @@ public class CreateEnvDialogViewModel : ViewModelBase
     private readonly string _projectRoot;
     private string? _recentBasePythonPath;
     private readonly Action<Models.Environment?>? _onResult;
+    private readonly IEnvironmentRepository? _envRepo;
 
     public CreateEnvDialogViewModel(
         EnvCreatorService creator,
         Settings settings,
         string projectRoot,
         string? recentBasePythonPath = null,
-        Action<Models.Environment?>? onResult = null)
+        Action<Models.Environment?>? onResult = null,
+        IEnvironmentRepository? envRepo = null)
     {
         _creator = creator;
         _settings = settings;
         _projectRoot = projectRoot;
         _recentBasePythonPath = recentBasePythonPath;
         _onResult = onResult;
+        _envRepo = envRepo;
         CreateCommand = new RelayCommand(
             async _ => await CreateAsync(),
             _ => CanCreate());
@@ -40,6 +44,23 @@ public class CreateEnvDialogViewModel : ViewModelBase
             ApplyTemplate();
         });
         ApplyTemplate();   // 初次填充
+        // v0.6.7.6:Port 默认填 MAX(port)+1,空 DB / 无 envRepo 时回落 8188
+        if (_envRepo is not null)
+        {
+            try
+            {
+                var max = _envRepo.GetMaxPort();
+                Port = ((max + 1) ?? 8188).ToString();
+            }
+            catch
+            {
+                Port = "8188";
+            }
+        }
+        else
+        {
+            Port = "8188";
+        }
     }
 
     public event Action<Models.Environment?>? Closed;

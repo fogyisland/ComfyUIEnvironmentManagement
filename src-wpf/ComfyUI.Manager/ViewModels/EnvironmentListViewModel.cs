@@ -377,7 +377,7 @@ public class EnvironmentListViewModel : ViewModelBase
 
     private void CreateEnv()
     {
-        var created = Views.CreateEnvDialog.Show(_envCreator, _settings, _projectRoot, RecentBasePythonPath);
+        var created = Views.CreateEnvDialog.Show(_envCreator, _settings, _projectRoot, RecentBasePythonPath, _repo);
         if (created is not null) Load();
     }
 

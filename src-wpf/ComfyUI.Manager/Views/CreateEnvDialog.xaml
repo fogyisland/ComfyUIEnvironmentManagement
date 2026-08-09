@@ -57,7 +57,7 @@
                     <TextBox Text="{Binding ComfyuiSource, UpdateSourceTrigger=PropertyChanged}" />
                 </DockPanel>
 
-                <TextBlock Text="端口(留空自动分配,从 8188 起)" />
+                <TextBlock Text="端口(默认 = 现有最大端口 + 1,空 DB = 8188)" />
                 <TextBox Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,2,0,8" />
 

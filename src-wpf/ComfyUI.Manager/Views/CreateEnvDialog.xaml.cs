@@ -1,4 +1,5 @@
 using System.Windows;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
 using Microsoft.Win32;
@@ -21,9 +22,14 @@ public partial class CreateEnvDialog : Window
         };
     }
 
-    public static Models.Environment? Show(EnvCreatorService creator, Models.Settings settings, string projectRoot, string? recentBasePythonPath)
+    public static Models.Environment? Show(
+        EnvCreatorService creator,
+        Models.Settings settings,
+        string projectRoot,
+        string? recentBasePythonPath,
+        IEnvironmentRepository envRepo)
     {
-        var vm = new CreateEnvDialogViewModel(creator, settings, projectRoot, recentBasePythonPath);
+        var vm = new CreateEnvDialogViewModel(creator, settings, projectRoot, recentBasePythonPath, envRepo: envRepo);
         var dlg = new CreateEnvDialog(vm) { Owner = Application.Current.MainWindow };
         dlg.ShowDialog();
         return dlg.Result;
