@@ -201,7 +201,11 @@ public partial class App : Application
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
+        // v0.6.9.1 修复:Splash 先于 MainWindow Show,WPF 默认把第一个 Show 的窗口
+        // 当作 MainWindow → Splash 3s 后 fade close → ShutdownMode=OnMainWindowClose 触发
+        // → 应用直接退出。显式指 MainWindow=main 让 splash close 不影响应用生命周期。
         main.Show();
+        Application.Current.MainWindow = main;
 
         // v0.6.8: MainWindow 显示后通知 splash VM 启动最少 3s 计时 + fade
         _splashVm?.NotifyMainWindowReady();
