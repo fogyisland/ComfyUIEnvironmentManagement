@@ -29,7 +29,7 @@
         <!-- Popup -->
         <Popup x:Name="ResultsPopup" PlacementTarget="{Binding ElementName=QueryBox}"
                Placement="Bottom" StaysOpen="False" Width="600" Height="400"
-               IsOpen="{Binding IsOpen}">
+               IsOpen="{Binding IsOpen, Mode=OneWay}">
             <Border Background="{DynamicResource BackgroundBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="8">
@@ -44,7 +44,7 @@
                     <!-- Result ListBox -->
                     <ListBox x:Name="ResultsListBox"
                              ItemsSource="{Binding Results}"
-                             SelectedIndex="{Binding SelectedIndex}"
+                             SelectedIndex="{Binding SelectedIndex, Mode=OneWay}"
                              Visibility="{Binding Results.Count, Converter={StaticResource ZeroCountToVisibility}}"
                              Background="Transparent" BorderThickness="0"
                              MouseDoubleClick="OnListDoubleClick">
