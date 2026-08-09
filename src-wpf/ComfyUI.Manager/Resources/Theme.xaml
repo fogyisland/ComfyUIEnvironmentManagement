@@ -10,32 +10,10 @@
     <views:InverseBoolConverter x:Key="InverseBool" />
     <views:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibility" />
 
-    <!-- Material You Purple -->
-    <Color x:Key="PrimaryColor">#6750A4</Color>
-    <Color x:Key="PrimaryVariantColor">#4F378B</Color>
-    <Color x:Key="SecondaryColor">#625B71</Color>
-    <Color x:Key="SurfaceColor">#FFFBFE</Color>
-    <Color x:Key="BackgroundColor">#F6F1FB</Color>
-    <Color x:Key="ErrorColor">#B3261E</Color>
-    <Color x:Key="OnPrimaryColor">#FFFFFF</Color>
-    <Color x:Key="OnSurfaceColor">#1C1B1F</Color>
-
-    <SolidColorBrush x:Key="PrimaryBrush"
-        Color="{StaticResource PrimaryColor}" />
-    <SolidColorBrush x:Key="PrimaryVariantBrush"
-        Color="{StaticResource PrimaryVariantColor}" />
-    <SolidColorBrush x:Key="SecondaryBrush"
-        Color="{StaticResource SecondaryColor}" />
-    <SolidColorBrush x:Key="SurfaceBrush"
-        Color="{StaticResource SurfaceColor}" />
-    <SolidColorBrush x:Key="BackgroundBrush"
-        Color="{StaticResource BackgroundColor}" />
-    <SolidColorBrush x:Key="ErrorBrush"
-        Color="{StaticResource ErrorColor}" />
-    <SolidColorBrush x:Key="OnPrimaryBrush"
-        Color="{StaticResource OnPrimaryColor}" />
-    <SolidColorBrush x:Key="OnSurfaceBrush"
-        Color="{StaticResource OnSurfaceColor}" />
+    <!-- Palette 资源现在由 Themes/Palette.Light.xaml 或 Themes/Palette.Dark.xaml 提供(经 App.xaml 槽位合并)。
+         本文件只保留 converters / font sizes / paddings / styles / data templates。
+         v0.6.9 T1 改动:删 line 13-39 的 8 colors + 8 brushes,迁移到 Themes/ 目录的 palette dict。
+         styles 仍引用 {StaticResource PrimaryBrush} 等,资源查找会跨 merged dictionaries 命中 palette 槽位。-->
 
     <!-- 字号 -->
     <sys:Double x:Key="FontSizeSmall"

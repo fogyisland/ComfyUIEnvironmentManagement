@@ -85,5 +85,34 @@ public static class StaFact
         {
             // 失败兜底:尝试同源 alt pack URI。不抛 — 测试失败由 assert 接管。
         }
+
+        // v0.6.9 T1:Theme.xaml 删了 8 colors + 8 brushes,搬到 Themes/Palette.*.xaml。
+        // STA 测试只 merge Theme.xaml 不够,view XAML 仍 StaticResource PrimaryBrush / BackgroundBrush /
+        // SurfaceBrush 等 → 必须再 merge 一个 palette dict(默认 Light 跟现状对齐,
+        // T2 加 ThemeService 后再考虑让 StaFact 也支持按测试切主题)。
+        var paletteAdded = false;
+        if (Application.Current?.Resources.MergedDictionaries is { } mergedDicts)
+        {
+            foreach (var d in mergedDicts)
+            {
+                if (d.Source is { } src && src.ToString().EndsWith(
+                        "Palette.Light.xaml", StringComparison.OrdinalIgnoreCase))
+                {
+                    paletteAdded = true; break;
+                }
+            }
+        }
+        if (!paletteAdded)
+        {
+            var paletteUri = new Uri("/ComfyUI.Manager;component/Themes/Palette.Light.xaml", UriKind.Relative);
+            try
+            {
+                Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = paletteUri });
+            }
+            catch
+            {
+                // 失败兜底 — 测试失败由 assert 接管。
+            }
+        }
     }
 }
