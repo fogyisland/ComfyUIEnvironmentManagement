@@ -9,7 +9,7 @@
         <Viewbox Width="20" Height="20">
             <Grid Width="24" Height="24">
                 <Path Fill="{DynamicResource OnSurfaceBrush}"
-                      Data="M12,2 L13.5,4.5 L16,4 L17,6.5 L19.5,7.5 L19,10 L21,12 L19,14 L19.5,16.5 L17,17.5 L16,20 L13.5,19.5 L12,22 L10.5,19.5 L8,20 L7,17.5 L4.5,16.5 L5,14 L3,12 L5,10 L4.5,7.5 L7,6.5 L8,4 L10.5,4.5 Z" />
+                      Data="M12,8 L16,8 L17,11 L20,12 L17,13 L16,16 L12,16 L11,13 L8,12 L11,11 Z" />
                 <Ellipse Width="6" Height="6"
                          HorizontalAlignment="Center"
                          VerticalAlignment="Center"
