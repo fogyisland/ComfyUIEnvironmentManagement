@@ -15,9 +15,8 @@
             <TextBlock Text="语言" Margin="0,8,0,4" />
             <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}"
                       Width="240" HorizontalAlignment="Left" />
-            <TextBlock Text="主题模式" Margin="0,8,0,4" />
-            <ComboBox ItemsSource="{Binding ThemeModes}" SelectedItem="{Binding ThemeMode}"
-                      Width="240" HorizontalAlignment="Left" />
+            <!-- v0.6.9.3 T5:删 "主题模式" ComboBox — ThemeToggleButton 是唯一入口。
+                 ThemeMode property 仍保留(SettingsViewModel ctor 启动时调 ThemeService.Apply 持久化恢复)。 -->
             <TextBlock Text="Catalog 缓存 TTL(分钟)" Margin="0,8,0,4" />
             <TextBox Text="{Binding CacheTtlMinutes, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource MaterialTextBox}" Width="240"
