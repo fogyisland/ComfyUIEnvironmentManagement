@@ -1,0 +1,11 @@
+<!-- v0.6.9.3 T4:主题切换按钮。宿主 SunMoonIconButton,点击后切到 next mode
+     (Light → Dark,Dark → Light),IsChecked 镜像 ThemeService.Current == Light。
+     Click 事件在 code-behind Subscribe(XAML 编译器不识别 UserControl 子类的 Click 属性,
+     但 ToggleButton.Click 是 bubbling routed event,subscribed 后能正常触发)。 -->
+<UserControl x:Class="ComfyUI.Manager.Controls.ThemeToggleButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:ComfyUI.Manager.Controls"
+             Width="32" Height="32">
+    <controls:SunMoonIconButton x:Name="SunMoon" />
+</UserControl>

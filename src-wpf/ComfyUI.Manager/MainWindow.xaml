@@ -18,7 +18,10 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <!-- 顶部菜单条 + 设置快捷入口(v0.6.9.3 T3) -->
+        <!-- 顶部菜单条 + 设置/主题快捷入口(v0.6.9.3 T3+T4)。
+             v0.6.9.3 T4:删 _设置(_S) MenuItem — 齿轮按钮已独占设置入口,
+             保留一个空 Menu 没必要(mnemonic 跟着菜单项走)。同时把 ThemeToggleButton 跟
+             GearIconButton 并排右侧,ThemeToggleButton 在左(更显眼),GearIconButton 在右。 -->
         <Grid Grid.Row="0" Grid.ColumnSpan="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -39,10 +42,6 @@
                     <MenuItem Header="_退出"
                               Command="{Binding ExitAppCommand}" />
                 </MenuItem>
-                <MenuItem Header="_设置(_S)">
-                    <MenuItem Header="设置..."
-                              Command="{Binding ShowSettingsCommand}" />
-                </MenuItem>
                 <!-- TODO(resx): 工具菜单硬编码中文,后续 spec 应统一抽 resx。 -->
                 <MenuItem Header="_工具(_T)">
                     <MenuItem Header="_打开 ComfyUI 设置..."
@@ -60,10 +59,11 @@
                               Command="{Binding ShowAboutCommand}" />
                 </MenuItem>
             </Menu>
-            <controls:GearIconButton Grid.Column="1"
-                                     Command="{Binding ShowSettingsCommand}"
-                                     ToolTip="设置"
-                                     HorizontalAlignment="Right" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <controls:ThemeToggleButton Margin="0,0,4,0" />
+                <controls:GearIconButton Command="{Binding ShowSettingsCommand}"
+                                         ToolTip="设置" />
+            </StackPanel>
         </Grid>
 
         <!-- 侧边栏 -->

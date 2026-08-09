@@ -1,0 +1,25 @@
+<!-- v0.6.9.3 T4:可复用的 32x32 透明图标按钮 — IsChecked=true 显示太阳(Light 当前),
+     IsChecked=false 显示月亮(Dark 当前)。点击 fire Command + 切 IsChecked。
+     Tooltip 暴露由 ThemeToggleButton 设(依赖 Current 状态)。 -->
+<UserControl x:Class="ComfyUI.Manager.Controls.SunMoonIconButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="32" Height="32">
+    <ToggleButton x:Name="Toggle"
+                  IsChecked="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay}"
+                  ToolTip="{Binding ToolTip, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                  Style="{StaticResource SunMoonIconButtonStyle}">
+        <Viewbox Width="20" Height="20">
+            <Grid Width="24" Height="24">
+                <!-- 太阳(IsChecked=true → 当前是 Light) -->
+                <Path Fill="{DynamicResource OnSurfaceBrush}"
+                      Data="M12,4 a8,8 0 1,0 0,16 a8,8 0 1,0 0,-16 Z M12,2 v3 M12,19 v3 M2,12 h3 M19,12 h3 M4.5,4.5 l2,2 M17.5,17.5 l2,2 M4.5,19.5 l2,-2 M17.5,6.5 l2,-2"
+                      Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}" />
+                <!-- 月亮(IsChecked=false → 当前是 Dark) -->
+                <Path Fill="{DynamicResource OnSurfaceBrush}"
+                      Data="M21,12 a9,9 0 1,1 -9,-9 a7,7 0 0,0 9,9 Z"
+                      Visibility="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVisibility}}" />
+            </Grid>
+        </Viewbox>
+    </ToggleButton>
+</UserControl>

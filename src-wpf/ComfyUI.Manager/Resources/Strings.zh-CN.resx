@@ -267,4 +267,10 @@
   <data name="SectionName_SystemStatus" xml:space="preserve">
     <value>系统状态</value>
   </data>
+  <data name="ThemeToggle_Tooltip_Light" xml:space="preserve">
+    <value>当前为浅色 — 点击切换到深色</value>
+  </data>
+  <data name="ThemeToggle_Tooltip_Dark" xml:space="preserve">
+    <value>当前为深色 — 点击切换到浅色</value>
+  </data>
 </root>
