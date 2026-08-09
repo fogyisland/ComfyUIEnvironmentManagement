@@ -1,21 +1,56 @@
 <UserControl x:Class="ComfyUI.Manager.Views.ErrorBanner"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ItemsControl ItemsSource="{Binding Entries}">
-        <ItemsControl.ItemTemplate>
-            <DataTemplate>
-                <Border Background="{StaticResource ErrorBrush}"
-                        Padding="8" Margin="2" CornerRadius="4">
-                    <StackPanel>
-                        <TextBlock Text="{Binding Code}"
-                                   FontWeight="Bold"
-                                   Foreground="White" />
-                        <TextBlock Text="{Binding Message}"
-                                   Foreground="White"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-            </DataTemplate>
-        </ItemsControl.ItemTemplate>
-    </ItemsControl>
+    <UserControl.Resources>
+        <!-- v0.6.9 T9:ErrorBanner slide-in / slide-out Storyboard。TranslateTransform 而非 Margin
+             — Margin 动画触发 layout invalidate,RenderTransform 是 GPU 合成。RootBorder 上
+             x:Name 让 Storyboard.TargetName 找到 target。 -->
+        <Storyboard x:Key="SlideInStoryboard">
+            <DoubleAnimation Storyboard.TargetName="RootBorder"
+                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                             From="-40" To="0"
+                             Duration="{StaticResource MotionDurationSlideBannerMs}" />
+            <DoubleAnimation Storyboard.TargetName="RootBorder"
+                             Storyboard.TargetProperty="(UIElement.Opacity)"
+                             From="0" To="1"
+                             Duration="{StaticResource MotionDurationSlideBannerMs}" />
+        </Storyboard>
+        <Storyboard x:Key="SlideOutStoryboard">
+            <DoubleAnimation Storyboard.TargetName="RootBorder"
+                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                             From="0" To="-40"
+                             Duration="{StaticResource MotionDurationSlideBannerMs}" />
+            <DoubleAnimation Storyboard.TargetName="RootBorder"
+                             Storyboard.TargetProperty="(UIElement.Opacity)"
+                             From="1" To="0"
+                             Duration="{StaticResource MotionDurationSlideBannerMs}" />
+        </Storyboard>
+    </UserControl.Resources>
+    <!-- RootBorder 初始 Y=0 + Opacity=1(无动效模式直接可见)。SlideInStoryboard
+         在 OnLoaded 触发 IsAnimationEnabled=true 时覆盖动画到 0→1(初始即终态,无视觉跳变)。
+         SlideOut 备用 — 当前 Entries 集合仅 Insert 不 Remove,T9 暂未触发 slide-out。 -->
+    <Border x:Name="RootBorder"
+            Background="Transparent"
+            Opacity="1">
+        <Border.RenderTransform>
+            <TranslateTransform Y="0" />
+        </Border.RenderTransform>
+        <ItemsControl ItemsSource="{Binding Entries}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="{StaticResource ErrorBrush}"
+                            Padding="8" Margin="2" CornerRadius="4">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Code}"
+                                       FontWeight="Bold"
+                                       Foreground="White" />
+                            <TextBlock Text="{Binding Message}"
+                                       Foreground="White"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Border>
 </UserControl>

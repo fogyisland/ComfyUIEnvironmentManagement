@@ -1,6 +1,8 @@
 using System;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media.Animation;
+using ComfyUI.Manager.Animations;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
@@ -10,6 +12,11 @@ namespace ComfyUI.Manager;
 public partial class MainWindow : Window
 {
     private UiPreferences? _startupPrefs;
+
+    // v0.6.9 T9:主题切换 cross-fade 互斥锁 — fade 中再点主题切换会闪烁,
+    // 用 flag 串行化:收到 ThemeChanging 时若已有正在跑的 fade,先停旧的再开新的。
+    private Storyboard? _activeThemeFade;
+    private bool _themeFading;
 
     public MainWindow()
     {
@@ -45,6 +52,53 @@ public partial class MainWindow : Window
                 Command = vm.CloseSpotlightCommand,
             });
         }
+
+        // v0.6.9 T9:订阅 ThemeService.ThemeChanging 触 cross-fade。G9 short-circuit
+        // 在 OnThemeChanging 顶部 IsAnimationEnabled 检查 — 系统关动效直接 return。
+        var themeService = ((App)Application.Current).ThemeService;
+        if (themeService is not null) themeService.ThemeChanging += OnThemeChanging;
+    }
+
+    /// <summary>
+    /// v0.6.9 T9:主题切换 cross-fade handler。ThemeService.Apply 在 swap palette 前
+    /// broadcast ThemeChanging,所以这里跑 fade-out → ThemeService 内部 swap palette
+    // → fade-in。G9:IsAnimationEnabled=false 直接 return,palette 仍会 swap(ThemeService
+    // 自己的逻辑),只是没视觉过渡。
+    /// </summary>
+    private void OnThemeChanging(object? sender, ThemeMode e)
+    {
+        if (!MotionSettings.IsAnimationEnabled) return;
+        if (_themeFading) return;  // 互斥锁:fade 中再点主题切换被忽略(ThemeService 仍会 swap)
+
+        _themeFading = true;
+
+        // 停掉旧 sb(避免重叠);开始 fade-out → swap 已发生 → fade-in
+        _activeThemeFade?.Stop(ThemeCrossfadeOverlay);
+
+        var fadeOut = new DoubleAnimation(0, 1, MotionSettings.DurationThemeCrossfade);
+        Storyboard.SetTarget(fadeOut, ThemeCrossfadeOverlay);
+        Storyboard.SetTargetProperty(fadeOut, new PropertyPath("Opacity"));
+        var sbOut = new Storyboard { Duration = MotionSettings.DurationThemeCrossfade };
+        sbOut.Children.Add(fadeOut);
+        sbOut.Completed += (_, _) =>
+        {
+            // fade-out 完成 → ThemeService 已经 swap palette(因为它先 broadcast 然后 Apply)。
+            // 现在跑 fade-in 把 overlay 透明回去。
+            var fadeIn = new DoubleAnimation(1, 0, MotionSettings.DurationThemeCrossfade);
+            Storyboard.SetTarget(fadeIn, ThemeCrossfadeOverlay);
+            Storyboard.SetTargetProperty(fadeIn, new PropertyPath("Opacity"));
+            var sbIn = new Storyboard { Duration = MotionSettings.DurationThemeCrossfade };
+            sbIn.Children.Add(fadeIn);
+            sbIn.Completed += (_, _) =>
+            {
+                _themeFading = false;
+                _activeThemeFade = null;
+            };
+            _activeThemeFade = sbIn;
+            sbIn.Begin(ThemeCrossfadeOverlay);
+        };
+        _activeThemeFade = sbOut;
+        sbOut.Begin(ThemeCrossfadeOverlay);
     }
 
     /// <summary>

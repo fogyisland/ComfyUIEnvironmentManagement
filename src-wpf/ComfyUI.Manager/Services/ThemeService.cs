@@ -30,6 +30,12 @@ public interface IThemeService
     /// <summary>应用指定主题;若 <paramref name="mode"/> 无效或加载失败,fallback Dark。</summary>
     void Apply(ThemeMode mode);
 
+    /// <summary>
+    /// v0.6.9 T9:Apply 之前触发(仅当 mode 解析后跟 Current 不同,避免无意义的 cross-fade)。
+    /// 给 MainWindow 接 cross-fade overlay 用。Payload = 最终生效的 mode(已 ResolveMode)。
+    /// </summary>
+    event EventHandler<ThemeMode>? ThemeChanging;
+
     /// <summary>Apply 完成后触发,payload = 最终生效的 mode(已 ResolveMode)。</summary>
     event EventHandler<ThemeMode>? Applied;
 }
@@ -55,11 +61,22 @@ public sealed class ThemeService : IThemeService
 
     public ThemeMode Current { get; private set; } = ThemeMode.Dark;
 
+    /// <inheritdoc />
+    public event EventHandler<ThemeMode>? ThemeChanging;
+
     public event EventHandler<ThemeMode>? Applied;
 
     public void Apply(ThemeMode mode)
     {
         var resolved = ResolveMode(mode);
+
+        // v0.6.9 T9:Apply 前 broadcast ThemeChanging(给 MainWindow 触 cross-fade)。
+        // 跳过同 mode(避免首次启动无意义 fade) — 但必须在 ReplacePaletteSlot 之前发,
+        // 这样 listener 可以 fade-out → 看 mode swap → fade-in。
+        if (resolved != Current)
+        {
+            ThemeChanging?.Invoke(this, resolved);
+        }
 
         try
         {

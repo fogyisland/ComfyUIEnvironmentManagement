@@ -354,10 +354,41 @@
                     HorizontalAlignment="Left" />
 
             <!-- ============ 底部 ============ -->
+            <!-- v0.6.9 T9:Check Update 按钮 pulse — IsChecking=true 时 DataTrigger
+                 EnterActions 启动 RepeatBehavior=Forever 循环,ExitActions 自动 Stop。
+                 ScaleTransform 而非 Height/Width 避免 layout invalidate,Opacity 走 GPU 合成。
+                 当前 CheckUpdateCommand 同步完成所以 pulse 几乎看不到,IsChecking 留给
+                 future async 检查接线(spec §4.4)。 -->
             <Button Content="检查更新" Margin="0,32,0,16"
                     Command="{Binding CheckUpdateCommand}"
-                    Style="{StaticResource MaterialButton}"
-                    HorizontalAlignment="Left" />
+                    HorizontalAlignment="Left">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource MaterialButton}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecking}" Value="True">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="PulseBegin">
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="1.0" To="0.6" Duration="0:0:0.5"
+                                                             AutoReverse="True" />
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                             From="1.0" To="1.05" Duration="0:0:0.5"
+                                                             AutoReverse="True" />
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                             From="1.0" To="1.05" Duration="0:0:0.5"
+                                                             AutoReverse="True" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="PulseBegin" />
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

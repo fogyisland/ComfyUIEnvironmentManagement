@@ -451,6 +451,16 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         });
     });
 
+    // v0.6.9 T9:Check Update 按钮 pulse 动效 source of truth — true 时启动 DataTrigger
+    // 进入 pulse,完成(finally)设回 false。当前 CheckUpdateCommand 同步开浏览器瞬间就结束,
+    // pulse 几乎看不到;但保留 property 给未来真正的 async 检查接线(future feature)。
+    private bool _isChecking;
+    public bool IsChecking
+    {
+        get => _isChecking;
+        set => SetField(ref _isChecking, value);
+    }
+
     // —— 多 Python 解释器(v0.6.5.6) ——
     public ObservableCollection<PythonInterpreter> PythonInterpreters { get; }
 

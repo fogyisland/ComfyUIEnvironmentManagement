@@ -43,9 +43,13 @@
                 </Grid.RowDefinitions>
 
                 <!-- Card 1 (0,0): Environment Stats -->
-                <Border Grid.Row="0" Grid.Column="0"
+                <Border x:Name="EnvStatsCard" Grid.Row="0" Grid.Column="0"
                         Background="{DynamicResource SurfaceBrush}"
-                        CornerRadius="8" Padding="20">
+                        CornerRadius="8" Padding="20"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <TranslateTransform Y="20" />
+                    </Border.RenderTransform>
                     <StackPanel>
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.EnvironmentStats}"
                                    FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
@@ -94,9 +98,13 @@
                 </Border>
 
                 <!-- Card 2 (0,2): Node Count -->
-                <Border Grid.Row="0" Grid.Column="2"
+                <Border x:Name="NodeCountCard" Grid.Row="0" Grid.Column="2"
                         Background="{DynamicResource SurfaceBrush}"
-                        CornerRadius="8" Padding="20">
+                        CornerRadius="8" Padding="20"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <TranslateTransform Y="20" />
+                    </Border.RenderTransform>
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.NodeCount}"
                                    FontSize="14" FontWeight="Bold"
@@ -111,9 +119,13 @@
                 </Border>
 
                 <!-- Card 3 (2,0): Recent Operations -->
-                <Border Grid.Row="2" Grid.Column="0"
+                <Border x:Name="RecentOpsCard" Grid.Row="2" Grid.Column="0"
                         Background="{DynamicResource SurfaceBrush}"
-                        CornerRadius="8" Padding="20">
+                        CornerRadius="8" Padding="20"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <TranslateTransform Y="20" />
+                    </Border.RenderTransform>
                     <StackPanel>
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.RecentOps}"
                                    FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
@@ -137,9 +149,13 @@
                 </Border>
 
                 <!-- Card 4 (2,2): Latest Release -->
-                <Border Grid.Row="2" Grid.Column="2"
+                <Border x:Name="VersionCard" Grid.Row="2" Grid.Column="2"
                         Background="{DynamicResource SurfaceBrush}"
-                        CornerRadius="8" Padding="20">
+                        CornerRadius="8" Padding="20"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <TranslateTransform Y="20" />
+                    </Border.RenderTransform>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.LatestVersion}"
                                    FontSize="14" FontWeight="Bold" Margin="0,0,0,12"

@@ -109,5 +109,14 @@
         <views:ErrorBanner Grid.Row="2" Grid.ColumnSpan="2"
                            DataContext="{Binding ErrorBanner}"
                            MaxHeight="120" />
+
+        <!-- v0.6.9 T9:主题切换 cross-fade overlay(z-order 顶层,初始 IsHitTestVisible=False + Opacity=0)。
+             MainWindow.xaml.cs 订阅 ThemeService.ThemeChanging 触发 fade-out → ThemeService
+             内部 swap palette → fade-in。Rectangle 而非 Grid:不需要布局。Panel.ZIndex=999
+             保证在 menu/sidebar/content/error banner 之上。 -->
+        <Rectangle x:Name="ThemeCrossfadeOverlay"
+                   Fill="{DynamicResource SurfaceBrush}"
+                   Opacity="0" IsHitTestVisible="False"
+                   Panel.ZIndex="999" />
     </Grid>
 </Window>

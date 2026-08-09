@@ -33,6 +33,13 @@ public partial class App : Application
     /// </summary>
     public static UiPreferencesService? UiPreferencesService { get; private set; }
 
+    /// <summary>
+    /// v0.6.9 T9:MainWindow 订阅 ThemeChanging 触发 cross-fade overlay — 暴露
+    /// instance property(G7)让 MainWindow.OnLoaded 拿到,而不是再走 DI 链路。
+    /// OnStartup 中构造后即赋值,MainWindow OnLoaded 时一定可用。
+    /// </summary>
+    public IThemeService? ThemeService { get; private set; }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -93,6 +100,9 @@ public partial class App : Application
         // 此时已合并 Theme.xaml + Palette.Dark.xaml(slot 默认 Dark;Settings 存 "light" 时需 Apply)。
         var themeService = new ThemeService(Application.Current.Resources, logger);
         themeService.Apply(SettingsViewModel.ParseThemeMode(settings.ThemeMode));
+        // v0.6.9 T9:暴露给 MainWindow 订阅 ThemeChanging。首次 Apply 时 resolved 跟 Current 都是 Dark
+        // (ThemeService 内部 default),所以 ThemeChanging 不会被 fire — 避免启动期无意义 fade。
+        ThemeService = themeService;
 
         _launcher = new ProcessLauncher(
             projectRoot, dbFactory, envRepo, processStateRepo, logger,
