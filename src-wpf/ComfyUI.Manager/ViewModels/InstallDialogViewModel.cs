@@ -89,7 +89,14 @@ public class InstallDialogViewModel : ViewModelBase
         try
         {
             // 用 nodeId = 包名作为目录名(ComfyUI-Manager 约定)。
-            var result = await _ops.InstallAsync(envId, Entry.Package, repoUrl);
+            // v0.6.7.5: 传 catalog PipRequirements 让 NodeOperations 在 clone 前
+            // 跑 pip list diff,如有 Downgrade/Conflict 弹 modal 让用户确认是否继续。
+            // 既有非 catalog 节点安装入口不传 catalogPipReqs → 走原路径不跑 diff。
+            var result = await _ops.InstallAsync(
+                envId, Entry.Package, repoUrl,
+                targetTag: null,
+                catalogPipReqs: Entry.PipRequirements,
+                ct: default);
             if (result.Success)
             {
                 Progress = $"OK, version={result.Version}";
