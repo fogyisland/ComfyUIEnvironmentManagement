@@ -9,5 +9,6 @@ public partial class NodeInstallDiffWarningDialog : Window
     {
         InitializeComponent();
         DataContext = vm;
+        vm.CloseRequested += () => Close();
     }
 }
