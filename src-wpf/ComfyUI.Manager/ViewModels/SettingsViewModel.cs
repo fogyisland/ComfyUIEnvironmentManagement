@@ -597,4 +597,23 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
     }
+
+    // ============ v0.6.9 T7 Spotlight 集成 ============
+
+    /// <summary>
+    /// v0.6.9 T7:Spotlight 选中 SettingsSection 后,MainViewModel 调这里触发
+    /// SettingsView 滚动到对应锚点。<c>sectionKey</c> 跟 <c>SettingsView.xaml</c>
+    /// 里 7 个 section header TextBlock 的 <c>x:Name="Section{Key}"</c> 对齐。
+    /// <para>
+    /// WPF VM 不能直接控制 ScrollViewer,所以 emit event 让 SettingsView.xaml.cs 订阅。
+    /// 没订阅者(sandbox 测试 / 没人监听) → event 没人接,no-op fallback。
+    /// </para>
+    /// </summary>
+    public event EventHandler<string>? SectionScrollRequested;
+
+    public void ScrollToSection(string sectionKey)
+    {
+        if (string.IsNullOrEmpty(sectionKey)) return;
+        SectionScrollRequested?.Invoke(this, sectionKey);
+    }
 }

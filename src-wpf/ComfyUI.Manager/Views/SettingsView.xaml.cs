@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using ComfyUI.Manager.Models;
@@ -10,7 +11,43 @@ public partial class SettingsView : UserControl
     public SettingsView()
     {
         InitializeComponent();
-        DataContextChanged += (_, _) => SyncTokenFromViewModel();
+        DataContextChanged += (_, _) =>
+        {
+            SyncTokenFromViewModel();
+            SyncSectionScrollSubscription();
+        };
+    }
+
+    private SettingsViewModel? _vm;
+    private bool _scrollSubscribed;
+
+    /// <summary>
+    /// v0.6.9 T7:订阅 VM 的 SectionScrollRequested event。DataContext 变化时重新订阅
+    /// (MainViewModel 缓存同一份 VM,所以正常情况只会订阅一次,但重置保险)。
+    /// </summary>
+    private void SyncSectionScrollSubscription()
+    {
+        if (_vm is not null && _scrollSubscribed)
+        {
+            _vm.SectionScrollRequested -= OnSectionScrollRequested;
+            _scrollSubscribed = false;
+        }
+        if (DataContext is SettingsViewModel vm)
+        {
+            _vm = vm;
+            vm.SectionScrollRequested += OnSectionScrollRequested;
+            _scrollSubscribed = true;
+        }
+    }
+
+    private void OnSectionScrollRequested(object? sender, string sectionKey)
+    {
+        // 找 x:Name="Section{sectionKey}" 的 TextBlock,HitTest / ScrollIntoView。
+        // FindName 在 UserControl 上找 — 必须先用 UpdateLayout 让 x:Name 注册进来。
+        if (string.IsNullOrEmpty(sectionKey)) return;
+        UpdateLayout();
+        var element = FindName($"Section{sectionKey}") as FrameworkElement;
+        element?.BringIntoView();
     }
 
     private void SyncTokenFromViewModel()

@@ -11,7 +11,7 @@
         <StackPanel Margin="16" MaxWidth="640" HorizontalAlignment="Left">
 
             <!-- ============ 基础 ============ -->
-            <TextBlock Text="基础" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+            <TextBlock x:Name="SectionGeneral" Text="基础" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
             <TextBlock Text="语言" Margin="0,8,0,4" />
             <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}"
                       Width="240" HorizontalAlignment="Left" />
@@ -66,7 +66,7 @@
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" />
 
             <!-- ============ 查询节点的源 ============ -->
-            <TextBlock Text="查询节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock x:Name="SectionQuerySources" Text="查询节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="当前使用" Margin="0,0,0,4" />
             <ComboBox ItemsSource="{Binding QuerySources}"
                       DisplayMemberPath="Name"
@@ -117,7 +117,7 @@
             </Grid>
 
             <!-- ============ 下载节点的源 ============ -->
-            <TextBlock Text="下载节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock x:Name="SectionDownloadSources" Text="下载节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="当前使用(URL 中可用 {node} 占位)" Margin="0,0,0,4" />
             <ComboBox ItemsSource="{Binding DownloadSources}"
                       DisplayMemberPath="Name"
@@ -168,7 +168,7 @@
             </Grid>
 
             <!-- ============ 路径 ============ -->
-            <TextBlock Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock x:Name="SectionPaths" Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
             <TextBlock Text="模板 Python 目录(已废弃,只读)" Margin="0,8,0,4" />
             <TextBox Text="{Binding TemplatePythonDir}" IsReadOnly="True"
@@ -215,7 +215,7 @@
             </DockPanel>
 
             <!-- ============ Python 解释器(v0.6.5.6) ============ -->
-            <TextBlock Text="Python 解释器" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock x:Name="SectionPythonInterpreters" Text="Python 解释器" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="可定义多个,选一个作为新建环境 auto-fill 的默认解释器"
                        Foreground="Gray" FontSize="11" Margin="0,0,0,8" />
             <TextBlock Text="当前使用" Margin="0,0,0,4" />
@@ -278,7 +278,7 @@
                                      Converter={StaticResource BoolToVisibility}}" />
 
             <!-- ============ 环境 / 工具 ============ -->
-            <TextBlock Text="环境 / 工具" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock x:Name="SectionEnvTools" Text="环境 / 工具" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
             <TextBlock Text="venv baseline Python(virtualenv 创建时使用)" Margin="0,8,0,4" />
             <DockPanel Margin="0,2,0,0">
@@ -317,7 +317,7 @@
             </Grid>
 
             <!-- ============ 高级:额外 paths 表格 ============ -->
-            <TextBlock Text="高级 — 额外路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock x:Name="SectionExtraPaths" Text="高级 — 额外路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <ItemsControl ItemsSource="{Binding ExtraPaths}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>

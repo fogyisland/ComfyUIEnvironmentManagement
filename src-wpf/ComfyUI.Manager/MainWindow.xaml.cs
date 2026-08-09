@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Windows.Input;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
@@ -28,6 +29,21 @@ public partial class MainWindow : Window
             // RelayCommand.Execute 是 sync Action — ShowDashboard 内部 fire-and-forget
             // _ = _dashboardViewModel.RefreshAsync(); 走后台,UI 立即可用。
             vm.ShowDashboardCommand.Execute(null);
+
+            // v0.6.9 T7:Ctrl+K 绑 OpenSpotlightCommand — 等 DataContext 就绪再注入,
+            // XAML KeyBinding 引用不到 ctor 时尚未存在的 MainViewModel。
+            // Esc 绑 CloseSpotlightCommand 关 popup。
+            InputBindings.Add(new KeyBinding
+            {
+                Key = Key.K,
+                Modifiers = ModifierKeys.Control,
+                Command = vm.OpenSpotlightCommand,
+            });
+            InputBindings.Add(new KeyBinding
+            {
+                Key = Key.Escape,
+                Command = vm.CloseSpotlightCommand,
+            });
         }
     }
 

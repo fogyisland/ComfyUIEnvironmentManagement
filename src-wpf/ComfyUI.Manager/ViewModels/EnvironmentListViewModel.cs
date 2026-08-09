@@ -252,6 +252,17 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// v0.6.9 T7:Spotlight 选中 Environment target 后,MainViewModel 调这里把
+    /// DataGrid.Selected 切到对应 env。XAML 双向 binding 自动滚动到可见行。
+    /// </summary>
+    public void SelectEnvironment(string envId)
+    {
+        var env = Environments.FirstOrDefault(e => e.Id == envId);
+        if (env is null) return;
+        Selected = env;
+    }
+
+    /// <summary>
     /// 启动按钮 tooltip 文本:基于 Selected env 的 BED 状态。
     /// - BedStatus null   → "基础环境未安装"
     /// - BedStatus "installing" → "基础环境安装中,请稍候"

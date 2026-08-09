@@ -20,8 +20,12 @@ namespace ComfyUI.Manager.Services;
 /// var hits = index.Query("设置", maxResults: 20);
 /// </code>
 /// </para>
+/// <para>
+/// T7:implements <see cref="IGlobalSearchService"/>(T7 step A1) — 让
+/// <c>SpotlightSearchViewModel</c> 拿 contract 而非 concrete class,可注入 stub 测试。
+/// </para>
 /// </summary>
-public sealed class GlobalSearchService
+public sealed class GlobalSearchService : IGlobalSearchService
 {
     private readonly IEnvironmentRepository _envRepo;
     private readonly INodeRepository _nodeRepo;

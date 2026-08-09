@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
+        xmlns:controls="clr-namespace:ComfyUI.Manager.Controls"
         Title="ComfyUI Manager" Height="700" Width="1100"
         Background="{DynamicResource BackgroundBrush}">
     <Grid>
@@ -61,15 +62,12 @@
                 <TextBlock Text="ComfyUI Manager"
                            FontSize="{StaticResource FontSizeTitle}"
                            FontWeight="Bold" Margin="0,0,0,16" />
-                <TextBox x:Name="SearchBoxPlaceholder"
-                         Text="搜索... Ctrl+K"
-                         IsReadOnly="True"
-                         Margin="0,0,0,12"
-                         Padding="8"
-                         Height="32"
-                         Background="{DynamicResource BackgroundBrush}"
-                         Foreground="{DynamicResource OnSurfaceBrush}"
-                         BorderBrush="{DynamicResource OutlineBrush}" />
+                <!-- v0.6.9 T7:替换 T3 加的 SearchBoxPlaceholder 为可用的 SpotlightSearchBox。
+                     DataContext 绑 MainViewModel.Spotlight(懒构造 VM)。Ctrl+K 由 MainWindow.OnLoaded
+                     在 Loaded 后注入 KeyBinding,直接触发 MainViewModel.OpenSpotlightCommand。 -->
+                <controls:SpotlightSearchBox
+                    DataContext="{Binding Spotlight}"
+                    Margin="0,0,0,12" />
                 <RadioButton Content="主页" GroupName="SidebarNav"
                              Command="{Binding ShowDashboardCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Dashboard, Mode=OneWay}"

@@ -177,6 +177,9 @@ public partial class App : Application
         // envRepo.ListAll / nodeRepo.CountAllAsync / AppLogger 最近 5 行 / GitHub latest release)。
         // 复用共享 http(15s 超时)+ envRepo/nodeRepo/logger(跟其他 service 同生命周期)。
         var dashboardService = new DashboardService(envRepo, nodeRepo, logger, http);
+        // v0.6.9 T7:全局搜索 service(跨 4 kind 索引:env / node / settings section / command)。
+        // 复用 envRepo + nodeRepo;首次 OpenSpotlight 时 BuildAsync,后续键入仅走内存(G7)。
+        var globalSearchService = new GlobalSearchService(envRepo, nodeRepo);
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
@@ -184,7 +187,7 @@ public partial class App : Application
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
             requirementsInstaller, systemInfoCollector, uiPreferencesService,
             _baseEnvUninstaller, _requirementsUninstaller,
-            themeService, dashboardService);
+            themeService, dashboardService, globalSearchService);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

@@ -2,10 +2,13 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Search;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Views;
 using Microsoft.Win32;
@@ -61,6 +64,20 @@ public class MainViewModel : ViewModelBase
     // 上次 LastSnapshot(用户切走再回来直接看旧数据,后台继续 refresh)。
     private DashboardViewModel? _dashboardViewModel;
     private DashboardView? _dashboardView;
+    // v0.6.9 T7:接 IGlobalSearchService,让 SpotlightSearchViewModel 构建跨 4
+    // kind 的搜索索引。OpenSpotlightCommand 触发首次 BuildAsync,后续键入仅走内存(G7)。
+    // 可空保持 12+ MainViewModel 测试兼容 — App.xaml.cs 总是传非 null。
+    private readonly IGlobalSearchService? _globalSearchService;
+    // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
+    private SpotlightSearchViewModel? _spotlightVm;
+    // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
+    // Spotlight SearchTarget.Kind=SettingsSection 时无法 ScrollToSection(新 VM 无 SectionScrollRequested
+    // 订阅者)。T7 改成 ShowSettings 复用同一份 VM,ScrollToSection 才能找到 view 端订阅。
+    private SettingsViewModel? _settingsViewModel;
+    // v0.6.9 T7:CatalogViewModel 缓存 — 跟 SettingsVM 同模式,Spotlight 选中 node 后
+    // CatalogViewModel.Selected 必须真的绑上,ShowCatalog 才能命中同一份 VM。
+    private CatalogViewModel? _catalogViewModel;
+    private CatalogView? _catalogView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
 
@@ -122,6 +139,10 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ExitAppCommand { get; }
     public RelayCommand ShowAboutCommand { get; }
     public RelayCommand ShowDonateQrCommand { get; }   // v0.6.5.21 hotfix:菜单直接打开赞助二维码独立窗口
+    // v0.6.9 T7:Spotlight 全局搜索。MainWindow.xaml.cs 在 OnLoaded 把 Ctrl+K 绑到
+    // OpenSpotlightCommand(等 DataContext 就绪)。CloseSpotlightCommand 给 Esc 键用。
+    public RelayCommand OpenSpotlightCommand { get; }
+    public RelayCommand CloseSpotlightCommand { get; }
 
     internal Action<string>? OpenFolderOverride { get; set; }  // test seam
     internal Action? ExitAppOverride { get; set; }            // test seam
@@ -156,7 +177,8 @@ public class MainViewModel : ViewModelBase
         BaseEnvUninstaller? baseEnvUninstaller = null,
         RequirementsUninstaller? requirementsUninstaller = null,
         IThemeService? themeService = null,
-        IDashboardService? dashboardService = null)
+        IDashboardService? dashboardService = null,
+        IGlobalSearchService? globalSearchService = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -183,6 +205,7 @@ public class MainViewModel : ViewModelBase
         _requirementsUninstaller = requirementsUninstaller;
         _themeService = themeService;
         _dashboardService = dashboardService;
+        _globalSearchService = globalSearchService;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -207,6 +230,9 @@ public class MainViewModel : ViewModelBase
             AboutDialog.Show(owner, _projectRoot);
         });
         ShowDonateQrCommand = new RelayCommand(_ => ShowDonateQr());
+        // v0.6.9 T7:Ctrl+K 打开 Spotlight popup。MainWindow.xaml.cs 在 OnLoaded 后注入 KeyBinding。
+        OpenSpotlightCommand = new RelayCommand(_ => OpenSpotlight());
+        CloseSpotlightCommand = new RelayCommand(_ => Spotlight?.Close());
     }
 
     // v0.6.9 T5:Dashboard 页 VM/View 缓存复用(同 ShowEnvironments 模式),
@@ -250,12 +276,15 @@ public class MainViewModel : ViewModelBase
     private void ShowCatalog()
     {
         CurrentSection = MainSection.Catalog;
-        var catRepo = new CatalogRepository(_catalogCacheStore);
-        var versionRepo = new NodeVersionRepository(_catalogCacheStore);
-        CurrentView = new CatalogView
+        if (_catalogViewModel is null)
         {
-            DataContext = new CatalogViewModel(catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot),
-        };
+            var catRepo = new CatalogRepository(_catalogCacheStore);
+            var versionRepo = new NodeVersionRepository(_catalogCacheStore);
+            _catalogViewModel = new CatalogViewModel(
+                catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot);
+            _catalogView = new CatalogView { DataContext = _catalogViewModel };
+        }
+        CurrentView = _catalogView;
     }
 
     private void ShowBaseEnv()
@@ -271,10 +300,18 @@ public class MainViewModel : ViewModelBase
     private void ShowSettings()
     {
         CurrentSection = MainSection.Settings;
-        CurrentView = new SettingsView
+        // v0.6.9 T7:缓存 VM — Spotlight 切到 SettingsSection 时 ScrollToSection 必须命中
+        // 当前 View 的 DataContext(同一份 VM),否则新 new 的 VM 没人订阅 SectionScrollRequested。
+        if (_settingsViewModel is null)
         {
-            DataContext = new SettingsViewModel(_settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings, _themeService),
-        };
+            _settingsViewModel = new SettingsViewModel(
+                _settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings, _themeService);
+            CurrentView = new SettingsView { DataContext = _settingsViewModel };
+        }
+        else
+        {
+            CurrentView = new SettingsView { DataContext = _settingsViewModel };
+        }
     }
 
     private void OpenBulkUpdate()
@@ -470,5 +507,111 @@ public class MainViewModel : ViewModelBase
             "SystemStatusView"    => "SystemStatus",
             _                     => t,
         };
+    }
+
+    // ============ v0.6.9 T7 Spotlight UI 集成 ============
+
+    /// <summary>
+    /// 懒构造的 Spotlight VM。XAML 侧 <c>SpotlightSearchBox.DataContext</c>
+    /// 绑这个属性,首次访问时才 new(避免 App 启动时同步 BuildAsync 阻塞)。
+    /// </summary>
+    public SpotlightSearchViewModel? Spotlight
+    {
+        get
+        {
+            if (_spotlightVm is null && _globalSearchService is not null)
+            {
+                _spotlightVm = new SpotlightSearchViewModel(
+                    _globalSearchService,
+                    target => NavigateToTargetAsync(target));
+            }
+            return _spotlightVm;
+        }
+    }
+
+    /// <summary>测试用:获取当前缓存的 Spotlight VM(若有)。</summary>
+    internal SpotlightSearchViewModel? CurrentSpotlightViewModel => _spotlightVm;
+
+    /// <summary>测试用:获取当前缓存的 Catalog VM(若有)。</summary>
+    internal CatalogViewModel? CurrentCatalogViewModel => _catalogViewModel;
+
+    /// <summary>测试用:获取当前缓存的 Settings VM(若有)。</summary>
+    internal SettingsViewModel? CurrentSettingsViewModel => _settingsViewModel;
+
+    private void OpenSpotlight()
+    {
+        var vm = Spotlight;
+        if (vm is null) return;
+        _ = vm.OpenAsync();
+    }
+
+    /// <summary>
+    /// v0.6.9 T7:Spotlight 选中条目后的导航分发(4 kind)。
+    /// Environment → ShowEnvironments + EnvironmentListVM.SelectEnvironment
+    /// Node        → ShowCatalog + CatalogVM.SelectNode(self-fix:env-list 不显示节点)
+    /// SettingsSection → ShowSettings + SettingsVM.ScrollToSection
+    /// Command     → reflection 找对应 RelayCommand.Execute
+    /// </summary>
+    public async Task NavigateToTargetAsync(SearchTarget target)
+    {
+        switch (target.Kind)
+        {
+            case TargetKind.Environment:
+                ShowEnvironments();
+                if (target.EnvId is not null && _environmentsViewModel is not null)
+                {
+                    _environmentsViewModel.SelectEnvironment(target.EnvId);
+                }
+                break;
+
+            case TargetKind.Node:
+                // self-fix (brief §4.4):节点在 Catalog tab 里显示,不在 env-list。
+                ShowCatalog();
+                if (target.NodeId is not null && _catalogViewModel is not null)
+                {
+                    _catalogViewModel.SelectNode(target.NodeId);
+                }
+                break;
+
+            case TargetKind.SettingsSection:
+                ShowSettings();
+                if (target.SectionKey is not null && _settingsViewModel is not null)
+                {
+                    _settingsViewModel.ScrollToSection(target.SectionKey);
+                }
+                break;
+
+            case TargetKind.Command:
+                if (target.CommandName is not null)
+                {
+                    ExecuteCommand(target.CommandName);
+                }
+                break;
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// v0.6.9 T7:用 reflection 在自己的 RelayCommand property 里找 <paramref name="commandName"/>
+    /// + 触发。CommandName 可能带或不带 "Command" 后缀,自动补齐。
+    /// <para>
+    /// 已知例外:T6 implementer 识别两个 property 名已经带 "Command" 后缀 —
+    ///   <c>OpenComfySettingsJsonCommand</c> / <c>OpenExtraModelPathsYamlCommand</c>。
+    /// 传 "OpenComfySettingsJson" 或 "OpenComfySettingsJsonCommand" 都行,函数自动判别。
+    /// </para>
+    /// </summary>
+    private void ExecuteCommand(string commandName)
+    {
+        if (string.IsNullOrEmpty(commandName)) return;
+        var propName = commandName.EndsWith("Command", StringComparison.Ordinal)
+            ? commandName
+            : commandName + "Command";
+        var prop = GetType().GetProperty(
+            propName,
+            BindingFlags.Public | BindingFlags.Instance);
+        if (prop?.GetValue(this) is RelayCommand rc && rc.CanExecute(null))
+        {
+            rc.Execute(null);
+        }
     }
 }

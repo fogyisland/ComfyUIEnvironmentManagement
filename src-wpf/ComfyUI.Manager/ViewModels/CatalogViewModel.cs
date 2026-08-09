@@ -111,6 +111,20 @@ public class CatalogViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// v0.6.9 T7:Spotlight 选中 Node target 后,MainViewModel 调这里把
+    /// CatalogView.Selected 切到对应 entry。优先在当前页的 PagedEntries 里找;
+    /// 找不到(节点可能在其他页)则 fallback 到 _allEntries,设 Selected 让 UI 通过
+    /// DataGrid/ListBox SelectedItem binding 自动 scroll 进来。
+    /// </summary>
+    public void SelectNode(string nodeId)
+    {
+        var entry = PagedEntries.FirstOrDefault(e => e.Id == nodeId)
+                    ?? _allEntries.FirstOrDefault(e => e.Id == nodeId);
+        if (entry is null) return;
+        Selected = entry;
+    }
+
     public bool HasSelected => _selected is not null;
     public bool HasVersions => SelectedVersions.Count > 0;
     public string? SelectedTitle => _selected?.RawMetadata?.TryGetValue("title", out var t) == true ? t?.ToString() : _selected?.Package;
