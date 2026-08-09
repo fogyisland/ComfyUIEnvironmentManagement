@@ -1,0 +1,19 @@
+<UserControl x:Class="ComfyUI.Manager.Views.StatusBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Height="24"
+             Background="{DynamicResource StatusBarBackgroundBrush}"
+             Foreground="{DynamicResource StatusBarForegroundBrush}">
+    <!-- v0.6.9.3 T2:状态栏右侧显示当前页面与版本号。 -->
+    <DockPanel LastChildFill="False" Margin="12,0">
+        <TextBlock DockPanel.Dock="Right"
+                   Text="{Binding Version}"
+                   FontSize="{StaticResource FontSizeSmall}"
+                   VerticalAlignment="Center" />
+        <TextBlock DockPanel.Dock="Right"
+                   Text="{Binding CurrentSectionName}"
+                   FontSize="{StaticResource FontSizeSmall}"
+                   VerticalAlignment="Center"
+                   Margin="0,0,12,0" />
+    </DockPanel>
+</UserControl>

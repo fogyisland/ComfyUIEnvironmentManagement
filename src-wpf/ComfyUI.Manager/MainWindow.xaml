@@ -11,6 +11,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="220" />
@@ -57,7 +58,7 @@
 
         <!-- 侧边栏 -->
         <Border Grid.Row="1" Grid.Column="0"
-                Background="{StaticResource SurfaceBrush}"
+                Background="{DynamicResource SurfaceBrush}"
                 Padding="12">
             <StackPanel>
                 <TextBlock Text="ComfyUI Manager"
@@ -109,6 +110,10 @@
         <views:ErrorBanner Grid.Row="2" Grid.ColumnSpan="2"
                            DataContext="{Binding ErrorBanner}"
                            MaxHeight="120" />
+
+        <!-- v0.6.9.3 T2:底部状态栏显示当前页面与版本号。 -->
+        <views:StatusBar Grid.Row="3" Grid.ColumnSpan="2"
+                         DataContext="{Binding StatusBar}" />
 
         <!-- v0.6.9 T9:主题切换 cross-fade overlay(z-order 顶层,初始 IsHitTestVisible=False + Opacity=0)。
              MainWindow.xaml.cs 订阅 ThemeService.ThemeChanging 触发 fade-out → ThemeService

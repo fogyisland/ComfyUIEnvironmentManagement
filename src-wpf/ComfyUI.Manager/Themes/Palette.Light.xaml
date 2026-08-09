@@ -20,5 +20,7 @@
     <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
     <SolidColorBrush x:Key="OnPrimaryBrush" Color="{StaticResource OnPrimaryColor}" />
     <SolidColorBrush x:Key="OnSurfaceBrush" Color="{StaticResource OnSurfaceColor}" />
+    <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#EEEAF3" />
+    <SolidColorBrush x:Key="StatusBarForegroundBrush" Color="{StaticResource OnSurfaceColor}" />
     <SolidColorBrush x:Key="OutlineBrush" Color="{StaticResource SecondaryColor}" />
 </ResourceDictionary>

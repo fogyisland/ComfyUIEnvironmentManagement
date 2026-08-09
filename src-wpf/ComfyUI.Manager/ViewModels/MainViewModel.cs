@@ -80,6 +80,7 @@ public class MainViewModel : ViewModelBase
     private CatalogView? _catalogView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
+    public StatusBarViewModel StatusBar { get; }
 
     private MainSection _currentSection = MainSection.Environments;
     public MainSection CurrentSection
@@ -233,6 +234,7 @@ public class MainViewModel : ViewModelBase
         // v0.6.9 T7:Ctrl+K 打开 Spotlight popup。MainWindow.xaml.cs 在 OnLoaded 后注入 KeyBinding。
         OpenSpotlightCommand = new RelayCommand(_ => OpenSpotlight());
         CloseSpotlightCommand = new RelayCommand(_ => Spotlight?.Close());
+        StatusBar = new StatusBarViewModel(this);
     }
 
     // v0.6.9 T5:Dashboard 页 VM/View 缓存复用(同 ShowEnvironments 模式),
