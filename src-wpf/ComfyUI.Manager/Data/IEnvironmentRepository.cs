@@ -21,4 +21,9 @@ public interface IEnvironmentRepository
 
     /// <summary>插入或按主键更新一行 env。</summary>
     void Upsert(Environment env);
+
+    /// <summary>
+    /// SELECT MAX(port) FROM environments。空 DB / 全 NULL port 返回 null。
+    /// </summary>
+    int? GetMaxPort();
 }

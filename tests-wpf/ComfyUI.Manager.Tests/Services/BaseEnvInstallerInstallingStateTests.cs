@@ -204,6 +204,7 @@ public sealed class BaseEnvInstallerInstallingStateTests : IDisposable
 
         public Environment? Get(string id) => _inner.Get(id);
         public System.Collections.Generic.List<Environment> ListAll() => _inner.ListAll();
+        public int? GetMaxPort() => _inner.GetMaxPort();
     }
 
     private sealed class RecordingProgress : IProgress<BaseEnvProgress>

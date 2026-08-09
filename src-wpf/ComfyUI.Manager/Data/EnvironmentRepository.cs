@@ -106,6 +106,15 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
         cmd.ExecuteNonQuery();
     }
 
+    public int? GetMaxPort()
+    {
+        using var conn = _factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT MAX(port) FROM environments";
+        var result = cmd.ExecuteScalar();
+        return result is null or DBNull ? null : Convert.ToInt32(result);
+    }
+
     private static Environment Read(SqliteDataReader reader)
     {
         var result = new Environment

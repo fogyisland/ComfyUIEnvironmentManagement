@@ -85,6 +85,7 @@ public class EnvironmentListViewModelReportTests
         public Environment? Get(string id) => null;
         public List<Environment> ListAll() => new();
         public void Upsert(Environment env) { }
+        public int? GetMaxPort() => null;
     }
 
     [Fact]
