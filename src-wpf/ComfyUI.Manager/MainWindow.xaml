@@ -5,7 +5,7 @@
         xmlns:controls="clr-namespace:ComfyUI.Manager.Controls"
         xmlns:behaviors="clr-namespace:ComfyUI.Manager.Behaviors"
         xmlns:models="clr-namespace:ComfyUI.Manager.Models"
-        Title="ComfyUI Manager" Height="700" Width="1100"
+        Title="ComfyUI 多环境管理系统" Height="700" Width="1100"
         Background="{DynamicResource BackgroundBrush}">
     <Grid>
         <Grid.RowDefinitions>
@@ -56,7 +56,7 @@
                               Command="{Binding OpenLogFolderCommand}" />
                 </MenuItem>
                 <MenuItem Header="_关于(_H)">
-                    <MenuItem Header="关于 ComfyUI Manager..."
+                    <MenuItem Header="关于..."
                               Command="{Binding ShowAboutCommand}" />
                 </MenuItem>
             </Menu>
@@ -72,9 +72,11 @@
                 Background="{DynamicResource SurfaceBrush}"
                 Padding="12">
             <StackPanel>
-                <TextBlock Text="ComfyUI Manager"
+                <TextBlock Text="ComfyUI 多环境管理系统"
                            FontSize="{StaticResource FontSizeTitle}"
-                           FontWeight="Bold" Margin="0,0,0,16" />
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource OnSurfaceBrush}"
+                           Margin="0,0,0,16" />
                 <!-- v0.6.9 T7:替换 T3 加的 SearchBoxPlaceholder 为可用的 SpotlightSearchBox。
                      DataContext 绑 MainViewModel.Spotlight(懒构造 VM)。Ctrl+K 由 MainWindow.OnLoaded
                      在 Loaded 后注入 KeyBinding,直接触发 MainViewModel.OpenSpotlightCommand。 -->

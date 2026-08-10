@@ -190,7 +190,7 @@
     <value>安装</value>
   </data>
   <data name="Main_ComfyUI_Manager" xml:space="preserve">
-    <value>ComfyUI Manager</value>
+    <value>ComfyUI 多环境管理系统</value>
   </data>
   <data name="Main_环境管理" xml:space="preserve">
     <value>环境管理</value>
@@ -358,7 +358,7 @@
     <value>Help</value>
   </data>
   <data name="About_Title" xml:space="preserve">
-    <value>ComfyUI Manager</value>
+    <value>ComfyUI 多环境管理系统</value>
   </data>
   <data name="About_Description" xml:space="preserve">
     <value>One-stop ComfyUI environment manager</value>

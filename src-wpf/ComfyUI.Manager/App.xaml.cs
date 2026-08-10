@@ -49,7 +49,7 @@ public partial class App : Application
         try
         {
             _splashVm = new SplashViewModel(
-                title: "ComfyUI Manager",
+                title: "ComfyUI 多环境管理系统",
                 tagline: "智能管理 ComfyUI 环境、节点、依赖",
                 version: AppVersionInfo.Current);
             _splash = new SplashWindow(_splashVm);
