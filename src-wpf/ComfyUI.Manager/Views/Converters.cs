@@ -151,3 +151,27 @@ public sealed class InverseZeroCountToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>
+/// BoolToEntryCountTextConverter:bool HasEntries + int parameter → 字符串。
+/// true + N → "共 {N} 个节点";false → "加载中…"。
+/// v0.6.11+ CatalogUI polish:替换裸 "HasEntries" 的 BoolToVisibility,显示具体计数。
+/// XAML 绑定:Text="{Binding HasEntries, Converter={StaticResource BoolToEntryCountText}, ConverterParameter={Binding PagedEntries.Count}}"
+/// </summary>
+public sealed class BoolToEntryCountTextConverter : IValueConverter
+{
+    public static readonly BoolToEntryCountTextConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var hasEntries = value is bool b && b;
+        if (!hasEntries) return "加载中…";
+        var count = parameter is int n ? n : 0;
+        return $"共 {count} 个节点";
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}

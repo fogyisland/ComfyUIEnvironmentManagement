@@ -14,6 +14,7 @@
     <views:InverseBoolConverter x:Key="InverseBool" />
     <views:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibility" />
     <views:InverseZeroCountToVisibilityConverter x:Key="InverseZeroCountToVisibility" />
+    <views:BoolToEntryCountTextConverter x:Key="BoolToEntryCountText" />
 
     <!-- Palette 资源现在由 Themes/Palette.Light.xaml 或 Themes/Palette.Dark.xaml 提供(经 App.xaml 槽位合并)。
          本文件只保留 converters / font sizes / paddings / styles / data templates。
@@ -345,12 +346,184 @@
                            TextTrimming="CharacterEllipsis"
                            FontSize="12" Margin="0,0,0,8"
                            Foreground="{DynamicResource OnSurfaceBrush}" />
-                <Button Content="安装" HorizontalAlignment="Right"
-                        Command="{Binding DataContext.InstallCommand,
+                <Button Content="下载" HorizontalAlignment="Right"
+                        Command="{Binding DataContext.DownloadCommand,
                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                         CommandParameter="{Binding}"
                         Style="{StaticResource MaterialButton}" />
             </StackPanel>
+        </Border>
+    </DataTemplate>
+
+    <!-- v0.6.11+ Catalog polish:视图切换 segmented control。
+         RadioButton 共用 GroupName,选中态 PrimaryBrush 背景。
+         必须 property-element + DynamicResource 跨 merged dict 解析(v0.6.9.2 教训)。 -->
+    <Style x:Key="CatalogSegmentedRadioButton" TargetType="RadioButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground">
+            <Setter.Value>
+                <DynamicResource ResourceKey="OnSurfaceBrush" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="MinWidth" Value="60" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="RootBorder"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="RootBorder" Property="Background"
+                                    Value="{DynamicResource BackgroundBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="RootBorder" Property="Background"
+                                    Value="{DynamicResource PrimaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnPrimaryBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- v0.6.11+ Catalog polish:install_type pill badge。
+         SecondaryBrush 背景,OnPrimaryBrush 文字。 -->
+    <Style x:Key="CatalogInstallTypeBadgeStyle" TargetType="Border">
+        <Setter Property="Background">
+            <Setter.Value>
+                <DynamicResource ResourceKey="SecondaryBrush" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Margin" Value="6,0,0,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- v0.6.11+ Catalog polish:详情面板版本下拉。
+         1px SecondaryBrush border + CornerRadius=4 + SurfaceBrush 背景。
+         ControlTemplate 内 Setter attribute DynamicResource 写法允许(trigger 自己处理 lookup)。
+         Editable=False 简化路径 — SelectedVersion 用法不要求可编辑。 -->
+    <Style x:Key="CatalogVersionComboBoxStyle" TargetType="ComboBox">
+        <Setter Property="Background">
+            <Setter.Value>
+                <DynamicResource ResourceKey="SurfaceBrush" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="BorderBrush">
+            <Setter.Value>
+                <DynamicResource ResourceKey="SecondaryBrush" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Foreground">
+            <Setter.Value>
+                <DynamicResource ResourceKey="OnSurfaceBrush" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- v0.6.11+ Catalog polish:列表卡片容器。
+         跟 EnvironmentListView.xaml:209-223 同款 pattern。
+         Background=Transparent + 0 padding + 0,0,0,8 margin。
+         Template 仅 ContentPresenter,去默认蓝色高亮。 -->
+    <Style x:Key="CatalogCardItemContainerStyle" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <ContentPresenter />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- v0.6.11+ Catalog polish:列表卡片内容模板。
+         跟 EnvironmentListView.xaml:225-409 env-card 风格一致。
+         选中态 BorderBrush=PrimaryBrush + BorderThickness=2 + Padding=11(抵消 1px 视觉偏移)。
+         install_type pill badge 用 CatalogInstallTypeBadgeStyle。 -->
+    <DataTemplate x:Key="CatalogRowCardTemplate">
+        <Border Padding="12" CornerRadius="6"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderThickness="1">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderBrush" Value="{DynamicResource OutlineBrush}" />
+                    <Style.Triggers>
+                        <DataTrigger Value="True">
+                            <DataTrigger.Binding>
+                                <Binding Path="IsSelected"
+                                         RelativeSource="{RelativeSource AncestorType=ListBoxItem}" />
+                            </DataTrigger.Binding>
+                            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                            <Setter Property="BorderThickness" Value="2" />
+                            <Setter Property="Padding" Value="11" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <!-- Row 0: Package + ⭐ -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding Package}"
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="{DynamicResource OnSurfaceBrush}"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="⭐ " FontSize="12"
+                                   Foreground="{DynamicResource OutlineBrush}" />
+                        <TextBlock Text="{Binding RawMetadata[stars]}"
+                                   FontSize="12" FontWeight="Bold"
+                                   Foreground="{DynamicResource OnSurfaceBrush}" />
+                    </StackPanel>
+                </Grid>
+                <!-- Row 1: 作者 + install_type pill -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
+                    <TextBlock Text="{Binding Author}"
+                               FontSize="12"
+                               Foreground="{DynamicResource OutlineBrush}" />
+                    <Border Style="{StaticResource CatalogInstallTypeBadgeStyle}">
+                        <TextBlock Text="{Binding InstallType}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource OnPrimaryBrush}" />
+                    </Border>
+                </StackPanel>
+                <!-- Row 2: 描述摘要 -->
+                <TextBlock Grid.Row="2" Text="{Binding Description}"
+                           FontSize="12" Margin="0,6,0,0"
+                           TextWrapping="Wrap" MaxHeight="40"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
+            </Grid>
         </Border>
     </DataTemplate>
 </ResourceDictionary>
