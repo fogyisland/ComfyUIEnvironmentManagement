@@ -53,16 +53,35 @@ public sealed class RequirementsStatusViewModelTests : IDisposable
         public PipResult NextResult { get; set; } = new(0, false);
         public List<string> LogEmissions { get; } = new();
 
-        protected override Task<PipResult> RunPipAsync(
-            string pythonExe,
-            IReadOnlyList<string> pipArgs,
-            Action<string> onLine,
+        public override async Task<RequirementsInstallResult> InstallAsync(
+            Environment env,
+            IProgress<string>? logProgress,
             CancellationToken ct)
         {
-            onLine("Looking in indexes: https://pypi.org/simple");
-            onLine("Collecting SQLAlchemy");
-            onLine("Installing collected packages: SQLAlchemy");
-            return Task.FromResult(NextResult);
+            // 模拟 RequirementsFileInstaller 内部行:写 filtered → 推 stdout 行 → 返指定 PipResult
+            var candidates = ResolveRequirementsCandidates(env);
+            var reqPath = candidates.FirstOrDefault(File.Exists);
+            if (reqPath is null)
+                return new RequirementsInstallResult(false, false, "找不到 ComfyUI 的 requirements.txt(已尝试:" + string.Join(" | ", candidates) + ")", 0);
+
+            var rawLines = await File.ReadAllLinesAsync(reqPath, ct);
+            var filtered = FilterTorchLines(rawLines);
+            var filteredPath = Path.Combine(env.RootPath, RequirementsFileInstaller.FilteredRequirementsFileName);
+            await File.WriteAllLinesAsync(filteredPath, filtered, ct);
+
+            logProgress?.Report("Looking in indexes: https://pypi.org/simple");
+            logProgress?.Report("Collecting SQLAlchemy");
+            logProgress?.Report("Installing collected packages: SQLAlchemy");
+            try { File.Delete(filteredPath); } catch { }
+
+            if (NextResult.WasCancelled)
+                return new RequirementsInstallResult(false, true, "用户取消", 0);
+            if (NextResult.ExitCode != 0)
+                return new RequirementsInstallResult(false, false, $"pip 退出码 {NextResult.ExitCode}", 0);
+
+            File.WriteAllText(Path.Combine(env.RootPath, MarkerFileName),
+                DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            return new RequirementsInstallResult(true, false, null, filtered.Count);
         }
     }
 

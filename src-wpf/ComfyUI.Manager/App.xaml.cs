@@ -159,9 +159,11 @@ public partial class App : Application
         // v0.6.5.x hotfix:Env 删除跑腿 service(stop running + 删目录 + 删 SQLite 行)。
         // 复用 envRepo 跟 _launcher,跟 EnvironmentListView 共一份。
         var envDeleter = new EnvDeleterService(envRepo, _launcher);
-        // v0.6.5.12: requirements.txt 装依赖(runs `pip install -r <env-root>/requirements.txt`,
-        // 跳过 torch 行 — torch 版本由 BED profile 锁)
-        var requirementsInstaller = new RequirementsInstaller(logger);
+        // v0.6.5.12 + v0.6.11+: 装依赖 helper(过滤 torch 行 + 写 filtered + 跑 pip)。
+        // 抽出 helper 给 RequirementsInstaller(ComfyUI 依赖)和 ComfyUIManagerInstaller
+        // (ComfyUI-Manager 自己的依赖)两边复用,避免 30 行过滤逻辑复制。
+        var reqFileInstaller = new RequirementsFileInstaller();
+        var requirementsInstaller = new RequirementsInstaller(logger, reqFileInstaller);
         // v0.6.5.22: 卸载 service(BED reset 跟 requirements pip uninstall)。
         // EnvListVM 行内"卸载基础环境" / "卸载依赖"按钮 + 互斥 mutex 用这两份。
         _baseEnvUninstaller = new BaseEnvUninstaller(logger);

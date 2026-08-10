@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -70,6 +71,8 @@ public sealed class EnvironmentListViewModelRequirementsTests : IDisposable
 
     /// <summary>
     /// 假 installer:不真跑 pip,返指定 PipResult,可推 stdout 行到 IProgress。
+    /// v0.6.11+ T1:RequirementsInstaller 不再暴露 RunPipAsync 给子类覆盖,pip 跑到
+    /// RequirementsFileInstaller.InstallAsync 内部。fake 改 override InstallAsync。
     /// </summary>
     private sealed class FakeInstaller : RequirementsInstaller
     {
@@ -77,17 +80,36 @@ public sealed class EnvironmentListViewModelRequirementsTests : IDisposable
         public List<string> EmittedLines { get; } = new();
         public int CallCount { get; private set; }
 
-        protected override Task<PipResult> RunPipAsync(
-            string pythonExe,
-            IReadOnlyList<string> pipArgs,
-            Action<string> onLine,
+        public override async Task<RequirementsInstallResult> InstallAsync(
+            Environment env,
+            IProgress<string>? logProgress,
             CancellationToken ct)
         {
+            // 模拟 RequirementsFileInstaller 内部行:写 filtered → 推 stdout 行 → 返指定 PipResult
+            var candidates = ResolveRequirementsCandidates(env);
+            var reqPath = candidates.FirstOrDefault(File.Exists);
+            if (reqPath is null)
+                return new RequirementsInstallResult(false, false, "找不到 requirements.txt", 0);
+
+            var rawLines = await File.ReadAllLinesAsync(reqPath, ct);
+            var filtered = FilterTorchLines(rawLines);
+            var filteredPath = Path.Combine(env.RootPath, RequirementsFileInstaller.FilteredRequirementsFileName);
+            await File.WriteAllLinesAsync(filteredPath, filtered, ct);
+
             CallCount++;
-            onLine("Looking in indexes: https://pypi.org/simple");
-            onLine("Collecting SQLAlchemy");
+            logProgress?.Report("Looking in indexes: https://pypi.org/simple");
+            logProgress?.Report("Collecting SQLAlchemy");
             EmittedLines.AddRange(EmittedLines);
-            return Task.FromResult(NextResult);
+            try { File.Delete(filteredPath); } catch { }
+
+            if (NextResult.WasCancelled)
+                return new RequirementsInstallResult(false, true, "用户取消", 0);
+            if (NextResult.ExitCode != 0)
+                return new RequirementsInstallResult(false, false, $"pip 退出码 {NextResult.ExitCode}", 0);
+
+            File.WriteAllText(Path.Combine(env.RootPath, MarkerFileName),
+                DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            return new RequirementsInstallResult(true, false, null, filtered.Count);
         }
     }
 

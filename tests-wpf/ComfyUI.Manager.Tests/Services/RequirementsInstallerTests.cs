@@ -339,35 +339,42 @@ public sealed class RequirementsInstallerTests : IDisposable
         public PipResult NextResult { get; set; } = new(0, false);
         public int RunCount { get; private set; }
         public List<string> CapturedPipArgs { get; } = new();
-
-        /// <summary>
-        /// 跑 pip 时(InstallAsync 已写完 filtered 文件)读取并捕获,
-        /// 让测试能验证 InstallAsync 选了哪个源的 requirements.txt。
-        /// FakeInstaller 不真跑 pip,InstallAsync 后续会清掉 filtered 文件,
-        /// 所以这里读一次就存住。
-        /// </summary>
         public string? CapturedFilteredContent { get; private set; }
 
-        protected override Task<PipResult> RunPipAsync(
-            string pythonExe,
-            IReadOnlyList<string> pipArgs,
-            Action<string> onLine,
+        public override async Task<RequirementsInstallResult> InstallAsync(
+            Environment env,
+            IProgress<string>? logProgress,
             CancellationToken ct)
         {
-            RunCount++;
-            foreach (var a in pipArgs) CapturedPipArgs.Add(a);
-            // pipArgs 是 ["install", "-r", filteredPath, ...],IReadOnlyList 没 IndexOf,转成 List。
-            var asList = pipArgs as IList<string> ?? pipArgs.ToList();
-            var rIdx = asList.IndexOf("-r");
-            if (rIdx >= 0 && rIdx + 1 < asList.Count)
+            if (env is null) throw new ArgumentNullException(nameof(env));
+            var candidates = RequirementsInstaller.ResolveRequirementsCandidates(env);
+            var reqPath = candidates.FirstOrDefault(File.Exists);
+            if (reqPath is null)
             {
-                var p = asList[rIdx + 1];
-                if (File.Exists(p))
-                {
-                    CapturedFilteredContent = File.ReadAllText(p);
-                }
+                var reason = $"找不到 ComfyUI 的 requirements.txt(已尝试:{string.Join(" | ", candidates)})";
+                return new RequirementsInstallResult(false, false, reason, 0);
             }
-            return Task.FromResult(NextResult);
+
+            var rawLines = await File.ReadAllLinesAsync(reqPath, ct);
+            var filtered = RequirementsInstaller.FilterTorchLines(rawLines);
+            var filteredPath = Path.Combine(env.RootPath, RequirementsFileInstaller.FilteredRequirementsFileName);
+            await File.WriteAllLinesAsync(filteredPath, filtered, ct);
+
+            RunCount++;
+            CapturedPipArgs.Add("install");
+            CapturedPipArgs.Add("-r");
+            CapturedPipArgs.Add(filteredPath);
+            CapturedFilteredContent = await File.ReadAllTextAsync(filteredPath, ct);
+            try { File.Delete(filteredPath); } catch { }
+
+            if (NextResult.WasCancelled)
+                return new RequirementsInstallResult(false, true, "用户取消", 0);
+            if (NextResult.ExitCode != 0)
+                return new RequirementsInstallResult(false, false, $"pip 退出码 {NextResult.ExitCode}", 0);
+
+            File.WriteAllText(Path.Combine(env.RootPath, RequirementsInstaller.MarkerFileName),
+                DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            return new RequirementsInstallResult(true, false, null, filtered.Count);
         }
     }
 }

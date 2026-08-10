@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
@@ -27,19 +25,24 @@ namespace ComfyUI.Manager.Services;
 public class RequirementsInstaller
 {
     public const string MarkerFileName = ".requirements_installed";
-    public const string FilteredRequirementsFileName = ".requirements_filtered.txt";
+    // 移到 RequirementsFileInstaller.FilteredRequirementsFileName
+    public const string FilteredRequirementsFileName = RequirementsFileInstaller.FilteredRequirementsFileName;
 
-    // 过滤:跳过 torch 系列包(由 BED profile 锁版本)
-    // 匹配 # 开头(注释行)和直接 torch 系列,允许 "torch==2.1.0" / "torch>=2.0" 这种 pin
-    private static readonly Regex TorchLinePattern = new(
-        @"^\s*#?\s*(torch|torchvision|torchaudio|torchtext|torchdata)(\s|$|[=<>!~])",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // 过滤:跳过 torch 系列包(由 BED profile 锁版本) — 实际逻辑搬到
+    // RequirementsFileInstaller.FilterTorchLines;这里只 delegate,既有调用方
+    // (tests / RequirementsUninstaller)仍走 RequirementsInstaller.FilterTorchLines 不破。
+    public static List<string> FilterTorchLines(IEnumerable<string> rawLines)
+        => RequirementsFileInstaller.FilterTorchLines(rawLines);
 
     private readonly AppLogger? _logger;
+    private readonly RequirementsFileInstaller _reqFileInstaller;
 
-    public RequirementsInstaller(AppLogger? logger = null)
+    public RequirementsInstaller(
+        AppLogger? logger = null,
+        RequirementsFileInstaller? reqFileInstaller = null)
     {
         _logger = logger;
+        _reqFileInstaller = reqFileInstaller ?? new RequirementsFileInstaller();
     }
 
     /// <summary>
@@ -52,25 +55,10 @@ public class RequirementsInstaller
     }
 
     /// <summary>
-    /// 过滤掉 torch 系列行 — 用 static + Testable 让 unit test 直接验。
-    /// 保留空行 / 普通注释 / 其他依赖。
-    /// </summary>
-    public static List<string> FilterTorchLines(IEnumerable<string> rawLines)
-    {
-        var result = new List<string>();
-        foreach (var raw in rawLines)
-        {
-            var line = raw ?? "";
-            if (TorchLinePattern.IsMatch(line)) continue;
-            result.Add(line);
-        }
-        return result;
-    }
-
-    /// <summary>
     /// 装 ComfyUI requirements.txt(过滤 torch 行)。
     /// 成功 → 写 marker 文件 + 返 Success=true。
     /// 失败 / 取消 → 返 Success=false,Cancelled / Reason 字段描述。
+    /// 实际 pip 逻辑跑到 RequirementsFileInstaller.InstallAsync(v0.6.11+ T1 抽出)。
     /// </summary>
     public virtual async Task<RequirementsInstallResult> InstallAsync(
         Environment env,
@@ -89,87 +77,39 @@ public class RequirementsInstaller
         {
             var reason = $"找不到 ComfyUI 的 requirements.txt(已尝试:{string.Join(" | ", candidates)})";
             LogResult(env.Name, "failed", reason);
-            return new RequirementsInstallResult(
-                Success: false,
-                Cancelled: false,
-                Reason: reason,
-                InstalledCount: 0);
+            return new RequirementsInstallResult(false, false, reason, 0);
         }
 
-        List<string> rawLines;
-        try
-        {
-            rawLines = new List<string>(await File.ReadAllLinesAsync(requirementsPath, ct));
-        }
-        catch (Exception ex)
-        {
-            LogResult(env.Name, "failed", $"读取 requirements.txt 失败:{ex.Message}");
-            return new RequirementsInstallResult(
-                Success: false, Cancelled: false,
-                Reason: $"读取 requirements.txt 失败:{ex.Message}",
-                InstalledCount: 0);
-        }
-
-        var filtered = FilterTorchLines(rawLines);
-        var filteredPath = Path.Combine(env.RootPath, FilteredRequirementsFileName);
-        try
-        {
-            await File.WriteAllLinesAsync(filteredPath, filtered, ct);
-        }
-        catch (Exception ex)
-        {
-            LogResult(env.Name, "failed", $"写过滤文件失败:{ex.Message}");
-            return new RequirementsInstallResult(
-                Success: false, Cancelled: false,
-                Reason: $"写过滤文件失败:{ex.Message}",
-                InstalledCount: 0);
-        }
-
+        var filteredPath = Path.Combine(env.RootPath, RequirementsFileInstaller.FilteredRequirementsFileName);
         var pythonExe = ResolveVenvPython(env);
-        var pipResult = await RunPipAsync(
+
+        var result = await _reqFileInstaller.InstallAsync(
+            requirementsPath,
+            filteredPath,
             pythonExe,
-            new[] { "install", "-r", filteredPath, "--disable-pip-version-check" },
             line => logProgress?.Report(line),
             ct);
 
-        // 清理 filtered 文件(成功失败都清)
-        try { File.Delete(filteredPath); } catch { }
-
-        if (pipResult.WasCancelled || ct.IsCancellationRequested)
+        if (result.Cancelled)
         {
             LogResult(env.Name, "cancelled", "用户取消");
-            return new RequirementsInstallResult(
-                Success: false, Cancelled: true,
-                Reason: "用户取消",
-                InstalledCount: 0);
         }
-
-        if (pipResult.ExitCode != 0)
+        else if (result.Success)
         {
-            var reason = $"pip 退出码 {pipResult.ExitCode}";
-            LogResult(env.Name, "failed", reason);
-            return new RequirementsInstallResult(
-                Success: false, Cancelled: false,
-                Reason: reason,
-                InstalledCount: 0);
+            // 写 marker
+            var markerPath = Path.Combine(env.RootPath, MarkerFileName);
+            try
+            {
+                File.WriteAllText(markerPath, DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            }
+            catch { /* marker 写失败不致命 */ }
+            LogResult(env.Name, "succeeded", null);
         }
-
-        // 成功 → 写 marker
-        var markerPath = Path.Combine(env.RootPath, MarkerFileName);
-        try
+        else
         {
-            File.WriteAllText(markerPath, DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            LogResult(env.Name, "failed", result.Reason);
         }
-        catch
-        {
-            // marker 写失败不致命 — 下次用户再点还是会跳过已经装好的包(pip 自带幂等)
-        }
-
-        LogResult(env.Name, "succeeded", null);
-        return new RequirementsInstallResult(
-            Success: true, Cancelled: false,
-            Reason: null,
-            InstalledCount: filtered.Count);
+        return result;
     }
 
     private void LogResult(string envName, string status, string? reason)
@@ -241,110 +181,6 @@ public class RequirementsInstaller
                 $"venv python 找不到:{exe}");
         }
         return exe;
-    }
-
-    /// <summary>
-    /// 跑 `&lt;pythonExe&gt; -m pip &lt;pipArgs&gt;`,每行 stdout/stderr 回调 onLine。
-    /// 跟 BaseEnvInstaller.RunPipAsync 类似但不接 percent(pip install -r 没
-    /// progress 格式),测试可 override。
-    /// </summary>
-    protected virtual Task<PipResult> RunPipAsync(
-        string pythonExe,
-        IReadOnlyList<string> pipArgs,
-        Action<string> onLine,
-        CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(pythonExe))
-        {
-            throw new ArgumentException("pythonExe 不能为空", nameof(pythonExe));
-        }
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = pythonExe,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("-m");
-        psi.ArgumentList.Add("pip");
-        foreach (var a in pipArgs)
-        {
-            psi.ArgumentList.Add(a);
-        }
-
-        Process? process;
-        try
-        {
-            process = Process.Start(psi);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"启动 pip 失败:{ex.Message}", ex);
-        }
-        if (process is null)
-        {
-            throw new InvalidOperationException("Process.Start 返回 null");
-        }
-
-        var tcs = new TaskCompletionSource<PipResult>();
-        var stdoutDone = new TaskCompletionSource<bool>();
-        var stderrDone = new TaskCompletionSource<bool>();
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                string? line;
-                while ((line = await process.StandardOutput.ReadLineAsync()) is not null)
-                {
-                    if (ct.IsCancellationRequested) break;
-                    onLine(line);
-                }
-            }
-            catch { }
-            finally { stdoutDone.TrySetResult(true); }
-        });
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                string? line;
-                while ((line = await process.StandardError.ReadLineAsync()) is not null)
-                {
-                    if (ct.IsCancellationRequested) break;
-                    onLine(line);
-                }
-            }
-            catch { }
-            finally { stderrDone.TrySetResult(true); }
-        });
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.WhenAll(stdoutDone.Task, stderrDone.Task);
-                using var reg = ct.Register(() =>
-                {
-                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-                });
-                await process.WaitForExitAsync(CancellationToken.None);
-                tcs.TrySetResult(new PipResult(process.ExitCode, WasCancelled: ct.IsCancellationRequested));
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-            finally
-            {
-                try { process.Dispose(); } catch { }
-            }
-        });
-
-        return tcs.Task;
     }
 }
 
