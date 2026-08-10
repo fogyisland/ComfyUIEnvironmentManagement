@@ -12,6 +12,13 @@ namespace ComfyUI.Manager.Services;
 /// </summary>
 public class BrowserLauncher : IBrowserLauncher
 {
+    /// <summary>
+    /// Test seam — 单元测试通过该 Func 注入确定性 Process.Start 行为。
+    /// 返回 true = 启动成功;返回 false = 模拟 Win32Exception(Chrome 缺失 / 损坏)。
+    /// null = 走真实 <see cref="Process.Start(ProcessStartInfo)"/>。
+    /// </summary>
+    internal Func<ProcessStartInfo, bool>? ProcessStartOverride { get; set; }
+
     public void OpenWithChromeFallback(string path, Action<string, string, ErrorSeverity>? errorReporter = null)
     {
         if (string.IsNullOrEmpty(path)) return;
@@ -20,21 +27,39 @@ public class BrowserLauncher : IBrowserLauncher
             var chrome = ResolveChromePath();
             if (chrome is not null)
             {
-                try
+                if (TryStart(new ProcessStartInfo { FileName = chrome, Arguments = path, UseShellExecute = true }))
                 {
-                    Process.Start(new ProcessStartInfo { FileName = chrome, Arguments = path, UseShellExecute = true });
                     return;
                 }
-                catch
-                {
-                    // Chrome 装在但启动失败 → 回退默认浏览器
-                }
+                // Chrome 装在但启动失败 → 回退默认浏览器
             }
-            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            if (TryStart(new ProcessStartInfo { FileName = path, UseShellExecute = true }))
+            {
+                return;
+            }
+            // Chrome + 默认浏览器两次都失败 → 主动抛,让外层 catch 走 errorReporter。
+            throw new InvalidOperationException("所有浏览器启动尝试均失败");
         }
         catch (Exception ex)
         {
             errorReporter?.Invoke("BROWSER_OPEN_FAILED", $"打开浏览器失败:{ex.Message}", ErrorSeverity.Warn);
+        }
+    }
+
+    /// <summary>
+    /// 真实启动 / 测试 override 二选一。override 返回 false 或真实 Process.Start 抛异常时返回 false。
+    /// </summary>
+    private bool TryStart(ProcessStartInfo psi)
+    {
+        if (ProcessStartOverride is not null) return ProcessStartOverride(psi);
+        try
+        {
+            Process.Start(psi);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
