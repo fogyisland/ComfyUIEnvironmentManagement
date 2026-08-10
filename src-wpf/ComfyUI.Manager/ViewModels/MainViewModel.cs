@@ -68,6 +68,9 @@ public class MainViewModel : ViewModelBase
     // kind 的搜索索引。OpenSpotlightCommand 触发首次 BuildAsync,后续键入仅走内存(G7)。
     // 可空保持 12+ MainViewModel 测试兼容 — App.xaml.cs 总是传非 null。
     private readonly IGlobalSearchService? _globalSearchService;
+    // v0.6.10 T2:组件报告 + OpenBrowser 共享的 Chrome 优先 fallback service。
+    // 默认 null 保留旧测试 ctor;生产 DI 在 App.xaml.cs 注入 new BrowserLauncher()。
+    private readonly IBrowserLauncher? _browserLauncher;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -179,7 +182,8 @@ public class MainViewModel : ViewModelBase
         RequirementsUninstaller? requirementsUninstaller = null,
         IThemeService? themeService = null,
         IDashboardService? dashboardService = null,
-        IGlobalSearchService? globalSearchService = null)
+        IGlobalSearchService? globalSearchService = null,
+        IBrowserLauncher? browserLauncher = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -207,6 +211,8 @@ public class MainViewModel : ViewModelBase
         _themeService = themeService;
         _dashboardService = dashboardService;
         _globalSearchService = globalSearchService;
+        // v0.6.10 T2:组件报告 + OpenBrowser 共享 Chrome fallback。
+        _browserLauncher = browserLauncher;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -267,7 +273,8 @@ public class MainViewModel : ViewModelBase
             _environmentsViewModel = new EnvironmentListViewModel(
                 envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader,
                 _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller,
-                _baseEnvUninstaller, _requirementsUninstaller);
+                _baseEnvUninstaller, _requirementsUninstaller,
+                _browserLauncher, ErrorBanner);
             _environmentsView = EnvironmentsViewFactory is null
                 ? new EnvironmentListView { DataContext = _environmentsViewModel }
                 : EnvironmentsViewFactory(_environmentsViewModel) as EnvironmentListView;

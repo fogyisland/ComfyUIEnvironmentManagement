@@ -197,7 +197,9 @@ public partial class App : Application
             profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
             requirementsInstaller, systemInfoCollector, uiPreferencesService,
             _baseEnvUninstaller, _requirementsUninstaller,
-            themeService, dashboardService, globalSearchService);
+            themeService, dashboardService, globalSearchService,
+            // v0.6.10 T2:组件报告 + OpenBrowser 共享 Chrome 优先 fallback。
+            new BrowserLauncher());
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

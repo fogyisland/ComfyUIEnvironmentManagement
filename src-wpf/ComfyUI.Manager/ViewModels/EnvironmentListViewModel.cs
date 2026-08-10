@@ -28,6 +28,11 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly RequirementsInstaller _requirementsInstaller;
     private readonly BaseEnvUninstaller _baseEnvUninstaller;
     private readonly RequirementsUninstaller _requirementsUninstaller;
+    // v0.6.10 T2:统一组件报告 + OpenBrowser 按钮的 Chrome 优先 fallback。
+    // 可空保留测试 ctor(null! 仍能构造);生产 DI 在 App.xaml.cs 注入 new BrowserLauncher()。
+    private readonly IBrowserLauncher? _browserLauncher;
+    // v0.6.10 T2:BrowserLauncher 失败 → 报告给主窗口 ErrorBanner(而非 MessageBox)。
+    private ErrorBannerViewModel? _errorBanner;
     private readonly string _projectRoot;
 
     /// <summary>
@@ -110,6 +115,12 @@ public class EnvironmentListViewModel : ViewModelBase
     public Action<string>? OpenBrowserUrlOverride { get; set; }
 
     /// <summary>
+    /// v0.6.10 T2:BrowserLauncher 测试 seam — 完全替换注入的 IBrowserLauncher,
+    /// 用于将来禁用 Chrome 测试或断言 launcher 真的被调。null = 走 _browserLauncher。
+    /// </summary>
+    public IBrowserLauncher? BrowserLauncherOverride { get; set; }
+
+    /// <summary>
     /// BED 卸载 inline 状态面板(env-list 操作列"卸载基础环境"按钮触发后)。单 VM,
     /// 跟 RequirementsStatusViewModel 同模式 — 完成 → 2s 自动 Hide;失败 → 等用户关。
     /// </summary>
@@ -127,7 +138,9 @@ public class EnvironmentListViewModel : ViewModelBase
         string projectRoot,
         RequirementsInstaller requirementsInstaller,
         BaseEnvUninstaller? baseEnvUninstaller = null,
-        RequirementsUninstaller? requirementsUninstaller = null)
+        RequirementsUninstaller? requirementsUninstaller = null,
+        IBrowserLauncher? browserLauncher = null,
+        ErrorBannerViewModel? errorBanner = null)
     {
         _repo = repo;
         _launcher = launcher;
@@ -141,6 +154,10 @@ public class EnvironmentListViewModel : ViewModelBase
         _requirementsInstaller = requirementsInstaller;
         _baseEnvUninstaller = baseEnvUninstaller ?? new BaseEnvUninstaller();
         _requirementsUninstaller = requirementsUninstaller ?? new RequirementsUninstaller();
+        // v0.6.10 T2:BrowserLauncher + ErrorBanner 默认 null,保留现有测试 ctor 调用;
+        // 生产 DI 在 App.xaml.cs 注入(new BrowserLauncher() + mainVm.ErrorBanner)。
+        _browserLauncher = browserLauncher;
+        _errorBanner = errorBanner;
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -873,14 +890,20 @@ public class EnvironmentListViewModel : ViewModelBase
         catch { /* 已在 ReportComponentsAsync 内部 ShowInfoDialog */ }
     }
 
-    private static void DefaultOpenReportFile(string path)
+    private void DefaultOpenReportFile(string path)
     {
-        // UseShellExecute=true 让 Windows 用默认浏览器打开 .html。
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = path,
-            UseShellExecute = true,
-        });
+        // v0.6.10 T2:改走 BrowserLauncher(Chrome 优先 → 默认浏览器 → ErrorBanner Warn)。
+        // OpenReportFileOverride 已设的话不会到这里。
+        (BrowserLauncherOverride ?? _browserLauncher)?.OpenWithChromeFallback(path, ReportOpenError);
+    }
+
+    /// <summary>
+    /// v0.6.10 T2:BrowserLauncher 失败回调 → 主窗口 ErrorBanner(非 MessageBox,跟组件报告按钮
+    /// 行为跟 OpenBrowser 完全一致)。
+    /// </summary>
+    private void ReportOpenError(string code, string message, ErrorSeverity severity)
+    {
+        _errorBanner?.Add(code, message, severity);
     }
 
     private string ResolveGitExeForReport()
@@ -900,56 +923,25 @@ public class EnvironmentListViewModel : ViewModelBase
     /// <summary>
     /// v0.6.7.2:打开运行中 ComfyUI 的页面(用户原话"用 Chrome 浏览器开启")。
     /// 只在 env.Status == "running" 且 env.Port 有值时按钮才 enabled(CanExecute gate),
-    /// 所以走到这里就有 url。优先 Chrome.exe,找不到或启动失败则回退系统默认浏览器。
+    /// 所以走到这里就有 url。
+    /// v0.6.10 T2:Chrome 优先 / 默认浏览器 fallback / ErrorBanner Warn 行为抽到
+    /// <see cref="BrowserLauncher"/>,组件报告 + OpenBrowser 共享同一 impl。
     /// </summary>
     private void OpenBrowser(Environment? env)
     {
         if (env?.Port is not int port) return;
         var url = $"http://127.0.0.1:{port}";
-        (OpenBrowserUrlOverride ?? DefaultOpenBrowser)(url);
-    }
-
-    private static void DefaultOpenBrowser(string url)
-    {
-        var chrome = ResolveChromePath();
-        if (chrome is not null)
+        if (OpenBrowserUrlOverride is not null)
         {
-            try
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = chrome,
-                    Arguments = url,
-                    UseShellExecute = true,
-                });
-                return;
-            }
-            catch
-            {
-                // Chrome 装在但启动失败 → 回退默认浏览器
-            }
+            OpenBrowserUrlOverride(url);
+            return;
         }
-
-        // 回退:用系统默认浏览器打开
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = url,
-            UseShellExecute = true,
-        });
+        (BrowserLauncherOverride ?? _browserLauncher)?.OpenWithChromeFallback(url, ReportOpenError);
     }
 
-    private static string? ResolveChromePath()
-    {
-        var candidates = new[]
-        {
-            @"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
-                @"Google\Chrome\Application\chrome.exe"),
-        };
-        return candidates.FirstOrDefault(File.Exists);
-    }
+    // v0.6.10 T2:DefaultOpenBrowser + ResolveChromePath 移到 BrowserLauncher。
+    // OpenBrowserUrlOverride 走 path(string) 拦截的测试 seam 仍由既有测试使用
+    // (EnvironmentListViewModelOpenBrowserTests.cs 4 处)。
 
     private void RaiseCommandsChanged()
     {
