@@ -62,6 +62,7 @@ public sealed class TestDb : IDisposable
                 scan_meta TEXT NOT NULL DEFAULT '{}',
                 last_scanned_at TEXT,
                 locked INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'env',
                 UNIQUE(env_id, package)
             );
             CREATE TABLE catalog_cache (
@@ -102,6 +103,15 @@ public sealed class TestDb : IDisposable
                 started_at TIMESTAMP NOT NULL
             );";
         cmd.ExecuteNonQuery();
+
+        // v0.6.11:与 SqliteConnectionFactory 一致的 (env_id, package, source) 三元组唯一索引
+        using (var idx = conn.CreateCommand())
+        {
+            idx.CommandText =
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_scanned_nodes_env_pkg_source " +
+                "ON scanned_nodes(env_id, package, source)";
+            idx.ExecuteNonQuery();
+        }
     }
 
     public void Dispose()

@@ -116,6 +116,7 @@ public sealed class SqliteConnectionFactory
                 scan_meta TEXT NOT NULL DEFAULT '{}',
                 last_scanned_at TEXT,
                 locked INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'env',
                 UNIQUE(env_id, package)
             );
             CREATE TABLE IF NOT EXISTS version_history (
@@ -158,6 +159,19 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "environments", "bed_failed_reason", "TEXT");
         // v0.6.7.2:用户备注(在 CreateEnvDialog 输入,默认空)
         EnsureColumn(conn, "environments", "notes", "TEXT");
+        // v0.6.11:scanned_nodes.source(老 db backfill 为 'env';新唯一索引支持 download 行)
+        EnsureColumn(conn, "scanned_nodes", "source", "TEXT NOT NULL DEFAULT 'env'");
+
+        // v0.6.11:支持 (env_id, package, source) 三元组唯一 — 让 download(env_id='', source='download')
+        // 不与 env 装(env_id='env-1', source='env')同名包冲突,两个 download 同包也能独立存在。
+        // CREATE TABLE 里 UNIQUE(env_id, package) 保留(老 DB 兼容),不破坏既有数据。
+        using (var idx = conn.CreateCommand())
+        {
+            idx.CommandText =
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_scanned_nodes_env_pkg_source " +
+                "ON scanned_nodes(env_id, package, source)";
+            idx.ExecuteNonQuery();
+        }
     }
 
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)

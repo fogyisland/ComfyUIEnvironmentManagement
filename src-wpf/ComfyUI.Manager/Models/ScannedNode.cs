@@ -32,4 +32,10 @@ public class ScannedNode
     public string? LastScannedAt { get; set; }
     [JsonPropertyName("locked")]
     public bool Locked { get; set; }
+    /// <summary>
+    /// 来源标记: <c>"env"</c> = env 装入; <c>"download"</c> = 纯下载到本地节点目录。
+    /// 历史行 backfill 为 <c>"env"</c>(老数据默认就是 env 装入的)。
+    /// </summary>
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "env";
 }

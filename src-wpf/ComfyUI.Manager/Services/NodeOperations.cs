@@ -210,21 +210,23 @@ public class NodeOperations
             Version = headSha,
             Status = "enabled",
             LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            Source = "env",
         });
         _logger?.Info("node-install", $"env='{envId}' node='{nodeId}' 安装成功 sha={(headSha is null ? "?" : headSha[..Math.Min(8, headSha.Length)])}");
         return NodeOperationResult.Ok(headSha);
     }
 
     /// <summary>
-    /// git clone &lt;repoUrl&gt; &lt;localDir/nodeId&gt;。纯下载,不查 env,不写 ScannedNode。
+    /// git clone &lt;repoUrl&gt; &lt;localDir/nodeId&gt;。纯下载,目标目录来自 Settings 的本地节点目录
+    /// 而不是某个 env 的 custom_nodes。成功后 upsert 一行 ScannedNode:
+    /// <c>EnvId=""</c>(sentinel,非 env-specific)+ <c>Source="download"</c>,
+    /// 让 Dashboard / 列表 / 状态面板的节点计数把本地下载算进去。
+    /// 失败 / 取消路径不写库(语义:没真下载成功就不算节点)。
     ///
     /// <paramref name="targetTag"/> 非空时:clone 完再 <c>git checkout &lt;tag&gt;</c>。
     ///
     /// 失败语义跟 <see cref="InstallAsync"/> 一致:用户取消 → "用户取消",
     /// git 退出非零 → stderr 首行,启动失败 → 异常消息。
-    ///
-    /// 与 <see cref="InstallAsync"/> 的区别:目标目录来自 Settings 的本地节点目录
-    /// 而不是某个 env 的 custom_nodes;下载完不注册到任何 env。
     /// </summary>
     public virtual async Task<NodeOperationResult> DownloadAsync(
         string localDir, string nodeId, string repoUrl,
@@ -323,10 +325,29 @@ public class NodeOperations
             }
         }
 
-        // 取 HEAD sha 作为 version;不写 ScannedNode(纯下载,跟 env 解耦)
+        // 取 HEAD sha 作为 version;targetTag 选了时优先记 tag(用户意图)
         var downloadedSha = await TryReadHeadShaAsync(targetDir, ct);
-        _logger?.Info("node-download", $"dir='{localDir}' node='{nodeId}' 下载成功");
-        return NodeOperationResult.Ok(downloadedSha);
+        var versionToRecord = !string.IsNullOrWhiteSpace(targetTag)
+            ? targetTag
+            : downloadedSha;
+
+        // v0.6.11:成功路径写 ScannedNode — EnvId=""(sentinel,下载到 local,非 env-specific)
+        // + Source="download"。原 UNIQUE(env_id, package) 对 "" + "" 同 package 会冲突,
+        // 但新唯一索引 (env_id, package, source) 让 download 行独立,覆盖式 upsert 同 id。
+        _nodeRepo.Upsert(new ScannedNode
+        {
+            Id = nodeId,
+            EnvId = "",
+            Package = nodeId,
+            PackagePath = targetDir,
+            Version = versionToRecord,
+            Status = "enabled",
+            LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+            Source = "download",
+        });
+        _logger?.Info("node-download",
+            $"dir='{localDir}' node='{nodeId}' 下载成功 version={(versionToRecord is null ? "?" : versionToRecord[..Math.Min(8, versionToRecord.Length)])}");
+        return NodeOperationResult.Ok(versionToRecord);
     }
 
     private static void TryDelete(string dir)

@@ -132,11 +132,11 @@ public sealed class NodeOperationsDownloadTests
     }
 
     [Fact]
-    public async Task DownloadAsync_DoesNotWriteScannedNode()
+    public async Task DownloadAsync_OnSuccess_PersistsScannedNodeWithSourceDownload()
     {
         if (string.IsNullOrEmpty(FindGit())) return;
 
-        var tempRoot = NewTempRoot("noscan");
+        var tempRoot = NewTempRoot("persist");
         var remote = InitRemote(tempRoot);
         var localDir = Path.Combine(tempRoot, "local-nodes");
 
@@ -146,9 +146,60 @@ public sealed class NodeOperationsDownloadTests
         var result = await ops.DownloadAsync(localDir, "node-x", remote);
         Assert.True(result.Success, $"reason={result.Reason}");
 
-        // G5:纯文件下载,不注册到任何 env
+        // G11(v0.6.11):DownloadAsync 成功后必须把节点写进 DB,
+        // EnvId="" sentinel + Source="download" 跟 env 装行(env_id="env-1", source="env")区分开。
+        var node = nodeRepo.Get("node-x");
+        Assert.NotNull(node);
+        Assert.Equal("", node!.EnvId);
+        Assert.Equal("download", node.Source);
+        Assert.Equal(Path.Combine(localDir, "node-x"), node.PackagePath);
+        Assert.False(string.IsNullOrWhiteSpace(node.Version));
+        Assert.Equal("enabled", node.Status);
+    }
+
+    [Fact]
+    public async Task DownloadAsync_OnFailure_DoesNotPersistScannedNode()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = NewTempRoot("gitfail-noscan");
+        var localDir = Path.Combine(tempRoot, "local-nodes");
+        // 指向不存在的本地仓库 → git clone 退出码非零
+        var missingRemote = Path.Combine(tempRoot, "no-such-repo.git");
+
+        using var db = new TestDb();
+        var (ops, nodeRepo) = NewOps(db);
+
+        var result = await ops.DownloadAsync(localDir, "node-x", missingRemote);
+
+        Assert.False(result.Success);
+        // 失败语义:没真下载成功就不算节点 — DB 应当空
         Assert.Null(nodeRepo.Get("node-x"));
-        Assert.Empty(nodeRepo.ListByEnv("env-1"));
+        Assert.Empty(nodeRepo.ListByEnv(""));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_OnCancel_DoesNotPersistScannedNode()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = NewTempRoot("cancel-noscan");
+        var remote = InitRemote(tempRoot);
+        var localDir = Path.Combine(tempRoot, "local-nodes");
+
+        using var db = new TestDb();
+        var (ops, nodeRepo) = NewOps(db);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();  // 已取消的 token → GitRunner 抛 OperationCanceledException
+
+        var result = await ops.DownloadAsync(localDir, "node-x", remote, null, cts.Token);
+
+        Assert.False(result.Success);
+        Assert.Equal("用户取消", result.Reason);
+        // 取消语义:不写库
+        Assert.Null(nodeRepo.Get("node-x"));
+        Assert.Empty(nodeRepo.ListByEnv(""));
     }
 
     [Fact]

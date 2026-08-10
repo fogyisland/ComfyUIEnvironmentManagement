@@ -41,7 +41,7 @@ public sealed class NodeRepository : INodeRepository
         cmd.CommandText = @"
             SELECT id, env_id, package, package_path, version, author,
                    description, class_mappings, status, scan_meta,
-                   last_scanned_at, locked
+                   last_scanned_at, locked, source
             FROM scanned_nodes WHERE env_id = @env ORDER BY package";
         cmd.Parameters.AddWithValue("@env", envId);
         using var reader = cmd.ExecuteReader();
@@ -60,7 +60,7 @@ public sealed class NodeRepository : INodeRepository
         cmd.CommandText = @"
             SELECT id, env_id, package, package_path, version, author,
                    description, class_mappings, status, scan_meta,
-                   last_scanned_at, locked
+                   last_scanned_at, locked, source
             FROM scanned_nodes WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", nodeId);
         using var reader = cmd.ExecuteReader();
@@ -75,11 +75,11 @@ public sealed class NodeRepository : INodeRepository
             INSERT INTO scanned_nodes
                 (id, env_id, package, package_path, version, author,
                  description, class_mappings, status, scan_meta,
-                 last_scanned_at, locked)
+                 last_scanned_at, locked, source)
             VALUES
                 (@id, @env_id, @package, @package_path, @version, @author,
                  @description, @class_mappings, @status, @scan_meta,
-                 @last_scanned_at, @locked)
+                 @last_scanned_at, @locked, @source)
             ON CONFLICT(id) DO UPDATE SET
                 package_path=excluded.package_path,
                 version=excluded.version,
@@ -89,7 +89,8 @@ public sealed class NodeRepository : INodeRepository
                 status=excluded.status,
                 scan_meta=excluded.scan_meta,
                 last_scanned_at=excluded.last_scanned_at,
-                locked=excluded.locked";
+                locked=excluded.locked,
+                source=excluded.source";
         Bind(cmd, node);
         cmd.ExecuteNonQuery();
     }
@@ -144,6 +145,8 @@ public sealed class NodeRepository : INodeRepository
                 scanMetaJson, JsonOptions) ?? new Dictionary<string, string>(),
             LastScannedAt = reader.IsDBNull(10) ? null : reader.GetString(10),
             Locked = !reader.IsDBNull(11) && reader.GetInt32(11) != 0,
+            // 12 = source。NOT NULL DEFAULT 'env',直接 GetString;极老行 NULL 容错(虽然 EnsureColumn 会 backfill)
+            Source = reader.IsDBNull(12) ? "env" : reader.GetString(12),
         };
     }
 
@@ -167,5 +170,8 @@ public sealed class NodeRepository : INodeRepository
         cmd.Parameters.AddWithValue("@last_scanned_at",
             (object?)node.LastScannedAt ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@locked", node.Locked ? 1 : 0);
+        // source 用模型默认(默认 "env");空串/null 视作 "env",跟 Read 端对称
+        cmd.Parameters.AddWithValue("@source",
+            string.IsNullOrEmpty(node.Source) ? "env" : node.Source);
     }
 }
