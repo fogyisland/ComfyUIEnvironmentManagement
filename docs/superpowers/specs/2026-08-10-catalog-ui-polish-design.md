@@ -130,9 +130,10 @@ public RelayCommand RefreshCommand { get; }
 public RelayCommand DownloadCommand { get; }
 // ... 所有现有 public members 全保留
 
-// 新增 View-only property(可选,非必须):
-public string EntryCountText => $"共 {_allEntries.Count} 个节点";
-// — 若实现,T1 在 VM 末尾追加一行;否则 Column 0 计数绑 HasEntries + 计算 converter
+// "共 N 个节点" 走新建 converter `BoolToEntryCountTextConverter`(在 Views/Converters.cs):
+//   HasEntries=true  →  "共 {N} 个节点"(N 从 PagedEntries.Count 读,因为 ListBox 实时显示页内)
+//   HasEntries=false →  "加载中…"
+// — **不增 VM property**(G3 冻结)
 ```
 
 ---
@@ -285,7 +286,8 @@ dotnet publish src-wpf/ComfyUI.Manager/ComfyUI.Manager.csproj -c Release -r win-
 | ComboBox 自定义样式跨 palette 切换时 Editable/Non-Editable 视觉差异 | T1 实施前先 `git show v0.6.10.2` 看 MaterialTextBox 同款 property-element 写法,严格照抄 |
 | STA load test 不抓 ItemsControl 模板内 Setter bug(v0.6.9.2 教训) | T1 提交前 grep 三个 pattern:`<Setter Property="..." Value="{StaticResource ...}"`, `<Setter ... Value="{StaticResource ...}"`, `<Style.Triggers>` 内 `<Setter ... StaticResource>` |
 | T1 `CatalogRowCardTemplate` install_type 数据结构若不存在于 CatalogEntry metadata | 实施前 grep `CatalogEntry.RawMetadata[install_type]` 是否被 service 填充;若否,用 `RawMetadata[author]` + ⭐ 替代,G3 不改 VM |
-| `CatalogTileTemplate` 现有 `InstallCommand` binding 若已改名 `DownloadCommand`(v0.6.5.9 之后) | T2 实施前先 grep 真实 binding 名,严格按 VM 现状 |
+| `CatalogTileTemplate` 内 `InstallCommand` binding 与 v0.6.5.9 后状态不一致:Theme.xaml:348 仍写 `InstallCommand`,CatalogView.xaml:194 已用 `DownloadCommand` | Theme.xaml 内的 `CatalogTileTemplate` 是 dead code(CatalogView.xaml 不引用它),T1 直接改 Theme.xaml:348 binding 为 `DownloadCommand` 同步到现状,避免后续误用 |
+| VM `HasEntries` 已存在但 "共 N 个节点" 需要数字而非 bool | 新建 `BoolToEntryCountTextConverter` 走 `HasEntries` + 静态 fallback "加载中…",**不增 VM property**(G3 冻结) |
 
 ---
 
