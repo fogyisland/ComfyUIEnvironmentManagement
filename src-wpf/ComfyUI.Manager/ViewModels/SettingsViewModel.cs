@@ -279,6 +279,16 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set { _settings.GitHubToken = value ?? ""; _repo.Save(_settings); }
     }
 
+    /// <summary>
+    /// v0.6.11 T3: 开关 gate — 开启时 refresh catalog 同步拉各节点版本号,无需配 token
+    /// 也可走(走未鉴权 60/h 限流)。默认 OFF 保持向后兼容。
+    /// </summary>
+    public bool FetchNodeVersionsOnRefresh
+    {
+        get => _settings.FetchNodeVersionsOnRefresh;
+        set { _settings.FetchNodeVersionsOnRefresh = value; _repo.Save(_settings); RaisePropertyChanged(); }
+    }
+
     // —— 路径 ——
     public string TemplatePythonDir
     {
@@ -613,6 +623,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(GitProxyEnabled));
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
+        RaisePropertyChanged(nameof(FetchNodeVersionsOnRefresh));
     }
 
     // ============ v0.6.9 T7 Spotlight 集成 ============

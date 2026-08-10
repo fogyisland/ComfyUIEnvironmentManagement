@@ -137,9 +137,6 @@
                                 <Run Text="{Binding SelectedAuthor, Mode=OneWay}"
                                      Foreground="{DynamicResource OnSurfaceBrush}" />
                             </TextBlock>
-                            <TextBlock Margin="0,2,0,0">
-                                <Run Text="当前版本:" Foreground="{DynamicResource OutlineBrush}" />
-                            </TextBlock>
                             <Grid Margin="0,2,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

@@ -16,17 +16,19 @@ public partial class InstallDialog : Window
     }
 
     /// <summary>
-    /// Show(envRepo, nodeOps, entry, preselectedEnvId):弹 InstallDialog,
+    /// Show(envRepo, nodeOps, entry, preselectedEnvId, preselectedTag):弹 InstallDialog,
     /// preselectedEnvId 非空时默认选中该 env,空时选第一个 env。
+    /// preselectedTag(v0.6.11 T3):caller 显式选中的 GitHub tag,装完 git checkout 钉到该版本。
     /// 调用方提供 envRepo + nodeOps(由 App.xaml.cs 统一构造,跟其他 view 共享同一份)。
     /// </summary>
     public static void Show(
         EnvironmentRepository envRepo,
         NodeOperations nodeOps,
         CatalogEntry entry,
-        string? preselectedEnvId = null)
+        string? preselectedEnvId = null,
+        string? preselectedTag = null)
     {
-        var vm = new InstallDialogViewModel(envRepo, nodeOps, entry, preselectedEnvId);
+        var vm = new InstallDialogViewModel(envRepo, nodeOps, entry, preselectedEnvId, preselectedTag);
         var dlg = new InstallDialog(vm) { Owner = Application.Current.MainWindow };
         dlg.ShowDialog();
     }

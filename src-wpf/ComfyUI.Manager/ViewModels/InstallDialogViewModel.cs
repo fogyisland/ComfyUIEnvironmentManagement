@@ -26,16 +26,25 @@ public class InstallDialogViewModel : ViewModelBase
     /// </summary>
     public string? PreselectedEnvId { get; }
 
+    /// <summary>
+    /// v0.6.11 T3: 预填 tag — catalog 详情面板已选中的版本号。null = 不预填,装最新(即可
+    /// 拉取的 node_versions 里第一个;pip clone 后跑 git checkout &lt;tag&gt;)。
+    /// 向后兼容:caller 不传时不改变行为。
+    /// </summary>
+    public string? PreselectedTag { get; }
+
     public InstallDialogViewModel(
         EnvironmentRepository repo,
         NodeOperations ops,
         CatalogEntry entry,
-        string? preselectedEnvId = null)
+        string? preselectedEnvId = null,
+        string? preselectedTag = null)
     {
         _repo = repo;
         _ops = ops;
         Entry = entry;
         PreselectedEnvId = preselectedEnvId;
+        PreselectedTag = preselectedTag;
         InstallCommand = new RelayCommand(
             async _ => await InstallAsync(),
             _ => SelectedEnv is not null && !Busy);
@@ -92,9 +101,10 @@ public class InstallDialogViewModel : ViewModelBase
             // v0.6.7.5: 传 catalog PipRequirements 让 NodeOperations 在 clone 前
             // 跑 pip list diff,如有 Downgrade/Conflict 弹 modal 让用户确认是否继续。
             // 既有非 catalog 节点安装入口不传 catalogPipReqs → 走原路径不跑 diff。
+            // v0.6.11 T3: 传 PreselectedTag(若 caller 显式给了),让 git checkout 钉到指定版本。
             var result = await _ops.InstallAsync(
                 envId, Entry.Package, repoUrl,
-                targetTag: null,
+                targetTag: PreselectedTag,
                 catalogPipReqs: Entry.PipRequirements,
                 ct: default);
             if (result.Success)

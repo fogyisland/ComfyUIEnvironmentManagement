@@ -282,4 +282,10 @@
   <data name="SettingsPage_默认Models目录提示" xml:space="preserve">
     <value>新建 env 时 junction &lt;env&gt;/ComfyUI/models 到此路径;留空则 env 自己保留本地 models。</value>
   </data>
+  <data name="SettingsPage_拉取节点版本" xml:space="preserve">
+    <value>刷新时拉取节点版本(无 token 会被 GitHub 限流 60/h)</value>
+  </data>
+  <data name="SettingsPage_拉取节点版本提示" xml:space="preserve">
+    <value>开启后,每次刷新 catalog 时会同步拉取每个节点的 GitHub release 历史。无 token 时走未鉴权 60/h 限流;失败 fail-soft,使用本地缓存。</value>
+  </data>
 </root>

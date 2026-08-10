@@ -77,6 +77,12 @@ public class Settings
     [JsonPropertyName("github_token")]
     public string GitHubToken { get; set; } = "";
 
+    // v0.6.11 T3: 开关 gate 控制 refresh 时是否拉节点版本号。默认 OFF 保持向后兼容
+    // (避免没配 token 的用户被 GitHub 限流 60/h);开启时会用 GitHubToken(空 = 未鉴权)
+    // 调 GitHubVersionService,失败 fail-soft,不抛。
+    [JsonPropertyName("fetch_node_versions_on_refresh")]
+    public bool FetchNodeVersionsOnRefresh { get; set; }
+
     // —— v0.6.5.6: 多 Python 解释器管理 ——
     [JsonPropertyName("python_interpreters")]
     public List<PythonInterpreter> PythonInterpreters { get; set; } = new();

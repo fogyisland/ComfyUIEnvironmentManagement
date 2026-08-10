@@ -471,4 +471,10 @@
   <data name="SettingsPage_默认Models目录提示" xml:space="preserve">
     <value>新建 env 时 junction &lt;env&gt;/ComfyUI/models 到此路径;留空则 env 自己保留本地 models。</value>
   </data>
+  <data name="SettingsPage_拉取节点版本" xml:space="preserve">
+    <value>Refresh fetch node versions (no token → GitHub 60/h rate limit)</value>
+  </data>
+  <data name="SettingsPage_拉取节点版本提示" xml:space="preserve">
+    <value>Enabling this will fetch each node's GitHub release history on every catalog refresh. Without a GitHub token your IP is limited to 60 requests/hour; failures are silent and use the cached fallback.</value>
+  </data>
 </root>

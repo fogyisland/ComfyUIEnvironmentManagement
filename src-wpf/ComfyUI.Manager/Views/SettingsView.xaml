@@ -77,6 +77,14 @@
             <TextBlock Text="仅保存在本地 settings.json,不会上传到任何服务器"
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" />
 
+            <!-- v0.6.11 T3: 开关 gate — 关闭 = 不拉节点版本号(默认,向后兼容);
+                 开启 = 即使没配 token 也尝试拉 GitHub releases(无鉴权 60/h 限流,
+                 失败 fail-soft,不抛)。这两个 property 互不约束:开关决定"拉不拉",
+                 token 决定"是否鉴权"。 -->
+            <CheckBox Content="刷新时拉取节点版本(无 token 会被 GitHub 限流 60/h)"
+                      IsChecked="{Binding FetchNodeVersionsOnRefresh}"
+                      Margin="0,8,0,0" />
+
             <!-- ============ 查询节点的源 ============ -->
             <TextBlock x:Name="SectionQuerySources" Text="查询节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="当前使用" Margin="0,0,0,4" />

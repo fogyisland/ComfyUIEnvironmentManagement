@@ -69,8 +69,10 @@ public class CatalogRefreshService
                     e => progress?.Report(e));
             }, ct);
 
-            // 第二步:拉 GitHub 版本(如 token 已配)
-            if (_versionService is not null && !string.IsNullOrWhiteSpace(_settings.GitHubToken))
+            // 第二步:拉 GitHub 版本(如开关 gate 开启—— v0.6.11 T3)
+            // 用户没配 token 也能拉,只要勾"刷新时拉取节点版本"开关;空 token
+            // = 未鉴权(GitHub 限流 60/h),失败 fail-soft,不抛。
+            if (_versionService is not null && _settings.FetchNodeVersionsOnRefresh)
             {
                 var nodes = entries
                     .Select(e => (e.Id, ReferenceUrl: ExtractReference(e)))

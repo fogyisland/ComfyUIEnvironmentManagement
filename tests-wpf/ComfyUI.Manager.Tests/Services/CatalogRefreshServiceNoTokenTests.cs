@@ -128,7 +128,13 @@ public class CatalogRefreshServiceNoTokenTests : IDisposable
         // CatalogRefreshService 用同一个实例,会读到最新 token。
         var fetcher = new FakeFetcher();
         var repo = new CatalogRepository(new CatalogCacheStore(_db.Path));
-        var sharedSettings = new Settings { GitHubToken = "" };
+        var sharedSettings = new Settings
+        {
+            GitHubToken = "",
+            // v0.6.11 T3: gate 改成 FetchNodeVersionsOnRefresh 开关(默认 OFF)。
+            // 此测试只验证"token 传透";开关也要 ON 才能让 version svc 被调到。
+            FetchNodeVersionsOnRefresh = true,
+        };
         SettingsDefaults.Apply(sharedSettings, @"D:\ToolDevelop\ComfyUI");
         var refreshService = new CatalogRefreshService(
             fetcher, repo, sharedSettings,
