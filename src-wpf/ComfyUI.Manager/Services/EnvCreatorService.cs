@@ -34,19 +34,23 @@ public sealed class EnvCreatorService
     private readonly JunctionLinker _linker;
     private readonly Models.Settings _settings;
     private readonly string _projectRoot;
+    // v0.6.11++:env-create 末尾 best-effort 装常用节点(G5 不阻断 env-create)。
+    private readonly CommonNodeInstaller? _commonNodeInstaller;
 
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
         JunctionLinker linker,
         Models.Settings settings,
-        string projectRoot)
+        string projectRoot,
+        CommonNodeInstaller? commonNodeInstaller = null)
     {
         _dbFactory = dbFactory;
         _venvCreator = venvCreator;
         _linker = linker;
         _settings = settings;
         _projectRoot = projectRoot;
+        _commonNodeInstaller = commonNodeInstaller;
     }
 
     public sealed class CreateEnvException : Exception
@@ -229,6 +233,25 @@ public sealed class EnvCreatorService
         };
         Directory.CreateDirectory(env.CustomNodesPath!);
         envRepo.Upsert(env);
+
+        // 5.7 best-effort 装常用节点(G5:不阻断 env-create,失败仅 WARN)
+        if (_commonNodeInstaller is not null)
+        {
+            try
+            {
+                progress?.Report(new CreateStepReport("安装常用节点", "触发 CommonNodeInstaller.InstallEnabledAsync"));
+                var cnResult = await _commonNodeInstaller.InstallEnabledAsync(
+                    env, new Progress<string>(line => progress?.Report(new CreateStepReport("常用节点", line))), ct);
+                if (!cnResult.Success)
+                {
+                    progress?.Report(new CreateStepReport("常用节点", $"warn:{cnResult.Reason}"));
+                }
+            }
+            catch (Exception ex)
+            {
+                progress?.Report(new CreateStepReport("常用节点", $"warn:异常 {ex.Message}"));
+            }
+        }
 
         return env;
     }

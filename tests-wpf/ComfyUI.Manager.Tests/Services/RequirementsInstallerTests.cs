@@ -260,6 +260,36 @@ public sealed class RequirementsInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallAsync_PipSucceeds_TriggersCommonNodesAutoInstall()
+    {
+        WriteRequirements(_tempRoot, "SQLAlchemy");
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+        fake.AutoInstallCommonNodesResult = NodeOperationResult.Ok("ok");
+
+        await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.Equal(1, fake.AutoInstallCommonNodesCallCount);
+        Assert.Same(env, fake.AutoInstallCommonNodesEnv);
+    }
+
+    [Fact]
+    public async Task InstallAsync_CommonNodesAutoInstallFails_StillReturnsSuccessForRequirements()
+    {
+        WriteRequirements(_tempRoot, "SQLAlchemy");
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+        fake.AutoInstallCommonNodesResult = NodeOperationResult.Fail("git clone 失败");
+
+        var result = await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, fake.AutoInstallCommonNodesCallCount);
+    }
+
+    [Fact]
     public async Task InstallAsync_IndependentLayout_PrefersComfyuiSourceRequirementsTxt()
     {
         // 独立布局:ComfyuiSource = <env-root>/ComfyUI,文件写在 <env-root>/ComfyUI/requirements.txt
@@ -388,7 +418,7 @@ public sealed class RequirementsInstallerTests : IDisposable
         public int AutoInstallCallCount { get; private set; }
         public bool AutoInstallThrows { get; set; }
 
-        public FakeRequirementsInstaller() : base(null, null, null)
+        public FakeRequirementsInstaller() : base(null, null, null, null)
         {
         }
 
@@ -402,6 +432,23 @@ public sealed class RequirementsInstallerTests : IDisposable
             if (AutoInstallThrows) throw new InvalidOperationException("模拟异常");
             progress?.Report("auto-install:克隆 ComfyUI Manager");
             return Task.FromResult(AutoInstallResult);
+        }
+
+        public NodeOperationResult AutoInstallCommonNodesResult { get; set; } = NodeOperationResult.Ok(null);
+        public Environment? AutoInstallCommonNodesEnv { get; private set; }
+        public int AutoInstallCommonNodesCallCount { get; private set; }
+        public bool AutoInstallCommonNodesThrows { get; set; }
+
+        protected override Task<NodeOperationResult> AutoInstallCommonNodesAsync(
+            Environment env,
+            IProgress<string>? progress,
+            CancellationToken ct)
+        {
+            AutoInstallCommonNodesCallCount++;
+            AutoInstallCommonNodesEnv = env;
+            if (AutoInstallCommonNodesThrows) throw new InvalidOperationException("模拟异常");
+            progress?.Report("auto-install-common-nodes:克隆常用节点");
+            return Task.FromResult(AutoInstallCommonNodesResult);
         }
 
         public override async Task<RequirementsInstallResult> InstallAsync(
@@ -441,6 +488,14 @@ public sealed class RequirementsInstallerTests : IDisposable
             try
             {
                 await AutoInstallComfyUiManagerAsync(env, logProgress, ct);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                await AutoInstallCommonNodesAsync(env, logProgress, ct);
             }
             catch
             {

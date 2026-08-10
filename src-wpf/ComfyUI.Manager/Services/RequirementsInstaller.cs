@@ -37,15 +37,19 @@ public class RequirementsInstaller
     private readonly AppLogger? _logger;
     private readonly RequirementsFileInstaller _reqFileInstaller;
     private readonly ComfyUIManagerInstaller _comfyUiManagerInstaller;
+    // v0.6.11++:装依赖末尾 best-effort 装常用节点(G5 不阻断 requirements)。
+    private readonly CommonNodeInstaller? _commonNodeInstaller;
 
     public RequirementsInstaller(
         AppLogger? logger = null,
         RequirementsFileInstaller? reqFileInstaller = null,
-        ComfyUIManagerInstaller? comfyUiManagerInstaller = null)
+        ComfyUIManagerInstaller? comfyUiManagerInstaller = null,
+        CommonNodeInstaller? commonNodeInstaller = null)
     {
         _logger = logger;
         _reqFileInstaller = reqFileInstaller ?? new RequirementsFileInstaller();
         _comfyUiManagerInstaller = comfyUiManagerInstaller ?? new ComfyUIManagerInstaller(_reqFileInstaller);
+        _commonNodeInstaller = commonNodeInstaller;
     }
 
     /// <summary>
@@ -111,6 +115,10 @@ public class RequirementsInstaller
             // v0.6.11+ T5: requirements 成功后自动装 ComfyUI Manager。失败不阻断
             // requirements(只 WARN 日志)— 用户可以手动 toggle 重试。
             await AutoInstallComfyUiManagerAsync(env, logProgress, ct);
+
+            // v0.6.11++: requirements 成功后自动装常用节点。失败不阻断
+            // requirements(只 WARN 日志)— 用户可以手动 toggle 重试。
+            await AutoInstallCommonNodesAsync(env, logProgress, ct);
         }
         else
         {
@@ -141,6 +149,39 @@ public class RequirementsInstaller
             _logger?.Warn("requirements-auto-install-manager",
                 $"env='{env.Name}' ComfyUI Manager 自动装异常:{ex.Message}");
             progress?.Report($"warn:ComfyUI Manager 自动装异常:{ex.Message}");
+            return NodeOperationResult.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// v0.6.11++:requirements 成功后自动装常用节点(Settings.CommonNodes 勾选项)。
+    /// 同 AutoInstallComfyUiManagerAsync 的 swallow pattern:G5 best-effort,
+    /// caller 不感知失败(requirements 已成功)。test seam:protected virtual 让
+    /// FakeRequirementsInstaller override 验调用。
+    /// </summary>
+    protected virtual async Task<NodeOperationResult> AutoInstallCommonNodesAsync(
+        Environment env,
+        IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        if (_commonNodeInstaller is null) return NodeOperationResult.Ok("未配置 CommonNodeInstaller");
+        try
+        {
+            progress?.Report("stage:自动装常用节点");
+            var result = await _commonNodeInstaller.InstallEnabledAsync(env, progress, ct);
+            if (!result.Success)
+            {
+                _logger?.Warn("requirements-auto-install-common-nodes",
+                    $"env='{env.Name}' 常用节点自动装失败(reason={result.Reason});requirements 已成功,用户可在 Settings 调整后重试");
+                progress?.Report($"warn:常用节点自动装失败:{result.Reason}");
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("requirements-auto-install-common-nodes",
+                $"env='{env.Name}' 常用节点自动装异常:{ex.Message}");
+            progress?.Report($"warn:常用节点自动装异常:{ex.Message}");
             return NodeOperationResult.Fail(ex.Message);
         }
     }

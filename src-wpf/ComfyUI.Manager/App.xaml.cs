@@ -153,8 +153,6 @@ public partial class App : Application
             catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo, logger);
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy, logger);
-        var envCreator = new EnvCreatorService(
-            dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
         var baseEnvInstaller = new BaseEnvInstaller(envRepo, logger);
         // v0.6.5.x hotfix:Env 删除跑腿 service(stop running + 删目录 + 删 SQLite 行)。
         // 复用 envRepo 跟 _launcher,跟 EnvironmentListView 共一份。
@@ -169,7 +167,24 @@ public partial class App : Application
         // v0.6.11+ T2: ComfyUI Manager 装/卸 service(env-list toggle 按钮 + 装依赖末尾自动装)。
         // 复用 reqFileInstaller 跑 Manager 自己的 requirements.txt;git 走共享的 gitExe + GitRunner。
         var comfyUiManagerInstaller = new ComfyUIManagerInstaller(reqFileInstaller, gitExe, gitProxy, logger);
-        var requirementsInstaller = new RequirementsInstaller(logger, reqFileInstaller, comfyUiManagerInstaller);
+        // v0.6.11++:常用节点自动装 service(env-create 末尾 + 装依赖末尾触发)。
+        // 走注入的 git clone func(包 GitRunner.RunAsync)— 测试可换 fake func。
+        // 共享 reqExe + GitRunner,先于 EnvCreatorService / RequirementsInstaller 构造。
+        var commonNodeInstaller = new CommonNodeInstaller(
+            settings,
+            (id, args) => gitRunner.RunAsync(".", args).ContinueWith(t =>
+            {
+                if (t.IsFaulted || t.Result.ExitCode != 0)
+                    return NodeOperationResult.Fail(
+                        t.IsFaulted ? t.Exception?.GetBaseException().Message ?? "git 异常"
+                                    : $"git exit={t.Result.ExitCode}; stderr={t.Result.Stderr.Trim()}");
+                return NodeOperationResult.Ok("cloned");
+            }),
+            logger);
+        var envCreator = new EnvCreatorService(
+            dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot,
+            commonNodeInstaller: commonNodeInstaller);
+        var requirementsInstaller = new RequirementsInstaller(logger, reqFileInstaller, comfyUiManagerInstaller, commonNodeInstaller);
         // v0.6.5.22: 卸载 service(BED reset 跟 requirements pip uninstall)。
         // EnvListVM 行内"卸载基础环境" / "卸载依赖"按钮 + 互斥 mutex 用这两份。
         _baseEnvUninstaller = new BaseEnvUninstaller(logger);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,7 +53,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
         File.WriteAllText(Path.Combine(comfyDir, "main.py"), "");
 
         _service = new EnvCreatorService(
-            _factory, _venvCreator, _linker, _settings, _rootDir);
+            _factory, _venvCreator, _linker, _settings, _rootDir, commonNodeInstaller: null);
     }
 
     public void Dispose()
@@ -156,5 +157,46 @@ public sealed class EnvCreatorServiceTests : IDisposable
         {
             Directory.CreateDirectory(destination);
         }
+    }
+
+    /// <summary>
+    /// FakeCommonNodeInstaller:fake git clone func 记录被请求 clone 的 node id。
+    /// 配 Enabled=true 的 entry,InstallEnabledAsync 会真的调 gitClone lambda,
+    /// 这样 hook 触发可通过 captures 列表断言。
+    /// </summary>
+    private static CommonNodeInstaller BuildFakeCommonNodeInstaller(List<string> calls)
+    {
+        return new CommonNodeInstaller(
+            new ComfyUI.Manager.Models.Settings
+            {
+                CommonNodes = new List<CommonNodeEntry>
+                {
+                    new() { Id = "fake/test-node", DisplayName = "Test", IsBuiltIn = true, Enabled = true },
+                },
+            },
+            (id, args) => { calls.Add(id); return Task.FromResult(NodeOperationResult.Ok("fake")); },
+            logger: null);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithCommonNodeInstaller_TriggersHookAfterUpsert()
+    {
+        // 用 fake CommonNodeInstaller 验证 step 5.7 触发
+        var hookCalls = new List<string>();
+        var fakeInstaller = BuildFakeCommonNodeInstaller(hookCalls);
+
+        var service = new EnvCreatorService(
+            _factory, _venvCreator, _linker, _settings, _rootDir, commonNodeInstaller: fakeInstaller);
+
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+        var env = await service.CreateAsync(
+            "hooktest", "shared", basePy,
+            Path.Combine(_rootDir, "ComfyUI"),
+            port: null);
+
+        // hook 拿到的 env 是 step 8 写库的同一份;fakeInstaller 的 gitClone
+        // lambda 收到 fake/test-node id(因为 Enabled=true)
+        Assert.NotNull(env);
+        Assert.Contains("fake/test-node", hookCalls);
     }
 }
