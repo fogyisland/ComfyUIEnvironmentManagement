@@ -17,4 +17,16 @@ public partial class EnvironmentListView : UserControl
             vm.RequirementsStatus?.Hide();
         }
     }
+
+    /// <summary>
+    /// v0.6.11+ T4:ComfyUI Manager 状态面板 ✕ 按钮 — 镜像 RequirementsStatus 同模式。
+    /// 失败/取消后面板持续可见,用户手动收起。
+    /// </summary>
+    private void OnComfyUiManagerStatusCloseClicked(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ViewModels.EnvironmentListViewModel vm)
+        {
+            vm.ComfyUiManagerStatus?.Hide();
+        }
+    }
 }

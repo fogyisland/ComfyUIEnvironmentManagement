@@ -204,7 +204,10 @@ public partial class App : Application
             _baseEnvUninstaller, _requirementsUninstaller,
             themeService, dashboardService, globalSearchService,
             // v0.6.10 T2:组件报告 + OpenBrowser 共享 Chrome 优先 fallback。
-            new BrowserLauncher());
+            new BrowserLauncher(),
+            // v0.6.11+ T4:ComfyUI Manager toggle 安装器 — 传给 EnvListVM
+            // ToggleComfyUiManagerCommand(显示 inline 状态面板)。
+            comfyUiManagerInstaller);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

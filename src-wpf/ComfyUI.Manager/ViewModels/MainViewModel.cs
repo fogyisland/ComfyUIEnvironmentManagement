@@ -48,6 +48,10 @@ public class MainViewModel : ViewModelBase
     private readonly RequirementsInstaller _requirementsInstaller;
     private readonly SystemInfoCollector _systemInfoCollector;
     private readonly UiPreferencesService _uiPreferencesService;
+    // v0.6.11+ T4:ComfyUI Manager toggle 安装器 — 传给 EnvironmentListViewModel 用
+    // ToggleComfyUiManagerCommand。App.xaml.cs 总是传非 null;null = 测试 ctor 不传走
+    // EnvironmentListViewModel 内部 default ComfyUIManagerInstaller(new RequirementsFileInstaller())。
+    private readonly ComfyUIManagerInstaller? _comfyUiManagerInstaller;
     // v0.6.5.22: 卸载 service — 跟 BaseEnvInstaller / RequirementsInstaller 同生命周期。
     // 传 EnvListVM 给行内"卸载基础环境" / "卸载依赖"按钮 + per-env mutex 用。
     // 字段类型可空:测试可不传(EnvListVM 自己有 null-fallback ?? new);
@@ -183,7 +187,8 @@ public class MainViewModel : ViewModelBase
         IThemeService? themeService = null,
         IDashboardService? dashboardService = null,
         IGlobalSearchService? globalSearchService = null,
-        IBrowserLauncher? browserLauncher = null)
+        IBrowserLauncher? browserLauncher = null,
+        ComfyUIManagerInstaller? comfyUiManagerInstaller = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -213,6 +218,9 @@ public class MainViewModel : ViewModelBase
         _globalSearchService = globalSearchService;
         // v0.6.10 T2:组件报告 + OpenBrowser 共享 Chrome fallback。
         _browserLauncher = browserLauncher;
+        // v0.6.11+ T4:ComfyUI Manager toggle 安装器 — 传给 EnvListVM 的
+        // ToggleComfyUiManagerCommand(显示 inline 状态面板)。可空让测试 ctor 不传。
+        _comfyUiManagerInstaller = comfyUiManagerInstaller;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -274,7 +282,7 @@ public class MainViewModel : ViewModelBase
                 envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader,
                 _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller,
                 _baseEnvUninstaller, _requirementsUninstaller,
-                _browserLauncher, ErrorBanner);
+                _browserLauncher, ErrorBanner, _comfyUiManagerInstaller);
             _environmentsView = EnvironmentsViewFactory is null
                 ? new EnvironmentListView { DataContext = _environmentsViewModel }
                 : EnvironmentsViewFactory(_environmentsViewModel) as EnvironmentListView;
