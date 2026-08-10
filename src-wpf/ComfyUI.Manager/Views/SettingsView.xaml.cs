@@ -104,6 +104,15 @@ public partial class SettingsView : UserControl
         }
     }
 
+    private void BrowseDefaultModelsDirectory(object sender, RoutedEventArgs e)
+    {
+        var picked = DataContext is SettingsViewModel vm ? vm.PickFolder() : null;
+        if (!string.IsNullOrEmpty(picked) && DataContext is SettingsViewModel vm2)
+        {
+            vm2.DefaultModelsDirectory = picked;
+        }
+    }
+
     private void BrowseSharedModelsDirectory(object sender, RoutedEventArgs e)
     {
         var picked = DataContext is SettingsViewModel vm ? vm.PickFolder() : null;

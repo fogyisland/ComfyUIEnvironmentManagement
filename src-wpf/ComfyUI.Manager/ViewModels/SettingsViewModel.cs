@@ -316,6 +316,12 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
+    // v0.6.10: 全局默认 Models 目录(env-create junction 目标)。空 = 不动 env 的 models 目录。
+    public string DefaultModelsDirectory
+    {
+        get => _settings.DefaultModelsDirectory;
+        set { _settings.DefaultModelsDirectory = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
+    }
     // v0.6.7.3: 全局共享 Models 目录。空 = 不共享。
     public string SharedModelsDirectory
     {
@@ -598,6 +604,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(DefaultPythonVersion));
         RaisePropertyChanged(nameof(GlobalNodesDir));
         RaisePropertyChanged(nameof(LocalNodeDirectory));
+        RaisePropertyChanged(nameof(DefaultModelsDirectory));
         RaisePropertyChanged(nameof(SharedModelsDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));

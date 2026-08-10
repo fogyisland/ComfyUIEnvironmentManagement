@@ -28,6 +28,11 @@ public class Settings
     [JsonPropertyName("global_nodes_dir")] public string GlobalNodesDir { get; set; } = "";
     // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,默认子目录名 "local-nodes"。
     [JsonPropertyName("local_node_directory")] public string LocalNodeDirectory { get; set; } = "";
+    // v0.6.10: 全局默认 Models 目录(env-create 时把 <env-root>/ComfyUI/models
+    // junction 到此路径,作为新 env 的默认 models 位置;每 env 可独立覆盖)。
+    // 空字符串 = 不动 env 的 models 目录(沿用项目根 fallback)。
+    [JsonPropertyName("default_models_directory")]
+    public string DefaultModelsDirectory { get; set; } = "";
     // v0.6.7.3: 全局共享 Models 目录(env-create / env-start 时
     // 把 <env-root>/ComfyUI/models junction 到此路径)。
     // 空字符串 = 不共享 Models,每 env 自己持有一份(向后兼容)。

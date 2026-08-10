@@ -44,6 +44,19 @@
                      Style="{StaticResource MaterialTextBox}" Width="480"
                      HorizontalAlignment="Left" />
 
+            <!-- v0.6.10: 全局默认 Models 目录(放共享 Models 目录之上,作为更常用的入口) -->
+            <TextBlock Text="全局默认 Models 目录(留空 = 不动 env 的 models 目录)" Margin="0,8,0,4" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseDefaultModelsDirectory"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding DefaultModelsDirectory, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+            <TextBlock Text="新建 env 时 junction &lt;env&gt;/ComfyUI/models 到此路径;留空则 env 自己保留本地 models。"
+                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+
             <!-- v0.6.7.3: 共享 Models 目录 -->
             <TextBlock Text="共享 Models 目录(留空 = 不共享)" Margin="0,8,0,4" />
             <DockPanel Margin="0,2,0,0">
