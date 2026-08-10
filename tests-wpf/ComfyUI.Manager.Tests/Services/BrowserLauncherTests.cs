@@ -36,16 +36,20 @@ public class BrowserLauncherTests
         launcher.OpenWithChromeFallback("http://127.0.0.1:8188");
 
         Assert.NotNull(firstAttempt);
-        Assert.Equal("http://127.0.0.1:8188", firstAttempt!.Arguments);
         if (chromePath is not null)
         {
             // Chrome 装了 → 第一次启动必须是 Chrome。
-            Assert.Equal(chromePath, firstAttempt.FileName);
             Assert.True(
-                firstAttempt.FileName!.EndsWith("chrome.exe", StringComparison.OrdinalIgnoreCase),
-                $"first attempt should target chrome.exe but was {firstAttempt.FileName}");
+                firstAttempt!.FileName!.EndsWith("chrome.exe", StringComparison.OrdinalIgnoreCase),
+                $"first attempt should target chrome.exe but was {firstAttempt!.FileName}");
+            Assert.Equal("http://127.0.0.1:8188", firstAttempt!.Arguments);
         }
-        // Chrome 没装时,firstAttempt.FileName 应该是 path 本身(默认浏览器 fallback)。
+        else
+        {
+            // Chrome 没装 → 第一次(也是唯一)启动尝试是默认浏览器 fallback。
+            // 默认浏览器 fallback 把 path 作为 FileName,Arguments 不设置。
+            Assert.Equal("http://127.0.0.1:8188", firstAttempt!.FileName);
+        }
     }
 
     /// <summary>
