@@ -289,6 +289,35 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set { _settings.FetchNodeVersionsOnRefresh = value; _repo.Save(_settings); RaisePropertyChanged(); }
     }
 
+    // v0.6.11++ pip mirror
+    public List<string> PipMirrorKinds { get; } = new()
+    {
+        "official", "tsinghua_tuna", "aliyun", "ustc", "custom",
+    };
+    public string PipMirror
+    {
+        get => _settings.PipMirror;
+        set
+        {
+            _settings.PipMirror = value ?? "official";
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsCustomPipMirrorSelected));
+        }
+    }
+    public string PipMirrorCustomUrl
+    {
+        get => _settings.PipMirrorCustomUrl;
+        set
+        {
+            _settings.PipMirrorCustomUrl = value ?? "";
+            _repo.Save(_settings);
+            RaisePropertyChanged();
+        }
+    }
+    public bool IsCustomPipMirrorSelected
+        => string.Equals(_settings.PipMirror, "custom", System.StringComparison.OrdinalIgnoreCase);
+
     // —— 路径 ——
     public string TemplatePythonDir
     {
@@ -624,6 +653,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
         RaisePropertyChanged(nameof(FetchNodeVersionsOnRefresh));
+        RaisePropertyChanged(nameof(PipMirror));
+        RaisePropertyChanged(nameof(PipMirrorCustomUrl));
+        RaisePropertyChanged(nameof(IsCustomPipMirrorSelected));
     }
 
     // ============ v0.6.9 T7 Spotlight 集成 ============

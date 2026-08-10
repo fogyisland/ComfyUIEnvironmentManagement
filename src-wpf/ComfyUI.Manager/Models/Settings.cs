@@ -10,6 +10,18 @@ public enum CatalogViewMode
     Tile,
 }
 
+// v0.6.11++ pip mirror:用户选 global pip 镜像(影响 ComfyUI/Manager 依赖安装,
+// BED 不受影响 — 走 pytorch.org)。string 持久化以便老 settings.json 容错:
+// 读时若枚举值不认识 → 回退 "official"(G3)。
+public enum PipMirrorKind
+{
+    Official,
+    TsinghuaTuna,
+    Aliyun,
+    USTC,
+    Custom,
+}
+
 public class Settings
 {
     // —— 基础 / 显示 ——
@@ -89,6 +101,10 @@ public class Settings
 
     [JsonPropertyName("active_python_interpreter_name")]
     public string ActivePythonInterpreterName { get; set; } = "";
+
+    // v0.6.11++ pip mirror
+    [JsonPropertyName("pip_mirror")] public string PipMirror { get; set; } = "official";
+    [JsonPropertyName("pip_mirror_custom_url")] public string PipMirrorCustomUrl { get; set; } = "";
 }
 
 public class PythonInterpreter

@@ -78,6 +78,46 @@ public sealed class RequirementsFileInstallerTests : IDisposable
         Assert.False(File.Exists(filteredPath), "filtered file 应被清理");
     }
 
+    // ===== v0.6.11++ pip mirror passthrough (G3: lazy via Func<string?>) =====
+
+    [Fact]
+    public void BuildPipArgs_ResolveFuncNull_ReturnsEmpty()
+    {
+        var args = RequirementsFileInstaller.BuildPipArgs(resolveIndexUrl: null);
+        Assert.Empty(args);
+    }
+
+    [Fact]
+    public void BuildPipArgs_ResolveFuncReturnsUrl_AppendsIndexUrlPair()
+    {
+        var args = RequirementsFileInstaller.BuildPipArgs(
+            () => "https://pypi.tuna.tsinghua.edu.cn/simple");
+        Assert.Equal(2, args.Count);
+        Assert.Equal("--index-url", args[0]);
+        Assert.Equal("https://pypi.tuna.tsinghua.edu.cn/simple", args[1]);
+    }
+
+    [Fact]
+    public void BuildPipArgs_ResolveFuncReturnsNull_ReturnsEmpty()
+    {
+        // Func 存在但返 null(走官方 / 选 custom 但 URL 空)→ 不拼 --index-url
+        var args = RequirementsFileInstaller.BuildPipArgs(() => null);
+        Assert.Empty(args);
+    }
+
+    [Fact]
+    public void BuildPipArgs_ResolveFuncInvokedEachCall_NotCached()
+    {
+        // G3 强约束:每次 BuildPipArgs 调用都重求值 Func(不缓存),
+        // 所以 Settings 在调用之间改值能立即生效。
+        int callCount = 0;
+        var args1 = RequirementsFileInstaller.BuildPipArgs(() => { callCount++; return "https://first"; });
+        var args2 = RequirementsFileInstaller.BuildPipArgs(() => { callCount++; return "https://second"; });
+        Assert.Equal("https://first", args1[1]);
+        Assert.Equal("https://second", args2[1]);
+        Assert.Equal(2, callCount);
+    }
+
     private static string? FindPython()
     {
         var candidates = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)

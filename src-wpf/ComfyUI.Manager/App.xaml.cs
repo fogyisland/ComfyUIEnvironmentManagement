@@ -162,7 +162,10 @@ public partial class App : Application
         // v0.6.5.12 + v0.6.11+: 装依赖 helper(过滤 torch 行 + 写 filtered + 跑 pip)。
         // 抽出 helper 给 RequirementsInstaller(ComfyUI 依赖)和 ComfyUIManagerInstaller
         // (ComfyUI-Manager 自己的依赖)两边复用,避免 30 行过滤逻辑复制。
-        var reqFileInstaller = new RequirementsFileInstaller();
+        // v0.6.11++:注入 lazy mirror 解析器 → 每次 InstallAsync 调用时重新求值,
+        // Settings 改值后下次 pip 调用立即生效(G3)。
+        var reqFileInstaller = new RequirementsFileInstaller(
+            resolveIndexUrl: () => PipMirrorResolver.ResolveIndexUrl(settings));
         // v0.6.11+ T2: ComfyUI Manager 装/卸 service(env-list toggle 按钮 + 装依赖末尾自动装)。
         // 复用 reqFileInstaller 跑 Manager 自己的 requirements.txt;git 走共享的 gitExe + GitRunner。
         var comfyUiManagerInstaller = new ComfyUIManagerInstaller(reqFileInstaller, gitExe, gitProxy, logger);

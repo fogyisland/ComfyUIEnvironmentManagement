@@ -33,6 +33,32 @@ public sealed class RequirementsFileInstaller
         @"^\s*#?\s*(torch|torchvision|torchaudio|torchtext|torchdata)(\s|$|[=<>!~])",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    private readonly Func<string?>? _resolveIndexUrl;
+
+    /// <summary>
+    /// v0.6.11++ pip mirror:lazy 解析器,每次 <see cref="InstallAsync"/> 调用时
+    /// 重新求值,保证 Settings 改值后下次 pip 调用立即生效(G3)。
+    /// 返 <c>null</c> / 选官方 → 不拼 <c>--index-url</c>(走官方 PyPI)。
+    /// BED 不走本 ctor,继续发 pytorch.org CUDA wheels(G4)。
+    /// </summary>
+    public RequirementsFileInstaller(Func<string?>? resolveIndexUrl = null)
+    {
+        _resolveIndexUrl = resolveIndexUrl;
+    }
+
+    /// <summary>
+    /// 把镜像 URL 包装成 pip 参数片段。<c>resolveIndexUrl</c> 为 null 或返 null → 返空列表。
+    /// 暴露为 internal static 便于 <c>RequirementsFileInstallerTests</c> 单元测;
+    /// 生产代码 <see cref="InstallAsync"/> 内部直接调。
+    /// </summary>
+    internal static IReadOnlyList<string> BuildPipArgs(Func<string?>? resolveIndexUrl)
+    {
+        if (resolveIndexUrl is null) return System.Array.Empty<string>();
+        var url = resolveIndexUrl();
+        if (string.IsNullOrWhiteSpace(url)) return System.Array.Empty<string>();
+        return new[] { "--index-url", url };
+    }
+
     /// <summary>
     /// 过滤掉 torch 系列行(让 BED profile 锁版本不被覆盖)。保留空行 / 普通注释 / 其他依赖。
     /// </summary>
@@ -101,9 +127,13 @@ public sealed class RequirementsFileInstaller
                 InstalledCount: 0);
         }
 
+        var pipArgs = new List<string> { "install", "-r", filteredOutputPath, "--disable-pip-version-check" };
+        var mirrorArgs = BuildPipArgs(_resolveIndexUrl);
+        if (mirrorArgs.Count > 0) pipArgs.AddRange(mirrorArgs);
+
         var pipResult = await RunPipAsync(
             venvPythonPath,
-            new[] { "install", "-r", filteredOutputPath, "--disable-pip-version-check" },
+            pipArgs,
             onLine ?? (_ => { }),
             ct);
 

@@ -190,6 +190,29 @@
             <!-- ============ 路径 ============ -->
             <TextBlock x:Name="SectionPaths" Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
+            <!-- ============ v0.6.11++ Pip 镜像 ============ -->
+            <TextBlock x:Name="SectionPipMirror" Text="Pip 镜像" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock Text="选择 pip 镜像源(影响 ComfyUI / ComfyUI Manager 依赖安装,BED 仍走 pytorch.org)"
+                       FontSize="11" Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+            <TextBlock Text="镜像源" Margin="0,8,0,4" />
+            <ComboBox ItemsSource="{Binding PipMirrorKinds}"
+                      SelectedItem="{Binding PipMirror, Mode=TwoWay}"
+                      Width="240" HorizontalAlignment="Left" />
+            <Grid Margin="0,8,0,0"
+                  Visibility="{Binding IsCustomPipMirrorSelected,
+                                Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="自定义 URL" VerticalAlignment="Center" />
+                <TextBox Grid.Column="1" Style="{StaticResource MaterialTextBox}" Margin="8,0,0,0"
+                         Text="{Binding PipMirrorCustomUrl, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock Text="官方(不传 --index-url)|清华 TUNA|阿里云|USTC|自定义。" Foreground="Gray" FontSize="11"
+                       Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="480" HorizontalAlignment="Left" />
+
             <TextBlock Text="模板 Python 目录(已废弃,只读)" Margin="0,8,0,4" />
             <TextBox Text="{Binding TemplatePythonDir}" IsReadOnly="True"
                      Style="{StaticResource MaterialTextBox}" />
