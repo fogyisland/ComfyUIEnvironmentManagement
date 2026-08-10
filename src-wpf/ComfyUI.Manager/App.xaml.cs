@@ -164,6 +164,9 @@ public partial class App : Application
         // (ComfyUI-Manager 自己的依赖)两边复用,避免 30 行过滤逻辑复制。
         var reqFileInstaller = new RequirementsFileInstaller();
         var requirementsInstaller = new RequirementsInstaller(logger, reqFileInstaller);
+        // v0.6.11+ T2: ComfyUI Manager 装/卸 service(env-list toggle 按钮 + 装依赖末尾自动装)。
+        // 复用 reqFileInstaller 跑 Manager 自己的 requirements.txt;git 走共享的 gitExe + GitRunner。
+        var comfyUiManagerInstaller = new ComfyUIManagerInstaller(reqFileInstaller, gitExe, gitProxy, logger);
         // v0.6.5.22: 卸载 service(BED reset 跟 requirements pip uninstall)。
         // EnvListVM 行内"卸载基础环境" / "卸载依赖"按钮 + 互斥 mutex 用这两份。
         _baseEnvUninstaller = new BaseEnvUninstaller(logger);
