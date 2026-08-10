@@ -42,11 +42,11 @@
                     <StackPanel Orientation="Horizontal">
                         <RadioButton Content="列表"
                                      GroupName="CatalogViewMode"
-                                     IsChecked="{Binding IsListMode}"
+                                     IsChecked="{Binding IsListMode, Mode=OneWay}"
                                      Style="{StaticResource CatalogSegmentedRadioButton}" />
                         <RadioButton Content="磁贴"
                                      GroupName="CatalogViewMode"
-                                     IsChecked="{Binding IsTileMode}"
+                                     IsChecked="{Binding IsTileMode, Mode=OneWay}"
                                      Style="{StaticResource CatalogSegmentedRadioButton}" />
                     </StackPanel>
                 </Border>
