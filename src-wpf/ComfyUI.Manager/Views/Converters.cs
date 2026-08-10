@@ -153,24 +153,34 @@ public sealed class InverseZeroCountToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
-/// BoolToEntryCountTextConverter:bool HasEntries + int parameter → 字符串。
-/// true + N → "共 {N} 个节点";false → "加载中…"。
+/// BoolToEntryCountTextConverter:bool HasEntries + int Count → 字符串。
+/// values[0]=true + values[1]=N → "共 {N} 个节点";values[0]=false → "加载中…"。
 /// v0.6.11+ CatalogUI polish:替换裸 "HasEntries" 的 BoolToVisibility,显示具体计数。
-/// XAML 绑定:Text="{Binding HasEntries, Converter={StaticResource BoolToEntryCountText}, ConverterParameter={Binding PagedEntries.Count}}"
+/// 必须用 IMultiValueConverter — ConverterParameter 不是 DependencyProperty,无法接受 {Binding ...},
+/// 即使能接受字面量 ConverterParameter=X 也以 string 到达,int test 永远 false。
+/// XAML 绑定(MultiBinding pattern):
+///   &lt;TextBlock&gt;
+///       &lt;TextBlock.Text&gt;
+///           &lt;MultiBinding Converter="{StaticResource BoolToEntryCountText}"&gt;
+///               &lt;Binding Path="HasEntries" /&gt;
+///               &lt;Binding Path="PagedEntries.Count" /&gt;
+///           &lt;/MultiBinding&gt;
+///       &lt;/TextBlock.Text&gt;
+///   &lt;/TextBlock&gt;
 /// </summary>
-public sealed class BoolToEntryCountTextConverter : IValueConverter
+public sealed class BoolToEntryCountTextConverter : IMultiValueConverter
 {
     public static readonly BoolToEntryCountTextConverter Instance = new();
 
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        var hasEntries = value is bool b && b;
+        var hasEntries = values.Length > 0 && values[0] is bool b && b;
         if (!hasEntries) return "加载中…";
-        var count = parameter is int n ? n : 0;
+        var count = values.Length > 1 && values[1] is int n ? n : 0;
         return $"共 {count} 个节点";
     }
 
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
     {
         throw new NotSupportedException();
     }

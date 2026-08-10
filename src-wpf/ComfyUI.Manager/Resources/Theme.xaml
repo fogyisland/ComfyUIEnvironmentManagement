@@ -416,8 +416,9 @@
     </Style>
 
     <!-- v0.6.11+ Catalog polish:详情面板版本下拉。
-         1px SecondaryBrush border + CornerRadius=4 + SurfaceBrush 背景。
-         ControlTemplate 内 Setter attribute DynamicResource 写法允许(trigger 自己处理 lookup)。
+         自定义 Background( SurfaceBrush)/ BorderBrush( SecondaryBrush)/ BorderThickness(1px)/
+         Padding / MinHeight / Foreground — 不重写 ControlTemplate(代价大),沿用 WPF 默认
+         ToggleButton+Popup 视觉。Border 圆角需要 retemplating,brief 已 decline。
          Editable=False 简化路径 — SelectedVersion 用法不要求可编辑。 -->
     <Style x:Key="CatalogVersionComboBoxStyle" TargetType="ComboBox">
         <Setter Property="Background">
@@ -499,6 +500,15 @@
                                Foreground="{DynamicResource OnSurfaceBrush}"
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding RawMetadata[stars]}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
                         <TextBlock Text="⭐ " FontSize="12"
                                    Foreground="{DynamicResource OutlineBrush}" />
                         <TextBlock Text="{Binding RawMetadata[stars]}"
