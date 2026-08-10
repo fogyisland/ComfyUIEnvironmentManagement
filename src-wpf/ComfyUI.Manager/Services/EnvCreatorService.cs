@@ -164,6 +164,30 @@ public sealed class EnvCreatorService
             }
         }
 
+        // 5.6 链接默认 Models 目录(若 DefaultModelsDirectory 非空且 SharedModelsDirectory 未配置)
+        if (!string.IsNullOrWhiteSpace(_settings.DefaultModelsDirectory)
+            && string.IsNullOrWhiteSpace(_settings.SharedModelsDirectory))
+        {
+            var defaultModelsFull = Path.GetFullPath(_settings.DefaultModelsDirectory);
+            var modelsLink = Path.Combine(comfyuiLink, "models");
+            progress?.Report(new CreateStepReport("链接默认 Models",
+                $"junction: {modelsLink} → {defaultModelsFull}"));
+            try
+            {
+                if (Directory.Exists(modelsLink))
+                {
+                    Directory.Delete(modelsLink, recursive: true);
+                }
+                await _linker.CreateAsync(modelsLink, defaultModelsFull, ct);
+            }
+            catch (Exception ex)
+            {
+                try { Directory.Delete(rootPath, recursive: true); } catch { }
+                throw new CreateEnvException("DEFAULT_MODELS_LINK_FAILED",
+                    $"默认 Models junction 创建失败: {ex.Message}");
+            }
+        }
+
         // 6. 创建 venv
         var venvPath = Path.Combine(rootPath, "venv");
         progress?.Report(new CreateStepReport("创建 venv 环境",
