@@ -12,13 +12,15 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.Services;
 
 /// <summary>
-/// BulkUpdateOrchestrator:串行在 (env, node) 组合上跑 git pull,逐行 emit
-/// 进度事件。这是 M5.2 移除 Python control service 后,替代原
-/// bulk_update_service.py 在 WPF 端跑批量的实现。
+/// BulkUpdateOrchestrator:串行在 (env, target) 组合上跑 git pull,逐行 emit
+/// 进度事件。v0.6.11 T8:target 不再是 per-node,而是 ComfyUI 源或
+/// ComfyUI-Manager 子目录。这是 M5.2 移除 Python control service 后,
+/// 替代原 bulk_update_service.py 在 WPF 端跑批量的实现。
 ///
 /// - 串行:每次一个 git 进程,避免并发抢占 stdout/stderr pipe。
-/// - 跳过 vs 失败:env 缺 custom_nodes_path 或 node 目录不存在 → "skipped";
-///   git 返回非 0 / 超时 / 抛异常 → "failed"。
+/// - 跳过 vs 失败:env 不存在 / env 缺 ComfyuiSource / ComfyUI-Manager 目录
+///   不存在 → "skipped";git 返回非 0 / 超时 / 抛异常 → "failed"。
+///   注:BED 状态不参与判断(git pull 跟 torch 部署无关)。
 /// - 超时:每个 git pull 上限 30s,超时即 cancel 进程,记为 failed。
 /// - 取消:Caller 通过传入的 CancellationToken 或调用本类的 CancelAsync()
 ///   取消,已发出的 Progress 行保留 terminal 状态,未发出的不再发出。
@@ -41,7 +43,7 @@ public sealed class BulkUpdateOrchestrator
     private readonly object _runLock = new();
     private string _currentBulkId = "";
 
-    /// <summary>每行 (env, node) 状态变更时触发。在 background task 上触发。</summary>
+    /// <summary>每行 (env, target) 状态变更时触发。在 background task 上触发。</summary>
     public event Action<BulkUpdateRow>? Progress;
 
     /// <summary>整个 run 结束(成功 / 取消 / 失败)时触发一次。</summary>
@@ -102,14 +104,17 @@ public sealed class BulkUpdateOrchestrator
     /// <summary>
     /// 跑一次批量更新。返回的 Task 在 run 完成(success / cancelled / fail)后结束。
     /// 内部用 Task.Run 包装以避免阻塞调用线程。事件从 background task 触发。
+    ///
+    /// v0.6.11 T8:targetKinds 是 BulkUpdateTargetKind 列表(ComfyUi / ComfyUiManager),
+    /// 而不是 nodeId 列表。orchestrator 在每个 env 的对应目录跑 git pull。
     /// </summary>
     public Task<BulkUpdateSummary> StartAsync(
         IReadOnlyList<string> envIds,
-        IReadOnlyList<string> nodeIds,
+        IReadOnlyList<BulkUpdateTargetKind> targetKinds,
         CancellationToken ct = default)
     {
         if (envIds is null) throw new ArgumentNullException(nameof(envIds));
-        if (nodeIds is null) throw new ArgumentNullException(nameof(nodeIds));
+        if (targetKinds is null) throw new ArgumentNullException(nameof(targetKinds));
 
         var bulkId = Guid.NewGuid().ToString("N");
         CancellationTokenSource linked;
@@ -124,21 +129,21 @@ public sealed class BulkUpdateOrchestrator
         }
 
         // 用 Task.Run 包装异步 method body,把整个 run 丢到后台。
-        return Task.Run(() => RunAsync(bulkId, envIds, nodeIds, linked.Token, linked));
+        return Task.Run(() => RunAsync(bulkId, envIds, targetKinds, linked.Token, linked));
     }
 
     private async Task<BulkUpdateSummary> RunAsync(
         string bulkId,
         IReadOnlyList<string> envIds,
-        IReadOnlyList<string> nodeIds,
+        IReadOnlyList<BulkUpdateTargetKind> targetKinds,
         CancellationToken ct,
         CancellationTokenSource linkedCts)
     {
-        _logger?.Info("bulk-update", $"开始 bulkId={bulkId[..8]} envs={envIds.Count} nodes={nodeIds.Count}");
+        _logger?.Info("bulk-update", $"开始 bulkId={bulkId[..8]} envs={envIds.Count} targets={targetKinds.Count}");
 
         var logPath = Path.Combine(_projectRoot, "logs", $"bulk-update-{bulkId}.log");
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-        // 全 run 共享一个流,而不是每次 (env,node) 重新打开 ——
+        // 全 run 共享一个流,而不是每次 (env,target) 重新打开 ——
         // 保持与 ProcessLauncher 的 log 格式风格一致,便于 tail。
         await using var logStream = new FileStream(
             logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
@@ -159,30 +164,30 @@ public sealed class BulkUpdateOrchestrator
             var env = _envRepo.Get(envId);
             if (env is null)
             {
-                // env row 不存在 —— 视为 env 跳过,所有 node 跳过
-                foreach (var nodeId in nodeIds)
+                // env row 不存在 —— 视为 env 跳过,所有 target 跳过
+                foreach (var target in targetKinds)
                 {
                     var tsRow = Stopwatch.StartNew();
-                    var row = Emit(rows, logWriter, bulkId, envId, nodeId, "skipped", "env 不存在", 0);
+                    var row = Emit(rows, logWriter, bulkId, envId, target, "skipped", "env 不存在", 0);
                     tsRow.Stop();
                     skipped++;
                 }
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(env.CustomNodesPath))
+            if (string.IsNullOrWhiteSpace(env.ComfyuiSource))
             {
-                foreach (var nodeId in nodeIds)
+                foreach (var target in targetKinds)
                 {
                     var tsRow = Stopwatch.StartNew();
-                    var row = Emit(rows, logWriter, bulkId, envId, nodeId, "skipped", "env 缺 custom_nodes_path", 0);
+                    var row = Emit(rows, logWriter, bulkId, envId, target, "skipped", "env 缺 ComfyUI 源", 0);
                     tsRow.Stop();
                     skipped++;
                 }
                 continue;
             }
 
-            foreach (var nodeId in nodeIds)
+            foreach (var target in targetKinds)
             {
                 if (ct.IsCancellationRequested)
                 {
@@ -190,26 +195,34 @@ public sealed class BulkUpdateOrchestrator
                     break;
                 }
 
-                var nodeDir = Path.Combine(env.CustomNodesPath, nodeId);
+                var targetDir = ResolveTargetDirectory(env, target);
                 var sw = Stopwatch.StartNew();
 
                 // emit "running"
-                var runningRow = new BulkUpdateRow(envId, nodeId, "running", null, 0);
+                var runningRow = new BulkUpdateRow(envId, target, "running", null, 0);
                 rows.Add(runningRow);
-                EmitLog(logWriter, bulkId, envId, nodeId, "START");
+                EmitLog(logWriter, bulkId, envId, target, "START");
 
                 var pStart = Progress;
                 pStart?.Invoke(runningRow);
 
-                // 节点目录不存在 → skip
-                if (!Directory.Exists(nodeDir))
+                // target 目录不存在 → skip
+                if (targetDir is null || !Directory.Exists(targetDir))
                 {
                     sw.Stop();
+                    // target 目录不存在 → skip,reason 按 target 类型不同:
+                    // - ComfyUi → "目录不存在"(ComfyUI 源都不在)
+                    // - ComfyUiManager → "ComfyUI-Manager 未安装"(只 manager 子目录缺失)
+                    string skipReason = target switch
+                    {
+                        BulkUpdateTargetKind.ComfyUiManager => "ComfyUI-Manager 未安装",
+                        _ => "目录不存在",
+                    };
                     var skippedRow = new BulkUpdateRow(
-                        envId, nodeId, "skipped", "目录不存在", (int)sw.ElapsedMilliseconds);
+                        envId, target, "skipped", skipReason, (int)sw.ElapsedMilliseconds);
                     ReplaceLast(rows, runningRow, skippedRow);
-                    EmitLog(logWriter, bulkId, envId, nodeId,
-                        $"END status=skipped reason=目录不存在 ms={sw.ElapsedMilliseconds}");
+                    EmitLog(logWriter, bulkId, envId, target,
+                        $"END status=skipped reason={skipReason} ms={sw.ElapsedMilliseconds}");
                     var pSkip = Progress;
                     pSkip?.Invoke(skippedRow);
                     skipped++;
@@ -217,22 +230,22 @@ public sealed class BulkUpdateOrchestrator
                 }
 
                 // 跑 git pull --ff-only
-                var (status, reason, stdout, stderr) = await RunGitPullAsync(nodeDir, ct);
+                var (status, reason, stdout, stderr) = await RunGitPullAsync(targetDir, ct);
                 sw.Stop();
 
-                EmitLog(logWriter, bulkId, envId, nodeId,
+                EmitLog(logWriter, bulkId, envId, target,
                     $"END status={status} reason={reason ?? "-"} ms={sw.ElapsedMilliseconds}");
                 foreach (var line in EnumerateLines(stdout))
                 {
-                    EmitLog(logWriter, bulkId, envId, nodeId, $"OUT: {line}");
+                    EmitLog(logWriter, bulkId, envId, target, $"OUT: {line}");
                 }
                 foreach (var line in EnumerateLines(stderr))
                 {
-                    EmitLog(logWriter, bulkId, envId, nodeId, $"ERR: {line}");
+                    EmitLog(logWriter, bulkId, envId, target, $"ERR: {line}");
                 }
 
                 var terminalRow = new BulkUpdateRow(
-                    envId, nodeId, status, reason, (int)sw.ElapsedMilliseconds);
+                    envId, target, status, reason, (int)sw.ElapsedMilliseconds);
                 ReplaceLast(rows, runningRow, terminalRow);
                 var pDone = Progress;
                 pDone?.Invoke(terminalRow);
@@ -294,11 +307,28 @@ public sealed class BulkUpdateOrchestrator
     }
 
     /// <summary>
+    /// 把 (env, targetKind) 映射到具体目录路径。
+    /// 返回 null 表示该 target 不应尝试(目前只有 ComfyUiManager 在目录
+    /// 必然存在前为 null;不过这里仍然返回计算路径,由调用者判断目录存在性)。
+    /// </summary>
+    public static string? ResolveTargetDirectory(Environment env, BulkUpdateTargetKind target)
+    {
+        if (string.IsNullOrWhiteSpace(env.ComfyuiSource)) return null;
+        return target switch
+        {
+            BulkUpdateTargetKind.ComfyUi => env.ComfyuiSource,
+            BulkUpdateTargetKind.ComfyUiManager => Path.Combine(
+                env.ComfyuiSource, "custom_nodes", "ComfyUI-Manager"),
+            _ => null,
+        };
+    }
+
+    /// <summary>
     /// 跑 `git -C &lt;dir&gt; pull --ff-only`,30s 超时。
     /// 返回 status: "succeeded" | "failed"; reason: null / "timeout" / stderr 头 / 异常信息。
     /// </summary>
     private async Task<(string Status, string? Reason, string Stdout, string Stderr)>
-        RunGitPullAsync(string nodeDir, CancellationToken ct)
+        RunGitPullAsync(string targetDir, CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
@@ -307,12 +337,12 @@ public sealed class BulkUpdateOrchestrator
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true,
-            WorkingDirectory = nodeDir,
+            WorkingDirectory = targetDir,
         };
         // 代理:启用时把 HTTP_PROXY/HTTPS_PROXY 注入到这一个 psi(per-process)。
         _proxy?.ApplyTo(psi);
         psi.ArgumentList.Add("-C");
-        psi.ArgumentList.Add(nodeDir);
+        psi.ArgumentList.Add(targetDir);
         psi.ArgumentList.Add("pull");
         psi.ArgumentList.Add("--ff-only");
 
@@ -393,18 +423,18 @@ public sealed class BulkUpdateOrchestrator
         StreamWriter logWriter,
         string bulkId,
         string envId,
-        string nodeId,
+        BulkUpdateTargetKind target,
         string status,
         string? reason,
         int latencyMs)
     {
-        var row = new BulkUpdateRow(envId, nodeId, status, reason, latencyMs);
+        var row = new BulkUpdateRow(envId, target, status, reason, latencyMs);
         rows.Add(row);
-        EmitLog(logWriter, bulkId, envId, nodeId,
+        EmitLog(logWriter, bulkId, envId, target,
             $"END status={status} reason={reason ?? "-"} ms={latencyMs}");
         var pEmit = Progress;
         pEmit?.Invoke(row);
-        return new BulkUpdateRow(envId, nodeId, status, reason, latencyMs);
+        return new BulkUpdateRow(envId, target, status, reason, latencyMs);
     }
 
     private static void ReplaceLast(
@@ -424,11 +454,11 @@ public sealed class BulkUpdateOrchestrator
         StreamWriter w,
         string bulkId,
         string envId,
-        string nodeId,
+        BulkUpdateTargetKind target,
         string message)
     {
         var ts = DateTime.Now.ToString("HH:mm:ss.fff");
-        w.WriteLine($"[{ts}] [bulk {bulkId[..8]}] env={envId} node={nodeId} {message}");
+        w.WriteLine($"[{ts}] [bulk {bulkId[..8]}] env={envId} target={target} {message}");
     }
 
     private static IEnumerable<string> EnumerateLines(string text)

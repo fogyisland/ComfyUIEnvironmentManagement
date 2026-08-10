@@ -1,4 +1,5 @@
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Tests.Fakes;
 using ComfyUI.Manager.ViewModels;
@@ -18,11 +19,7 @@ public class BulkUpdateDialogViewModelTests
 
         var vm = new BulkUpdateDialogViewModel(orch);
         var env1 = new EnvRow("env-1", "Env 1");
-        env1.Nodes.Add(new NodeSelectRow("node-a", "Node A"));
-        env1.Nodes.Add(new NodeSelectRow("node-b", "Node B"));
         env1.Selected = true;
-        env1.Nodes[0].Selected = true;
-        env1.Nodes[1].Selected = true;
         vm.LoadEnvs(new[] { env1 });
         return vm;
     }
@@ -32,7 +29,6 @@ public class BulkUpdateDialogViewModelTests
     {
         var vm = NewVmWithFixture();
         Assert.Single(vm.EnvRows);
-        Assert.Equal(2, vm.EnvRows[0].Nodes.Count);
     }
 
     [Fact]
@@ -40,7 +36,10 @@ public class BulkUpdateDialogViewModelTests
     {
         var vm = NewVmWithFixture();
         Assert.Equal(new[] { "env-1" }, vm.SelectedEnvIds());
-        Assert.Equal(new[] { "node-a", "node-b" }, vm.SelectedNodeIds());
+        // v0.6.11 T8:默认两个 target 都勾上。
+        Assert.Equal(
+            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            vm.SelectedTargetKinds());
     }
 
     [Fact]
@@ -48,6 +47,27 @@ public class BulkUpdateDialogViewModelTests
     {
         var vm = NewVmWithFixture();
         Assert.True(vm.StartCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void StartCommand_DisabledWhenAllTargetsUnchecked()
+    {
+        var vm = NewVmWithFixture();
+        vm.UpdateComfyUi = false;
+        vm.UpdateComfyUiManager = false;
+        Assert.False(vm.StartCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void StartCommand_EnabledWhenOneTargetChecked()
+    {
+        var vm = NewVmWithFixture();
+        vm.UpdateComfyUi = true;
+        vm.UpdateComfyUiManager = false;
+        Assert.True(vm.StartCommand.CanExecute(null));
+        Assert.Equal(
+            new[] { BulkUpdateTargetKind.ComfyUi },
+            vm.SelectedTargetKinds());
     }
 
     [Fact]

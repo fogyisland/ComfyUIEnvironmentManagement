@@ -69,6 +69,34 @@ public class BulkUpdateDialogViewModel : ViewModelBase
         }
     }
 
+    /// <summary>v0.6.11 T8:是否更新 ComfyUI 源。默认勾上。</summary>
+    private bool _updateComfyUi = true;
+    public bool UpdateComfyUi
+    {
+        get => _updateComfyUi;
+        set
+        {
+            if (_updateComfyUi == value) return;
+            _updateComfyUi = value;
+            RaisePropertyChanged();
+            StartCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>v0.6.11 T8:是否更新 ComfyUI-Manager。默认勾上。</summary>
+    private bool _updateComfyUiManager = true;
+    public bool UpdateComfyUiManager
+    {
+        get => _updateComfyUiManager;
+        set
+        {
+            if (_updateComfyUiManager == value) return;
+            _updateComfyUiManager = value;
+            RaisePropertyChanged();
+            StartCommand.RaiseCanExecuteChanged();
+        }
+    }
+
     public BulkUpdateDialogViewModel(BulkUpdateOrchestrator orchestrator)
     {
         _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
@@ -100,35 +128,33 @@ public class BulkUpdateDialogViewModel : ViewModelBase
     private bool CanStart() =>
         !IsBusy
         && EnvRows.Any(e => e.Selected)
-        && EnvRows.Where(e => e.Selected)
-            .SelectMany(e => e.Nodes)
-            .Any(n => n.Selected);
+        && (UpdateComfyUi || UpdateComfyUiManager);
 
     public List<string> SelectedEnvIds() =>
         EnvRows.Where(e => e.Selected).Select(e => e.EnvId).ToList();
 
-    public List<string> SelectedNodeIds() =>
-        EnvRows.Where(e => e.Selected)
-            .SelectMany(e => e.Nodes)
-            .Where(n => n.Selected)
-            .Select(n => n.NodeId)
-            .Distinct()
-            .ToList();
+    public List<BulkUpdateTargetKind> SelectedTargetKinds()
+    {
+        var kinds = new List<BulkUpdateTargetKind>(2);
+        if (UpdateComfyUi) kinds.Add(BulkUpdateTargetKind.ComfyUi);
+        if (UpdateComfyUiManager) kinds.Add(BulkUpdateTargetKind.ComfyUiManager);
+        return kinds;
+    }
 
     private void Start()
     {
         var envIds = SelectedEnvIds();
-        var nodeIds = SelectedNodeIds();
-        if (envIds.Count == 0 || nodeIds.Count == 0) return;
+        var targetKinds = SelectedTargetKinds();
+        if (envIds.Count == 0 || targetKinds.Count == 0) return;
 
-        // 预填 Rows —— 一个 (env, node) 一条 "pending"。Orchestrator 的 Progress
+        // 预填 Rows —— 一个 (env, target) 一条 "pending"。Orchestrator 的 Progress
         // 事件从背景任务发,我们用索引直接更新对应 row 而无需每次都遍历查找。
         Rows.Clear();
         for (int i = 0; i < envIds.Count; i++)
         {
-            for (int j = 0; j < nodeIds.Count; j++)
+            for (int j = 0; j < targetKinds.Count; j++)
             {
-                Rows.Add(new BulkUpdateRow(envIds[i], nodeIds[j], "pending", null, 0));
+                Rows.Add(new BulkUpdateRow(envIds[i], targetKinds[j], "pending", null, 0));
             }
         }
 
@@ -141,7 +167,7 @@ public class BulkUpdateDialogViewModel : ViewModelBase
         ErrorMessage = null;
         BulkId = _orchestrator.CurrentBulkId; // StartAsync 前为空,Orchestrator 启动后才填
 
-        _ = _orchestrator.StartAsync(envIds, nodeIds, _runCts.Token)
+        _ = _orchestrator.StartAsync(envIds, targetKinds, _runCts.Token)
             .ContinueWith(t => DispatcherHelper.RunOnUiAsync(() => OnRunFinished(t)));
     }
 
@@ -168,12 +194,12 @@ public class BulkUpdateDialogViewModel : ViewModelBase
     {
         DispatcherHelper.RunOnUiAsync(() =>
         {
-            // 找到现有的 pending / running 行,直接替换 —— 其它字段(env/node)不变,
+            // 找到现有的 pending / running 行,直接替换 —— 其它字段(env/target)不变,
             // 只更新 Status/Reason/LatencyMs。
             for (int i = 0; i < Rows.Count; i++)
             {
                 var existing = Rows[i];
-                if (existing.EnvId == row.EnvId && existing.NodeId == row.NodeId
+                if (existing.EnvId == row.EnvId && existing.TargetKind == row.TargetKind
                     && existing.Status is "pending" or "running")
                 {
                     Rows[i] = row;
@@ -225,7 +251,6 @@ public class EnvRow : ViewModelBase
     private bool _selected;
     public string EnvId { get; }
     public string DisplayName { get; }
-    public ObservableCollection<NodeSelectRow> Nodes { get; } = new();
     public bool Selected
     {
         get => _selected;
@@ -234,23 +259,6 @@ public class EnvRow : ViewModelBase
     public EnvRow(string envId, string displayName)
     {
         EnvId = envId;
-        DisplayName = displayName;
-    }
-}
-
-public class NodeSelectRow : ViewModelBase
-{
-    private bool _selected;
-    public string NodeId { get; }
-    public string DisplayName { get; }
-    public bool Selected
-    {
-        get => _selected;
-        set { _selected = value; RaisePropertyChanged(); }
-    }
-    public NodeSelectRow(string nodeId, string displayName)
-    {
-        NodeId = nodeId;
         DisplayName = displayName;
     }
 }

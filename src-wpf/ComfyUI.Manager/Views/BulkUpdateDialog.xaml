@@ -32,15 +32,24 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 顶部:env + 节点多选(仅 SelectEnv 模式) -->
+        <!-- 顶部:target checkboxes + env 全选/列表(仅 SelectEnv 模式) -->
         <StackPanel Grid.Row="0" Orientation="Vertical" Margin="0,0,0,12"
                     Style="{StaticResource SelectEnvVisibility}">
+            <!-- v0.6.11 T8:两个 target checkbox 取代旧版 per-env × per-node 网格 -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <CheckBox Content="{DynamicResource BulkUpdate_TargetComfyUi}"
+                          IsChecked="{Binding UpdateComfyUi}"
+                          VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <CheckBox Content="{DynamicResource BulkUpdate_TargetComfyUiManager}"
+                          IsChecked="{Binding UpdateComfyUiManager}"
+                          VerticalAlignment="Center"/>
+            </StackPanel>
             <StackPanel Orientation="Horizontal">
                 <CheckBox Content="全选"
                           Command="{Binding ToggleSelectAllCommand}"
                           VerticalAlignment="Center"/>
                 <TextBlock Margin="12,0,0,0" VerticalAlignment="Center"
-                           Text="选择 env 和节点后点击 Start"/>
+                           Text="选择 env 后点击 Start"/>
             </StackPanel>
             <ScrollViewer MaxHeight="180" Margin="0,8,0,0"
                           VerticalScrollBarVisibility="Auto">
@@ -50,19 +59,8 @@
                             <Border Margin="0,2" Padding="6"
                                     BorderBrush="{DynamicResource SurfaceBrush}"
                                     BorderThickness="1">
-                                <StackPanel>
-                                    <CheckBox Content="{Binding DisplayName}"
-                                              IsChecked="{Binding Selected}"/>
-                                    <ItemsControl ItemsSource="{Binding Nodes}"
-                                                  Margin="20,4,0,0">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type vm:NodeSelectRow}">
-                                                <CheckBox Content="{Binding DisplayName}"
-                                                          IsChecked="{Binding Selected}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
+                                <CheckBox Content="{Binding DisplayName}"
+                                          IsChecked="{Binding Selected}"/>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -78,7 +76,7 @@
                   EnableRowVirtualization="True">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Env" Binding="{Binding EnvId}" Width="120"/>
-                <DataGridTextColumn Header="Node" Binding="{Binding NodeId}" Width="200"/>
+                <DataGridTextColumn Header="Target" Binding="{Binding TargetKind}" Width="160"/>
                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
                 <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*"/>
                 <DataGridTextColumn Header="ms" Binding="{Binding LatencyMs}" Width="60"/>

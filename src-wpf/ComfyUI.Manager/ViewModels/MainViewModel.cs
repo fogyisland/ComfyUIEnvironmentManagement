@@ -327,20 +327,13 @@ public class MainViewModel : ViewModelBase
     {
         CurrentSection = MainSection.BulkUpdate;
         var envRepo = new EnvironmentRepository(_dbFactory);
-        var nodeRepo = new NodeRepository(_dbFactory);
 
-        // 把 env 列表一次填进 EnvRows(LoadEnvs 会先 Clear),
-        // 每个 EnvRow 下面挂它扫到的 node 列表(nodeId = dir name)。
+        // v0.6.11 T8:BulkUpdate 不再按节点维度,而是按 env × {ComfyUI, ComfyUI-Manager}
+        // 跑 git pull。EnvRow 只挂 env 选择,不再填 Nodes。
         var vm = new BulkUpdateDialogViewModel(_orchestrator);
-        var envRows = envRepo.ListAll().Select(env =>
-        {
-            var envRow = new EnvRow(env.Id, env.Name);
-            foreach (var node in nodeRepo.ListByEnv(env.Id))
-            {
-                envRow.Nodes.Add(new NodeSelectRow(node.Id, node.Package ?? node.Id));
-            }
-            return envRow;
-        }).ToList();
+        var envRows = envRepo.ListAll()
+            .Select(env => new EnvRow(env.Id, env.Name))
+            .ToList();
         vm.LoadEnvs(envRows);
         BulkUpdateDialog.Show(vm);
     }

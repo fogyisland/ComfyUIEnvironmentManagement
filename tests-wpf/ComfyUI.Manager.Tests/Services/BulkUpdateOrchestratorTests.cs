@@ -19,6 +19,8 @@ namespace ComfyUI.Manager.Tests.Services;
 /// 不 mock git 本身(测试代码里只 mock git exe 路径,文件 IO 与 SQLite 走真)。
 ///
 /// git 仓库在 %TEMP% 下临时初始化,完成后清理。
+///
+/// v0.6.11 T8:target 不再是 per-node,而是 ComfyUI 源或 ComfyUI-Manager。
 /// </summary>
 public sealed class BulkUpdateOrchestratorTests
 {
@@ -107,39 +109,35 @@ public sealed class BulkUpdateOrchestratorTests
         return port;
     }
 
+    /// <summary>
+    /// v0.6.11 T8:SeedEnv 不再填 nodes,只 seed env row + 设 ComfyuiSource。
+    /// comfyuiSource 可为 null —— 表示 env 还没装 ComfyUI(测试跳过路径)。
+    /// 注意:RootPath 必须非空(EnvironmentRepository.Upsert 列不能为 null);
+    /// 调用方用 null 时把 RootPath 设为 tempRoot。
+    /// </summary>
     private static void SeedEnv(
         EnvironmentRepository envRepo,
-        NodeRepository nodeRepo,
         string envId,
-        string customNodesPath,
-        params (string NodeId, string PackagePath)[] nodes)
+        string? comfyuiSource,
+        string rootPathFallback = "")
     {
         envRepo.Upsert(new Environment
         {
             Id = envId,
             Name = envId,
-            RootPath = customNodesPath,
+            RootPath = comfyuiSource ?? rootPathFallback,
             ComfyuiLayout = "isolated",
-            CustomNodesPath = customNodesPath,
+            ComfyuiSource = comfyuiSource,
+            CustomNodesPath = comfyuiSource is null
+                ? null
+                : Path.Combine(comfyuiSource, "custom_nodes"),
             Port = FreePort(),
             Status = "stopped",
         });
-
-        foreach (var (nodeId, packagePath) in nodes)
-        {
-            nodeRepo.Upsert(new ScannedNode
-            {
-                Id = nodeId,
-                EnvId = envId,
-                Package = nodeId,
-                PackagePath = packagePath,
-                Status = "enabled",
-            });
-        }
     }
 
     [Fact]
-    public async Task StartAsync_PrePopulatesAllRows_ThenMarksSucceeded()
+    public async Task StartAsync_PullsComfyUiSource_OnSuccess()
     {
         if (string.IsNullOrEmpty(FindGit())) return; // git 缺失 → 跳过
 
@@ -148,26 +146,14 @@ public sealed class BulkUpdateOrchestratorTests
         var logsRoot = Path.Combine(tempRoot, "logs");
         Directory.CreateDirectory(tempRoot);
 
-        // 实际目录布局:customNodesPath = <tempRoot>/nodes,真实 git 仓库在
-        // <tempRoot>/nodes/node-a (orchestrator 用 customNodesPath + nodeId
-        // 推导目录)。bare 远程放到 <tempRoot>/remote.git 与 nodes/ 平级。
-        var (_, _) = InitRepoPair(tempRoot);
-        // 把 working 仓库搬到 nodes/node-a 下做主目录
-        var nodesRoot = Path.Combine(tempRoot, "nodes");
-        var working = Path.Combine(nodesRoot, "node-a");
-        Directory.CreateDirectory(nodesRoot);
-        var srcWorking = Path.Combine(tempRoot, "working");
-        if (Directory.Exists(srcWorking))
-        {
-            Directory.Move(srcWorking, working);
-            // remote 引用是绝对/相对路径,改 origin 到新位置
-            RunGit(working, "remote", "set-url", "origin", Path.Combine(tempRoot, "remote.git"));
-        }
+        // working 仓库直接放在 comfyuiSource 上 —— orchestrator 用
+        // env.ComfyuiSource 作 git pull 目录。
+        var (_, working) = InitRepoPair(tempRoot);
 
         using var db = new TestDb();
         var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
-        SeedEnv(envRepo, nodeRepo, "env-1", nodesRoot, ("node-a", working));
+        SeedEnv(envRepo, "env-1", working);
 
         var orch = new BulkUpdateOrchestrator(
             tempRoot, "git", envRepo, nodeRepo);
@@ -178,7 +164,9 @@ public sealed class BulkUpdateOrchestratorTests
         orch.Completed += s => completed = s;
 
         var summary = await orch.StartAsync(
-            new[] { "env-1" }, new[] { "node-a" }, CancellationToken.None);
+            new[] { "env-1" },
+            new[] { BulkUpdateTargetKind.ComfyUi },
+            CancellationToken.None);
 
         Assert.NotNull(completed);
         Assert.Equal(1, summary.Total);
@@ -188,13 +176,16 @@ public sealed class BulkUpdateOrchestratorTests
 
         // 至少一次 running 一次 succeeded
         Assert.Contains(progress, r => r.Status == "running");
-        Assert.Contains(progress, r => r.Status == "succeeded" && r.EnvId == "env-1" && r.NodeId == "node-a");
+        Assert.Contains(progress, r =>
+            r.Status == "succeeded"
+            && r.EnvId == "env-1"
+            && r.TargetKind == BulkUpdateTargetKind.ComfyUi);
         // log 文件存在
         Assert.True(Directory.EnumerateFiles(logsRoot, "bulk-update-*.log").Any());
     }
 
     [Fact]
-    public async Task StartAsync_MissingNodeDir_EmitsSkipped()
+    public async Task StartAsync_PullsComfyUiManager_OnSuccess()
     {
         if (string.IsNullOrEmpty(FindGit())) return;
 
@@ -202,28 +193,48 @@ public sealed class BulkUpdateOrchestratorTests
             Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
 
+        // ComfyUI 源 + custom_nodes/ComfyUI-Manager 各放一个独立 working 仓库。
+        var (remote, _) = InitRepoPair(tempRoot);
+        var comfyuiSource = Path.Combine(tempRoot, "ComfyUI");
+        // 必须先建出 custom_nodes/ —— Directory.Move 要求目标父链全部存在。
+        Directory.CreateDirectory(Path.Combine(comfyuiSource, "custom_nodes"));
+        var managerDir = Path.Combine(comfyuiSource, "custom_nodes", "ComfyUI-Manager");
+        // 把 InitRepoPair 的 working 搬到 managerDir(搬运后改 origin 路径)
+        var srcWorking = Path.Combine(tempRoot, "working");
+        if (Directory.Exists(srcWorking))
+        {
+            Directory.Move(srcWorking, managerDir);
+            RunGit(managerDir, "remote", "set-url", "origin", remote);
+        }
+
         using var db = new TestDb();
         var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
-        // customNodesPath 指向 tempRoot,节点目录不存在
-        SeedEnv(envRepo, nodeRepo, "env-1", tempRoot);
+        SeedEnv(envRepo, "env-1", comfyuiSource);
 
-        var orch = new BulkUpdateOrchestrator(tempRoot, "git", envRepo, nodeRepo);
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
 
         var progress = new List<BulkUpdateRow>();
         orch.Progress += r => progress.Add(r);
 
         var summary = await orch.StartAsync(
-            new[] { "env-1" }, new[] { "node-missing" }, CancellationToken.None);
+            new[] { "env-1" },
+            new[] { BulkUpdateTargetKind.ComfyUiManager },
+            CancellationToken.None);
 
         Assert.Equal(1, summary.Total);
-        Assert.Equal(1, summary.Skipped);
+        Assert.Equal(1, summary.Succeeded);
+        Assert.Equal(0, summary.Skipped);
+        Assert.Equal(0, summary.Failed);
         Assert.Contains(progress, r =>
-            r.Status == "skipped" && r.Reason == "目录不存在");
+            r.Status == "succeeded"
+            && r.EnvId == "env-1"
+            && r.TargetKind == BulkUpdateTargetKind.ComfyUiManager);
     }
 
     [Fact]
-    public async Task StartAsync_EnvMissingCustomNodesPath_EmitsSkipped()
+    public async Task StartAsync_EnvMissingComfyuiSource_EmitsSkippedForAllTargets()
     {
         if (string.IsNullOrEmpty(FindGit())) return;
 
@@ -234,29 +245,116 @@ public sealed class BulkUpdateOrchestratorTests
         using var db = new TestDb();
         var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
-        envRepo.Upsert(new Environment
-        {
-            Id = "env-no-path",
-            Name = "env-no-path",
-            RootPath = tempRoot,
-            ComfyuiLayout = "isolated",
-            CustomNodesPath = null, // <-- 关键:null
-            Port = FreePort(),
-            Status = "stopped",
-        });
+        SeedEnv(envRepo, "env-no-source", null!, tempRoot); // ComfyuiSource = null,RootPath = tempRoot
 
-        var orch = new BulkUpdateOrchestrator(tempRoot, "git", envRepo, nodeRepo);
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
 
         var progress = new List<BulkUpdateRow>();
         orch.Progress += r => progress.Add(r);
 
         var summary = await orch.StartAsync(
-            new[] { "env-no-path" }, new[] { "node-a" }, CancellationToken.None);
+            new[] { "env-no-source" },
+            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            CancellationToken.None);
 
-        Assert.Equal(1, summary.Total);
+        Assert.Equal(2, summary.Total);
+        Assert.Equal(2, summary.Skipped);
+        Assert.Equal(0, summary.Succeeded);
+        Assert.Equal(0, summary.Failed);
+        Assert.Equal(2, progress.Count(r =>
+            r.Status == "skipped" && r.Reason == "env 缺 ComfyUI 源"));
+    }
+
+    [Fact]
+    public async Task StartAsync_ComfyUiManager_DirMissing_EmitsSkipped()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        // ComfyUI 源存在,但 custom_nodes/ComfyUI-Manager 不存在。
+        var (remote, working) = InitRepoPair(tempRoot);
+        var comfyuiSource = Path.Combine(tempRoot, "ComfyUI");
+        // 把 working 直接放 comfyuiSource(覆盖原 working 目录)。
+        // 我们不需要先建 comfyuiSource —— Directory.Move 会新建它;但若已存在
+        // 则必须先删干净。InitRepoPair 已经创建了 tempRoot/working,这里我们
+        // 直接把 working 重命名为 comfyuiSource (Directory.Move 等价于 mv)。
+        var srcWorking = Path.Combine(tempRoot, "working");
+        if (Directory.Exists(srcWorking))
+        {
+            if (Directory.Exists(comfyuiSource))
+            {
+                Directory.Delete(comfyuiSource, recursive: true);
+            }
+            Directory.Move(srcWorking, comfyuiSource);
+            RunGit(comfyuiSource, "remote", "set-url", "origin", remote);
+        }
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        SeedEnv(envRepo, "env-1", comfyuiSource);
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var progress = new List<BulkUpdateRow>();
+        orch.Progress += r => progress.Add(r);
+
+        var summary = await orch.StartAsync(
+            new[] { "env-1" },
+            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            CancellationToken.None);
+
+        // ComfyUi succeeded;ComfyUiManager skipped (目录不存在)。
+        Assert.Equal(2, summary.Total);
+        Assert.Equal(1, summary.Succeeded);
         Assert.Equal(1, summary.Skipped);
+        Assert.Equal(0, summary.Failed);
         Assert.Contains(progress, r =>
-            r.Status == "skipped" && r.Reason == "env 缺 custom_nodes_path");
+            r.Status == "succeeded"
+            && r.TargetKind == BulkUpdateTargetKind.ComfyUi);
+        Assert.Contains(progress, r =>
+            r.Status == "skipped"
+            && r.Reason == "ComfyUI-Manager 未安装"
+            && r.TargetKind == BulkUpdateTargetKind.ComfyUiManager);
+    }
+
+    [Fact]
+    public async Task StartAsync_EnvNotFound_EmitsSkipped()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+
+        // 不 seed 任何 env —— envRepo.Get("ghost") 返 null。
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var progress = new List<BulkUpdateRow>();
+        orch.Progress += r => progress.Add(r);
+
+        var summary = await orch.StartAsync(
+            new[] { "ghost" },
+            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            CancellationToken.None);
+
+        Assert.Equal(2, summary.Total);
+        Assert.Equal(2, summary.Skipped);
+        Assert.Equal(0, summary.Succeeded);
+        Assert.Equal(0, summary.Failed);
+        Assert.Equal(2, progress.Count(r =>
+            r.Status == "skipped" && r.Reason == "env 不存在"));
     }
 
     [Fact]
@@ -269,12 +367,11 @@ public sealed class BulkUpdateOrchestratorTests
         Directory.CreateDirectory(tempRoot);
 
         // 取消语义测试:传入已 cancel 的 token,确保 Completed + Cancelled 都触发,
-        // 且 Total=0 —— 因为 ct 在任何 (env,node) 进入之前就 cancel 了。
+        // 且 Total=0 —— 因为 ct 在任何 (env,target) 进入之前就 cancel 了。
         using var db = new TestDb();
         var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
-        // cancel 前置 → 不会跑到 git,目录存在与否无所谓;给个有效路径。
-        SeedEnv(envRepo, nodeRepo, "env-1", tempRoot, ("node-a", tempRoot));
+        SeedEnv(envRepo, "env-1", tempRoot);
 
         var orch = new BulkUpdateOrchestrator(tempRoot, "git", envRepo, nodeRepo);
 
@@ -287,7 +384,9 @@ public sealed class BulkUpdateOrchestratorTests
         cts.Cancel(); // 取消在 start 之前
 
         var summary = await orch.StartAsync(
-            new[] { "env-1" }, new[] { "node-a" }, cts.Token);
+            new[] { "env-1" },
+            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            cts.Token);
 
         Assert.True(completedFired, "Completed 必须触发");
         Assert.Equal(0, summary.Total); // 全部都没跑
@@ -303,7 +402,7 @@ public sealed class BulkUpdateOrchestratorTests
             Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRoot);
 
-        // 慢 fake-git:每个 git pull 阻塞 ~5s,这样 orchestrator 在跑第二个 (env,node)
+        // 慢 fake-git:每个 git pull 阻塞 ~5s,这样 orchestrator 在跑第二个 (env,target)
         // 之前给我们 cancel 的窗口。
         var fakeScript = Path.Combine(tempRoot, "slow-git.cmd");
         File.WriteAllText(fakeScript,
@@ -313,18 +412,14 @@ public sealed class BulkUpdateOrchestratorTests
         var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
 
-        // 4 个 (env, node):2 env × 2 node。总耗时 ~20s(没 cancel)。我们 cancel
+        // 4 个 (env, target):2 env × 2 target。总耗时 ~20s(没 cancel)。我们 cancel
         // 在第一个 running emit 之后,期望 Total < 4。
-        var nodesRoot = Path.Combine(tempRoot, "nodes");
-        Directory.CreateDirectory(nodesRoot);
-        Directory.CreateDirectory(Path.Combine(nodesRoot, "node-a"));
-        Directory.CreateDirectory(Path.Combine(nodesRoot, "node-b"));
-        SeedEnv(envRepo, nodeRepo, "env-1", nodesRoot,
-            ("node-a", Path.Combine(nodesRoot, "node-a")),
-            ("node-b", Path.Combine(nodesRoot, "node-b")));
-        SeedEnv(envRepo, nodeRepo, "env-2", nodesRoot,
-            ("node-a", Path.Combine(nodesRoot, "node-a")),
-            ("node-b", Path.Combine(nodesRoot, "node-b")));
+        var env1Dir = Path.Combine(tempRoot, "env1");
+        var env2Dir = Path.Combine(tempRoot, "env2");
+        Directory.CreateDirectory(env1Dir);
+        Directory.CreateDirectory(env2Dir);
+        SeedEnv(envRepo, "env-1", env1Dir);
+        SeedEnv(envRepo, "env-2", env2Dir);
 
         var orch = new BulkUpdateOrchestrator(
             tempRoot, fakeScript, envRepo, nodeRepo);
@@ -345,7 +440,9 @@ public sealed class BulkUpdateOrchestratorTests
 
         // 在背景启动 orchestrator,等见到第一个 running 就 cancel。
         var runTask = orch.StartAsync(
-            new[] { "env-1", "env-2" }, new[] { "node-a", "node-b" }, cts.Token);
+            new[] { "env-1", "env-2" },
+            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            cts.Token);
 
         // 轮询等到 at least 1 个 running emit(慢 git 让我们有时间)。
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
@@ -385,11 +482,11 @@ public sealed class BulkUpdateOrchestratorTests
         var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
 
-        // 即使 fake-git 不真做 git pull,orchestrator 也会先检查节点目录
-        // 是否存在。我们建一个目录让它跑。
-        var nodeDir = Path.Combine(tempRoot, "node-a");
-        Directory.CreateDirectory(nodeDir);
-        SeedEnv(envRepo, nodeRepo, "env-1", tempRoot, ("node-a", nodeDir));
+        // fake-git 不真做 git pull,但 orchestrator 先检查 target 目录是否
+        // 存在 —— 我们用 ComfyUi target,需要 env.ComfyuiSource 是个存在的目录。
+        var comfyuiSource = Path.Combine(tempRoot, "ComfyUI");
+        Directory.CreateDirectory(comfyuiSource);
+        SeedEnv(envRepo, "env-1", comfyuiSource);
 
         var orch = new BulkUpdateOrchestrator(
             tempRoot, fakeGitExe, envRepo, nodeRepo);
@@ -399,7 +496,9 @@ public sealed class BulkUpdateOrchestratorTests
 
         // orchestrator 内部 30s 超时,所以这个测试本身耗时 ≤ 31s。
         var summary = await orch.StartAsync(
-            new[] { "env-1" }, new[] { "node-a" }, CancellationToken.None);
+            new[] { "env-1" },
+            new[] { BulkUpdateTargetKind.ComfyUi },
+            CancellationToken.None);
 
         Assert.Equal(1, summary.Total);
         Assert.Equal(0, summary.Succeeded);
@@ -407,5 +506,6 @@ public sealed class BulkUpdateOrchestratorTests
         var failed = progress.FirstOrDefault(r => r.Status == "failed");
         Assert.NotNull(failed);
         Assert.Equal("timeout", failed!.Reason);
+        Assert.Equal(BulkUpdateTargetKind.ComfyUi, failed.TargetKind);
     }
 }

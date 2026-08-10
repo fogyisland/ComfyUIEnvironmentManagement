@@ -477,4 +477,10 @@
   <data name="SettingsPage_拉取节点版本提示" xml:space="preserve">
     <value>Enabling this will fetch each node's GitHub release history on every catalog refresh. Without a GitHub token your IP is limited to 60 requests/hour; failures are silent and use the cached fallback.</value>
   </data>
+  <data name="BulkUpdate_TargetComfyUi" xml:space="preserve">
+    <value>ComfyUI</value>
+  </data>
+  <data name="BulkUpdate_TargetComfyUiManager" xml:space="preserve">
+    <value>ComfyUI Manager</value>
+  </data>
 </root>
