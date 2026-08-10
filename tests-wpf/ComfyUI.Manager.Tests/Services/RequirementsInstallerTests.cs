@@ -215,7 +215,49 @@ public sealed class RequirementsInstallerTests : IDisposable
             fake.InstallAsync(null!, logProgress: null, CancellationToken.None));
     }
 
-    // ----- v0.6.5.17 hotfix:requirements.txt 候选路径(ComfyuiSource 优先) -----
+    [Fact]
+    public async Task InstallAsync_PipSucceeds_TriggersComfyUiManagerAutoInstall()
+    {
+        WriteRequirements(_tempRoot, "SQLAlchemy");
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+        fake.AutoInstallResult = NodeOperationResult.Ok("5");
+
+        await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.Equal(1, fake.AutoInstallCallCount);
+        Assert.Same(env, fake.AutoInstallEnv);
+    }
+
+    [Fact]
+    public async Task InstallAsync_AutoInstallFails_StillReturnsSuccessForRequirements()
+    {
+        WriteRequirements(_tempRoot, "SQLAlchemy");
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+        fake.AutoInstallResult = NodeOperationResult.Fail("git clone 失败");
+
+        var result = await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, fake.AutoInstallCallCount);
+    }
+
+    [Fact]
+    public async Task InstallAsync_AutoInstallThrows_StillReturnsSuccessForRequirements()
+    {
+        WriteRequirements(_tempRoot, "SQLAlchemy");
+        var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"));
+        var fake = new FakeRequirementsInstaller();
+        fake.NextResult = new PipResult(0, false);
+        fake.AutoInstallThrows = true;
+
+        var result = await fake.InstallAsync(env, logProgress: null, CancellationToken.None);
+
+        Assert.True(result.Success);
+    }
 
     [Fact]
     public async Task InstallAsync_IndependentLayout_PrefersComfyuiSourceRequirementsTxt()
@@ -341,6 +383,27 @@ public sealed class RequirementsInstallerTests : IDisposable
         public List<string> CapturedPipArgs { get; } = new();
         public string? CapturedFilteredContent { get; private set; }
 
+        public NodeOperationResult AutoInstallResult { get; set; } = NodeOperationResult.Ok(null);
+        public Environment? AutoInstallEnv { get; private set; }
+        public int AutoInstallCallCount { get; private set; }
+        public bool AutoInstallThrows { get; set; }
+
+        public FakeRequirementsInstaller() : base(null, null, null)
+        {
+        }
+
+        protected override Task<NodeOperationResult> AutoInstallComfyUiManagerAsync(
+            Environment env,
+            IProgress<string>? progress,
+            CancellationToken ct)
+        {
+            AutoInstallCallCount++;
+            AutoInstallEnv = env;
+            if (AutoInstallThrows) throw new InvalidOperationException("模拟异常");
+            progress?.Report("auto-install:克隆 ComfyUI Manager");
+            return Task.FromResult(AutoInstallResult);
+        }
+
         public override async Task<RequirementsInstallResult> InstallAsync(
             Environment env,
             IProgress<string>? logProgress,
@@ -374,6 +437,15 @@ public sealed class RequirementsInstallerTests : IDisposable
 
             File.WriteAllText(Path.Combine(env.RootPath, RequirementsInstaller.MarkerFileName),
                 DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+
+            try
+            {
+                await AutoInstallComfyUiManagerAsync(env, logProgress, ct);
+            }
+            catch
+            {
+            }
+
             return new RequirementsInstallResult(true, false, null, filtered.Count);
         }
     }

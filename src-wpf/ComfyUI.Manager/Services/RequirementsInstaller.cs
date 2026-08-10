@@ -36,13 +36,16 @@ public class RequirementsInstaller
 
     private readonly AppLogger? _logger;
     private readonly RequirementsFileInstaller _reqFileInstaller;
+    private readonly ComfyUIManagerInstaller _comfyUiManagerInstaller;
 
     public RequirementsInstaller(
         AppLogger? logger = null,
-        RequirementsFileInstaller? reqFileInstaller = null)
+        RequirementsFileInstaller? reqFileInstaller = null,
+        ComfyUIManagerInstaller? comfyUiManagerInstaller = null)
     {
         _logger = logger;
         _reqFileInstaller = reqFileInstaller ?? new RequirementsFileInstaller();
+        _comfyUiManagerInstaller = comfyUiManagerInstaller ?? new ComfyUIManagerInstaller(_reqFileInstaller);
     }
 
     /// <summary>
@@ -104,12 +107,42 @@ public class RequirementsInstaller
             }
             catch { /* marker 写失败不致命 */ }
             LogResult(env.Name, "succeeded", null);
+
+            // v0.6.11+ T5: requirements 成功后自动装 ComfyUI Manager。失败不阻断
+            // requirements(只 WARN 日志)— 用户可以手动 toggle 重试。
+            await AutoInstallComfyUiManagerAsync(env, logProgress, ct);
         }
         else
         {
             LogResult(env.Name, "failed", result.Reason);
         }
         return result;
+    }
+
+    protected virtual async Task<NodeOperationResult> AutoInstallComfyUiManagerAsync(
+        Environment env,
+        IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        try
+        {
+            progress?.Report("stage:自动装 ComfyUI Manager");
+            var result = await _comfyUiManagerInstaller.InstallAsync(env, progress, ct);
+            if (!result.Success)
+            {
+                _logger?.Warn("requirements-auto-install-manager",
+                    $"env='{env.Name}' ComfyUI Manager 自动装失败(reason={result.Reason});requirements 已成功,用户可手动 toggle 重试");
+                progress?.Report($"warn:ComfyUI Manager 自动装失败:{result.Reason}");
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("requirements-auto-install-manager",
+                $"env='{env.Name}' ComfyUI Manager 自动装异常:{ex.Message}");
+            progress?.Report($"warn:ComfyUI Manager 自动装异常:{ex.Message}");
+            return NodeOperationResult.Fail(ex.Message);
+        }
     }
 
     private void LogResult(string envName, string status, string? reason)
@@ -121,6 +154,7 @@ public class RequirementsInstaller
         if (status == "succeeded") _logger.Info("requirements", msg);
         else _logger.Error("requirements", msg);
     }
+
 
     /// <summary>
     /// 列出 env 里 requirements.txt 的可能路径,按优先级排序。
