@@ -156,6 +156,32 @@ public static class SettingsDefaults
             // (避免合成出 <dir>/<version>/python.exe 这种死路径污染 active。)
             // 老字段 TemplatePythonDir / DefaultPythonVersion 保留不动
         }
+
+        // v0.6.11++:首次启动种 curated 常用节点(只在空时 seed,G13)。
+        s.CommonNodes = SeedCommonNodesIfEmpty(s.CommonNodes);
+    }
+
+    /// <summary>
+    /// v0.6.11++:首次启动种 10 个 curated 常用节点到 <see cref="Settings.CommonNodes"/>。
+    /// 只在 <c>CommonNodes.Count == 0</c> 时 seed(G13 防覆盖),保护用户清空操作。
+    /// 用户可取消勾选(<c>Enabled=false</c>)— 仍保留条目,只是不装。
+    /// </summary>
+    private static List<CommonNodeEntry> SeedCommonNodesIfEmpty(List<CommonNodeEntry>? current)
+    {
+        if (current is { Count: > 0 }) return current;
+        return new List<CommonNodeEntry>
+        {
+            new() { Id = "ltdrdata/ComfyUI-Manager",         DisplayName = "ComfyUI Manager",                IsBuiltIn = true, Enabled = true },
+            new() { Id = "ltdrdata/ComfyUI-Impact-Pack",     DisplayName = "ComfyUI Impact Pack",            IsBuiltIn = true, Enabled = true },
+            new() { Id = "ltdrdata/ComfyUI-Inspire-Pack",    DisplayName = "ComfyUI Inspire Pack",           IsBuiltIn = true, Enabled = true },
+            new() { Id = "pythongosssss/ComfyUI-Custom-Scripts", DisplayName = "ComfyUI Custom Scripts",     IsBuiltIn = true, Enabled = true },
+            new() { Id = "rgthree/rgthree-comfy",            DisplayName = "rgthree Comfy",                 IsBuiltIn = true, Enabled = true },
+            new() { Id = "jags111/efficiency-nodes-comfyui", DisplayName = "Efficiency Nodes",              IsBuiltIn = true, Enabled = true },
+            new() { Id = "Kosinkadink/ComfyUI-VideoHelperSuite", DisplayName = "ComfyUI Video Helper Suite", IsBuiltIn = true, Enabled = true },
+            new() { Id = "kijai/ComfyUI-KJNodes",            DisplayName = "ComfyUI KJNodes",               IsBuiltIn = true, Enabled = true },
+            new() { Id = "kijai/ComfyUI-Florence2",          DisplayName = "ComfyUI Florence2",             IsBuiltIn = true, Enabled = true },
+            new() { Id = "Kosinkadink/ComfyUI-Advanced-ControlNet", DisplayName = "ComfyUI Advanced ControlNet", IsBuiltIn = true, Enabled = true },
+        };
     }
 
     /// <summary>

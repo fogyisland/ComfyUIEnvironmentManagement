@@ -213,6 +213,69 @@
             <TextBlock Text="官方(不传 --index-url)|清华 TUNA|阿里云|USTC|自定义。" Foreground="Gray" FontSize="11"
                        Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="480" HorizontalAlignment="Left" />
 
+            <!-- ============ v0.6.11++ 常规节点 ============ -->
+            <TextBlock x:Name="SectionCommonNodes" Text="常规节点" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <TextBlock Text="env-create 或装依赖末尾自动克隆以下节点(已装自动跳过)。Built-in 不可删,可取消勾选;User-added 可删可改 Id。"
+                       Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+            <ItemsControl ItemsSource="{Binding CommonNodes}" Margin="0,8,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding Enabled, Mode=OneWay}"
+                                      Command="{Binding DataContext.ToggleCommonNodeEnabledCommand,
+                                                RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      CommandParameter="{Binding}"
+                                      VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DisplayName}" />
+                                <TextBlock Text="{Binding Id}" Foreground="Gray" FontSize="11" />
+                            </StackPanel>
+                            <Button Grid.Column="2" Content="删除" Margin="8,0,0,0"
+                                    Command="{Binding DataContext.RemoveCommonNodeCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding IsBuiltIn, Converter={StaticResource InverseBool}}"
+                                    Style="{StaticResource MaterialButton}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="+ 添加节点" Margin="0,8,0,0" HorizontalAlignment="Left"
+                    Command="{Binding AddCommonNodeCommand}"
+                    Style="{StaticResource MaterialButton}" />
+            <Grid Margin="0,8,0,0"
+                  Visibility="{Binding IsAddCommonNodeOpen,
+                                Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="200" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Style="{StaticResource MaterialTextBox}"
+                         Text="{Binding NewCommonNodeId, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox Grid.Column="1" Style="{StaticResource MaterialTextBox}" Margin="8,0,0,0"
+                         Text="{Binding NewCommonNodeDisplayName, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="2" Content="确定" Margin="8,0,0,0"
+                        Command="{Binding ConfirmAddCommonNodeCommand}"
+                        Style="{StaticResource MaterialButton}" />
+                <Button Grid.Column="3" Content="取消" Margin="4,0,0,0"
+                        Command="{Binding CancelAddCommonNodeCommand}"
+                        Style="{StaticResource MaterialButton}" />
+            </Grid>
+            <TextBlock Text="{Binding AddCommonNodeError}"
+                       Foreground="OrangeRed" FontSize="11" TextWrapping="Wrap"
+                       Margin="0,4,0,0"
+                       Visibility="{Binding HasAddCommonNodeError,
+                                     Converter={StaticResource BoolToVisibility}}" />
+
             <TextBlock Text="模板 Python 目录(已废弃,只读)" Margin="0,8,0,4" />
             <TextBox Text="{Binding TemplatePythonDir}" IsReadOnly="True"
                      Style="{StaticResource MaterialTextBox}" />

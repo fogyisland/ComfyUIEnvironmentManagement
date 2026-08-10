@@ -105,6 +105,22 @@ public class Settings
     // v0.6.11++ pip mirror
     [JsonPropertyName("pip_mirror")] public string PipMirror { get; set; } = "official";
     [JsonPropertyName("pip_mirror_custom_url")] public string PipMirrorCustomUrl { get; set; } = "";
+
+    // v0.6.11++ common nodes:env-create / 装依赖末尾自动 clone 的一组非冲突常用节点
+    [JsonPropertyName("common_nodes")] public List<CommonNodeEntry> CommonNodes { get; set; } = new();
+}
+
+public class CommonNodeEntry
+{
+    // GitHub "owner/repo" 形式(e.g. "ltdrdata/ComfyUI-Manager")。
+    // User-added 节点 Id 必须含 "/" — UI 表单校验(G12)。
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    // UI 显示用(不参与 git clone)。curated list 给用户友好名;user-added 可空 → fallback Id。
+    [JsonPropertyName("display_name")] public string DisplayName { get; set; } = "";
+    // 区分 curated seed(G11 不可删)跟 user-added(可删)。
+    [JsonPropertyName("is_built_in")] public bool IsBuiltIn { get; set; }
+    // 勾选状态 — 取消勾选 = "不装"(等价 skip)。built-in 也能关 enabled。
+    [JsonPropertyName("enabled")] public bool Enabled { get; set; } = true;
 }
 
 public class PythonInterpreter

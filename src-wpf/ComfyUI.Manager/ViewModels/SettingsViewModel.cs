@@ -35,6 +35,10 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     private string _newPythonInterpreterPath = "";
     private string _addPythonInterpreterError = "";
     private bool _isAddPythonInterpreterOpen;
+    private string _newCommonNodeId = "";
+    private string _newCommonNodeDisplayName = "";
+    private string _addCommonNodeError = "";
+    private bool _isAddCommonNodeOpen;
 
     public SettingsViewModel(
         SettingsRepository repo,
@@ -82,6 +86,68 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             _repo.Save(_settings);
             RaisePropertyChanged(nameof(ActivePythonInterpreter));
         };
+        CommonNodes = new ObservableCollection<CommonNodeEntry>(_settings.CommonNodes);
+        CommonNodes.CollectionChanged += (_, _) =>
+        {
+            _settings.CommonNodes = new List<CommonNodeEntry>(CommonNodes);
+            _repo.Save(_settings);
+        };
+        AddCommonNodeCommand = new RelayCommand(_ =>
+        {
+            NewCommonNodeId = "";
+            NewCommonNodeDisplayName = "";
+            AddCommonNodeError = "";
+            IsAddCommonNodeOpen = true;
+        });
+        CancelAddCommonNodeCommand = new RelayCommand(_ =>
+        {
+            IsAddCommonNodeOpen = false;
+            AddCommonNodeError = "";
+        });
+        ConfirmAddCommonNodeCommand = new RelayCommand(_ =>
+        {
+            if (string.IsNullOrWhiteSpace(NewCommonNodeId) || !NewCommonNodeId.Contains('/'))
+            {
+                AddCommonNodeError = "Id 必须是 owner/repo 形式(必须含 \"/\")";
+                return;
+            }
+            if (CommonNodes.Any(n => string.Equals(n.Id, NewCommonNodeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                AddCommonNodeError = $"已存在相同 Id 的节点:{NewCommonNodeId}";
+                return;
+            }
+            CommonNodes.Add(new CommonNodeEntry
+            {
+                Id = NewCommonNodeId.Trim(),
+                DisplayName = string.IsNullOrWhiteSpace(NewCommonNodeDisplayName)
+                    ? NewCommonNodeId.Trim()
+                    : NewCommonNodeDisplayName.Trim(),
+                IsBuiltIn = false,
+                Enabled = true,
+            });
+            NewCommonNodeId = "";
+            NewCommonNodeDisplayName = "";
+            AddCommonNodeError = "";
+            IsAddCommonNodeOpen = false;
+        });
+        RemoveCommonNodeCommand = new RelayCommand(p =>
+        {
+            if (p is CommonNodeEntry entry && !entry.IsBuiltIn)
+            {
+                CommonNodes.Remove(entry);
+            }
+        });
+        ToggleCommonNodeEnabledCommand = new RelayCommand(p =>
+        {
+            if (p is CommonNodeEntry entry)
+            {
+                entry.Enabled = !entry.Enabled;
+                // CollectionChanged 只在 list 改动时触发,改 item property 不触发
+                // → 手动 Save 持久化
+                _settings.CommonNodes = new List<CommonNodeEntry>(CommonNodes);
+                _repo.Save(_settings);
+            }
+        });
         AddPythonInterpreterCommand = new RelayCommand(_ =>
         {
             NewPythonInterpreterName = "";
@@ -509,6 +575,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     // —— 多 Python 解释器(v0.6.5.6) ——
     public ObservableCollection<PythonInterpreter> PythonInterpreters { get; }
 
+    // —— v0.6.11++ 常用节点 ——
+    public ObservableCollection<CommonNodeEntry> CommonNodes { get; }
+
     public PythonInterpreter? ActivePythonInterpreter
     {
         get
@@ -540,6 +609,37 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public RelayCommand ConfirmAddPythonInterpreterCommand { get; }
     public RelayCommand CancelAddPythonInterpreterCommand { get; }
     public RelayCommand RemovePythonInterpreterCommand { get; }
+
+    public string NewCommonNodeId
+    {
+        get => _newCommonNodeId;
+        set => SetField(ref _newCommonNodeId, value);
+    }
+    public string NewCommonNodeDisplayName
+    {
+        get => _newCommonNodeDisplayName;
+        set => SetField(ref _newCommonNodeDisplayName, value);
+    }
+    public string AddCommonNodeError
+    {
+        get => _addCommonNodeError;
+        private set
+        {
+            if (SetField(ref _addCommonNodeError, value))
+                RaisePropertyChanged(nameof(HasAddCommonNodeError));
+        }
+    }
+    public bool HasAddCommonNodeError => !string.IsNullOrEmpty(_addCommonNodeError);
+    public bool IsAddCommonNodeOpen
+    {
+        get => _isAddCommonNodeOpen;
+        private set => SetField(ref _isAddCommonNodeOpen, value);
+    }
+    public RelayCommand AddCommonNodeCommand { get; }
+    public RelayCommand CancelAddCommonNodeCommand { get; }
+    public RelayCommand ConfirmAddCommonNodeCommand { get; }
+    public RelayCommand RemoveCommonNodeCommand { get; }
+    public RelayCommand ToggleCommonNodeEnabledCommand { get; }
 
     public string NewPythonInterpreterName
     {
@@ -656,6 +756,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(PipMirror));
         RaisePropertyChanged(nameof(PipMirrorCustomUrl));
         RaisePropertyChanged(nameof(IsCustomPipMirrorSelected));
+        RaisePropertyChanged(nameof(CommonNodes));
     }
 
     // ============ v0.6.9 T7 Spotlight 集成 ============
