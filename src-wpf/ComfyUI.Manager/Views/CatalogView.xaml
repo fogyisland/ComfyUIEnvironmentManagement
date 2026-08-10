@@ -7,37 +7,62 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
     <DockPanel>
-        <!-- 顶部工具栏:搜索 + 视图 toggle + 刷新 + 取消 -->
-        <Grid DockPanel.Dock="Top" Margin="8">
+        <!-- 顶部工具栏:3 列 Grid(标题 | spacer | 操作),跟 env-list 同款 -->
+        <Grid DockPanel.Dock="Top" Margin="12,12,12,8">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{StaticResource MaterialTextBox}" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
-                <Button Content="列表" Margin="2,0"
-                        Command="{Binding SetListViewCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        Background="{Binding IsListMode, Converter={StaticResource BoolToBrush}}" />
-                <Button Content="磁贴" Margin="2,0,0,0"
-                        Command="{Binding SetTileViewCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        Background="{Binding IsTileMode, Converter={StaticResource BoolToBrush}}" />
+            <!-- Column 0: 标题 + 计数 -->
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock Text="节点目录"
+                           FontSize="20" FontWeight="Bold"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                <TextBlock FontSize="11"
+                           Foreground="{DynamicResource OutlineBrush}"
+                           Margin="0,2,0,0">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource BoolToEntryCountText}">
+                            <Binding Path="HasEntries" />
+                            <Binding Path="PagedEntries.Count" />
+                        </MultiBinding>
+                    </TextBlock.Text>
+                </TextBlock>
             </StackPanel>
-            <Button Grid.Column="2" Content="刷新" Margin="8,0,0,0"
-                    Command="{Binding RefreshCommand}"
-                    Style="{StaticResource MaterialButton}" />
-            <Button Grid.Column="3" Content="取消" Margin="4,0,0,0"
-                    Command="{Binding CancelRefreshCommand}"
-                    Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"
-                    Style="{StaticResource MaterialButton}" />
-            <ProgressBar Grid.Column="4" Width="160" Height="20" Margin="8,0,0,0"
-                         Minimum="0" Maximum="100" Value="{Binding RefreshPercent, Mode=OneWay}"
-                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+            <!-- Column 2: 操作行 -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- 搜索框 -->
+                <TextBox Width="240" Margin="0,0,8,0"
+                         Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+                <!-- segmented 视图切换 -->
+                <Border BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                        CornerRadius="4" Margin="0,0,8,0">
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton Content="列表"
+                                     GroupName="CatalogViewMode"
+                                     IsChecked="{Binding IsListMode}"
+                                     Style="{StaticResource CatalogSegmentedRadioButton}" />
+                        <RadioButton Content="磁贴"
+                                     GroupName="CatalogViewMode"
+                                     IsChecked="{Binding IsTileMode}"
+                                     Style="{StaticResource CatalogSegmentedRadioButton}" />
+                    </StackPanel>
+                </Border>
+                <!-- 操作 buttons -->
+                <Button Content="刷新" Margin="0,0,4,0"
+                        Command="{Binding RefreshCommand}"
+                        Style="{StaticResource MaterialButton}" />
+                <Button Content="取消" Margin="0,0,4,0"
+                        Command="{Binding CancelRefreshCommand}"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"
+                        Style="{StaticResource MaterialButton}" />
+                <ProgressBar Width="160" Height="20"
+                             Minimum="0" Maximum="100"
+                             Value="{Binding RefreshPercent, Mode=OneWay}"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
         </Grid>
 
         <!-- 信息条 -->
@@ -81,15 +106,16 @@
 
             <!-- 左:列表 / 磁贴 / 空状态 -->
             <Grid Grid.Column="0">
+                <!-- T3 placeholder:list mode card. T2 keeps DataGrid for now. -->
                 <DataGrid Visibility="{Binding IsListMode, Converter={StaticResource BoolToVisibility}}"
                           ItemsSource="{Binding PagedEntries}"
                           SelectedItem="{Binding Selected}"
                           AutoGenerateColumns="False" IsReadOnly="True" Margin="8">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="包名" Binding="{Binding Package}" Width="*" />
-                        <DataGridTextColumn Header="作者" Binding="{Binding RawMetadata[author]}" Width="*" />
+                        <DataGridTextColumn Header="作者" Binding="{Binding Author}" Width="*" />
                         <DataGridTextColumn Header="⭐" Binding="{Binding RawMetadata[stars]}" Width="60" />
-                        <DataGridTextColumn Header="说明" Binding="{Binding RawMetadata[description]}" Width="2*" />
+                        <DataGridTextColumn Header="说明" Binding="{Binding Description}" Width="2*" />
                     </DataGrid.Columns>
                 </DataGrid>
 
@@ -105,7 +131,8 @@
                              ScrollViewer.VerticalScrollBarVisibility="Disabled" />
                 </ScrollViewer>
 
-                <TextBlock x:Name="EmptyStateText" Text="暂无数据，点右上角 刷新" FontSize="16" Foreground="{DynamicResource OutlineBrush}"
+                <TextBlock x:Name="EmptyStateText" Text="暂无数据，点右上角 刷新"
+                           FontSize="16" Foreground="{DynamicResource OutlineBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding HasEntries, Converter={StaticResource InverseBoolToVisibility}}" />
             </Grid>
@@ -114,10 +141,10 @@
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
                           Background="{DynamicResource OutlineBrush}" />
 
-            <!-- 右:详情面板 -->
-            <Border Grid.Column="2" Margin="8,8,8,8" Padding="16"
+            <!-- 右:详情面板(卡片化 + 分组 + Divider) -->
+            <Border Grid.Column="2" Margin="8,8,8,8" Padding="20"
                     Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1" CornerRadius="6">
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1" CornerRadius="8">
                 <Grid>
                     <!-- 未选中状态 -->
                     <TextBlock Text="← 请选择节点查看详情"
@@ -129,15 +156,64 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   Visibility="{Binding HasSelected, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel>
-                            <TextBlock Text="{Binding SelectedTitle}" FontSize="20" FontWeight="Bold"
-                                       Foreground="{DynamicResource OnSurfaceBrush}"
-                                       TextWrapping="Wrap" Margin="0,0,0,8" />
-                            <TextBlock Margin="0,4,0,0">
-                                <Run Text="作者:" Foreground="{DynamicResource OutlineBrush}" />
-                                <Run Text="{Binding SelectedAuthor, Mode=OneWay}"
-                                     Foreground="{DynamicResource OnSurfaceBrush}" />
-                            </TextBlock>
-                            <Grid Margin="0,4,0,12">
+                            <!-- Group 1: Header — 标题 + install_type pill -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding SelectedTitle}"
+                                           FontSize="22" FontWeight="Bold"
+                                           Foreground="{DynamicResource OnSurfaceBrush}"
+                                           TextWrapping="Wrap" />
+                                <Border Grid.Column="1" Style="{StaticResource CatalogInstallTypeBadgeStyle}">
+                                    <TextBlock Text="{Binding SelectedInstallType}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource OnPrimaryBrush}" />
+                                </Border>
+                            </Grid>
+
+                            <!-- Divider -->
+                            <Border Height="1" Margin="0,12"
+                                    Background="{DynamicResource OutlineBrush}" />
+
+                            <!-- Group 2: Metadata 2 列 Grid -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="作者:"
+                                           FontSize="12" Margin="0,6,16,6"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedAuthor}"
+                                           FontSize="12" Margin="0,6"
+                                           Foreground="{DynamicResource OutlineBrush}" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="安装类型:"
+                                           FontSize="12" Margin="0,6,16,6"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedInstallType}"
+                                           FontSize="12" Margin="0,6"
+                                           Foreground="{DynamicResource OutlineBrush}" />
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="最后更新:"
+                                           FontSize="12" Margin="0,6,16,6"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedLastUpdate}"
+                                           FontSize="12" Margin="0,6"
+                                           Foreground="{DynamicResource OutlineBrush}" />
+                            </Grid>
+
+                            <!-- Divider -->
+                            <Border Height="1" Margin="0,4,0,12"
+                                    Background="{DynamicResource OutlineBrush}" />
+
+                            <!-- Group 3: 版本选择 -->
+                            <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -146,31 +222,24 @@
                                           ItemsSource="{Binding SelectedVersions}"
                                           SelectedItem="{Binding SelectedVersion}"
                                           DisplayMemberPath="DisplayLabel"
-                                          IsEditable="False" />
-                                <TextBlock Grid.Column="1" Margin="8,0,0,0"
-                                           VerticalAlignment="Center">
+                                          IsEditable="False"
+                                          Style="{StaticResource CatalogVersionComboBoxStyle}" />
+                                <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
                                     <Run Text="发布:" Foreground="{DynamicResource OutlineBrush}" />
                                     <Run Text="{Binding SelectedVersionDate, Mode=OneWay}" FontWeight="Bold"
                                          Foreground="{DynamicResource OnSurfaceBrush}" />
                                 </TextBlock>
                             </Grid>
-                            <TextBlock Margin="0,2,0,0" TextWrapping="Wrap">
-                                <Run Text="安装类型:" Foreground="{DynamicResource OutlineBrush}" />
-                                <Run Text="{Binding SelectedInstallType, Mode=OneWay}"
-                                     Foreground="{DynamicResource OnSurfaceBrush}" />
-                            </TextBlock>
-                            <TextBlock Text="{Binding SelectedLastUpdate, StringFormat='最后更新: {0}'}"
-                                       Margin="0,4,0,0" FontSize="11"
-                                       Foreground="{DynamicResource OutlineBrush}" />
 
-                            <!-- Requirements 列表(v0.6.7.4 T4:IsExpanded=False 默认折叠,避免详情面板过高) -->
+                            <!-- Group 4: Requirements Expander -->
                             <Expander Header="Requirements" Margin="0,8,0,0" IsExpanded="False"
                                       Visibility="{Binding HasPipRequirements, Converter={StaticResource BoolToVisibility}}">
                                 <ItemsControl ItemsSource="{Binding SelectedPipRequirements}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Padding="4,2" Margin="0,1"
-                                                    Background="{DynamicResource BackgroundBrush}" CornerRadius="2">
+                                            <Border Padding="6,4" Margin="0,1"
+                                                    Background="{DynamicResource BackgroundBrush}"
+                                                    CornerRadius="3">
                                                 <TextBlock FontFamily="Consolas" FontSize="11"
                                                            Foreground="{DynamicResource OnSurfaceBrush}">
                                                     <Run Text="{Binding Name}" FontWeight="Bold" />
@@ -182,17 +251,29 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </Expander>
-                            <TextBlock Margin="0,8,0,0" TextWrapping="Wrap">
+
+                            <!-- Divider -->
+                            <Border Height="1" Margin="0,12"
+                                    Background="{DynamicResource OutlineBrush}" />
+
+                            <!-- Group 5: 链接 -->
+                            <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
                                 <Hyperlink NavigateUri="{Binding SelectedReferenceUrl}"
-                                           RequestNavigate="OnRepoLinkClick">
+                                           RequestNavigate="OnRepoLinkClick"
+                                           Foreground="{DynamicResource PrimaryBrush}">
                                     <Run Text="{Binding SelectedReference, Mode=OneWay}" />
                                 </Hyperlink>
                             </TextBlock>
+
+                            <!-- Group 6: 描述 -->
                             <TextBlock Text="{Binding SelectedDescription}" Margin="0,12,0,0"
-                                       TextWrapping="Wrap"
+                                       TextWrapping="Wrap" FontSize="13" LineHeight="20"
                                        Foreground="{DynamicResource OnSurfaceBrush}" />
-                            <Button Content="{Binding DownloadButtonLabel}" Margin="0,16,0,0" HorizontalAlignment="Left"
-                                    Padding="20,6"
+
+                            <!-- Group 7: 操作 -->
+                            <Button Content="{Binding DownloadButtonLabel}"
+                                    Margin="0,16,0,0" HorizontalAlignment="Left"
+                                    Padding="24,8"
                                     Command="{Binding DownloadCommand}"
                                     CommandParameter="{Binding Selected}"
                                     Style="{StaticResource MaterialButton}" />
