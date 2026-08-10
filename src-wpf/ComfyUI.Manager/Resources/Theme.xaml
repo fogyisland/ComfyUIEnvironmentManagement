@@ -312,7 +312,8 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="#90A4AE" />
+                            <Setter TargetName="Bd" Property="BorderBrush"
+                                    Value="{DynamicResource PrimaryVariantBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush"
@@ -326,19 +327,24 @@
 
     <DataTemplate x:Key="CatalogTileTemplate">
         <Border Width="320" Margin="8" Padding="12"
-                Background="White" BorderBrush="LightGray" BorderThickness="1"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
                 CornerRadius="8">
             <StackPanel>
-                <TextBlock Text="{Binding Package}" FontWeight="Bold" FontSize="14" />
+                <TextBlock Text="{Binding Package}" FontWeight="Bold" FontSize="16"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
-                    <TextBlock Text="{Binding RawMetadata[author]}" Foreground="Gray" />
-                    <TextBlock Text=" · " Foreground="Gray" />
+                    <TextBlock Text="{Binding RawMetadata[author]}"
+                               Foreground="{DynamicResource OutlineBrush}" />
+                    <TextBlock Text=" · " Foreground="{DynamicResource OutlineBrush}" />
                     <TextBlock Text="⭐" />
                     <TextBlock Text="{Binding RawMetadata[stars]}" />
                 </StackPanel>
                 <TextBlock Text="{Binding RawMetadata[description]}"
                            TextWrapping="Wrap" MaxHeight="60"
-                           TextTrimming="CharacterEllipsis" Margin="0,0,0,8" />
+                           TextTrimming="CharacterEllipsis"
+                           FontSize="12" Margin="0,0,0,8"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
                 <Button Content="安装" HorizontalAlignment="Right"
                         Command="{Binding DataContext.InstallCommand,
                                   RelativeSource={RelativeSource AncestorType=UserControl}}"

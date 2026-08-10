@@ -105,7 +105,7 @@
                              ScrollViewer.VerticalScrollBarVisibility="Disabled" />
                 </ScrollViewer>
 
-                <TextBlock Text="暂无数据,点右上角 刷新" FontSize="14" Foreground="{DynamicResource OutlineBrush}"
+                <TextBlock x:Name="EmptyStateText" Text="暂无数据，点右上角 刷新" FontSize="16" Foreground="{DynamicResource OutlineBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding HasEntries, Converter={StaticResource InverseBoolToVisibility}}" />
             </Grid>
@@ -115,7 +115,7 @@
                           Background="{DynamicResource OutlineBrush}" />
 
             <!-- 右:详情面板 -->
-            <Border Grid.Column="2" Margin="8,8,8,8" Padding="12"
+            <Border Grid.Column="2" Margin="8,8,8,8" Padding="16"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1" CornerRadius="6">
                 <Grid>
@@ -129,15 +129,15 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   Visibility="{Binding HasSelected, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel>
-                            <TextBlock Text="{Binding SelectedTitle}" FontSize="18" FontWeight="Bold"
+                            <TextBlock Text="{Binding SelectedTitle}" FontSize="20" FontWeight="Bold"
                                        Foreground="{DynamicResource OnSurfaceBrush}"
-                                       TextWrapping="Wrap" />
+                                       TextWrapping="Wrap" Margin="0,0,0,8" />
                             <TextBlock Margin="0,4,0,0">
                                 <Run Text="作者:" Foreground="{DynamicResource OutlineBrush}" />
                                 <Run Text="{Binding SelectedAuthor, Mode=OneWay}"
                                      Foreground="{DynamicResource OnSurfaceBrush}" />
                             </TextBlock>
-                            <Grid Margin="0,2,0,0">
+                            <Grid Margin="0,4,0,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
