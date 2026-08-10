@@ -66,7 +66,8 @@ public sealed class EnvironmentListViewModelRequirementsTests : IDisposable
     {
         return new EnvironmentListViewModel(
             _repo, null!, null!, null!, null!, null!, null!, null!,
-            _tempRoot, installer ?? new RequirementsInstaller());
+            _tempRoot, installer ?? new RequirementsInstaller(),
+            null!, null!, null!, null!, null!);
     }
 
     /// <summary>

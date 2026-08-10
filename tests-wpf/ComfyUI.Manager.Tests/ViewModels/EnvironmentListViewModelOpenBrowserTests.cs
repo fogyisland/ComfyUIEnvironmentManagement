@@ -27,6 +27,11 @@ public class EnvironmentListViewModelOpenBrowserTests
             profileLoader,
             null!, null!,
             Path.Combine(Path.GetTempPath(), "open-browser-test-proj-" + Guid.NewGuid()),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
         return vm;
     }

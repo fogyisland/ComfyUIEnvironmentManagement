@@ -31,6 +31,11 @@ public class EnvironmentListViewModelOpenBaseEnvTests
             profileLoader,
             null!, null!,
             Path.Combine(Path.GetTempPath(), "picker-env-list-proj-" + Guid.NewGuid()),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
         return vm;
     }
@@ -167,6 +172,11 @@ public class EnvironmentListViewModelOpenBaseEnvTests
             profileLoader,
             null!, null!,
             Path.Combine(Path.GetTempPath(), "picker-env-list-proj-" + Guid.NewGuid()),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
         var env = MakeEnv("e1", "stopped", bedStatus: null);
         new EnvironmentRepository(db.Factory).Upsert(env);

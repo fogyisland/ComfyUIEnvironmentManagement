@@ -16,7 +16,12 @@ public class EnvironmentListViewModelBedTests
         var repo = new EnvironmentRepository(db.Factory);
         if (seedEnv is not null) repo.Upsert(seedEnv);
         return new EnvironmentListViewModel(
-            repo, null!, null!, null!, null!, null!, null!, null!, Path.GetTempPath(), null!);
+            repo, null!, null!, null!, null!, null!, null!, null!, Path.GetTempPath(), null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
     }
 
     private static Environment MakeEnv(string id, string status, string? bedStatus) =>
@@ -99,7 +104,12 @@ public class EnvironmentListViewModelBedTests
 
         var profileLoader = new BaseEnvProfileLoader(Path.Combine(Path.GetTempPath(), "fake-" + Guid.NewGuid()));
         var vm = new EnvironmentListViewModel(
-            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!);
+            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
         Assert.Single(vm.Environments);
         Assert.Null(vm.Environments[0].BedStatus);
 
@@ -139,7 +149,12 @@ public class EnvironmentListViewModelBedTests
 
         var profileLoader = new BaseEnvProfileLoader(Path.Combine(Path.GetTempPath(), "fake-" + Guid.NewGuid()));
         var vm = new EnvironmentListViewModel(
-            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!);
+            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
         vm.Selected = vm.Environments[0];
 
         bool dialogCalled = false;
@@ -167,7 +182,12 @@ public class EnvironmentListViewModelBedTests
 
         var profileLoader = new BaseEnvProfileLoader(Path.Combine(Path.GetTempPath(), "fake-" + Guid.NewGuid()));
         var vm = new EnvironmentListViewModel(
-            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!);
+            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
         Assert.Null(vm.Selected);
 
         bool dialogCalled = false;
@@ -196,7 +216,12 @@ public class EnvironmentListViewModelBedTests
 
         var profileLoader = new BaseEnvProfileLoader(Path.Combine(Path.GetTempPath(), "fake-" + Guid.NewGuid()));
         var vm = new EnvironmentListViewModel(
-            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!);
+            repo, null!, null!, null!, null!, profileLoader, null!, null!, Path.GetTempPath(), null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
         // 选未装的(Environments[1])→ 走 dialog
         vm.Selected = vm.Environments[1];
 

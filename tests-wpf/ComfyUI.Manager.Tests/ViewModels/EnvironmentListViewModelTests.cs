@@ -48,6 +48,11 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
 
         Assert.Equal(2, vm.Environments.Count);
@@ -63,6 +68,11 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -87,6 +97,11 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -120,6 +135,11 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
 
         Assert.False(vm.BaseEnvCommand.CanExecute(null));
@@ -133,6 +153,11 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -162,6 +187,11 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
 
         var launched = false;
@@ -186,6 +216,11 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             profileLoader,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -223,6 +258,11 @@ public class EnvironmentListViewModelTests
 
         var vm = new EnvironmentListViewModel(
             new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!,
             null!,
             null!,
@@ -276,6 +316,11 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
 
         Assert.Equal("/tmp/b.exe", vm.RecentBasePythonPath);
@@ -302,6 +347,11 @@ public class EnvironmentListViewModelTests
             deleter,
             null!,
             Path.GetTempPath(),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!)
         {
             ConfirmDeleteOverride = _ => true,
@@ -336,6 +386,11 @@ public class EnvironmentListViewModelTests
             deleter,
             null!,
             Path.GetTempPath(),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!)
         {
             ConfirmDeleteOverride = _ => false,
@@ -364,6 +419,11 @@ public class EnvironmentListViewModelTests
             null!,
             null!,
             Path.GetTempPath(),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
 
         Environment? captured = null;

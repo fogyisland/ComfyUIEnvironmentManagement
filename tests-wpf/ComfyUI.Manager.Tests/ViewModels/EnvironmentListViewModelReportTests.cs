@@ -31,6 +31,11 @@ public class EnvironmentListViewModelReportTests
             profileLoader,
             null!, null!,
             projectRoot,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
             null!);
         return vm;
     }

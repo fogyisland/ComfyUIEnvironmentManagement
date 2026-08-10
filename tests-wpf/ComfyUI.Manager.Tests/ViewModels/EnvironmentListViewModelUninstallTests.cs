@@ -82,7 +82,8 @@ public sealed class EnvironmentListViewModelUninstallTests : IDisposable
             _repo, null!, null!, null!, null!, null!, null!, null!,
             _tempRoot, null!,
             baseUninstaller ?? new BaseEnvUninstaller(),
-            reqUninstaller ?? new RequirementsUninstaller());
+            reqUninstaller ?? new RequirementsUninstaller(),
+            null!, null!, null!);
     }
 
     /// <summary>

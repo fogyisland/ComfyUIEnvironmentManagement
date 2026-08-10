@@ -35,13 +35,19 @@ public class EnvironmentListViewModel : ViewModelBase
     private ErrorBannerViewModel? _errorBanner;
     private readonly string _projectRoot;
 
+    // v0.6.11+ T3:ComfyUI Manager 装/卸 — 跟 BED install/uninstall 同样需要 per-env
+    // mutex。null 兜底 new 默认实现(测试 ctor 不传也能构造;生产 DI 注入)。
+    private readonly ComfyUIManagerInstaller _comfyUiManagerInstaller;
+
     /// <summary>
     /// v0.6.5.22 T4:per-env 互斥锁 — 同 env 上同时只允许一个长操作(BED install / uninstall /
     /// requirements install / uninstall / start / stop / delete),防止并发的 BaseEnvInstaller
     /// 在末尾 upsert BedStatus="done" 复活刚被 uninstall 清空的字段。
     /// RootPath 作 key(env.Name 可能重名)。
+    /// v0.6.11+ T3:加 ComfyUiManagerInstall / ComfyUiManagerUninstall 让 toggle 命令
+    /// 跟其他长操作互斥(避免并发的 git clone 跟卸载冲突)。
     /// </summary>
-    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete }
+    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete, ComfyUiManagerInstall, ComfyUiManagerUninstall }
 
     private readonly Dictionary<string, BusyKind> _envBusy = new();
 
@@ -75,6 +81,11 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand UninstallRequirementsCommand { get; }
     public RelayCommand ReportComponentsCommand { get; }
     public RelayCommand OpenBrowserCommand { get; }
+    /// <summary>
+    /// v0.6.11+ T3:env-list 行 6th 按钮 "装/卸 ComfyUI Manager" toggle 命令 —
+    /// 根据 IsComfyUiManagerInstalled 切换 Install / Uninstall,inline 状态面板显示进度。
+    /// </summary>
+    public RelayCommand ToggleComfyUiManagerCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
 
@@ -126,6 +137,12 @@ public class EnvironmentListViewModel : ViewModelBase
     /// </summary>
     public BaseEnvUninstallStatusViewModel? BaseEnvUninstallStatus { get; private set; }
 
+    /// <summary>
+    /// v0.6.11+ T3:ComfyUI Manager 装/卸 inline 状态面板(env-list 操作列 toggle
+    /// 按钮触发后)。镜像 <see cref="RequirementsStatusViewModel"/> 单阶段模式。
+    /// </summary>
+    public ComfyUIManagerStatusViewModel? ComfyUiManagerStatus { get; private set; }
+
     public EnvironmentListViewModel(
         EnvironmentRepository repo,
         ProcessLauncher launcher,
@@ -140,7 +157,8 @@ public class EnvironmentListViewModel : ViewModelBase
         BaseEnvUninstaller? baseEnvUninstaller = null,
         RequirementsUninstaller? requirementsUninstaller = null,
         IBrowserLauncher? browserLauncher = null,
-        ErrorBannerViewModel? errorBanner = null)
+        ErrorBannerViewModel? errorBanner = null,
+        ComfyUIManagerInstaller? comfyUiManagerInstaller = null)
     {
         _repo = repo;
         _launcher = launcher;
@@ -158,6 +176,9 @@ public class EnvironmentListViewModel : ViewModelBase
         // 生产 DI 在 App.xaml.cs 注入(new BrowserLauncher() + mainVm.ErrorBanner)。
         _browserLauncher = browserLauncher;
         _errorBanner = errorBanner;
+        // v0.6.11+ T3:默认 new 一个 fallback 实例(让测试 ctor 不传也能构造);生产
+        // DI 在 App.xaml.cs 注入 shareComfyUiManagerInstaller。
+        _comfyUiManagerInstaller = comfyUiManagerInstaller ?? new ComfyUIManagerInstaller(new RequirementsFileInstaller());
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -254,6 +275,17 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (env is null) return false;
                 return !IsEnvBusy(env);
             });
+        // v0.6.11+ T3:ComfyUI Manager toggle 命令 — 根据 IsComfyUiManagerInstalled
+        // 切换 Install / Uninstall;失败 → 面板持续可见等用户关,成功 → 2s 自动 Hide。
+        ToggleComfyUiManagerCommand = new RelayCommand(
+            async p => await ToggleComfyUiManagerAsync(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (IsEnvBusy(env)) return false;
+                return true;
+            });
         Load();
     }
 
@@ -308,6 +340,16 @@ public class EnvironmentListViewModel : ViewModelBase
         Environments.Clear();
         foreach (var e in _repo.ListAll()) Environments.Add(e);
         RecomputeRecentBasePythonPath();
+        // v0.6.11+ T3:计算每行 ComfyUI Manager 装态 + 按钮文字。
+        // 不持久化(Environment.IsComfyUiManagerInstalled 是 JsonIgnore),Load 末尾
+        // 重算避免 stale;toggle 命令 CanExecute 也因此依赖 Load 后状态。
+        foreach (var env in Environments)
+        {
+            var installed = _comfyUiManagerInstaller.IsInstalled(env);
+            env.IsComfyUiManagerInstalled = installed;
+            env.ComfyUiManagerButtonText = installed ? "卸载 ComfyUI Manager" : "安装 ComfyUI Manager";
+        }
+        RaiseCommandsChanged();
     }
 
     private void RecomputeRecentBasePythonPath()
@@ -814,6 +856,82 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// v0.6.11+ T3:env-list 行点 toggle 按钮 → 根据 IsComfyUiManagerInstalled 切换
+    /// Install / Uninstall → 重新检测(避免 stale)→ 成功 → 2s Hide;失败 → 面板持续
+    /// 可见等用户关。per-env mutex 防并发(BusyKind.ComfyUiManagerInstall/Uninstall)。
+    /// 重新检测后强制 Load() 让行内其他命令(Catalog 安装 ComfyUI Manager 入口等)状态同步。
+    /// 暴露 internal 是为了让测试能直接 await(避免绕 RelayCommand fire-and-forget)。
+    /// </summary>
+    internal async System.Threading.Tasks.Task ToggleComfyUiManagerAsync(Environment? env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;
+
+        var wasInstalled = env.IsComfyUiManagerInstalled;
+        var status = new ComfyUIManagerStatusViewModel(env);
+        ComfyUiManagerStatus = status;
+        RaisePropertyChanged(nameof(ComfyUiManagerStatus));
+        status.Begin();
+
+        var busyKind = wasInstalled ? BusyKind.ComfyUiManagerUninstall : BusyKind.ComfyUiManagerInstall;
+        MarkEnvBusy(env, busyKind);
+        try
+        {
+            // Progress<string> 包装捕获 SynchronizationContext(UI 线程),后台线程
+            // Report 自动 marshal 回 UI 线程 — 跟 v0.6.5.11 EnvListVM 修 LogLines
+            // ObservableCollection 跨线程崩溃的模式一致。
+            var progress = new Progress<string>(line => status.Report(line));
+            NodeOperationResult result;
+            if (wasInstalled)
+            {
+                result = _comfyUiManagerInstaller.Uninstall(env);
+            }
+            else
+            {
+                result = await _comfyUiManagerInstaller.InstallAsync(env, progress, CancellationToken.None);
+            }
+
+            // 重新检测(避免 stale)— 即使 result.Success,目录可能已被外部删除/装
+            // 失败回滚;以文件系统为唯一真相。
+            var nowInstalled = _comfyUiManagerInstaller.IsInstalled(env);
+            env.IsComfyUiManagerInstalled = nowInstalled;
+            env.ComfyUiManagerButtonText = nowInstalled ? "卸载 ComfyUI Manager" : "安装 ComfyUI Manager";
+
+            if (!result.Success)
+            {
+                status.Fail(result.Reason ?? "未知错误");
+                // 不收起,等用户手动关 — 用户能看到错误
+            }
+            else
+            {
+                status.Complete(nowInstalled ? "卸载 ComfyUI Manager 完成" : "ComfyUI Manager 安装完成");
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                status.Hide();
+            }
+        }
+        catch (Exception ex)
+        {
+            status.Fail($"操作失败:{ex.Message}");
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
+
+    /// <summary>
+    /// 测试 seam — 让测试能验 toggle 按钮 disabled-when-busy(其他命令的 busy 状态由
+    /// 真实长操作触发,Toggle 命令没有"已存在"形态可触发 busy)。生产代码不需要这个,
+    /// 直接从 IsEnvBusy 走。
+    /// </summary>
+    internal void SetComfyUiManagerBusyForTest(Environment env)
+    {
+        MarkEnvBusy(env, BusyKind.ComfyUiManagerInstall);
+    }
+
+    /// <summary>
     /// OpenInstallNodePicker:从 env 行点"安装节点" → 弹 CatalogEntryPickerDialog 选条目
     /// → 弹 InstallDialog(预填 env) → 用户选则 install。
     /// </summary>
@@ -955,5 +1073,6 @@ public class EnvironmentListViewModel : ViewModelBase
         UninstallRequirementsCommand.RaiseCanExecuteChanged();
         ReportComponentsCommand.RaiseCanExecuteChanged();
         OpenBrowserCommand.RaiseCanExecuteChanged();
+        ToggleComfyUiManagerCommand.RaiseCanExecuteChanged();
     }
 }

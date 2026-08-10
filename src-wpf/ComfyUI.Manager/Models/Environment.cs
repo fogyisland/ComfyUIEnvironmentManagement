@@ -52,6 +52,20 @@ public class Environment
     public string? Notes { get; set; }
 
     /// <summary>
+    /// v0.6.11+ T3:env-list 行 toggle 按钮用 — true = ComfyUI Manager 已装(显示"卸载"),
+    /// false = 未装(显示"安装")。每次 Load 末尾重新算,不持久化(避免 stale)。
+    /// EnvironmentRepository 用 System.Text.Json 序列化,JsonIgnore 防止 SQLite 写入。
+    /// </summary>
+    [JsonIgnore]
+    public bool IsComfyUiManagerInstalled { get; set; }
+
+    /// <summary>
+    /// v0.6.11+ T3:toggle 按钮文字,根据 IsComfyUiManagerInstalled 切换。
+    /// </summary>
+    [JsonIgnore]
+    public string ComfyUiManagerButtonText { get; set; } = "安装 ComfyUI Manager";
+
+    /// <summary>
     /// 行 BED 列展示文本:✓ profileId / ✗ 未装 / ⏳ 装中 / ❌ profileId (reason)。
     /// WPF DataGridTextColumn 直接绑 BedDisplay;不需 INPC(env 一行 read-through)。
     /// </summary>
