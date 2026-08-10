@@ -514,6 +514,12 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.6.1 hotfix:改用 LoadAsync()(同源 user override JSON → live pytorch.org →
         // hardcoded fallback)— 之前 sync GetHardcodedDefaults() 只暴露 torch 2.4.1 +
         // nightly,BaseEnvView tab 已能选全版本,这里也跟上让 user override 也镜像过来。
+        // v0.6.11+ T1 (G4):删 BaseEnvViewModel 后,MarkIncompatibleOlderVersions
+        // (torch<2.4 profile "不推荐" suffix)必须继续生效。_profileLoader.LoadAsync()
+        // 内部 GetHardcodedDefaults/BuildLiveDefaults 都会过 MarkIncompatibleOlderVersions,
+        // 所以 G4 invariant 通过这条 LoadAsync 链路自动保留——T1 测试
+        // BaseEnvCommand_InvokesProfileLoaderLoadAsync + MarkIncompatibleOlderVersions_OldTorchVersion_AppendsSuffix
+        // 验这条链。
         var profiles = await _profileLoader.LoadAsync();
         var preselected = profiles.FirstOrDefault();
         var picked = PickerDialogOverride is not null

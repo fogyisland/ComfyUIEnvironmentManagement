@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -433,5 +434,125 @@ public class EnvironmentListViewModelTests
 
         Assert.NotNull(captured);
         Assert.Equal("env-x", captured!.Id);
+    }
+
+    /// <summary>
+    /// v0.6.11+ T1 (G4):删 BaseEnvViewModel 后,MarkIncompatibleOlderVersions
+    /// (torch&lt;2.4 profile "不推荐" suffix)必须继续生效。<see cref="BaseEnvProfileLoader.LoadAsync"/>
+    /// 内部在返回前过 <c>MarkIncompatibleOlderVersions</c>——所以验证 G4 invariant 等价于验证
+    /// <see cref="EnvironmentListViewModel"/> 触发 BED 流程时调了 1 次
+    /// <c>BaseEnvProfileLoader.LoadAsync</c>(静态方法 transitively 跑)。
+    /// </summary>
+    [Fact]
+    public async Task BaseEnvCommand_InvokesProfileLoaderLoadAsync()
+    {
+        using var db = new TestDb();
+        SeedEnv(db, "env-bed", "stopped");
+
+        var fakeLoader = new CountingProfileLoader();
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            fakeLoader,
+            null!,
+            null!,
+            Path.GetTempPath(),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
+
+        // 拦截 picker dialog,选第 1 个 profile 即可,不弹真 dialog。
+        var firstProfile = fakeLoader.GetHardcodedDefaults()[0];
+        vm.PickerDialogOverride = (_, _, _) => new[] { firstProfile };
+        vm.ShowProgressDialogOverride = (_, _, _) => { };
+
+        vm.BaseEnvCommand.Execute(null);
+
+        // 等 fire-and-forget 走完。
+        await Task.Delay(100);
+
+        Assert.Equal(1, fakeLoader.LoadAsyncCallCount);
+    }
+
+    /// <summary>
+    /// v0.6.11+ T1 (G4):验证 MarkIncompatibleOlderVersions 静态方法对旧 torch
+    /// 版本(profile.Name="PyTorch 2.1.0 + CUDA 11.8 (stable)")加 "不推荐" 后缀。
+    /// 等价于集成测试 G4 invariant:静态方法在 BaseEnvProfileLoader 内部正常跑,
+    /// torch&lt;2.4 profile 在 UI 显 "不推荐"。
+    /// </summary>
+    [Fact]
+    public void MarkIncompatibleOlderVersions_OldTorchVersion_AppendsSuffix()
+    {
+        var profiles = new List<BaseEnvProfile>
+        {
+            new()
+            {
+                Id = "pytorch-2.1.0-cu118-stable",
+                Name = "PyTorch 2.1.0 + CUDA 11.8 (stable)",
+                TorchVersion = "2.1.0",
+                CudaVersion = "cu118",
+                Channel = "stable",
+                Packages = new List<string> { "torch" },
+            },
+        };
+        var marked = BaseEnvProfileLoader.MarkIncompatibleOlderVersions(profiles);
+        Assert.EndsWith(" (不推荐 — comfy_kitchen 不兼容)", marked[0].Name);
+        Assert.Equal("pytorch-2.1.0-cu118-stable", marked[0].Id);  // Id 不动(v0.6.5.22 fix)
+    }
+
+    /// <summary>
+    /// v0.6.11+ T1 (G4 backward compat):EnvListVM 接受 profileLoader 时,既有
+    /// null! 测试构造 pattern 仍能编译运行(profileLoader 参数非空约束被现有 ctor 强制)。
+    /// 验证改 ctor 不破坏既有测试构造语义。
+    /// </summary>
+    [Fact]
+    public void ExistingNullProfileLoaderCtor_StillCompilesAndConstructs()
+    {
+        using var db = new TestDb();
+        // 既有 pattern:profileLoader 传 null!(模拟 ctor 5th 参数)。
+        var vm = new EnvironmentListViewModel(
+            new EnvironmentRepository(db.Factory),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            Path.GetTempPath(),
+            null!,
+            null!,
+            null!,
+            null!,
+            null!,
+            null!);
+        Assert.NotNull(vm);
+    }
+
+    /// <summary>
+    /// v0.6.11+ T1 测试 fake:计 <see cref="BaseEnvProfileLoader.LoadAsync"/> 调用次数。
+    /// 跟既有的 <c>TestLoadAsyncProfileLoader</c>(OpenBaseEnvTests)同 pattern,只是加
+    /// CallCount field 验 BaseEnvCommand 触发 1 次。
+    /// </summary>
+    private sealed class CountingProfileLoader : BaseEnvProfileLoader
+    {
+        public int LoadAsyncCallCount { get; private set; }
+
+        public CountingProfileLoader()
+            : base(Path.Combine(Path.GetTempPath(), "bed-counting-" + Guid.NewGuid()))
+        {
+        }
+
+        public override Task<IReadOnlyList<BaseEnvProfile>> LoadAsync(CancellationToken ct = default)
+        {
+            LoadAsyncCallCount++;
+            return base.LoadAsync(ct);
+        }
     }
 }
