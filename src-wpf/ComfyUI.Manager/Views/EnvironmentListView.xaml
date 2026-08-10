@@ -28,57 +28,61 @@
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridTextColumn Header="PID" Binding="{Binding Pid}" Width="80" />
                 <DataGridTextColumn Header="基础环境" Binding="{Binding BedDisplay}" Width="220" />
-                <DataGridTemplateColumn Header="操作" Width="560">
+                <DataGridTemplateColumn Header="操作" Width="580">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="启动" Margin="2"
-                                        Command="{Binding DataContext.StartCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="{Binding DataContext.StartTooltip,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                                <Button Content="停止" Margin="2"
-                                        Command="{Binding DataContext.StopCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}" />
-                                <Button Content="查看日志" Margin="2"
-                                        Command="{Binding DataContext.ShowLogCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}" />
-                                <Button Content="打开浏览器" Margin="2"
-                                        Command="{Binding DataContext.OpenBrowserCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
-                                <Button Content="装依赖" Margin="2"
-                                        Command="{Binding DataContext.InstallRequirementsCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="运行 pip install -r requirements.txt(过滤 torch 行)" />
-                                <Button Content="卸载基础环境" Margin="2"
-                                        Command="{Binding DataContext.UninstallBaseEnvCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="重置 BedStatus,保留 venv 文件,可重新部署基础环境" />
-                                <Button Content="卸载依赖" Margin="2"
-                                        Command="{Binding DataContext.UninstallRequirementsCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="卸载 ComfyUI requirements.txt 已装的包(SQLAlchemy/einops/transformers 等,不动 torch 系列)" />
-                                <Button Content="安装节点" Margin="2"
-                                        Command="{Binding DataContext.InstallNodeCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}" />
-                                <Button Content="组件报告" Margin="2"
-                                        Command="{Binding DataContext.ReportComponentsCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
-                                <Button Content="删除" Margin="2"
-                                        Command="{Binding DataContext.DeleteCommand,
-                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                        CommandParameter="{Binding}" />
+                            <StackPanel Orientation="Vertical">
+                                <WrapPanel Orientation="Horizontal" Margin="0">
+                                    <Button Content="启动" Margin="2"
+                                            Command="{Binding DataContext.StartCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="{Binding DataContext.StartTooltip,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                    <Button Content="停止" Margin="2"
+                                            Command="{Binding DataContext.StopCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="装依赖" Margin="2"
+                                            Command="{Binding DataContext.InstallRequirementsCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="运行 pip install -r requirements.txt(过滤 torch 行)" />
+                                    <Button Content="卸载依赖" Margin="2"
+                                            Command="{Binding DataContext.UninstallRequirementsCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="卸载 ComfyUI requirements.txt 已装的包(SQLAlchemy/einops/transformers 等,不动 torch 系列)" />
+                                    <Button Content="卸载基础环境" Margin="2"
+                                            Command="{Binding DataContext.UninstallBaseEnvCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="重置 BedStatus,保留 venv 文件,可重新部署基础环境" />
+                                </WrapPanel>
+                                <WrapPanel Orientation="Horizontal" Margin="0">
+                                    <Button Content="查看日志" Margin="2"
+                                            Command="{Binding DataContext.ShowLogCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="打开浏览器" Margin="2"
+                                            Command="{Binding DataContext.OpenBrowserCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
+                                    <Button Content="安装节点" Margin="2"
+                                            Command="{Binding DataContext.InstallNodeCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Content="组件报告" Margin="2"
+                                            Command="{Binding DataContext.ReportComponentsCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
+                                    <Button Content="删除" Margin="2"
+                                            Command="{Binding DataContext.DeleteCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                </WrapPanel>
                             </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
