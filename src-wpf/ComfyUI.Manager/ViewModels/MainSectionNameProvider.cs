@@ -17,7 +17,6 @@ public static class MainSectionNameProvider
         MainSection.Dashboard => Get("SectionName_Dashboard", "主页"),
         MainSection.Environments => Get("SectionName_Environments", "环境"),
         MainSection.Catalog => Get("SectionName_Catalog", "节点目录"),
-        MainSection.BaseEnv => Get("SectionName_BaseEnv", "基础环境"),
         MainSection.Settings => Get("SectionName_Settings", "设置"),
         MainSection.BulkUpdate => Get("SectionName_BulkUpdate", "批量更新"),
         MainSection.SystemStatus => Get("SectionName_SystemStatus", "系统状态"),

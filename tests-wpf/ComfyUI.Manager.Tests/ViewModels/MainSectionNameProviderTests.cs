@@ -24,12 +24,6 @@ public class MainSectionNameProviderTests
     }
 
     [Fact]
-    public void GetName_BaseEnv_ReturnsBaseEnvironment()
-    {
-        Assert.Equal("基础环境", MainSectionNameProvider.GetName(MainSection.BaseEnv));
-    }
-
-    [Fact]
     public void GetName_Settings_ReturnsSettings()
     {
         Assert.Equal("设置", MainSectionNameProvider.GetName(MainSection.Settings));
@@ -45,5 +39,15 @@ public class MainSectionNameProviderTests
     public void GetName_SystemStatus_ReturnsSystemStatus()
     {
         Assert.Equal("系统状态", MainSectionNameProvider.GetName(MainSection.SystemStatus));
+    }
+
+    [Fact]
+    public void GetName_UnknownSection_ReturnsFallback()
+    {
+        // 越界 int cast:switch 表达式应落 default arm(_ => section.ToString()),
+        // 返回非空字符串作为 fallback,不会抛异常。
+        var unknown = (MainSection)999;
+        var name = MainSectionNameProvider.GetName(unknown);
+        Assert.False(string.IsNullOrEmpty(name));
     }
 }

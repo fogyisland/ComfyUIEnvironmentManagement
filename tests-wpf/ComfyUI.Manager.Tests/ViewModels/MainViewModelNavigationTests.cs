@@ -87,17 +87,6 @@ public sealed class MainViewModelNavigationTests : IDisposable
     }
 
     [Fact]
-    public void ShowBaseEnv_UpdatesCurrentSectionAndView()
-    {
-        StaFact.RunOnSTA(() =>
-        {
-            var vm = NewVm();
-            ExecuteAllowingViewConstructionFailure(vm.ShowBaseEnvCommand);
-            Assert.Equal(MainSection.BaseEnv, vm.CurrentSection);
-        });
-    }
-
-    [Fact]
     public void ShowSettings_UpdatesCurrentSectionAndView()
     {
         StaFact.RunOnSTA(() =>
@@ -145,5 +134,15 @@ public sealed class MainViewModelNavigationTests : IDisposable
             Assert.Equal(MainSection.Environments, vm.CurrentSection);
             Assert.Same(firstView, vm.CurrentView);
         });
+    }
+
+    [Fact]
+    public void MainViewModel_DoesNotExposeBaseEnvSection()
+    {
+        // G2:侧栏菜单删除后,MainSection 枚举不应再有 BaseEnv 值。
+        // 编译期保证 ShowBaseEnvCommand property 已删;运行时反射扫描防回归。
+        var sectionType = typeof(MainSection);
+        var enumNames = Enum.GetNames(sectionType);
+        Assert.DoesNotContain("BaseEnv", enumNames);
     }
 }

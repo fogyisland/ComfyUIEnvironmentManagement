@@ -95,10 +95,6 @@
                              Command="{Binding ShowCatalogCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Catalog, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="基础环境" GroupName="SidebarNav"
-                             Command="{Binding ShowBaseEnvCommand}"
-                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=BaseEnv, Mode=OneWay}"
-                             Style="{StaticResource SidebarRadioButtonStyle}" />
                 <RadioButton Content="设置" GroupName="SidebarNav"
                              Command="{Binding ShowSettingsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"

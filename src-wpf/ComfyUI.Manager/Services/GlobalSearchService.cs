@@ -142,7 +142,6 @@ public sealed class GlobalSearchService : IGlobalSearchService
         ("ShowDashboard",                    "主页 — Dashboard"),
         ("ShowEnvironments",                 "环境"),
         ("ShowCatalog",                      "节点目录"),
-        ("ShowBaseEnv",                      "基础环境"),
         ("ShowSettings",                     "设置"),
         ("OpenBulkUpdate",                   "批量更新"),
         ("ShowSystemStatus",                 "系统状态"),

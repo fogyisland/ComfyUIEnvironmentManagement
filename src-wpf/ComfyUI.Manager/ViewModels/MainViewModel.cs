@@ -20,7 +20,6 @@ public enum MainSection
     Dashboard,
     Environments,
     Catalog,
-    BaseEnv,
     Settings,
     BulkUpdate,
     SystemStatus
@@ -133,7 +132,6 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowEnvironmentsCommand { get; }
     public RelayCommand ShowCatalogCommand { get; }
-    public RelayCommand ShowBaseEnvCommand { get; }
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
@@ -225,7 +223,6 @@ public class MainViewModel : ViewModelBase
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
-        ShowBaseEnvCommand = new RelayCommand(_ => ShowBaseEnv());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
         ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
@@ -302,16 +299,6 @@ public class MainViewModel : ViewModelBase
             _catalogView = new CatalogView { DataContext = _catalogViewModel };
         }
         CurrentView = _catalogView;
-    }
-
-    private void ShowBaseEnv()
-    {
-        CurrentSection = MainSection.BaseEnv;
-        var envRepo = new EnvironmentRepository(_dbFactory);
-        CurrentView = new BaseEnvView
-        {
-            DataContext = new BaseEnvViewModel(_profileLoader, envRepo, _baseEnvInstaller, _pytorchVersionDirectory, _appDataDir),
-        };
     }
 
     private void ShowSettings()
@@ -512,7 +499,6 @@ public class MainViewModel : ViewModelBase
             "DashboardView"       => "Dashboard",
             "EnvironmentListView" => "Environments",
             "CatalogView"         => "Catalog",
-            "BaseEnvView"         => "BaseEnv",
             "SettingsView"        => "Settings",
             "SystemStatusView"    => "SystemStatus",
             _                     => t,
