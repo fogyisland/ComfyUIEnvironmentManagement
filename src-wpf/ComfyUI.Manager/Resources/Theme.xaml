@@ -13,6 +13,7 @@
     <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
     <views:InverseBoolConverter x:Key="InverseBool" />
     <views:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibility" />
+    <views:InverseZeroCountToVisibilityConverter x:Key="InverseZeroCountToVisibility" />
 
     <!-- Palette 资源现在由 Themes/Palette.Light.xaml 或 Themes/Palette.Dark.xaml 提供(经 App.xaml 槽位合并)。
          本文件只保留 converters / font sizes / paddings / styles / data templates。

@@ -44,9 +44,9 @@
         <StackPanel DockPanel.Dock="Top" Margin="8,0,8,4">
             <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource ErrorBrush}"
                        Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}}" />
-            <TextBlock Text="{Binding InfoMessage}" Foreground="Green"
+            <TextBlock Text="{Binding InfoMessage}" Foreground="{DynamicResource SuccessBrush}"
                        Visibility="{Binding InfoMessage, Converter={StaticResource NullToVisibility}}" />
-            <TextBlock Text="{Binding ProgressMessage}" Foreground="Gray"
+            <TextBlock Text="{Binding ProgressMessage}" Foreground="{DynamicResource OutlineBrush}"
                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
         </StackPanel>
 
@@ -105,23 +105,24 @@
                              ScrollViewer.VerticalScrollBarVisibility="Disabled" />
                 </ScrollViewer>
 
-                <TextBlock Text="暂无数据,点右上角 刷新" FontSize="14" Foreground="Gray"
+                <TextBlock Text="暂无数据,点右上角 刷新" FontSize="14" Foreground="{DynamicResource OutlineBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding HasEntries, Converter={StaticResource InverseBoolToVisibility}}" />
             </Grid>
 
             <!-- GridSplitter -->
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
-                          Background="LightGray" />
+                          Background="{DynamicResource OutlineBrush}" />
 
             <!-- 右:详情面板 -->
             <Border Grid.Column="2" Margin="8,8,8,8" Padding="12"
-                    BorderBrush="LightGray" BorderThickness="1" CornerRadius="4">
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1" CornerRadius="6">
                 <Grid>
                     <!-- 未选中状态 -->
                     <TextBlock Text="← 请选择节点查看详情"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Foreground="Gray"
+                               Foreground="{DynamicResource OutlineBrush}"
                                Visibility="{Binding HasSelected, Converter={StaticResource InverseBoolToVisibility}}" />
 
                     <!-- 详情 -->
@@ -129,13 +130,15 @@
                                   Visibility="{Binding HasSelected, Converter={StaticResource BoolToVisibility}}">
                         <StackPanel>
                             <TextBlock Text="{Binding SelectedTitle}" FontSize="18" FontWeight="Bold"
+                                       Foreground="{DynamicResource OnSurfaceBrush}"
                                        TextWrapping="Wrap" />
                             <TextBlock Margin="0,4,0,0">
-                                <Run Text="作者:" Foreground="Gray" />
-                                <Run Text="{Binding SelectedAuthor, Mode=OneWay}" />
+                                <Run Text="作者:" Foreground="{DynamicResource OutlineBrush}" />
+                                <Run Text="{Binding SelectedAuthor, Mode=OneWay}"
+                                     Foreground="{DynamicResource OnSurfaceBrush}" />
                             </TextBlock>
                             <TextBlock Margin="0,2,0,0">
-                                <Run Text="当前版本:" Foreground="Gray" />
+                                <Run Text="当前版本:" Foreground="{DynamicResource OutlineBrush}" />
                             </TextBlock>
                             <Grid Margin="0,2,0,0">
                                 <Grid.ColumnDefinitions>
@@ -148,17 +151,20 @@
                                           DisplayMemberPath="DisplayLabel"
                                           IsEditable="False" />
                                 <TextBlock Grid.Column="1" Margin="8,0,0,0"
-                                           VerticalAlignment="Center" Foreground="Gray">
-                                    <Run Text="发布:" />
-                                    <Run Text="{Binding SelectedVersionDate, Mode=OneWay}" FontWeight="Bold" />
+                                           VerticalAlignment="Center">
+                                    <Run Text="发布:" Foreground="{DynamicResource OutlineBrush}" />
+                                    <Run Text="{Binding SelectedVersionDate, Mode=OneWay}" FontWeight="Bold"
+                                         Foreground="{DynamicResource OnSurfaceBrush}" />
                                 </TextBlock>
                             </Grid>
                             <TextBlock Margin="0,2,0,0" TextWrapping="Wrap">
-                                <Run Text="安装类型:" Foreground="Gray" />
-                                <Run Text="{Binding SelectedInstallType, Mode=OneWay}" />
+                                <Run Text="安装类型:" Foreground="{DynamicResource OutlineBrush}" />
+                                <Run Text="{Binding SelectedInstallType, Mode=OneWay}"
+                                     Foreground="{DynamicResource OnSurfaceBrush}" />
                             </TextBlock>
                             <TextBlock Text="{Binding SelectedLastUpdate, StringFormat='最后更新: {0}'}"
-                                       Margin="0,4,0,0" FontSize="11" Foreground="Gray" />
+                                       Margin="0,4,0,0" FontSize="11"
+                                       Foreground="{DynamicResource OutlineBrush}" />
 
                             <!-- Requirements 列表(v0.6.7.4 T4:IsExpanded=False 默认折叠,避免详情面板过高) -->
                             <Expander Header="Requirements" Margin="0,8,0,0" IsExpanded="False"
@@ -166,10 +172,13 @@
                                 <ItemsControl ItemsSource="{Binding SelectedPipRequirements}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Padding="4,2" Margin="0,1" Background="#F5F5F5" CornerRadius="2">
-                                                <TextBlock FontFamily="Consolas" FontSize="11">
+                                            <Border Padding="4,2" Margin="0,1"
+                                                    Background="{DynamicResource BackgroundBrush}" CornerRadius="2">
+                                                <TextBlock FontFamily="Consolas" FontSize="11"
+                                                           Foreground="{DynamicResource OnSurfaceBrush}">
                                                     <Run Text="{Binding Name}" FontWeight="Bold" />
-                                                    <Run Text="{Binding Specifier, TargetNullValue=''}" Foreground="DarkSlateGray" />
+                                                    <Run Text="{Binding Specifier, TargetNullValue=''}"
+                                                         Foreground="{DynamicResource OutlineBrush}" />
                                                 </TextBlock>
                                             </Border>
                                         </DataTemplate>
@@ -183,7 +192,8 @@
                                 </Hyperlink>
                             </TextBlock>
                             <TextBlock Text="{Binding SelectedDescription}" Margin="0,12,0,0"
-                                       TextWrapping="Wrap" Foreground="#444" />
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource OnSurfaceBrush}" />
                             <Button Content="{Binding DownloadButtonLabel}" Margin="0,16,0,0" HorizontalAlignment="Left"
                                     Padding="20,6"
                                     Command="{Binding DownloadCommand}"

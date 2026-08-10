@@ -131,3 +131,23 @@ public sealed class ZeroCountToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>
+/// InverseZeroCountToVisibilityConverter:int → Visibility(0 → Collapsed,>0 → Visible)。
+/// ZeroCountToVisibility 的反向版本,用于 "列表有数据时显示内容区"。
+/// </summary>
+public sealed class InverseZeroCountToVisibilityConverter : IValueConverter
+{
+    public static readonly InverseZeroCountToVisibilityConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var count = value is int n ? n : 0;
+        return count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
