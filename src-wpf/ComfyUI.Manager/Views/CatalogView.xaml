@@ -106,18 +106,16 @@
 
             <!-- 左:列表 / 磁贴 / 空状态 -->
             <Grid Grid.Column="0">
-                <!-- T3 placeholder:list mode card. T2 keeps DataGrid for now. -->
-                <DataGrid Visibility="{Binding IsListMode, Converter={StaticResource BoolToVisibility}}"
-                          ItemsSource="{Binding PagedEntries}"
-                          SelectedItem="{Binding Selected}"
-                          AutoGenerateColumns="False" IsReadOnly="True" Margin="8">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="包名" Binding="{Binding Package}" Width="*" />
-                        <DataGridTextColumn Header="作者" Binding="{Binding Author}" Width="*" />
-                        <DataGridTextColumn Header="⭐" Binding="{Binding RawMetadata[stars]}" Width="60" />
-                        <DataGridTextColumn Header="说明" Binding="{Binding Description}" Width="2*" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                <!-- T3:list mode card (CatalogRowCardTemplate + CatalogCardItemContainerStyle from T1) -->
+                <ListBox Visibility="{Binding IsListMode, Converter={StaticResource BoolToVisibility}}"
+                         ItemsSource="{Binding PagedEntries}"
+                         SelectedItem="{Binding Selected}"
+                         ItemTemplate="{StaticResource CatalogRowCardTemplate}"
+                         ItemContainerStyle="{StaticResource CatalogCardItemContainerStyle}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch"
+                         Margin="8" />
 
                 <ScrollViewer Visibility="{Binding IsTileMode, Converter={StaticResource BoolToVisibility}}"
                               VerticalScrollBarVisibility="Auto" Margin="8">
