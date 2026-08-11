@@ -147,7 +147,7 @@ public class EnvironmentListViewModelOpenBaseEnvTests
     }
 
     // v0.6.6.1 hotfix:env-list 工具栏 BED 入口改用 LoadAsync() 而不是 GetHardcodedDefaults(),
-    // 跟 BaseEnvView tab 同源 — 让 env-list picker 也能选全版本(之前 sync hardcoded 只暴露
+    // 跟 picker dialog 同源 — 让 env-list picker 也能选全版本(之前 sync hardcoded 只暴露
     // torch 2.4.1 + nightly)。
     [Fact]
     public void OpenBaseEnvProgress_PassesProfilesFromLoadAsync_NotHardcodedDefaults()

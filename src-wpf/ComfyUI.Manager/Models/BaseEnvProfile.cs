@@ -62,7 +62,7 @@ public class BaseEnvProfile
 
     /// <summary>
     /// 浅-深拷贝:Packages 是新 List<string> 实例,字符串本身不可变不需要深拷贝。
-    /// ViewModel 改副本不影响原 profile(供 BaseEnvView 多选 + 临时编辑用)。
+    /// ViewModel 改副本不影响原 profile(供 picker dialog + 临时编辑用)。
     /// </summary>
     public BaseEnvProfile Clone()
     {

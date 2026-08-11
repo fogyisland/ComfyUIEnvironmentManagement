@@ -481,7 +481,7 @@ public class EnvironmentListViewModel : ViewModelBase
 
         // v0.6.5.19.1 hotfix: env-list 工具栏"基础环境部署"按钮也加 all-done 短路 —
         // v0.6.5.19 只修了 BaseEnv tab 的 StartCommand,这个入口漏修。BedStatus 全部
-        // "done" → 弹"已安装",不弹 install dialog,跟 BaseEnvViewModel.Start 行为一致。
+        // "done" → 弹"已安装",不弹 install dialog,跟 v0.6.5.19 BED 入口短路行为一致。
         var existingEnvs = envIds
             .Select(id => _repo.Get(id))
             .Where(e => e is not null)
@@ -513,7 +513,7 @@ public class EnvironmentListViewModel : ViewModelBase
         // Single 模式:用户选一个 torch+CUDA 组合 → 传给 BaseEnvProgressDialog。
         // v0.6.6.1 hotfix:改用 LoadAsync()(同源 user override JSON → live pytorch.org →
         // hardcoded fallback)— 之前 sync GetHardcodedDefaults() 只暴露 torch 2.4.1 +
-        // nightly,BaseEnvView tab 已能选全版本,这里也跟上让 user override 也镜像过来。
+        // nightly,picker dialog 已能选全版本,这里也跟上让 user override 也镜像过来。
         // v0.6.11+ T1 (G4):删 BaseEnvViewModel 后,MarkIncompatibleOlderVersions
         // (torch<2.4 profile "不推荐" suffix)必须继续生效。_profileLoader.LoadAsync()
         // 内部 GetHardcodedDefaults/BuildLiveDefaults 都会过 MarkIncompatibleOlderVersions,

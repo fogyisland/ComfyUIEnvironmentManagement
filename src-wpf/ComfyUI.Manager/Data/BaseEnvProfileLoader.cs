@@ -474,7 +474,7 @@ public class BaseEnvProfileLoader
     ///   "pytorch-2.1-cu118-stable (不推荐 — ...)" — 这不影响功能
     ///   (BedProfileId 只是显示用,不做 Id 比较),但 BED 列会显示带后缀
     ///   的旧 Id,看起来很怪。所以保持 Id 干净,只在 Name(下拉框显示
-    ///   用,<c>BaseEnvView.xaml:48 Text="{Binding Name}"</c>)上做警告。</item>
+    ///   用,picker dialog 的 Text="{Binding Name}" binding)上做警告。</item>
     /// <item>不修改 <c>TorchVersion</c> / <c>CudaVersion</c> / <c>Channel</c>
     ///   / <c>Packages</c>,所以 <see cref="BaseEnvProfile.BuildPipArgs"/>
     ///   不会受影响 — pip install 命令还是 pin 实际 torch 版本。</item>

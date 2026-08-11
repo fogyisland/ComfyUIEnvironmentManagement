@@ -46,7 +46,7 @@ public sealed class PyTorchVersionEntry
 }
 
 /// <summary>
-/// 给 <c>BaseEnvView</c> 的 ComboBox 用的 PyTorch 版本目录。
+/// 给 picker dialog 的 ComboBox 用的 PyTorch 版本目录。
 ///
 /// 编排:cache → catalog fetch → 硬编码 v0.6.5.2 fallback 链。
 /// <list type="number">

@@ -11,7 +11,7 @@ namespace ComfyUI.Manager.Tests;
 /// Composition/wiring regression tests for <see cref="App"/>.
 ///
 /// T7 只关心"App 能不能把 <see cref="PyTorchVersionDirectory"/> 组装出来
-/// 并交给 MainViewModel/BaseEnvViewModel",不关心目录内容 —— 内容由
+/// 并交给 MainViewModel/EnvironmentListViewModel",不关心目录内容 —— 内容由
 /// <c>PyTorchVersionDirectoryTests</c> 覆盖。所以这里:
 /// <list type="bullet">
 /// <item>不启动 WPF(只调 <c>static</c> 方法,不 new <see cref="App"/>);</item>
