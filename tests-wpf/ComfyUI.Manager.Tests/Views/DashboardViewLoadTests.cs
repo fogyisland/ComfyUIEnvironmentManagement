@@ -87,4 +87,50 @@ public class DashboardViewLoadTests
         Assert.Null(caught);
         Assert.NotEqual("0x0", size);
     }
+
+    /// <summary>
+    /// v0.6.11+ dashboard/splash polish T5:回归守护 T3 新增的两块 XAML 表面 ——
+    /// 顶部 hero 行(icon + 标题 + 版本 + GitHub 数据条)和底部「📥 下载地址」区块。
+    ///
+    /// 跟上面的 <see cref="DashboardView_DarkTheme_LoadsWithoutException"/> 结构相似但意图不同:
+    /// 那个是 T3 落地时对「整个 DashboardView 能不能 load」的通用守护;这个专门盯住
+    /// hero + 下载地址 —— 它们是 T3 引入的新 XAML,含 pack://siteoforigin: 图片、
+    /// 新 Border 卡片样式、以及 GitHub 版本/离线徽章的 converter 绑定,任何一处
+    /// StaticResource / converter / pack URI 写错都只在真实 load + layout 时才炸,
+    /// 编译期完全看不出来。名字点明覆盖面,后续改 hero 或下载地址时能直接定位到这条。
+    ///
+    /// 尺寸用 1100×900(跟上面一致):新的 hero + 卡片 + 下载地址三段式布局在 800×600
+    /// 下会被裁掉下半部分,measure/arrange 走不到下载地址那段。
+    /// </summary>
+    [Fact]
+    public void DashboardView_HeroAndDownloadAddress_DoesNotThrow()
+    {
+        Exception? caught = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
+                var v = new DashboardView();
+                v.Measure(new Size(1100, 900));
+                v.Arrange(new Rect(0, 0, 1100, 900));
+                v.UpdateLayout();
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (caught is not null)
+        {
+            throw new Exception(
+                $"DashboardView hero+download layout load failed: {caught.GetType().FullName}: {caught.Message}",
+                caught);
+        }
+    }
 }
