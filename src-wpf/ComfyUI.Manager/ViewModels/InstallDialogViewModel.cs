@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
@@ -33,18 +34,38 @@ public class InstallDialogViewModel : ViewModelBase
     /// </summary>
     public string? PreselectedTag { get; }
 
+    /// <summary>
+    /// v0.6.11+ SDD D1: 安装成功回调(caller 注入,典型 = <c>MainViewModel.RestartEnvAsync</c>)。
+    /// null = 不触发自动重启(测试 / 离线场景)。
+    /// <para>
+    /// 触发语义(G7/G8/G9):
+    /// <list type="bullet">
+    /// <item>仅 <see cref="NodeOperationResult.Success"/>==true 时触发</item>
+    /// <item>失败 / 异常路径不触发</item>
+    /// <item><b>不 await</b>(fire-and-forget)— dialog 立即关,stop+start 在后台跑,
+    /// env-start 进度面板在 env-list tab 显示</item>
+    /// <item>用 <c>Task.Run</c> 把回调挪到 thread-pool,避免 dialog UI thread
+    /// await 后 dispatcher 抛异常(跟 <c>CatalogViewModel</c> 的
+    /// <c>Progress&lt;string&gt;</c> 同款模式)</item>
+    /// </list>
+    /// </para>
+    /// </summary>
+    public Func<string, Task>? OnInstallSuccess { get; }
+
     public InstallDialogViewModel(
         EnvironmentRepository repo,
         NodeOperations ops,
         CatalogEntry entry,
         string? preselectedEnvId = null,
-        string? preselectedTag = null)
+        string? preselectedTag = null,
+        Func<string, Task>? onInstallSuccess = null)
     {
         _repo = repo;
         _ops = ops;
         Entry = entry;
         PreselectedEnvId = preselectedEnvId;
         PreselectedTag = preselectedTag;
+        OnInstallSuccess = onInstallSuccess;
         InstallCommand = new RelayCommand(
             async _ => await InstallAsync(),
             _ => SelectedEnv is not null && !Busy);
@@ -110,6 +131,17 @@ public class InstallDialogViewModel : ViewModelBase
             if (result.Success)
             {
                 Progress = $"OK, version={result.Version}";
+                // v0.6.11+ SDD D1: 触发自动重启回调(fire-and-forget)。
+                // - 不 await(G7):dialog 立即关,真正的 stop+start 在 background 跑,
+                //   env-start 进度面板在 env-list tab 显示
+                // - Task.Run(G8):把回调挪到 thread-pool,避免 dialog UI thread
+                //   await 后 dispatcher 抛异常(同 CatalogViewModel:267 的 Progress<string> 模式)
+                // - 失败 / 异常路径(G9)不进这分支,callback 不触发
+                if (OnInstallSuccess is not null)
+                {
+                    _ = System.Threading.Tasks.Task.Run(
+                        async () => await OnInstallSuccess(envId));
+                }
                 CloseRequested?.Invoke();
             }
             else
