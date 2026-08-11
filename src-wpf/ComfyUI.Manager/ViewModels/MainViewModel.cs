@@ -262,7 +262,9 @@ public class MainViewModel : ViewModelBase
                     "DashboardService not wired — App.xaml.cs 未在 MainViewModel ctor 传 IDashboardService");
             // v0.6.11+ T3:传 browserLauncher 给「下载地址」区块的「浏览器打开」按钮
             // (Chrome 优先 fallback 默认浏览器,跟组件报告 / OpenBrowser 同一套)。
-            _dashboardViewModel = new DashboardViewModel(svc, _browserLauncher);
+            // T3 fix:再传 ErrorBanner — clipboard / explorer 失败走主窗口 ErrorBanner 反馈
+            // (spec §G8 + §Error Handling)。AppLogger 从 service.Logger 拿(无需重 inject)。
+            _dashboardViewModel = new DashboardViewModel(svc, _browserLauncher, ErrorBanner);
             _dashboardView = new DashboardView { DataContext = _dashboardViewModel };
         }
         CurrentView = _dashboardView;

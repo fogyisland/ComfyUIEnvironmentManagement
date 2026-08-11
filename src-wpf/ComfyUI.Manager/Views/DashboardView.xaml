@@ -205,6 +205,15 @@
                                    Foreground="#FF6B6B"
                                    Visibility="{Binding LastSnapshot.GitHubFailed, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
                                    HorizontalAlignment="Center" Margin="0,4,0,0" />
+                        <!-- v0.6.11+ T3 fix:spec §A.4 — GitHub 不可达 **且** 有 stale 缓存时
+                             额外显示离线 badge(spec 原文「grey out + ⓘ 离线模式,使用缓存数据」)。
+                             IsOfflineMode 同时 encode GitHubFailed + LastChangelogSync != null:
+                             GitHubFailed=true 但完全没缓存(LastChangelogSync=null)时只显
+                             「❌ Failed」,避免同一卡片同时显示「离线」+「Failed」互相矛盾。 -->
+                        <TextBlock Text="ⓘ 离线模式,使用缓存数据"
+                                   Foreground="Gray" FontSize="11"
+                                   Visibility="{Binding IsOfflineMode, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                                   HorizontalAlignment="Center" Margin="0,2,0,0" />
 
                         <Separator Margin="0,12,0,8" />
 

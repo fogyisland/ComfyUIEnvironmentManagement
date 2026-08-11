@@ -16,6 +16,14 @@ namespace ComfyUI.Manager.Services;
 public interface IDashboardService
 {
     Task<DashboardSnapshot> GetSnapshotAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// v0.6.11+ T3 fix:把 service 内部的 logger 暴露给 VM ——
+    /// dashboard 上的 clipboard / explorer / BrowserLauncher shell 副作用失败走
+    /// 这个 logger 落 Logs/(spec §G8),不重复在 VM 里 inject 一份 AppLogger。
+    /// Default null → 既有 stub 不需要改(只有 DashboardService 真实实现会覆写)。
+    /// </summary>
+    AppLogger? Logger => null;
 }
 
 public sealed class DashboardService : IDashboardService
@@ -33,6 +41,9 @@ public sealed class DashboardService : IDashboardService
     private readonly string _stagingPath;
     private readonly string _releaseUrl;
     private readonly string _changelogPath;
+
+    /// <summary>v0.6.11+ T3 fix:暴露 logger 给 VM 用(详见 <see cref="IDashboardService.Logger"/>)。</summary>
+    public AppLogger? Logger => _logger;
 
     /// <param name="releaseService">
     /// null → <see cref="DashboardSnapshot.Releases"/> 保持空 list(既有 4-arg 构造点行为不变)。

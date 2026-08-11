@@ -35,6 +35,13 @@ public sealed class DashboardViewModel : ViewModelBase
 {
     private readonly IDashboardService _service;
     private readonly IBrowserLauncher? _browserLauncher;
+    // v0.6.11+ T3 fix:Spec §G8 + §Error Handling — clipboard / explorer 失败不再静默吞,
+    // 走 AppLogger.Warn(落 Logs/)+ 主窗口 ErrorBanner 反馈(非 MessageBox,跟 env-list
+    // 「打开浏览器」 / 「打开日志」同模式 — EnvironmentListViewModel.ReportOpenError)。
+    // AppLogger 从 IDashboardService.Logger 拿(service 已经在用它记 GitHub fetch / changelog
+    // read 失败,不重复 inject),ErrorBanner 由 MainViewModel 注入(默认 null → 单测零 churn)。
+    private AppLogger? _logger => _service.Logger;
+    private readonly ErrorBannerViewModel? _errorBanner;
     // SemaSlim(1, 1) = 并发去重:第一个 await 抢到锁,第二个 wait — task1 完成时
     // 第二个拿到锁(此时 IsRefreshing 变 false),但 LastSnapshot 已被 task1 写入,
     // task2 不会重写(同样的快照,SetField equals return false)。CanExecute 也 gate。
@@ -44,7 +51,11 @@ public sealed class DashboardViewModel : ViewModelBase
     public DashboardSnapshot? LastSnapshot
     {
         get => _lastSnapshot;
-        private set => SetField(ref _lastSnapshot, value);
+        private set
+        {
+            if (SetField(ref _lastSnapshot, value))
+                RaisePropertyChanged(nameof(IsOfflineMode));
+        }
     }
 
     private bool _isRefreshing;
@@ -140,6 +151,15 @@ public sealed class DashboardViewModel : ViewModelBase
         private set => SetField(ref _gitHubReleaseCount, value);
     }
 
+    /// <summary>
+    /// 离线模式:GitHub fetch 失败 **且** 缓存里有 stale 数据可用(spec §A.4 —
+    /// 卡片 4 同时显示「❌ Failed」 + 「ⓘ 离线模式,使用缓存数据」 badge)。
+    /// 仅 GitHubFailed == true 不够 — 完全没有缓存时(LastChangelogSync null)走纯
+    /// 「Failed」label,避免显示矛盾的两个状态。
+    /// </summary>
+    public bool IsOfflineMode =>
+        LastSnapshot is { GitHubFailed: true, LastChangelogSync: not null };
+
     public RelayCommand CopyStagingPathCommand { get; }
     public RelayCommand OpenStagingFolderCommand { get; }
     public RelayCommand OpenReleaseUrlCommand { get; }
@@ -152,10 +172,14 @@ public sealed class DashboardViewModel : ViewModelBase
     internal Action<string>? ClipboardSetTextOverride { get; set; }
     internal Action<string>? RevealInExplorerOverride { get; set; }
 
-    public DashboardViewModel(IDashboardService service, IBrowserLauncher? browserLauncher = null)
+    public DashboardViewModel(
+        IDashboardService service,
+        IBrowserLauncher? browserLauncher = null,
+        ErrorBannerViewModel? errorBanner = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _browserLauncher = browserLauncher;
+        _errorBanner = errorBanner;
         RefreshCommand = new RelayCommand(
             execute: _ => _ = RefreshAsync(),
             canExecute: _ => !IsRefreshing);
@@ -169,7 +193,10 @@ public sealed class DashboardViewModel : ViewModelBase
     private static string DefaultStagingPath() =>
         Path.Combine(AppContext.BaseDirectory, "ComfyUI.Manager.exe");
 
-    /// <summary>剪贴板失败(其他进程占用 / 非 STA)不该炸 UI —— 静默吞。</summary>
+    /// <summary>
+    /// 剪贴板失败(其他进程占用 / 非 STA)不该炸 UI ——
+    /// spec §G8 要求 log + ErrorBanner 反馈(原实现空 catch 静默吞)。
+    /// </summary>
     private void CopyStagingPath()
     {
         if (string.IsNullOrEmpty(StagingPath)) return;
@@ -178,9 +205,9 @@ public sealed class DashboardViewModel : ViewModelBase
             if (ClipboardSetTextOverride is not null) ClipboardSetTextOverride(StagingPath);
             else Clipboard.SetText(StagingPath);
         }
-        catch
+        catch (Exception ex)
         {
-            // 忽略:复制失败不阻断用户,路径本身在 UI 上可见可手抄。
+            ReportError("dashboard-clipboard", $"复制失败:{ex.Message}", ErrorSeverity.Warn);
         }
     }
 
@@ -211,14 +238,27 @@ public sealed class DashboardViewModel : ViewModelBase
                 Process.Start(new ProcessStartInfo(dir) { UseShellExecute = true });
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 忽略:打开资源管理器失败不阻断 UI。
+            ReportError("dashboard-explorer", $"打开文件夹失败:{ex.Message}", ErrorSeverity.Warn);
         }
     }
 
     private void OpenReleaseUrl() =>
-        _browserLauncher?.OpenWithChromeFallback(ReleaseUrl);
+        _browserLauncher?.OpenWithChromeFallback(ReleaseUrl, ReportError);
+
+    /// <summary>
+    /// v0.6.11+ T3 fix:spec §G8 + §Error Handling — shell 副作用失败走 ErrorBanner +
+    /// AppLogger(非 MessageBox,跟 EnvironmentListViewModel.ReportOpenError 同模式)。
+    /// 签名跟 <see cref="IBrowserLauncher.OpenWithChromeFallback"/> 的 errorReporter
+    /// 对齐(string, string, ErrorSeverity),所以可以同一个 method group 复用 —
+    /// 既被 Copy/OpenStagingFolder 的 catch 调,又被 OpenWithChromeFallback 调。
+    /// </summary>
+    private void ReportError(string code, string message, ErrorSeverity severity)
+    {
+        _logger?.Warn("dashboard", $"{code}: {message}");
+        _errorBanner?.Add(code, message, severity);
+    }
 
     /// <summary>
     /// 拉一次快照写进 <see cref="LastSnapshot"/>。并发去重(SemaSlim) +
