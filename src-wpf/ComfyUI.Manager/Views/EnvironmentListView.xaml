@@ -22,8 +22,6 @@
                         Style="{StaticResource MaterialButton}" />
                 <Button Content="+ 新建环境" Command="{Binding CreateCommand}"
                         Style="{StaticResource MaterialButton}" Margin="6,0,0,0" />
-                <Button Content="基础环境部署" Command="{Binding BaseEnvCommand}"
-                        Style="{StaticResource MaterialButton}" Margin="6,0,0,0" />
             </StackPanel>
         </Grid>
 
@@ -333,7 +331,6 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <!-- Row 0: 装卸链路 -->
                                     <Button Grid.Row="0" Grid.Column="0" Content="启动" Margin="2" MinWidth="0"
@@ -348,27 +345,26 @@
                                             Command="{Binding DataContext.StopCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <Button Grid.Row="0" Grid.Column="2" Content="装依赖" Margin="2" MinWidth="0"
+                                    <!-- v0.6.11+ T1:Requirements toggle — 已装显"卸依赖",未装显"装依赖",
+                                         busy 时按钮灰 + label 变"装依赖中..."/"卸依赖中..."。
+                                         复用现有 RequirementsStatus inline 面板显示进度。 -->
+                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.InstallRequirementsCommand,
+                                            Command="{Binding DataContext.ToggleRequirementsCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
-                                            ToolTip="运行 pip install -r requirements.txt(过滤 torch 行)" />
-                                    <Button Grid.Row="0" Grid.Column="3" Content="卸载依赖" Margin="2" MinWidth="0"
-                                            Style="{StaticResource DangerButton}"
-                                            Command="{Binding DataContext.UninstallRequirementsCommand,
+                                            ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
+                                    <!-- v0.6.11+ T1:BED toggle — 已装显"卸载基础环境",未装显"安装基础环境",
+                                         busy 时按钮灰 + label 变"安装基础环境中..."/"卸载基础环境中..."。
+                                         复用 BaseEnvUninstallStatus inline 面板;BED picker dialog 走 OpenBaseEnvProgressAsync。 -->
+                                    <Button Grid.Row="0" Grid.Column="3" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
+                                            Style="{StaticResource MaterialButton}"
+                                            Command="{Binding DataContext.ToggleBaseEnvCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
-                                            ToolTip="卸载 ComfyUI requirements.txt 已装的包(SQLAlchemy/einops/transformers 等,不动 torch 系列)" />
-                                    <Button Grid.Row="0" Grid.Column="4" Content="卸载基础环境" Margin="2" MinWidth="0"
-                                            Style="{StaticResource DangerButton}"
-                                            Command="{Binding DataContext.UninstallBaseEnvCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="重置 BedStatus,保留 venv 文件,可重新部署基础环境" />
-                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — 文字随每行 ComfyUiManagerButtonText
-                                         动态切换(安装/卸载)。绑 ToggleComfyUiManagerCommand 显示 inline 状态面板。 -->
-                                    <Button Grid.Row="0" Grid.Column="5" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
+                                            ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
+                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — 同 col 0-3 pattern,共用 5 列 Grid。 -->
+                                    <Button Grid.Row="0" Grid.Column="4" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleComfyUiManagerCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
