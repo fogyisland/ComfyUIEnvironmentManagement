@@ -133,6 +133,15 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // v0.6.11+ SDD B T3:settings 未保存改动拦截。
+        // 切侧栏离开 settings tab 不拦(VM 缓存 + dirty 状态活着),
+        // 只在主窗口关闭时一次性拦:Yes=Save&Exit, No=Discard&Exit, Cancel=留下。
+        if (DataContext is MainViewModel mvm && !mvm.ConfirmDiscardUnsavedSettings())
+        {
+            e.Cancel = true;
+            return;
+        }
+
         // 写回 prefs(G8)— 只读当前 Window 状态(简化版,完整版本由
         // LastSelectedEnvId 在 MainViewModel 维护)
         var svc = App.UiPreferencesService;
