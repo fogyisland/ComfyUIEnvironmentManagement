@@ -4,6 +4,7 @@
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         Title="日志" Height="600" Width="900"
         Background="{StaticResource BackgroundBrush}"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Icon="pack://siteoforigin:,,,/asset/icon.png">
     <views:LogViewer DataContext="{Binding}" />
 </Window>

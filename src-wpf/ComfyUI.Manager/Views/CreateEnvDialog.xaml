@@ -6,7 +6,8 @@
         xmlns:services="clr-namespace:ComfyUI.Manager.Services"
         Title="新建环境" Height="620" Width="560"
         Background="{StaticResource BackgroundBrush}"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Icon="pack://siteoforigin:,,,/asset/icon.png">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />

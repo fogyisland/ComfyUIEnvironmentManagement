@@ -4,7 +4,8 @@
         xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
         Title="批量更新" Width="900" Height="650"
         Background="{DynamicResource BackgroundBrush}"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Icon="pack://siteoforigin:,,,/asset/icon.png">
     <Window.Resources>
         <!-- Visibility by BulkUpdateMode via DataTrigger -->
         <Style x:Key="SelectEnvVisibility" TargetType="FrameworkElement">

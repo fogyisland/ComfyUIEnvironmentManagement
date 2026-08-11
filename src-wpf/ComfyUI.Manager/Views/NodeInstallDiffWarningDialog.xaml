@@ -4,7 +4,8 @@
         Title="依赖变更警告" Height="380" Width="600"
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Icon="pack://siteoforigin:,,,/asset/icon.png">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

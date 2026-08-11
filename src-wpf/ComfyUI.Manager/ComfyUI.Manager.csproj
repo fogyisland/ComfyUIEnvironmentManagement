@@ -7,7 +7,11 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>ComfyUI.Manager</AssemblyName>
     <RootNamespace>ComfyUI.Manager</RootNamespace>
-    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- v0.6.11+ T4:从 app.ico(1×1 占位)切到 asset/icon.ico,1408×768 源 PNG 烘成
+         6 个尺寸(16/32/48/64/128/256)的真实 Windows ICO。<ApplicationIcon> 是 MSBuild
+         编译期嵌入 EXE 的图标(Explorer 显示),跟 XAML Window.Icon 运行时 URI 不同机制。
+         路径必须相对项目目录解析,所以指 ..\..\asset\icon.ico(对应仓库根 asset/icon.ico)。 -->
+    <ApplicationIcon>..\..\asset\icon.ico</ApplicationIcon>
     <Version>0.6.5.6</Version>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>

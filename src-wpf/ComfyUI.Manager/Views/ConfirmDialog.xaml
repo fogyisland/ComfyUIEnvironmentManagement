@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="确认" Height="200" Width="400"
         Background="{StaticResource BackgroundBrush}"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Icon="pack://siteoforigin:,,,/asset/icon.png">
     <StackPanel Margin="16">
         <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
         <StackPanel Orientation="Horizontal" Margin="0,16,0,0"
