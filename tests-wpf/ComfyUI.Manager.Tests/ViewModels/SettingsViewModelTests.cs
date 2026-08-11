@@ -49,6 +49,7 @@ public class SettingsViewModelTests : IDisposable
     {
         var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
         vm.Language = "en_US";
+        vm.SaveCommand.Execute(null);
 
         var reloaded = new SettingsRepository(_path).Load();
         Assert.Equal("en_US", reloaded.Language);
@@ -63,6 +64,7 @@ public class SettingsViewModelTests : IDisposable
 
         vm.ComfyUiStartupTimeoutSeconds = 900;
         Assert.Equal(900, vm.ComfyUiStartupTimeoutSeconds);
+        vm.SaveCommand.Execute(null);
 
         var reloaded = new SettingsRepository(_path).Load();
         Assert.Equal(900, reloaded.ComfyUiStartupTimeoutSeconds);
@@ -151,6 +153,7 @@ public class SettingsViewModelTests : IDisposable
 
         // switch back to first
         vm.ActiveQuerySource = vm.QuerySources[0];
+        vm.SaveCommand.Execute(null);
 
         var reloaded = new SettingsRepository(_path).Load();
         Assert.Equal("comfyui manager", reloaded.ActiveQuerySourceName);

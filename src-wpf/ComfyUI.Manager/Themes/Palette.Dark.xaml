@@ -11,6 +11,7 @@
     <Color x:Key="ErrorColor">#CF6679</Color>
     <Color x:Key="ErrorVariantColor">#B00020</Color>
     <Color x:Key="SuccessColor">#4CAF50</Color>
+    <Color x:Key="WarningColor">#FFB300</Color>
     <Color x:Key="OnPrimaryColor">#1C1B1F</Color>
     <Color x:Key="OnSurfaceColor">#E6E1E5</Color>
 
@@ -22,6 +23,7 @@
     <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
     <SolidColorBrush x:Key="ErrorVariantBrush" Color="{StaticResource ErrorVariantColor}" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="OnPrimaryBrush" Color="{StaticResource OnPrimaryColor}" />
     <SolidColorBrush x:Key="OnSurfaceBrush" Color="{StaticResource OnSurfaceColor}" />
     <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#252525" />

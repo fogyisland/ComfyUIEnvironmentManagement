@@ -118,6 +118,14 @@ public class MainViewModel : ViewModelBase
     internal Func<EnvironmentListViewModel, object?>? EnvironmentsViewFactory { get; set; }
 
     /// <summary>
+    /// 测试 seam:构造 <see cref="SettingsView"/> 的工厂 hook。默认 new 真实 View;
+    /// 测试可注入 null(stub 返回),绕开 WPF STA 初始化,直接拿到缓存的 VM。
+    /// v0.6.11+ SDD B T3:用于无 STA 的单元测试触发 CurrentSettingsViewModel 缓存,
+    /// 跑 ConfirmDiscardUnsavedSettings 逻辑。
+    /// </summary>
+    internal Func<SettingsViewModel, object?>? SettingsViewFactory { get; set; }
+
+    /// <summary>
     /// 测试用:获取当前缓存的"环境"页 VM(若有)。用于断言 ShowEnvironments
     /// 复用同一实例。
     /// </summary>
@@ -314,11 +322,15 @@ public class MainViewModel : ViewModelBase
         {
             _settingsViewModel = new SettingsViewModel(
                 _settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings, _themeService);
-            CurrentView = new SettingsView { DataContext = _settingsViewModel };
+            CurrentView = SettingsViewFactory is null
+                ? new SettingsView { DataContext = _settingsViewModel }
+                : SettingsViewFactory(_settingsViewModel) as SettingsView;
         }
         else
         {
-            CurrentView = new SettingsView { DataContext = _settingsViewModel };
+            CurrentView = SettingsViewFactory is null
+                ? new SettingsView { DataContext = _settingsViewModel }
+                : SettingsViewFactory(_settingsViewModel) as SettingsView;
         }
     }
 
@@ -430,7 +442,7 @@ public class MainViewModel : ViewModelBase
         }
         else
         {
-            File.WriteAllText(path, "# ComfyUI Models 路径配置\n# 编辑 base_directory 指向共享 Models 目录(配合 Settings.SharedModelsDirectory)\n", System.Text.Encoding.UTF8);
+            File.WriteAllText(path, "# ComfyUI Models 路径配置\n# 编辑 base_directory 指向全局默认 Models 目录(配合 Settings.DefaultModelsDirectory)\n", System.Text.Encoding.UTF8);
         }
     }
 
@@ -613,5 +625,59 @@ public class MainViewModel : ViewModelBase
         {
             rc.Execute(null);
         }
+    }
+
+    // ============ v0.6.11+ SDD B T3:主窗口关闭 guard ============
+
+    /// <summary>
+    /// 用户在"未保存的设置"三按钮框里的选择。
+    /// 映射 MessageBoxButton.YesNoCancel → 用户语义选择。
+    /// </summary>
+    internal enum UnsavedChoice { Save, Discard, Cancel }
+
+    /// <summary>
+    /// 测试 seam:STA 测试环境外不能弹真 MessageBox。生产路径为 null,走 <see cref="PromptUnsaved"/>。
+    /// </summary>
+    internal Func<int, UnsavedChoice>? UnsavedPromptOverride { get; set; }
+
+    /// <summary>
+    /// 检查当前缓存的 SettingsViewModel 是否有未保存改动,有则弹三按钮框。
+    /// 返回 true = 可以继续关闭,false = 用户选了"取消"。
+    /// <para>
+    /// G1 约束:Save / Discard 走 vm 的 Command,不直接动 <c>_repo.Save</c> —
+    /// 这样 dirty 状态清理由 SettingsViewModel 自己负责,MainViewModel 不持有
+    /// 任何 settings 持久化细节。
+    /// </para>
+    /// </summary>
+    internal bool ConfirmDiscardUnsavedSettings()
+    {
+        var vm = CurrentSettingsViewModel;
+        if (vm is null || !vm.HasUnsavedChanges) return true;
+
+        var choice = (UnsavedPromptOverride ?? PromptUnsaved)(vm.UnsavedCount);
+        switch (choice)
+        {
+            case UnsavedChoice.Save:
+                vm.SaveCommand.Execute(null);
+                return true;
+            case UnsavedChoice.Discard:
+                vm.DiscardCommand.Execute(null);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static UnsavedChoice PromptUnsaved(int count)
+    {
+        var r = MessageBox.Show(
+            $"您有 {count} 项设置尚未保存。\n\n是 = 保存并退出\n否 = 丢弃并退出\n取消 = 返回",
+            "未保存的设置", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+        return r switch
+        {
+            MessageBoxResult.Yes => UnsavedChoice.Save,
+            MessageBoxResult.No  => UnsavedChoice.Discard,
+            _                    => UnsavedChoice.Cancel,
+        };
     }
 }

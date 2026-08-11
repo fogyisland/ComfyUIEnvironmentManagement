@@ -12,8 +12,9 @@ using Xunit;
 namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
-/// v0.6.10 T3:EnvCreatorService 步骤 5.6(链接默认 Models)的测试。
-/// SharedModelsDirectory 非空时 5.6 不执行(Shared 优先,Default 兜底)。
+/// v0.6.10 T3 + v0.6.11+ T2:EnvCreatorService 步骤 5.5(链接默认 Models)的测试。
+/// v0.6.11+ T2 后唯一一条 DefaultModelsDirectory 链接路径(Shared 字段已删除,
+/// 不再有 Shared/Default 二选一逻辑)。
 /// </summary>
 public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
 {
@@ -38,7 +39,6 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
             TemplatePythonDir = "python",
             DefaultPythonVersion = "3.10",
             TemplateComfyuiDir = "ComfyUI",
-            SharedModelsDirectory = "",
             DefaultModelsDirectory = "",
         };
         _linker = new RecordingJunctionLinker();
@@ -100,26 +100,6 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
             "env-2", "independent", BasePython, ComfyuiSource, port: null);
 
         Assert.DoesNotContain(_linker.CreatedLinks, pair => IsModelsLink(pair.Link));
-    }
-
-    [Fact]
-    public async Task DefaultModelsDirectoryAndSharedModelsDirectory_BothSet_SharedModelsWins()
-    {
-        var shared = CreateDir("shared-models");
-        var defaultDir = CreateDir("default-models");
-        _settings.SharedModelsDirectory = shared;
-        _settings.DefaultModelsDirectory = defaultDir;
-
-        await _service.CreateAsync(
-            "env-3", "independent", BasePython, ComfyuiSource, port: null);
-
-        // 步骤 5.6 因 SharedModelsDirectory 非空被跳过 —— 只有 5.5 建的那一条 models 链
-        var modelsLinks = _linker.CreatedLinks.Where(p => IsModelsLink(p.Link)).ToList();
-        var only = Assert.Single(modelsLinks);
-        Assert.True(SameDir(only.Target, shared),
-            $"expected target {shared}, got {only.Target}");
-        Assert.False(SameDir(only.Target, defaultDir),
-            "DefaultModelsDirectory 不应覆盖 SharedModelsDirectory");
     }
 
     private sealed class RecordingJunctionLinker : JunctionLinker

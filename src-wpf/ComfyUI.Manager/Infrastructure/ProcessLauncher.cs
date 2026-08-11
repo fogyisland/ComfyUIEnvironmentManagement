@@ -30,7 +30,7 @@ public sealed class ProcessLauncher : IDisposable
     private readonly AppLogger? _logger;
     private readonly int _startupTimeoutSeconds;
     private readonly string _comfyUiLocale;
-    private readonly string _sharedModelsDirectory;
+    private readonly string _modelsDirectory;
     private readonly JunctionLinker _linker;
     private readonly Dictionary<string, ProcessEntry> _running = new();
     private readonly object _runningLock = new();
@@ -44,7 +44,7 @@ public sealed class ProcessLauncher : IDisposable
         AppLogger? logger = null,
         int comfyUiStartupTimeoutSeconds = 600,
         string comfyUiLocale = "",
-        string sharedModelsDirectory = "",
+        string modelsDirectory = "",
         JunctionLinker? linker = null)
     {
         _projectRoot = projectRoot;
@@ -57,9 +57,9 @@ public sealed class ProcessLauncher : IDisposable
         // v0.6.7.2: 空 = 不动 ComfyUI 配置(让 ComfyUI 用自身默认);非空就启动前写进
         // <comfyui-root>/user/default/comfy.settings.json 的 Comfy.Locale。
         _comfyUiLocale = comfyUiLocale ?? "";
-        // v0.6.7.3: SharedModelsDirectory 空 = 不动 models 目录(走独立布局);
-        // 非空则启动前 EnsureModelsJunctionAsync 检查/重建 junction。
-        _sharedModelsDirectory = sharedModelsDirectory ?? "";
+        // v0.6.7.3 + v0.6.11+ T2:用户配置的全局 models 目录(env-create 时 junction,
+        // env-start 时检查并重建)。空 = 不动 models 目录(走独立布局)。
+        _modelsDirectory = modelsDirectory ?? "";
         // 默认 real,App 端不传也跑得动;测试可注入 RecordingJunctionLinker。
         _linker = linker ?? new JunctionLinker();
     }
@@ -158,7 +158,7 @@ public sealed class ProcessLauncher : IDisposable
                     $"端口 {port} 已被占用,无法启动 env '{env.Name}'");
             }
 
-            // v0.6.7.3: 启动前检查并重建 Models junction(改 SharedModelsDirectory 后自动生效)。
+            // v0.6.7.3 + v0.6.11+ T2:启动前检查并重建 Models junction(改 DefaultModelsDirectory 后自动生效)。
             // 失败仅 INFO 日志,不阻塞启动 —— ComfyUI 跑得起来,只是 models 共享不生效。
             try
             {
@@ -421,21 +421,21 @@ public sealed class ProcessLauncher : IDisposable
 
     /// <summary>
     /// v0.6.7.3: 启动前检查 <paramref name="comfyuiRoot"/>/models 是否指向
-    /// _sharedModelsDirectory,不一致则删重建。失败仅 INFO 日志,不阻塞启动。
+    /// _modelsDirectory,不一致则删重建。失败仅 INFO 日志,不阻塞启动。
     ///
     /// 触发重建的场景:
     /// - models 目录不存在(独立布局 / 首次共享)
     /// - models 是普通目录而不是 junction(早于 v0.6.7.3 的 env 被设成共享时
     ///   T3 step 5.5 会建 junction;若此前已存在普通目录,需要替换)
-    /// - junction 的 target 不等于 _sharedModelsDirectory(用户在 Settings 改了)
+    /// - junction 的 target 不等于 _modelsDirectory(用户在 Settings 改了)
     /// </summary>
     internal async Task EnsureModelsJunctionAsync(
         string comfyuiRoot,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(_sharedModelsDirectory)) return;
+        if (string.IsNullOrWhiteSpace(_modelsDirectory)) return;
 
-        var sharedFull = Path.GetFullPath(_sharedModelsDirectory);
+        var sharedFull = Path.GetFullPath(_modelsDirectory);
         var modelsLink = Path.Combine(comfyuiRoot, "models");
 
         bool needsRelink;

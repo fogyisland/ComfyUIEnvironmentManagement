@@ -7,23 +7,75 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="16" MaxWidth="640" HorizontalAlignment="Left">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- v0.6.11+ SDD B T1:粘性 Save toolbar -->
+        <Border Grid.Row="0" Padding="12,8"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource OutlineBrush}"
+                BorderThickness="0,0,0,1">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="设置"
+                           FontSize="16" FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,12,0"
+                               Foreground="{DynamicResource WarningBrush}"
+                               Text="{Binding UnsavedCount, StringFormat='⚠ {0} 项未保存'}"
+                               Visibility="{Binding HasUnsavedChanges, Converter={StaticResource BoolToVisibility}}"/>
+                    <Button Content="↩ 放弃" Width="80" Margin="0,0,8,0"
+                            Style="{StaticResource MaterialButton}"
+                            Command="{Binding DiscardCommand}"/>
+                    <Button Content="💾 保存" Width="80"
+                            Style="{StaticResource MaterialButton}"
+                            Command="{Binding SaveCommand}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="16" MaxWidth="640" HorizontalAlignment="Left">
 
             <!-- ============ 基础 ============ -->
             <TextBlock x:Name="SectionGeneral" Text="基础" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
-            <TextBlock Text="语言" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="语言" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[Language], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}"
                       Width="240" HorizontalAlignment="Left" />
             <!-- v0.6.9.3 T5:删 "主题模式" ComboBox — ThemeToggleButton 是唯一入口。
                  ThemeMode property 仍保留(SettingsViewModel ctor 启动时调 ThemeService.Apply 持久化恢复)。 -->
-            <TextBlock Text="Catalog 缓存 TTL(分钟)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="Catalog 缓存 TTL(分钟)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[CacheTtlMinutes], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <TextBox Text="{Binding CacheTtlMinutes, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource MaterialTextBox}" Width="240"
                      HorizontalAlignment="Left" />
 
             <!-- v0.6.7.1: ComfyUI 启动就绪超时 -->
-            <TextBlock Text="ComfyUI 启动就绪超时(秒)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="ComfyUI 启动就绪超时(秒)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ComfyUiStartupTimeoutSeconds], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <TextBox Text="{Binding ComfyUiStartupTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource MaterialTextBox}" Width="240"
                      HorizontalAlignment="Left" />
@@ -32,20 +84,41 @@
                        HorizontalAlignment="Left" />
 
             <!-- v0.6.7.2: ComfyUI UI locale —— 启动前写到 <comfyui>/user/default/comfy.settings.json -->
-            <TextBlock Text="ComfyUI 界面语言" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="ComfyUI 界面语言" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ComfyUiLocale], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <ComboBox ItemsSource="{Binding ComfyUiLocales}"
                       SelectedItem="{Binding ComfyUiLocale}"
                       Width="240" HorizontalAlignment="Left" />
             <TextBlock Text="留空 = 不修改 ComfyUI 配置;其他值(zh/en/ja/ko/ru/fr/es)启动 env 时写入 ComfyUI 的 user/default/comfy.settings.json 的 Comfy.Locale 字段。"
                        FontSize="11" Foreground="Gray" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
-            <TextBlock Text="外部冲突 API URL" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="外部冲突 API URL" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[CompatApiBaseUrl], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <TextBox Text="{Binding CompatApiBaseUrl, UpdateSourceTrigger=PropertyChanged}"
                      Style="{StaticResource MaterialTextBox}" Width="480"
                      HorizontalAlignment="Left" />
 
             <!-- v0.6.10: 全局默认 Models 目录(放共享 Models 目录之上,作为更常用的入口) -->
-            <TextBlock Text="全局默认 Models 目录(留空 = 不动 env 的 models 目录)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="全局默认 Models 目录(留空 = 不动 env 的 models 目录)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[DefaultModelsDirectory], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."
                         Click="BrowseDefaultModelsDirectory"
@@ -57,21 +130,15 @@
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
-            <!-- v0.6.7.3: 共享 Models 目录 -->
-            <TextBlock Text="共享 Models 目录(留空 = 不共享)" Margin="0,8,0,4" />
-            <DockPanel Margin="0,2,0,0">
-                <Button DockPanel.Dock="Right" Content="浏览..."
-                        Click="BrowseSharedModelsDirectory"
-                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
-                <TextBox Text="{Binding SharedModelsDirectory, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}" />
-            </DockPanel>
-            <TextBlock Text="所有 env 的 ComfyUI/models 都 junction 到此目录;新建 env 自动生效,已建 env 启动时检查并重建。"
-                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
-                       HorizontalAlignment="Left" />
-
-            <TextBlock Text="GitHub Token(可选 — 配置后刷新 catalog 时会同步拉取各节点最新版本号,留空则不拉)"
-                       Margin="0,8,0,4" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="GitHub Token(可选 — 配置后刷新 catalog 时会同步拉取各节点最新版本号,留空则不拉)"
+                           TextWrapping="Wrap" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[GitHubToken], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <PasswordBox x:Name="GitHubTokenBox" Width="480" HorizontalAlignment="Left"
                          PasswordChanged="OnGitHubTokenChanged" />
             <TextBlock Text="仅保存在本地 settings.json,不会上传到任何服务器"
@@ -81,13 +148,27 @@
                  开启 = 即使没配 token 也尝试拉 GitHub releases(无鉴权 60/h 限流,
                  失败 fail-soft,不抛)。这两个 property 互不约束:开关决定"拉不拉",
                  token 决定"是否鉴权"。 -->
-            <CheckBox Content="刷新时拉取节点版本(无 token 会被 GitHub 限流 60/h)"
-                      IsChecked="{Binding FetchNodeVersionsOnRefresh}"
-                      Margin="0,8,0,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <CheckBox Content="刷新时拉取节点版本(无 token 会被 GitHub 限流 60/h)"
+                          IsChecked="{Binding FetchNodeVersionsOnRefresh}"
+                          VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[FetchNodeVersionsOnRefresh], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
 
             <!-- ============ 查询节点的源 ============ -->
             <TextBlock x:Name="SectionQuerySources" Text="查询节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
-            <TextBlock Text="当前使用" Margin="0,0,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="当前使用" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ActiveQuerySource], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <ComboBox ItemsSource="{Binding QuerySources}"
                       DisplayMemberPath="Name"
                       SelectedItem="{Binding ActiveQuerySource, Mode=TwoWay}"
@@ -138,7 +219,14 @@
 
             <!-- ============ 下载节点的源 ============ -->
             <TextBlock x:Name="SectionDownloadSources" Text="下载节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
-            <TextBlock Text="当前使用(URL 中可用 {node} 占位)" Margin="0,0,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="当前使用(URL 中可用 {node} 占位)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ActiveDownloadSource], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <ComboBox ItemsSource="{Binding DownloadSources}"
                       DisplayMemberPath="Name"
                       SelectedItem="{Binding ActiveDownloadSource, Mode=TwoWay}"
@@ -195,7 +283,14 @@
             <TextBlock Text="选择 pip 镜像源(影响 ComfyUI / ComfyUI Manager 依赖安装,BED 仍走 pytorch.org)"
                        FontSize="11" Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
-            <TextBlock Text="镜像源" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="镜像源" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[PipMirror], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <ComboBox ItemsSource="{Binding PipMirrorKinds}"
                       SelectedItem="{Binding PipMirror, Mode=TwoWay}"
                       Width="240" HorizontalAlignment="Left" />
@@ -206,7 +301,14 @@
                     <ColumnDefinition Width="160" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="自定义 URL" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="自定义 URL" VerticalAlignment="Center"/>
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[PipMirrorCustomUrl], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
                 <TextBox Grid.Column="1" Style="{StaticResource MaterialTextBox}" Margin="8,0,0,0"
                          Text="{Binding PipMirrorCustomUrl, UpdateSourceTrigger=PropertyChanged}" />
             </Grid>
@@ -280,7 +382,14 @@
             <TextBox Text="{Binding TemplatePythonDir}" IsReadOnly="True"
                      Style="{StaticResource MaterialTextBox}" />
 
-            <TextBlock Text="模板 ComfyUI 目录(shared 源)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="模板 ComfyUI 目录(shared 源)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[TemplateComfyuiDir], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."
                         Click="BrowseTemplateComfyui"
@@ -289,11 +398,25 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
-            <TextBlock Text="默认 Python 版本(已废弃,只读 — 请用下方 &quot;Python 解释器&quot; 区段)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="默认 Python 版本(已废弃,只读 — 请用下方 &quot;Python 解释器&quot; 区段)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[DefaultPythonVersion], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <TextBox Text="{Binding DefaultPythonVersion}" IsReadOnly="True"
                      Style="{StaticResource MaterialTextBox}" />
 
-            <TextBlock Text="虚拟环境目录(env 创建时放这里)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="虚拟环境目录(env 创建时放这里)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[EnvsDir], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."
                         Click="BrowseEnvsDir"
@@ -302,7 +425,14 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
-            <TextBlock Text="base 节点目录(全局 catalog 节点)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="base 节点目录(全局 catalog 节点)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[GlobalNodesDir], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."
                         Click="BrowseGlobalNodesDir"
@@ -311,7 +441,14 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
-            <TextBlock Text="本地节点目录(Catalog 主页「下载」按钮的目标)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="本地节点目录(Catalog 主页「下载」按钮的目标)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[LocalNodeDirectory], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."
                         Click="BrowseLocalNodeDir"
@@ -324,7 +461,14 @@
             <TextBlock x:Name="SectionPythonInterpreters" Text="Python 解释器" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="可定义多个,选一个作为新建环境 auto-fill 的默认解释器"
                        Foreground="Gray" FontSize="11" Margin="0,0,0,8" />
-            <TextBlock Text="当前使用" Margin="0,0,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="当前使用" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ActivePythonInterpreterName], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <ComboBox ItemsSource="{Binding PythonInterpreters}"
                       DisplayMemberPath="Name"
                       SelectedValuePath="Name"
@@ -386,7 +530,14 @@
             <!-- ============ 环境 / 工具 ============ -->
             <TextBlock x:Name="SectionEnvTools" Text="环境 / 工具" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
-            <TextBlock Text="venv baseline Python(virtualenv 创建时使用)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="venv baseline Python(virtualenv 创建时使用)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[PythonVenvBaseline], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."
                         Click="BrowsePythonVenvBaseline"
@@ -395,7 +546,14 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
-            <TextBlock Text="git.exe 路径(留空走 PATH 默认)" Margin="0,8,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="git.exe 路径(留空走 PATH 默认)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[GitExe], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <DockPanel Margin="0,2,0,0">
                 <Button DockPanel.Dock="Right" Content="浏览..."
                         Click="BrowseGitExe"
@@ -404,22 +562,41 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
-            <TextBlock Text="git 代理" Margin="0,8,0,4" />
-            <CheckBox Content="启用代理(只作用于本应用的 git 调用)"
-                      IsChecked="{Binding GitProxyEnabled}"
-                      Margin="0,0,0,4" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="git 代理" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <CheckBox Content="启用代理(只作用于本应用的 git 调用)"
+                          IsChecked="{Binding GitProxyEnabled}"
+                          VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[GitProxyEnabled], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
             <Grid Margin="0,2,0,0" IsEnabled="{Binding GitProxyEnabled}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="8" />
                     <ColumnDefinition Width="120" />
                 </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0"
-                         Text="{Binding GitProxyUrl, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}" />
-                <TextBox Grid.Column="2"
-                         Text="{Binding GitProxyPort, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}" />
+                <Grid Grid.Column="0">
+                    <TextBox Text="{Binding GitProxyUrl, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource MaterialTextBox}" />
+                    <TextBlock Text="⚠" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[GitProxyUrl], Converter={StaticResource BoolToVisibility}}"/>
+                </Grid>
+                <Grid Grid.Column="2">
+                    <TextBox Text="{Binding GitProxyPort, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource MaterialTextBox}" />
+                    <TextBlock Text="⚠" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[GitProxyPort], Converter={StaticResource BoolToVisibility}}"/>
+                </Grid>
             </Grid>
 
             <!-- ============ 高级:额外 paths 表格 ============ -->
@@ -497,4 +674,5 @@
             </Button>
         </StackPanel>
     </ScrollViewer>
+    </Grid>
 </UserControl>

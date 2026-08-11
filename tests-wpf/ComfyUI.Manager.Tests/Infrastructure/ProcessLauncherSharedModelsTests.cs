@@ -11,6 +11,11 @@ using Xunit;
 
 namespace ComfyUI.Manager.Tests.Infrastructure;
 
+/// <summary>
+/// v0.6.7.3 + v0.6.11+ T2(DefaultModelsDirectory):ProcessLauncher 启动前
+/// EnsureModelsJunctionAsync 行为测试。数据源是 ctor 参数 modelsDirectory
+/// (原 sharedModelsDirectory,字段重命名后 caller 透传 settings.DefaultModelsDirectory)。
+/// </summary>
 public sealed class ProcessLauncherSharedModelsTests : IDisposable
 {
     private readonly string _rootDir;
@@ -29,7 +34,7 @@ public sealed class ProcessLauncherSharedModelsTests : IDisposable
         try { Directory.Delete(_rootDir, recursive: true); } catch { }
     }
 
-    private (ProcessLauncher Launcher, RecordingJunctionLinker Linker, SqliteConnectionFactory Db) BuildLauncher(string sharedDir, bool withEnv = true)
+    private (ProcessLauncher Launcher, RecordingJunctionLinker Linker, SqliteConnectionFactory Db) BuildLauncher(string modelsDir, bool withEnv = true)
     {
         var factory = new SqliteConnectionFactory(_dbPath);
         var envRepo = new EnvironmentRepository(factory);
@@ -39,7 +44,7 @@ public sealed class ProcessLauncherSharedModelsTests : IDisposable
             _rootDir, factory, envRepo, psRepo, logger: null,
             comfyUiStartupTimeoutSeconds: 600,
             comfyUiLocale: "",
-            sharedModelsDirectory: sharedDir,
+            modelsDirectory: modelsDir,
             linker: linker);
         return (launcher, linker, factory);
     }
@@ -78,15 +83,15 @@ public sealed class ProcessLauncherSharedModelsTests : IDisposable
     public async Task EnsureModelsJunctionAsync_PlainDirWithNullTarget_Relinks()
     {
         // G9 逻辑:plain dir + GetTargetAsync 返 null → needsRelink=true → 删重建。
-        // 改 SharedModelsDirectory 后第一次启动,旧 env 的 models 还是普通目录,
+        // 改 DefaultModelsDirectory 后第一次启动,旧 env 的 models 还是普通目录,
         // 必须删掉重建 junction 才能让 ComfyUI 走共享。
-        var shared = Path.Combine(_rootDir, "shared-models");
-        Directory.CreateDirectory(shared);
+        var models = Path.Combine(_rootDir, "models");
+        Directory.CreateDirectory(models);
         var comfyuiRoot = Path.Combine(_rootDir, "ComfyUI");
         var modelsLink = Path.Combine(comfyuiRoot, "models");
         Directory.CreateDirectory(modelsLink);  // 普通目录,不是 junction(RecordingJunctionLinker.GetTargetAsync 返 null)
 
-        var (launcher, linker, _) = BuildLauncher(shared);
+        var (launcher, linker, _) = BuildLauncher(models);
         var method = typeof(ProcessLauncher).GetMethod(
             "EnsureModelsJunctionAsync",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -96,7 +101,7 @@ public sealed class ProcessLauncherSharedModelsTests : IDisposable
         Assert.Single(linker.CreatedLinks);
         Assert.Equal(modelsLink, linker.CreatedLinks[0].Link);
         Assert.Equal(
-            Path.GetFullPath(shared),
+            Path.GetFullPath(models),
             Path.GetFullPath(linker.CreatedLinks[0].Target),
             ignoreCase: true);
     }
@@ -104,14 +109,14 @@ public sealed class ProcessLauncherSharedModelsTests : IDisposable
     [Fact]
     public async Task EnsureModelsJunctionAsync_TargetDiffers_Relinks()
     {
-        var shared = Path.Combine(_rootDir, "shared-models");
-        Directory.CreateDirectory(shared);
+        var models = Path.Combine(_rootDir, "models");
+        Directory.CreateDirectory(models);
         var comfyuiRoot = Path.Combine(_rootDir, "ComfyUI");
         var modelsLink = Path.Combine(comfyuiRoot, "models");
         // modelsLink 不存在 → 触发"建 junction"分支
         Directory.CreateDirectory(comfyuiRoot);
 
-        var (launcher, linker, _) = BuildLauncher(shared);
+        var (launcher, linker, _) = BuildLauncher(models);
         var method = typeof(ProcessLauncher).GetMethod(
             "EnsureModelsJunctionAsync",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -121,7 +126,7 @@ public sealed class ProcessLauncherSharedModelsTests : IDisposable
         Assert.Single(linker.CreatedLinks);
         Assert.Equal(modelsLink, linker.CreatedLinks[0].Link);
         Assert.Equal(
-            Path.GetFullPath(shared),
+            Path.GetFullPath(models),
             Path.GetFullPath(linker.CreatedLinks[0].Target),
             ignoreCase: true);
     }
