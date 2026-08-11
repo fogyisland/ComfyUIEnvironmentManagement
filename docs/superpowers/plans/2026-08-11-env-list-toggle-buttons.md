@@ -253,6 +253,8 @@ Append to the same test file (after Step 1 helper methods, before `Dispose()`):
     /// <summary>
     /// 假 RequirementsInstaller:不真跑 pip,返 canned result + 记录调用次数。
     /// 跟 EnvironmentListViewModelUninstallTests 的 FakeRequirementsUninstaller 模式对称。
+    /// 真 ctor 签名: (AppLogger?, RequirementsFileInstaller?, ComfyUIManagerInstaller?, CommonNodeInstaller?)
+    /// 全部默认参数;override InstallAsync 后不需要内部 state,直接 base() 即可。
     /// </summary>
     private class FakeRequirementsInstaller : RequirementsInstaller
     {
@@ -260,7 +262,7 @@ Append to the same test file (after Step 1 helper methods, before `Dispose()`):
         public RequirementsInstallResult NextResult { get; set; } =
             new RequirementsInstallResult(true, false, null, 1);
 
-        public FakeRequirementsInstaller() : base(null, null) { }
+        public FakeRequirementsInstaller() : base() { }
 
         public override Task<RequirementsInstallResult> InstallAsync(
             Environment env, IProgress<string>? logProgress = null,
@@ -455,11 +457,11 @@ dotnet test tests-wpf/ComfyUI.Manager.Tests/ViewModels/EnvironmentListViewModelT
 
 Expected: **FAIL** with compile errors (ToggleRequirementsCommand / ToggleRequirementsAsync / SetEnvBusyForTest / FakeRequirementsInstaller / FakeBaseEnvUninstaller etc. don't exist). Move to Step 7.
 
-### Step 7: Add `FakeRequirementsInstaller` constructor parameter handling
+### Step 7: Verify `FakeRequirementsInstaller` constructor parameter handling
 
-`RequirementsInstaller` ctor takes `(RequirementsFileInstaller? reqFileInstaller = null, ComfyUIManagerInstaller? comfyUiManagerInstaller = null, CommonNodeInstaller? commonNodeInstaller = null)`. The `FakeRequirementsInstaller` already in Step 5 calls `base(null, null)` — verify this matches the actual ctor signature by reading `Services/RequirementsInstaller.cs` (T1 implementer MUST grep before writing).
+`RequirementsInstaller` ctor takes `(AppLogger? logger = null, RequirementsFileInstaller? reqFileInstaller = null, ComfyUIManagerInstaller? comfyUiManagerInstaller = null, CommonNodeInstaller? commonNodeInstaller = null)` — all default. `FakeRequirementsInstaller` calls `base()` (all defaults OK since `InstallAsync` is overridden and inner fields unused).
 
-If ctor signature differs, adjust `FakeRequirementsInstaller` ctor accordingly. The pattern is `base(<optional params>)` with `null` to skip real logic.
+T1 implementer MUST grep `Services/RequirementsInstaller.cs:43-53` first to confirm ctor signature before writing. If ctor signature differs, adjust `FakeRequirementsInstaller` ctor call accordingly.
 
 ### Step 8: Add `SetEnvBusyForTest` test seam to EnvListVM
 
