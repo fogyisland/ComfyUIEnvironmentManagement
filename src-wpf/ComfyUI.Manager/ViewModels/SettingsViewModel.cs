@@ -25,6 +25,34 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
+    // v0.6.11+ SDD B T1:dirty tracking。XAML 行内 ⚠️ 通过 {Binding Dirty[Xxx]} 查,
+    // SaveCommand 一次性写盘 + 清 dirty,DiscardCommand 用 CopyInto 回滚。
+    public DirtyLookup Dirty { get; } = new();
+
+    public bool HasUnsavedChanges => Dirty.Any;
+    public int UnsavedCount => Dirty.Count;
+
+    public RelayCommand SaveCommand { get; }
+    public RelayCommand DiscardCommand { get; }
+
+    private void MarkDirty(string propertyName)
+    {
+        Dirty.Mark(propertyName);
+        RaisePropertyChanged(nameof(HasUnsavedChanges));
+        RaisePropertyChanged(nameof(UnsavedCount));
+        SaveCommand.RaiseCanExecuteChanged();
+        DiscardCommand.RaiseCanExecuteChanged();
+    }
+
+    private void ClearDirty()
+    {
+        Dirty.Clear();
+        RaisePropertyChanged(nameof(HasUnsavedChanges));
+        RaisePropertyChanged(nameof(UnsavedCount));
+        SaveCommand.RaiseCanExecuteChanged();
+        DiscardCommand.RaiseCanExecuteChanged();
+    }
+
     private bool _isAddQuerySourceOpen;
     private bool _isAddDownloadSourceOpen;
     private string _newQuerySourceName = "";
@@ -260,6 +288,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         {
             IsAddDownloadSourceOpen = false;
         });
+        SaveCommand = new RelayCommand(
+            _ => { _repo.Save(_settings); ClearDirty(); },
+            _ => HasUnsavedChanges);
+        DiscardCommand = new RelayCommand(
+            _ =>
+            {
+                var onDisk = _repo.Load();
+                Settings.CopyInto(_settings, onDisk);
+                // G3:ThemeMode 即使即时预览,Discard 也得反向 Apply 才能回滚
+                _themeService?.Apply(ParseThemeMode(_settings.ThemeMode));
+                RaiseAllPropertiesChanged();
+                ClearDirty();
+            },
+            _ => HasUnsavedChanges);
         RaiseAllPropertiesChanged();
     }
 
@@ -271,7 +313,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public string Language
     {
         get => _settings.Language;
-        set { _settings.Language = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.Language = value; MarkDirty(nameof(Language)); RaisePropertyChanged(); }
     }
     public string ThemeMode
     {
@@ -280,7 +322,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         {
             if (_settings.ThemeMode == value) return;
             _settings.ThemeMode = value;
-            _repo.Save(_settings);
+            MarkDirty(nameof(ThemeMode));
             // v0.6.9 T2:改即 Apply(立即预览,Settings UI 风格:ComboBox 切换不需 Save)。
             // _themeService 可空 — 既有测试 callers 不传也能跑(Apply no-op)。
             _themeService?.Apply(ParseThemeMode(value));
@@ -306,20 +348,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public int CacheTtlMinutes
     {
         get => _settings.CatalogCacheTtlMinutes;
-        set { _settings.CatalogCacheTtlMinutes = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.CatalogCacheTtlMinutes = value; MarkDirty(nameof(CacheTtlMinutes)); RaisePropertyChanged(); }
     }
     // v0.6.7.1: ComfyUI 启动就绪超时(秒),默认 600。
     public int ComfyUiStartupTimeoutSeconds
     {
         get => _settings.ComfyUiStartupTimeoutSeconds;
-        set { _settings.ComfyUiStartupTimeoutSeconds = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.ComfyUiStartupTimeoutSeconds = value; MarkDirty(nameof(ComfyUiStartupTimeoutSeconds)); RaisePropertyChanged(); }
     }
     // v0.6.7.2: ComfyUI UI locale code(空 = 不动 ComfyUI 配置,其他值写进
     // <comfyui-root>/user/default/comfy.settings.json 的 Comfy.Locale)。
     public string ComfyUiLocale
     {
         get => _settings.ComfyUiLocale;
-        set { _settings.ComfyUiLocale = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.ComfyUiLocale = value ?? ""; MarkDirty(nameof(ComfyUiLocale)); RaisePropertyChanged(); }
     }
     /// <summary>
     /// ComfyUI 已知的 locale code 列表 + 空字符串 ("不修改")。ComboBox 显示给用户。
@@ -331,7 +373,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public string CompatApiBaseUrl
     {
         get => _settings.CompatApiBaseUrl;
-        set { _settings.CompatApiBaseUrl = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.CompatApiBaseUrl = value; MarkDirty(nameof(CompatApiBaseUrl)); RaisePropertyChanged(); }
     }
 
     /// <summary>
@@ -342,7 +384,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public string GitHubToken
     {
         get => _settings.GitHubToken;
-        set { _settings.GitHubToken = value ?? ""; _repo.Save(_settings); }
+        set { _settings.GitHubToken = value ?? ""; MarkDirty(nameof(GitHubToken)); }
     }
 
     /// <summary>
@@ -352,7 +394,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public bool FetchNodeVersionsOnRefresh
     {
         get => _settings.FetchNodeVersionsOnRefresh;
-        set { _settings.FetchNodeVersionsOnRefresh = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.FetchNodeVersionsOnRefresh = value; MarkDirty(nameof(FetchNodeVersionsOnRefresh)); RaisePropertyChanged(); }
     }
 
     // v0.6.11++ pip mirror
@@ -366,7 +408,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set
         {
             _settings.PipMirror = value ?? "official";
-            _repo.Save(_settings);
+            MarkDirty(nameof(PipMirror));
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(IsCustomPipMirrorSelected));
         }
@@ -377,7 +419,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set
         {
             _settings.PipMirrorCustomUrl = value ?? "";
-            _repo.Save(_settings);
+            MarkDirty(nameof(PipMirrorCustomUrl));
             RaisePropertyChanged();
         }
     }
@@ -388,27 +430,27 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public string TemplatePythonDir
     {
         get => _settings.TemplatePythonDir;
-        set { _settings.TemplatePythonDir = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.TemplatePythonDir = value; MarkDirty(nameof(TemplatePythonDir)); RaisePropertyChanged(); }
     }
     public string TemplateComfyuiDir
     {
         get => _settings.TemplateComfyuiDir;
-        set { _settings.TemplateComfyuiDir = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.TemplateComfyuiDir = value; MarkDirty(nameof(TemplateComfyuiDir)); RaisePropertyChanged(); }
     }
     public string EnvsDir
     {
         get => _settings.EnvsDir;
-        set { _settings.EnvsDir = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.EnvsDir = value; MarkDirty(nameof(EnvsDir)); RaisePropertyChanged(); }
     }
     public string DefaultPythonVersion
     {
         get => _settings.DefaultPythonVersion;
-        set { _settings.DefaultPythonVersion = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.DefaultPythonVersion = value ?? ""; MarkDirty(nameof(DefaultPythonVersion)); RaisePropertyChanged(); }
     }
     public string GlobalNodesDir
     {
         get => _settings.GlobalNodesDir;
-        set { _settings.GlobalNodesDir = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.GlobalNodesDir = value; MarkDirty(nameof(GlobalNodesDir)); RaisePropertyChanged(); }
     }
     // v0.6.5.9: Catalog 主页「下载」按钮的目标目录
     public string LocalNodeDirectory
@@ -417,7 +459,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set
         {
             _settings.LocalNodeDirectory = value ?? "";
-            _repo.Save(_settings);
+            MarkDirty(nameof(LocalNodeDirectory));
             RaisePropertyChanged();
         }
     }
@@ -425,7 +467,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public string DefaultModelsDirectory
     {
         get => _settings.DefaultModelsDirectory;
-        set { _settings.DefaultModelsDirectory = value ?? ""; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.DefaultModelsDirectory = value ?? ""; MarkDirty(nameof(DefaultModelsDirectory)); RaisePropertyChanged(); }
     }
     // v0.6.7.3: 全局共享 Models 目录。空 = 不共享。
     public string SharedModelsDirectory
@@ -438,12 +480,12 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public string PythonVenvBaseline
     {
         get => _settings.PythonVenvBaseline;
-        set { _settings.PythonVenvBaseline = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.PythonVenvBaseline = value; MarkDirty(nameof(PythonVenvBaseline)); RaisePropertyChanged(); }
     }
     public string GitExe
     {
         get => _settings.GitExe;
-        set { _settings.GitExe = value; _repo.Save(_settings); RaisePropertyChanged(); }
+        set { _settings.GitExe = value; MarkDirty(nameof(GitExe)); RaisePropertyChanged(); }
     }
     public string GitProxyUrl
     {
@@ -454,7 +496,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         {
             _proxy.Url = value;
             _settings.GitProxyUrl = value;
-            _repo.Save(_settings);
+            MarkDirty(nameof(GitProxyUrl));
             RaisePropertyChanged();
         }
     }
@@ -465,7 +507,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         {
             _proxy.Port = value;
             _settings.GitProxyPort = value;
-            _repo.Save(_settings);
+            MarkDirty(nameof(GitProxyPort));
             RaisePropertyChanged();
         }
     }
@@ -476,7 +518,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         {
             _proxy.Enabled = value;
             _settings.GitProxyEnabled = value;
-            _repo.Save(_settings);
+            MarkDirty(nameof(GitProxyEnabled));
             RaisePropertyChanged();
         }
     }
@@ -497,7 +539,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set
         {
             _settings.ActiveQuerySourceName = value?.Name ?? "";
-            _repo.Save(_settings);
+            MarkDirty(nameof(ActiveQuerySource));
             RaisePropertyChanged();
         }
     }
@@ -508,7 +550,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set
         {
             _settings.ActiveDownloadSourceName = value?.Name ?? "";
-            _repo.Save(_settings);
+            MarkDirty(nameof(ActiveDownloadSource));
             RaisePropertyChanged();
         }
     }
@@ -589,7 +631,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set
         {
             _settings.ActivePythonInterpreterName = value?.Name ?? "";
-            _repo.Save(_settings);
+            MarkDirty(nameof(ActivePythonInterpreter));
             RaisePropertyChanged();
         }
     }
@@ -600,7 +642,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set
         {
             _settings.ActivePythonInterpreterName = value ?? "";
-            _repo.Save(_settings);
+            MarkDirty(nameof(ActivePythonInterpreterName));
             RaisePropertyChanged(nameof(ActivePythonInterpreter));
         }
     }

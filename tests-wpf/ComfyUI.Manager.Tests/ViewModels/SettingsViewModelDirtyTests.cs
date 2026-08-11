@@ -1,0 +1,192 @@
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
+using ComfyUI.Manager.ViewModels;
+using Xunit;
+
+namespace ComfyUI.Manager.Tests.ViewModels;
+
+/// <summary>
+/// v0.6.11+ SDD B T1:dirty tracking + Save / Discard + CopyInto 单元测试。
+/// </summary>
+public sealed class SettingsViewModelDirtyTests : IDisposable
+{
+    private readonly string _path;
+
+    public SettingsViewModelDirtyTests()
+    {
+        _path = Path.Combine(Path.GetTempPath(),
+            "settings-vm-dirty-" + Path.GetRandomFileName() + ".json");
+    }
+
+    public void Dispose()
+    {
+        try { File.Delete(_path); } catch { }
+    }
+
+    private SettingsViewModel NewVm() => new SettingsViewModel(
+        new SettingsRepository(_path),
+        GitProxyConfig.Disabled,
+        new FakeValidator(isValid: true));
+
+    [Fact]
+    public void MarkDirty_SingleProperty_SetsDirtyAndHasUnsavedChanges()
+    {
+        var vm = NewVm();
+        Assert.False(vm.HasUnsavedChanges);
+
+        vm.DefaultModelsDirectory = @"D:\Models\shared";
+
+        Assert.True(vm.HasUnsavedChanges);
+        Assert.Equal(1, vm.UnsavedCount);
+        Assert.True(vm.Dirty["DefaultModelsDirectory"]);
+    }
+
+    [Fact]
+    public void MarkDirty_MultipleProperties_AggregatesCount()
+    {
+        var vm = NewVm();
+        vm.DefaultModelsDirectory = "a";
+        vm.ComfyUiStartupTimeoutSeconds = 900;
+        vm.FetchNodeVersionsOnRefresh = true;
+        Assert.Equal(3, vm.UnsavedCount);
+        Assert.True(vm.Dirty["DefaultModelsDirectory"]);
+        Assert.True(vm.Dirty["ComfyUiStartupTimeoutSeconds"]);
+        Assert.True(vm.Dirty["FetchNodeVersionsOnRefresh"]);
+    }
+
+    [Fact]
+    public void MarkDirty_SameProperty_Twice_StaysAtOne()
+    {
+        var vm = NewVm();
+        vm.DefaultModelsDirectory = "a";
+        vm.DefaultModelsDirectory = "b";   // 同一 property,只算一行 dirty
+        Assert.Equal(1, vm.UnsavedCount);
+    }
+
+    [Fact]
+    public void Setter_DoesNotWriteToDisk_BeforeSave()
+    {
+        var vm = NewVm();
+        vm.DefaultModelsDirectory = @"D:\Models\dirty";
+
+        var fresh = new SettingsRepository(_path).Load();
+        Assert.Equal("", fresh.DefaultModelsDirectory);   // 还是默认值,未写盘
+    }
+
+    [Fact]
+    public void SaveCommand_PersistsSettings_ClearsAllDirty()
+    {
+        var vm = NewVm();
+        vm.DefaultModelsDirectory = @"D:\Models\shared";
+        vm.ComfyUiStartupTimeoutSeconds = 900;
+        Assert.True(vm.HasUnsavedChanges);
+
+        vm.SaveCommand.Execute(null);
+
+        var fresh = new SettingsRepository(_path).Load();
+        Assert.Equal(@"D:\Models\shared", fresh.DefaultModelsDirectory);
+        Assert.Equal(900, fresh.ComfyUiStartupTimeoutSeconds);
+        Assert.False(vm.HasUnsavedChanges);
+        Assert.Equal(0, vm.UnsavedCount);
+    }
+
+    [Fact]
+    public void SaveCommand_CanExecute_FalseWhenClean()
+    {
+        var vm = NewVm();
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        vm.DefaultModelsDirectory = "x";
+        Assert.True(vm.SaveCommand.CanExecute(null));
+        vm.SaveCommand.Execute(null);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void DiscardCommand_RevertsInPlace_KeepsSameSettingsInstance()
+    {
+        // 关键约束:_settings 是 App 共享实例,Discard 不能换引用(G4)
+        var vm = NewVm();
+        var beforeRef = vm.GetType()
+            .GetField("_settings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(vm);
+        vm.DefaultModelsDirectory = "dirty";
+        vm.SaveCommand.Execute(null);                 // 写到 disk
+        vm.DefaultModelsDirectory = "another-dirty"; // 再改 dirty
+
+        vm.DiscardCommand.Execute(null);
+
+        var afterRef = vm.GetType()
+            .GetField("_settings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(vm);
+        Assert.Same(beforeRef, afterRef);             // 同一对象,没被换掉
+        Assert.Equal("dirty", vm.DefaultModelsDirectory); // 回到 disk 上的值
+        Assert.False(vm.HasUnsavedChanges);
+    }
+
+    [Fact]
+    public void DiscardCommand_LeavesDiskUnchanged()
+    {
+        var vm = NewVm();
+        vm.DefaultModelsDirectory = "committed";
+        vm.SaveCommand.Execute(null);
+        vm.ComfyUiStartupTimeoutSeconds = 999;       // dirty
+
+        vm.DiscardCommand.Execute(null);
+
+        var fresh = new SettingsRepository(_path).Load();
+        Assert.Equal("committed", fresh.DefaultModelsDirectory);
+        Assert.Equal(600, fresh.ComfyUiStartupTimeoutSeconds); // 默认值
+    }
+
+    [Fact]
+    public void DiscardCommand_RevertsThemeMode_InMemory()
+    {
+        // G3:Discard 必须能回滚 ThemeMode(尽管它即时预览)
+        var themeService = new RecordingThemeService();
+        var vm = new SettingsViewModel(
+            new SettingsRepository(_path),
+            GitProxyConfig.Disabled,
+            new FakeValidator(isValid: true),
+            sharedSettings: null,
+            themeService: themeService);
+
+        vm.ThemeMode = "light";   // 触发 Apply(Light)
+        Assert.Equal(ThemeMode.Light, themeService.LastApplied);
+
+        vm.ThemeMode = "dark";    // Apply(Dark)
+        Assert.Equal(ThemeMode.Dark, themeService.LastApplied);
+
+        vm.DiscardCommand.Execute(null);   // disk 默认是 "dark",但 in-memory 已变 "dark"... 这条路径验它会重新 Apply(Dark)
+        Assert.Equal(ThemeMode.Dark, themeService.LastApplied);
+    }
+
+    // — helpers —
+    private sealed class FakeValidator : IPythonInterpreterValidator
+    {
+        private readonly bool _isValid;
+        public FakeValidator(bool isValid) { _isValid = isValid; }
+        public Task<ValidationResult> ValidateAsync(
+            string path, CancellationToken ct = default)
+            => Task.FromResult(new ValidationResult(_isValid, _isValid ? "ok" : "bad"));
+    }
+
+    private sealed class RecordingThemeService : IThemeService
+    {
+        public ThemeMode? LastApplied { get; private set; }
+        public int ApplyCallCount { get; private set; }
+        public ThemeMode Current => LastApplied ?? ThemeMode.Dark;
+        public void Apply(ThemeMode mode)
+        {
+            LastApplied = mode;
+            ApplyCallCount++;
+        }
+        public event EventHandler<ThemeMode>? ThemeChanging;
+        public event EventHandler<ThemeMode>? Applied;
+    }
+}

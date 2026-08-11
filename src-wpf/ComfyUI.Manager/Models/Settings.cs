@@ -108,6 +108,64 @@ public class Settings
 
     // v0.6.11++ common nodes:env-create / 装依赖末尾自动 clone 的一组非冲突常用节点
     [JsonPropertyName("common_nodes")] public List<CommonNodeEntry> CommonNodes { get; set; } = new();
+
+    /// <summary>
+    /// v0.6.11+ SDD B T1:把 <paramref name="source"/> 的逐字段拷到 <paramref name="target"/>。
+    /// 集合类字段做"清空 + AddRange"内容替换,不换 List 引用 —— Settings 实例由
+    /// App 全局共享,Discard 必须就地回写以免其它服务持有被丢弃的旧对象(G4)。
+    /// </summary>
+    public static void CopyInto(Settings target, Settings source)
+    {
+        // —— 基础 / 显示 ——
+        target.Theme = source.Theme;
+        target.ThemeMode = source.ThemeMode;
+        target.Language = source.Language;
+        target.CatalogAutoRefresh = source.CatalogAutoRefresh;
+        target.CatalogCacheTtlMinutes = source.CatalogCacheTtlMinutes;
+        target.CompatApiBaseUrl = source.CompatApiBaseUrl;
+        // —— 路径 ——
+        target.TemplatePythonDir = source.TemplatePythonDir;
+        target.TemplateComfyuiDir = source.TemplateComfyuiDir;
+        target.DefaultPythonVersion = source.DefaultPythonVersion;
+        target.EnvsDir = source.EnvsDir;
+        target.GlobalNodesDir = source.GlobalNodesDir;
+        target.LocalNodeDirectory = source.LocalNodeDirectory;
+        target.DefaultModelsDirectory = source.DefaultModelsDirectory;
+        // target.SharedModelsDirectory —— T2 删除;这里也不写
+        // —— 环境 / 工具 ——
+        target.PythonVenvBaseline = source.PythonVenvBaseline;
+        target.GitExe = source.GitExe;
+        target.GitProxyUrl = source.GitProxyUrl;
+        target.GitProxyPort = source.GitProxyPort;
+        target.GitProxyEnabled = source.GitProxyEnabled;
+        target.ComfyUiStartupTimeoutSeconds = source.ComfyUiStartupTimeoutSeconds;
+        target.ComfyUiLocale = source.ComfyUiLocale;
+        // —— Catalog 视图 ——
+        target.CatalogViewMode = source.CatalogViewMode;
+        target.CatalogPageSize = source.CatalogPageSize;
+        // —— 节点源 ——
+        target.ActiveQuerySourceName = source.ActiveQuerySourceName;
+        target.ActiveDownloadSourceName = source.ActiveDownloadSourceName;
+        // —— GitHub ——
+        target.GitHubToken = source.GitHubToken;
+        target.FetchNodeVersionsOnRefresh = source.FetchNodeVersionsOnRefresh;
+        // —— Python ——
+        target.ActivePythonInterpreterName = source.ActivePythonInterpreterName;
+        // —— Pip mirror ——
+        target.PipMirror = source.PipMirror;
+        target.PipMirrorCustomUrl = source.PipMirrorCustomUrl;
+        // —— 集合:不换 List 引用,清空 + AddRange ——
+        target.ExtraPaths.Clear();
+        target.ExtraPaths.AddRange(source.ExtraPaths);
+        target.QuerySources.Clear();
+        target.QuerySources.AddRange(source.QuerySources);
+        target.DownloadSources.Clear();
+        target.DownloadSources.AddRange(source.DownloadSources);
+        target.PythonInterpreters.Clear();
+        target.PythonInterpreters.AddRange(source.PythonInterpreters);
+        target.CommonNodes.Clear();
+        target.CommonNodes.AddRange(source.CommonNodes);
+    }
 }
 
 public class CommonNodeEntry
