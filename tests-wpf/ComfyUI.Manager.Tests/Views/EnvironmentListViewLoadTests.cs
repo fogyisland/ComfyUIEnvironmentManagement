@@ -95,4 +95,40 @@ public class EnvironmentListViewLoadTests
         // success 也写一行方便对比
         File.WriteAllText(logPath, $"EnvironmentListView loaded OK at {DateTime.Now:O}");
     }
+
+    /// <summary>
+    /// v0.6.11+ T3:操作列从 6 列变 5 列,toggle 按钮 (Requirements/BED/ComfyUI-Manager)
+    /// 共享 MaterialButton style。验 headless load 不抛 XamlParseException。
+    /// </summary>
+    [Fact]
+    public void EnvironmentListView_FiveColumnToggleRow_DoesNotThrow()
+    {
+        Exception? caught = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
+                var v = new EnvironmentListView();
+                v.Measure(new Size(800, 600));
+                v.Arrange(new Rect(0, 0, 800, 600));
+                v.UpdateLayout();
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (caught is not null)
+        {
+            throw new Exception(
+                $"EnvironmentListView 5-col toggle layout load failed: {caught.GetType().FullName}: {caught.Message}",
+                caught);
+        }
+    }
 }
