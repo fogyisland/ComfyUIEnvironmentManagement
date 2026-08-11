@@ -430,7 +430,7 @@ public class MainViewModel : ViewModelBase
         }
         else
         {
-            File.WriteAllText(path, "# ComfyUI Models 路径配置\n# 编辑 base_directory 指向共享 Models 目录(配合 Settings.SharedModelsDirectory)\n", System.Text.Encoding.UTF8);
+            File.WriteAllText(path, "# ComfyUI Models 路径配置\n# 编辑 base_directory 指向全局默认 Models 目录(配合 Settings.DefaultModelsDirectory)\n", System.Text.Encoding.UTF8);
         }
     }
 

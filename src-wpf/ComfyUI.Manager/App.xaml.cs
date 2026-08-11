@@ -118,7 +118,7 @@ public partial class App : Application
             projectRoot, dbFactory, envRepo, processStateRepo, logger,
             settings.ComfyUiStartupTimeoutSeconds,
             settings.ComfyUiLocale,
-            settings.SharedModelsDirectory);
+            settings.DefaultModelsDirectory);
 
         // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
         // 1) 空字段 → 默认子目录名(相对)

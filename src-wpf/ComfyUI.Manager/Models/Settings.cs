@@ -45,11 +45,6 @@ public class Settings
     // 空字符串 = 不动 env 的 models 目录(沿用项目根 fallback)。
     [JsonPropertyName("default_models_directory")]
     public string DefaultModelsDirectory { get; set; } = "";
-    // v0.6.7.3: 全局共享 Models 目录(env-create / env-start 时
-    // 把 <env-root>/ComfyUI/models junction 到此路径)。
-    // 空字符串 = 不共享 Models,每 env 自己持有一份(向后兼容)。
-    [JsonPropertyName("shared_models_directory")]
-    public string SharedModelsDirectory { get; set; } = "";
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
@@ -131,7 +126,6 @@ public class Settings
         target.GlobalNodesDir = source.GlobalNodesDir;
         target.LocalNodeDirectory = source.LocalNodeDirectory;
         target.DefaultModelsDirectory = source.DefaultModelsDirectory;
-        // target.SharedModelsDirectory —— T2 删除;这里也不写
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;

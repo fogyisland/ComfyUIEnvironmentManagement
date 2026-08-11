@@ -20,7 +20,7 @@ namespace ComfyUI.Manager.Services;
 ///   3. 生成 env_id
 ///   4. 创建 env 根目录
 ///   5. 链接 / 复制 ComfyUI(shared → junction,independent → copy)
-///   5.5 链接共享 Models(Settings.SharedModelsDirectory 非空时,models → 共享目录)
+///   5.5 链接默认 Models 目录(Settings.DefaultModelsDirectory 非空时,models → 该目录)
 ///   6. 创建 venv(VenvCreator)
 ///   7. 写 extra_model_paths.yaml(占位)
 ///   8. 插 SQLite 行
@@ -142,53 +142,26 @@ public sealed class EnvCreatorService
             comfyuiResolved = comfyuiLink;
         }
 
-        // 5.5 链接共享 Models(若 SharedModelsDirectory 非空)
-        if (!string.IsNullOrWhiteSpace(_settings.SharedModelsDirectory))
+        // 5.5 链接默认 Models 目录(v0.6.11+ T2 合并:Shared 字段删除,只此一条)。
+        if (!string.IsNullOrWhiteSpace(_settings.DefaultModelsDirectory))
         {
-            var sharedModelsFull = Path.GetFullPath(_settings.SharedModelsDirectory);
+            var modelsDirFull = Path.GetFullPath(_settings.DefaultModelsDirectory);
             var modelsLink = Path.Combine(comfyuiLink, "models");
-            progress?.Report(new CreateStepReport("链接共享 Models",
-                $"junction: {modelsLink} → {sharedModelsFull}"));
+            progress?.Report(new CreateStepReport("链接 Models 目录",
+                $"junction: {modelsLink} → {modelsDirFull}"));
             try
             {
                 if (Directory.Exists(modelsLink))
                 {
-                    // shared layout 时是 junction 链回 <comfyui-source>/models,删 junction 不删源
-                    // independent 时是本地拷贝,删本地没事
                     Directory.Delete(modelsLink, recursive: true);
                 }
-                await _linker.CreateAsync(modelsLink, sharedModelsFull, ct);
+                await _linker.CreateAsync(modelsLink, modelsDirFull, ct);
             }
             catch (Exception ex)
             {
-                // 回滚:删 env 根目录,跟 venv 失败同款
                 try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw new CreateEnvException("CREATE_MODELS_LINK_FAILED",
+                throw new CreateEnvException("MODELS_LINK_FAILED",
                     $"Models junction 创建失败: {ex.Message}");
-            }
-        }
-
-        // 5.6 链接默认 Models 目录(若 DefaultModelsDirectory 非空且 SharedModelsDirectory 未配置)
-        if (!string.IsNullOrWhiteSpace(_settings.DefaultModelsDirectory)
-            && string.IsNullOrWhiteSpace(_settings.SharedModelsDirectory))
-        {
-            var defaultModelsFull = Path.GetFullPath(_settings.DefaultModelsDirectory);
-            var modelsLink = Path.Combine(comfyuiLink, "models");
-            progress?.Report(new CreateStepReport("链接默认 Models",
-                $"junction: {modelsLink} → {defaultModelsFull}"));
-            try
-            {
-                if (Directory.Exists(modelsLink))
-                {
-                    Directory.Delete(modelsLink, recursive: true);
-                }
-                await _linker.CreateAsync(modelsLink, defaultModelsFull, ct);
-            }
-            catch (Exception ex)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw new CreateEnvException("DEFAULT_MODELS_LINK_FAILED",
-                    $"默认 Models junction 创建失败: {ex.Message}");
             }
         }
 
