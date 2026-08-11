@@ -67,6 +67,17 @@ public class EnvironmentListViewModel : ViewModelBase
     private void UnmarkEnvBusy(Environment env)
         => _envBusy.Remove(env.RootPath);
 
+    /// <summary>
+    /// Test seam:手动 mark env 为 busy(模拟其他 long-running 操作占用)。
+    /// 测试用 — 让 Toggle 命令 CanExecute 验 false 而不依赖其他 fixture 副作用。
+    /// 生产代码不需要这个,直接从 IsEnvBusy 走。
+    /// </summary>
+    internal void SetEnvBusyForTest(Environment env)
+    {
+        if (env is null) return;
+        MarkEnvBusy(env, BusyKind.ReqInstall);
+    }
+
     public ObservableCollection<Environment> Environments { get; } = new();
     public RelayCommand RefreshCommand { get; }
     public RelayCommand StartCommand { get; }
@@ -86,6 +97,19 @@ public class EnvironmentListViewModel : ViewModelBase
     /// 根据 IsComfyUiManagerInstalled 切换 Install / Uninstall,inline 状态面板显示进度。
     /// </summary>
     public RelayCommand ToggleComfyUiManagerCommand { get; }
+
+    /// <summary>
+    /// v0.6.11+ T1:env-list 行 toggle "装依赖/卸依赖" 命令 — 根据
+    /// IsRequirementsInstalled 切换 Install / Uninstall。复用现有
+    /// InstallRequirementsAsync / UninstallRequirementsAsync 子命令。
+    /// </summary>
+    public RelayCommand ToggleRequirementsCommand { get; }
+
+    /// <summary>
+    /// v0.6.11+ T1:env-list 行 toggle "安装基础环境/卸载基础环境" 命令 — 根据
+    /// IsBaseEnvInstalled 切换 Install (走 picker dialog) / Uninstall。
+    /// </summary>
+    public RelayCommand ToggleBaseEnvCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
 
@@ -286,6 +310,26 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (IsEnvBusy(env)) return false;
                 return true;
             });
+        // v0.6.11+ T1:Requirements + BED toggle 命令 — 同 ComfyUI Manager toggle
+        // 模式。CanExecute 只看 IsEnvBusy(没装/已装判定让 toggle 方法自己走)。
+        ToggleRequirementsCommand = new RelayCommand(
+            async p => await ToggleRequirementsAsync(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (IsEnvBusy(env)) return false;
+                return true;
+            });
+        ToggleBaseEnvCommand = new RelayCommand(
+            async p => await ToggleBaseEnvAsync(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (IsEnvBusy(env)) return false;
+                return true;
+            });
         Load();
     }
 
@@ -343,11 +387,21 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.11+ T3:计算每行 ComfyUI Manager 装态 + 按钮文字。
         // 不持久化(Environment.IsComfyUiManagerInstalled 是 JsonIgnore),Load 末尾
         // 重算避免 stale;toggle 命令 CanExecute 也因此依赖 Load 后状态。
+        // v0.6.11+ T1:同步计算 Requirements (marker 文件) + BED (BedStatus) toggle 状态,
+        // 让 toggle 命令按钮文字同步反映当前装态。
         foreach (var env in Environments)
         {
             var installed = _comfyUiManagerInstaller.IsInstalled(env);
             env.IsComfyUiManagerInstalled = installed;
             env.ComfyUiManagerButtonText = installed ? "卸载 ComfyUI Manager" : "安装 ComfyUI Manager";
+
+            var reqInstalled = RequirementsInstaller.IsInstalled(env);
+            env.IsRequirementsInstalled = reqInstalled;
+            env.RequirementsButtonText = reqInstalled ? "卸依赖" : "装依赖";
+
+            var bedInstalled = BaseEnvUninstaller.IsInstalled(env);
+            env.IsBaseEnvInstalled = bedInstalled;
+            env.BaseEnvButtonText = bedInstalled ? "卸载基础环境" : "安装基础环境";
         }
         RaiseCommandsChanged();
     }
@@ -471,8 +525,16 @@ public class EnvironmentListViewModel : ViewModelBase
     /// </summary>
     public Action<string>? MessageBoxOverride { get; set; }
 
-    private async Task OpenBaseEnvProgressAsync()
+    private async Task OpenBaseEnvProgressAsync(Environment? targetEnv = null)
     {
+        // v0.6.11+ T1:per-env toggle 入口 — 只对这个 env 弹 picker + progress dialog,
+        // 装完直接更新 IsBaseEnvInstalled / BaseEnvButtonText 让 toggle 切到"卸载"。
+        // null = 工具栏 BaseEnvCommand 入口,用 Selected 或全 env(原行为不变)。
+        if (targetEnv is not null)
+        {
+            await OpenBaseEnvProgressForSingleEnvAsync(targetEnv);
+            return;
+        }
         if (Selected is null && Environments.Count == 0) return;
         var envIds = Selected is not null
             ? new List<string> { Selected.Id }
@@ -554,6 +616,66 @@ public class EnvironmentListViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// v0.6.11+ T1:env-list 行 toggle 按钮触发的单 env BED install 流程 — picker → progress
+    /// dialog → 装完写 IsBaseEnvInstalled / BaseEnvButtonText 让 toggle 切到"卸载基础环境"。
+    /// 工具栏 BaseEnvCommand 仍走 <see cref="OpenBaseEnvProgressAsync()"/> 工具栏版(用 Selected),
+    /// 行为不变 — toggle 完走完后 Load() 末尾重算 button text。
+    /// </summary>
+    private async System.Threading.Tasks.Task OpenBaseEnvProgressForSingleEnvAsync(Environment env)
+    {
+        if (BaseEnvUninstaller.IsInstalled(env))
+        {
+            // all-done 短路(跟 OpenBaseEnvProgressAsync() 工具栏版一致)。
+            ShowAlreadyInstalled(
+                $"env '{env.Name}' 已安装基础环境,无需再装");
+            return;
+        }
+        if (IsEnvBusy(env))
+        {
+            ShowInfoDialog(
+                $"env '{env.Name}' 正在执行其他操作,请稍候",
+                "无法部署基础环境");
+            return;
+        }
+        var profiles = await _profileLoader.LoadAsync();
+        var preselected = profiles.FirstOrDefault();
+        var picked = PickerDialogOverride is not null
+            ? PickerDialogOverride(profiles, preselected, PickerSelectionMode.Single)
+            : BaseEnvProfilePickerDialog.Show(profiles, preselected, PickerSelectionMode.Single);
+        if (picked is null || picked.Count == 0)
+        {
+            ShowAlreadyInstalled("请选择一个基础环境版本后再部署");
+            return;
+        }
+        var profile = picked.First();
+        var envIds = new List<string> { env.Id };
+        MarkEnvBusy(env, BusyKind.BEDInstall);
+        try
+        {
+            if (ShowProgressDialogOverride is not null)
+            {
+                ShowProgressDialogOverride(envIds, profile, _baseEnvInstaller);
+            }
+            else
+            {
+                Views.BaseEnvProgressDialog.Show(envIds, profile, _baseEnvInstaller);
+            }
+            // 装完(dialog 关闭)再重读 — IsInstalled() 看 BedStatus(dialog 关时已写)。
+            // 失败路径(force-quit dialog / installer 抛)BedStatus != "done" → 留
+            // "安装基础环境" label,跟 G10 失败不更新 label 一致;Load() 末尾也会重算。
+            var nowInstalled = BaseEnvUninstaller.IsInstalled(env);
+            env.IsBaseEnvInstalled = nowInstalled;
+            env.BaseEnvButtonText = nowInstalled ? "卸载基础环境" : "安装基础环境";
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
+
     private void ShowAlreadyInstalled(string message)
     {
         if (MessageBoxOverride is not null)
@@ -596,6 +718,8 @@ public class EnvironmentListViewModel : ViewModelBase
         var status = new RequirementsStatusViewModel(env, _requirementsInstaller);
         RequirementsStatus = status;
         RaisePropertyChanged(nameof(RequirementsStatus));
+        // v0.6.11+ T1:toggle 按钮"装依赖中..."状态(操作进行中显示)。
+        env.RequirementsButtonText = "装依赖中...";
         MarkEnvBusy(env, BusyKind.ReqInstall);
         try
         {
@@ -603,6 +727,10 @@ public class EnvironmentListViewModel : ViewModelBase
             // 成功 → 2s 后收起;失败/取消 → 不收起,等用户手动关(UI 提供 ✕ 按钮)
             if (status.IsComplete && !status.HasError)
             {
+                // v0.6.11+ T1:成功 → toggle 按钮切到"卸依赖"。失败路径由 Load()
+                // 末尾从 marker 文件重算,G10 失败不更新 label。
+                env.IsRequirementsInstalled = true;
+                env.RequirementsButtonText = "卸依赖";
                 await Task.Delay(TimeSpan.FromSeconds(2));
                 status.Hide();
             }
@@ -701,6 +829,8 @@ public class EnvironmentListViewModel : ViewModelBase
         BaseEnvUninstallStatus = status;
         RaisePropertyChanged(nameof(BaseEnvUninstallStatus));
         status.Begin();
+        // v0.6.11+ T1:toggle 按钮"卸载基础环境中..."状态(操作进行中显示)。
+        env.BaseEnvButtonText = "卸载基础环境中...";
         MarkEnvBusy(env, BusyKind.BEDUninstall);
         try
         {
@@ -745,6 +875,10 @@ public class EnvironmentListViewModel : ViewModelBase
 
             // 持久化重置后的字段(VM 见 concrete repo,Upsert 等价于 SaveAsync)
             _repo.Upsert(env);
+            // v0.6.11+ T1:成功 → toggle 按钮切回"安装基础环境"。失败路径由 Load()
+            // 末尾从 BedStatus 重算,G10 失败不更新 label。
+            env.IsBaseEnvInstalled = false;
+            env.BaseEnvButtonText = "安装基础环境";
             status.Complete();
             await Task.Delay(TimeSpan.FromSeconds(2));
             status.Hide();
@@ -782,6 +916,8 @@ public class EnvironmentListViewModel : ViewModelBase
         RequirementsStatus = status;
         RaisePropertyChanged(nameof(RequirementsStatus));
         status.Begin();
+        // v0.6.11+ T1:toggle 按钮"卸依赖中..."状态(操作进行中显示)。
+        env.RequirementsButtonText = "卸依赖中...";
         MarkEnvBusy(env, BusyKind.ReqUninstall);
         // 每次新建 CTS,finally 里 Dispose + null。传给 UninstallAsync 的 token
         // 是真的可取消的(原来传 default 是死 token,Cancel 调也没用)。
@@ -831,6 +967,10 @@ public class EnvironmentListViewModel : ViewModelBase
                 status.Fail(result.Reason ?? "卸载失败");
                 return;
             }
+            // v0.6.11+ T1:成功 → toggle 按钮切回"装依赖"。失败路径由 Load()
+            // 末尾从 marker 文件重算,G10 失败不更新 label。
+            env.IsRequirementsInstalled = false;
+            env.RequirementsButtonText = "装依赖";
             status.Complete();
             await Task.Delay(TimeSpan.FromSeconds(2));
             status.Hide();
@@ -935,6 +1075,40 @@ public class EnvironmentListViewModel : ViewModelBase
     internal void SetComfyUiManagerBusyForTest(Environment env)
     {
         MarkEnvBusy(env, BusyKind.ComfyUiManagerInstall);
+    }
+
+    /// <summary>
+    /// v0.6.11+ T1:Requirements toggle 路由 — 已装 → uninstall,未装 → install。
+    /// 复用现有 InstallRequirementsAsync / UninstallRequirementsAsync 子命令
+    /// (v0.6.5.12 / v0.6.5.22 已落地),不重写 pip / uninstall 逻辑。
+    /// 暴露 internal 是为了让测试能直接 await(避免绕 RelayCommand fire-and-forget)。
+    /// </summary>
+    internal async System.Threading.Tasks.Task ToggleRequirementsAsync(Environment? env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;
+
+        if (env.IsRequirementsInstalled)
+            await UninstallRequirementsAsync(env);
+        else
+            await InstallRequirementsAsync(env);
+    }
+
+    /// <summary>
+    /// v0.6.11+ T1:BED toggle 路由 — 已装 → uninstall,未装 → 走 picker dialog install。
+    /// 复用 OpenBaseEnvProgressAsync(per-env overload)— 工具栏入口 BaseEnvCommand 仍
+    /// 走原版(用 Selected)行为不变。
+    /// 暴露 internal 是为了让测试能直接 await。
+    /// </summary>
+    internal async System.Threading.Tasks.Task ToggleBaseEnvAsync(Environment? env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;
+
+        if (env.IsBaseEnvInstalled)
+            await UninstallBaseEnvAsync(env);
+        else
+            await OpenBaseEnvProgressAsync(env);
     }
 
     /// <summary>
@@ -1080,5 +1254,8 @@ public class EnvironmentListViewModel : ViewModelBase
         ReportComponentsCommand.RaiseCanExecuteChanged();
         OpenBrowserCommand.RaiseCanExecuteChanged();
         ToggleComfyUiManagerCommand.RaiseCanExecuteChanged();
+        // v0.6.11+ T1:toggle 命令也要 refresh,否则 busy 切换后按钮不会自动 enable/disable
+        ToggleRequirementsCommand.RaiseCanExecuteChanged();
+        ToggleBaseEnvCommand.RaiseCanExecuteChanged();
     }
 }

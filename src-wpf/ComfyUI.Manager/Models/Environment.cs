@@ -66,6 +66,35 @@ public class Environment
     public string ComfyUiManagerButtonText { get; set; } = "安装 ComfyUI Manager";
 
     /// <summary>
+    /// v0.6.11+ T1:env-list 行 toggle 按钮用 — true = Requirements 已装(marker 文件存在),
+    /// false = 未装。Load 末尾重新算(RequirementsInstaller.IsInstalled),不持久化(同
+    /// IsComfyUiManagerInstalled pattern)。EnvironmentRepository 用 System.Text.Json
+    /// 序列化,JsonIgnore 防止 SQLite 写入。
+    /// </summary>
+    [JsonIgnore]
+    public bool IsRequirementsInstalled { get; set; }
+
+    /// <summary>
+    /// v0.6.11+ T1:toggle 按钮文字,根据 IsRequirementsInstalled 切换。
+    /// </summary>
+    [JsonIgnore]
+    public string RequirementsButtonText { get; set; } = "装依赖";
+
+    /// <summary>
+    /// v0.6.11+ T1:env-list 行 toggle 按钮用 — true = BED 已装(BaseEnvUninstaller.IsInstalled
+    /// 返回 true:BedStatus ∈ done/failed/installing),false = 未装(BedStatus == null)。
+    /// Load 末尾重新算,不持久化(同 IsComfyUiManagerInstalled pattern)。
+    /// </summary>
+    [JsonIgnore]
+    public bool IsBaseEnvInstalled { get; set; }
+
+    /// <summary>
+    /// v0.6.11+ T1:toggle 按钮文字,根据 IsBaseEnvInstalled 切换。
+    /// </summary>
+    [JsonIgnore]
+    public string BaseEnvButtonText { get; set; } = "安装基础环境";
+
+    /// <summary>
     /// 行 BED 列展示文本:✓ profileId / ✗ 未装 / ⏳ 装中 / ❌ profileId (reason)。
     /// WPF DataGridTextColumn 直接绑 BedDisplay;不需 INPC(env 一行 read-through)。
     /// </summary>
