@@ -54,6 +54,10 @@ public partial class App : Application
                 version: AppVersionInfo.Current);
             _splash = new SplashWindow(_splashVm);
             _splash.Show();
+            // v0.6.11+ dashboard/splash polish:Stage 1 Init 完成(splash 已上屏)。
+            // 此时 _logger 还没构造(logger 需要 projectRoot,在下面才算出),
+            // 所以 4 个 stage report 都不写日志 — splash 进度纯 UI 反馈。
+            _splashVm.ReportStageProgress(Stage.Init, 100);
         }
         catch (Exception ex)
         {
@@ -74,6 +78,9 @@ public partial class App : Application
 
         var dbFactory = new SqliteConnectionFactory();
         var envRepo = new EnvironmentRepository(dbFactory);
+
+        // v0.6.11+ dashboard/splash polish:Stage 2 LoadDatabase 完成。
+        _splashVm?.ReportStageProgress(Stage.LoadDatabase, 100);
 
         // v0.6.5.13: 集中日志 — 所有 subsystem 写到 projectRoot/Logs/YYYY-MM-DD.log
         var logger = new AppLogger(projectRoot);
@@ -103,6 +110,9 @@ public partial class App : Application
         // v0.6.9 T9:暴露给 MainWindow 订阅 ThemeChanging。首次 Apply 时 resolved 跟 Current 都是 Dark
         // (ThemeService 内部 default),所以 ThemeChanging 不会被 fire — 避免启动期无意义 fade。
         ThemeService = themeService;
+
+        // v0.6.11+ dashboard/splash polish:Stage 3 LoadTheme 完成。
+        _splashVm?.ReportStageProgress(Stage.LoadTheme, 100);
 
         _launcher = new ProcessLauncher(
             projectRoot, dbFactory, envRepo, processStateRepo, logger,
@@ -234,6 +244,11 @@ public partial class App : Application
         // → 应用直接退出。显式指 MainWindow=main 让 splash close 不影响应用生命周期。
         main.Show();
         Application.Current.MainWindow = main;
+
+        // v0.6.11+ dashboard/splash polish:Stage 4 Ready(MainWindow 已 Show)。
+        // 必须在 NotifyMainWindowReady() 之前 — 后者启动 fade 计时,fade 完
+        // VM 就 _disposed,late report 会被静默丢掉。
+        _splashVm?.ReportStageProgress(Stage.Ready, 100);
 
         // v0.6.8: MainWindow 显示后通知 splash VM 启动最少 3s 计时 + fade
         _splashVm?.NotifyMainWindowReady();

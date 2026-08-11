@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Windows.Threading;
+using ComfyUI.Manager.Infrastructure;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -95,6 +97,48 @@ public class SplashViewModel : ViewModelBase
     }
 
     public event Action? FadeCompleted;
+
+    /// <summary>
+    /// v0.6.11+ dashboard/splash polish:4 阶段进度 (Init → LoadDatabase → LoadTheme → Ready)。
+    /// StageRowsPercent[i] 是 stage i 的当前 percent(0-100);UI 绑 ProgressBar.Value。
+    /// StagePercent 是加权 sum(0-100),绑底部 status text。
+    /// App.xaml.cs 调 <see cref="ReportStageProgress"/> 推进。
+    /// </summary>
+    /// <remarks>
+    /// backing field 是 int[],暴露成 IReadOnlyList&lt;int&gt; 只是防外部改;
+    /// 内部推进走 _stageRows 而不是把 IReadOnlyList 再 cast 回 int[]。
+    /// WPF 的 {Binding StageRowsPercent[0]} 对 IReadOnlyList 索引器可用。
+    /// </remarks>
+    private readonly int[] _stageRows = new int[4];
+
+    public IReadOnlyList<int> StageRowsPercent => _stageRows;
+
+    public int StagePercent { get; private set; }
+
+    public event Action? StageProgressChanged;
+
+    private readonly MultiStageSplashProgress _progress = new();
+
+    /// <summary>
+    /// App.xaml.cs 的 seam:某个启动阶段推进到 stagePercent(通常直接 100)。
+    /// _disposed 后(splash 已 fade 完 / 已 Close)静默 no-op,避免启动尾段
+    /// 的 late report 打到已关窗口的 binding 上。
+    /// </summary>
+    public void ReportStageProgress(Stage stage, int stagePercent)
+    {
+        if (_disposed) return;
+
+        _progress.Report(stage, stagePercent);
+        var idx = (int)stage;
+        if (idx >= 0 && idx < _stageRows.Length)
+        {
+            _stageRows[idx] = Math.Clamp(stagePercent, 0, 100);
+        }
+        StagePercent = _progress.TotalPercent;
+        RaisePropertyChanged(nameof(StageRowsPercent));
+        RaisePropertyChanged(nameof(StagePercent));
+        StageProgressChanged?.Invoke();
+    }
 
     /// <summary>DispatcherTimer 包装成 IDisposable 让 seam 接口统一。</summary>
     private sealed class DispatcherTimerHandle : IDisposable

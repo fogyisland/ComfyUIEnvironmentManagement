@@ -6,7 +6,11 @@
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False" ShowActivated="False"
         Topmost="True" AllowsTransparency="True"
-        Background="Transparent">
+        Background="Transparent"
+        Icon="pack://siteoforigin:,,,/asset/icon.png">
+    <!-- T4 bake 出 icon.ico 后可把上面的 Icon 换成 .ico。注意 Window.Icon 跟
+         Image.Source 行为不同 — 指向不存在的文件会在 XAML 解析期直接抛
+         IOException(不是静默走 ImageFailed),所以必须指向真实存在的文件。 -->
     <Window.Resources>
         <Storyboard x:Key="FadeOutStoryboard">
             <DoubleAnimation
@@ -16,25 +20,116 @@
                 Completed="OnFadeOutCompleted" />
         </Storyboard>
     </Window.Resources>
-    <Border CornerRadius="12" ClipToBounds="True"
-            Background="#FF1E1E1E">
-        <Grid>
-            <!-- 主图背景:pack URI 走 csproj <None Include="..\..\asset\**\*"> 已自动拷到 output。
-                 图片缺失时控件空,Border 背景色兜底(G6)。 -->
-            <Image Source="pack://application:,,,/asset/splash.png"
-                   Stretch="UniformToFill" />
-            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                        Margin="0,0,32,24">
-                <TextBlock Text="{Binding Title}"
-                           FontSize="36" FontWeight="Bold"
-                           Foreground="White" HorizontalAlignment="Right" />
-                <TextBlock Text="{Binding Tagline}"
-                           FontSize="14" Foreground="#DDD"
-                           Margin="0,4,0,0" HorizontalAlignment="Right" />
-                <TextBlock Text="{Binding Version}"
-                           FontSize="11" Foreground="#999"
-                           Margin="0,8,0,0" HorizontalAlignment="Right" />
+
+    <!-- v0.6.11+ dashboard/splash polish:整张 ComfyUI.png 直接做背景,
+         无 Border fallback 背景色(用户原话"背景去掉,背景就是一张图片")。
+         Image 缺失时控件空,背景透明 → 用户看不到 splash 但 main 仍能 Show。
+
+         URI 必须是 pack://siteoforigin: 而不是 pack://application: —
+         asset/** 在 csproj 里是 <None> + CopyToOutputDirectory(松散文件),
+         没编译进 assembly,application: 会抛 IOException 找不到资源。
+         (v0.6.8 的 splash.png 一直用错的 application: 所以从来没显示过,
+         被 Border 背景色 + 静默 ImageFailed 盖住了。) -->
+    <Grid>
+        <Image Source="pack://siteoforigin:,,,/asset/ComfyUI.png"
+               Stretch="UniformToFill" />
+
+        <!-- 右下角 title/tagline/version(原 v0.6.8 设计保留,上移让出底部进度条空间) -->
+        <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                    Margin="0,0,32,140">
+            <TextBlock Text="{Binding Title}"
+                       FontSize="36" FontWeight="Bold"
+                       Foreground="White" HorizontalAlignment="Right" />
+            <TextBlock Text="{Binding Tagline}"
+                       FontSize="14" Foreground="#DDD"
+                       Margin="0,4,0,0" HorizontalAlignment="Right" />
+            <TextBlock Text="{Binding Version}"
+                       FontSize="11" Foreground="#999"
+                       Margin="0,8,0,0" HorizontalAlignment="Right" />
+        </StackPanel>
+
+        <!-- 底部 4 行进度条 — 显式 4 个 Grid 行而不是 ItemsControl,
+             因为 ItemsControl 的 DataTemplate 拿不到 index 写死 label text。 -->
+        <Border VerticalAlignment="Bottom"
+                Background="#80000000" Padding="20,16">
+            <StackPanel>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="初始化服务"
+                               Foreground="White" FontFamily="Consolas" FontSize="11" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding StageRowsPercent[0], StringFormat='{}{0}%'}"
+                               Foreground="#CCC" FontFamily="Consolas" FontSize="11"
+                               HorizontalAlignment="Right" />
+                    <ProgressBar Grid.Column="2" Height="5"
+                                 Value="{Binding StageRowsPercent[0], Mode=OneWay}"
+                                 Minimum="0" Maximum="100"
+                                 Foreground="{DynamicResource PrimaryBrush}"
+                                 Background="#333" Margin="8,0,0,0" />
+                </Grid>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="加载数据库"
+                               Foreground="White" FontFamily="Consolas" FontSize="11" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding StageRowsPercent[1], StringFormat='{}{0}%'}"
+                               Foreground="#CCC" FontFamily="Consolas" FontSize="11"
+                               HorizontalAlignment="Right" />
+                    <ProgressBar Grid.Column="2" Height="5"
+                                 Value="{Binding StageRowsPercent[1], Mode=OneWay}"
+                                 Minimum="0" Maximum="100"
+                                 Foreground="{DynamicResource PrimaryBrush}"
+                                 Background="#333" Margin="8,0,0,0" />
+                </Grid>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="加载主题"
+                               Foreground="White" FontFamily="Consolas" FontSize="11" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding StageRowsPercent[2], StringFormat='{}{0}%'}"
+                               Foreground="#CCC" FontFamily="Consolas" FontSize="11"
+                               HorizontalAlignment="Right" />
+                    <ProgressBar Grid.Column="2" Height="5"
+                                 Value="{Binding StageRowsPercent[2], Mode=OneWay}"
+                                 Minimum="0" Maximum="100"
+                                 Foreground="{DynamicResource PrimaryBrush}"
+                                 Background="#333" Margin="8,0,0,0" />
+                </Grid>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="就绪"
+                               Foreground="White" FontFamily="Consolas" FontSize="11" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding StageRowsPercent[3], StringFormat='{}{0}%'}"
+                               Foreground="#CCC" FontFamily="Consolas" FontSize="11"
+                               HorizontalAlignment="Right" />
+                    <ProgressBar Grid.Column="2" Height="5"
+                                 Value="{Binding StageRowsPercent[3], Mode=OneWay}"
+                                 Minimum="0" Maximum="100"
+                                 Foreground="{DynamicResource PrimaryBrush}"
+                                 Background="#333" Margin="8,0,0,0" />
+                </Grid>
+                <TextBlock Text="{Binding StagePercent, StringFormat='总进度: {0}%'}"
+                           Foreground="White" FontFamily="Consolas"
+                           FontSize="11" HorizontalAlignment="Right"
+                           Margin="0,8,0,0" />
             </StackPanel>
-        </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </Window>
