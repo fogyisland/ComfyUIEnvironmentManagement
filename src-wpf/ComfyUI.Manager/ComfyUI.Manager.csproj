@@ -34,6 +34,13 @@
       <Link>asset\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- v0.6.11+ T3:Dashboard「最近更新」卡片运行时读 CHANGELOG.md 解析版本条目。
+         不拷到输出的话 DashboardService 永远找不到文件、恒走 HardcodedFallback,
+         等于这个数据源是死的。 -->
+    <None Include="..\..\CHANGELOG.md">
+      <Link>CHANGELOG.md</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ComfyUI.Manager.Tests" />

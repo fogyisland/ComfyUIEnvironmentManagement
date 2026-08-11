@@ -219,7 +219,13 @@ public partial class App : Application
         // v0.6.9 T5:Dashboard 数据聚合 service(接 T4,4 个并行 task:
         // envRepo.ListAll / nodeRepo.CountAllAsync / AppLogger 最近 5 行 / GitHub latest release)。
         // 复用共享 http(15s 超时)+ envRepo/nodeRepo/logger(跟其他 service 同生命周期)。
-        var dashboardService = new DashboardService(envRepo, nodeRepo, logger, http);
+        // v0.6.11+ T3:再挂 GitHubReleaseService(releases 全 list + 24h cache,cache 落
+        // %APPDATA%/ComfyUI-Manager)+ ChangelogParser(读 AppContext.BaseDirectory/CHANGELOG.md,
+        // 解析不出内容时回退 HardcodedFallback)。两者失败都只降级不阻断 dashboard。
+        var dashboardService = new DashboardService(
+            envRepo, nodeRepo, logger, http,
+            new GitHubReleaseService(http, logger),
+            new ChangelogParser());
         // v0.6.9 T7:全局搜索 service(跨 4 kind 索引:env / node / settings section / command)。
         // 复用 envRepo + nodeRepo;首次 OpenSpotlight 时 BuildAsync,后续键入仅走内存(G7)。
         var globalSearchService = new GlobalSearchService(envRepo, nodeRepo);

@@ -10,26 +10,63 @@
              Background="{DynamicResource BackgroundBrush}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
         <StackPanel>
-            <!-- 标题 + 刷新按钮 + snapshot 时间 -->
-            <DockPanel Margin="0,0,0,16">
-                <TextBlock Text="{x:Static models:DashboardPageLocalizable.Title}"
-                           FontSize="{StaticResource FontSizeTitle}"
-                           FontWeight="Bold" VerticalAlignment="Center" />
-                <Button DockPanel.Dock="Right" Content="{x:Static models:DashboardPageLocalizable.Refresh}"
-                        Command="{Binding RefreshCommand}"
-                        Style="{StaticResource MaterialButton}"
-                        MinWidth="80" />
-                <TextBlock VerticalAlignment="Center" Foreground="Gray"
-                           Text="{Binding LastSnapshot.SnapshotAt, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}"
-                           Margin="16,0,0,0" />
-            </DockPanel>
+            <!-- ============ Hero 区:图标 + 标题 + 版本 + GitHub 数据条 ============ -->
+            <!-- 图标 URI 必须是 pack://siteoforigin: 而不是 pack://application: ——
+                 asset/** 在 csproj 里是 <None> + CopyToOutputDirectory(松散文件),
+                 不是编译进 assembly 的 <Resource>,application: scheme 会抛 IOException。
+                 (同 SplashWindow.xaml 的踩坑记录。) -->
+            <Border Margin="0,0,0,16" Padding="20"
+                    Background="{DynamicResource SurfaceBrush}"
+                    CornerRadius="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Image Grid.Column="0" Width="96" Height="96"
+                           Source="pack://siteoforigin:,,,/asset/icon.png"
+                           Margin="0,0,16,0"
+                           VerticalAlignment="Top" />
+                    <DockPanel Grid.Column="1">
+                        <Button DockPanel.Dock="Right"
+                                Content="{x:Static models:DashboardPageLocalizable.Refresh}"
+                                Command="{Binding RefreshCommand}"
+                                Style="{StaticResource MaterialButton}"
+                                VerticalAlignment="Top"
+                                MinWidth="80" />
+                        <StackPanel>
+                            <TextBlock Text="ComfyUI 多环境管理系统"
+                                       FontSize="24" FontWeight="Bold"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="智能管理 ComfyUI 环境、节点、依赖"
+                                       Foreground="Gray" FontSize="12"
+                                       Margin="0,4,0,0" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding LastSnapshot.LatestRelease, Mode=OneWay, TargetNullValue='—'}"
+                                       FontSize="14" FontWeight="Bold"
+                                       Foreground="{DynamicResource PrimaryBrush}"
+                                       Margin="0,8,0,0" />
+                            <TextBlock Foreground="Gray" FontSize="11" Margin="0,4,0,0">
+                                <Run Text="⭐ " />
+                                <Run Text="{Binding GitHubStars, Mode=OneWay, TargetNullValue='—'}" />
+                                <Run Text=" stars · 📦 " />
+                                <Run Text="{Binding GitHubReleaseCount, Mode=OneWay, TargetNullValue='—'}" />
+                                <Run Text=" releases" />
+                            </TextBlock>
+                            <TextBlock Foreground="Gray" FontSize="11" Margin="0,2,0,0"
+                                       Text="{Binding LastSnapshot.SnapshotAt, Mode=OneWay, StringFormat='更新于 {0:yyyy-MM-dd HH:mm:ss}'}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Grid>
+            </Border>
 
             <!-- Loading indicator -->
             <TextBlock Text="{x:Static models:DashboardPageLocalizable.Loading}"
                        Foreground="Gray" Margin="0,0,0,8"
                        Visibility="{Binding IsRefreshing, Converter={StaticResource BoolToVisibility}}" />
 
-            <!-- 4-card grid (2x2) -->
+            <!-- ============ 4 卡片(2x2)============ -->
+            <!-- 注意:EnvStatsCard / NodeCountCard / RecentOpsCard / VersionCard 四个
+                 x:Name 被 DashboardView.xaml.cs 的 stagger 动画硬引用,不能改名/删除。 -->
             <Grid Visibility="{Binding LastSnapshot, Converter={StaticResource NullToVisibility}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -61,7 +98,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="{Binding LastSnapshot.EnvironmentCounts.Running}"
+                                <TextBlock Text="{Binding LastSnapshot.EnvironmentCounts.Running, Mode=OneWay}"
                                            FontSize="28" FontWeight="Bold"
                                            HorizontalAlignment="Center" />
                                 <TextBlock Text="{x:Static models:DashboardPageLocalizable.Running}"
@@ -69,7 +106,7 @@
                                            HorizontalAlignment="Center" />
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding LastSnapshot.EnvironmentCounts.Stopped}"
+                                <TextBlock Text="{Binding LastSnapshot.EnvironmentCounts.Stopped, Mode=OneWay}"
                                            FontSize="28" FontWeight="Bold"
                                            HorizontalAlignment="Center" />
                                 <TextBlock Text="{x:Static models:DashboardPageLocalizable.Stopped}"
@@ -77,7 +114,7 @@
                                            HorizontalAlignment="Center" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="{Binding LastSnapshot.EnvironmentCounts.Undeployed}"
+                                <TextBlock Text="{Binding LastSnapshot.EnvironmentCounts.Undeployed, Mode=OneWay}"
                                            FontSize="28" FontWeight="Bold"
                                            HorizontalAlignment="Center" />
                                 <TextBlock Text="{x:Static models:DashboardPageLocalizable.Undeployed}"
@@ -85,7 +122,7 @@
                                            HorizontalAlignment="Center" />
                             </StackPanel>
                             <StackPanel Grid.Column="3">
-                                <TextBlock Text="{Binding LastSnapshot.TotalEnvironments}"
+                                <TextBlock Text="{Binding LastSnapshot.TotalEnvironments, Mode=OneWay}"
                                            FontSize="28" FontWeight="Bold"
                                            HorizontalAlignment="Center"
                                            Foreground="{DynamicResource PrimaryBrush}" />
@@ -109,7 +146,7 @@
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.NodeCount}"
                                    FontSize="14" FontWeight="Bold"
                                    HorizontalAlignment="Center" Margin="0,0,0,12" />
-                        <TextBlock Text="{Binding LastSnapshot.NodeCount}"
+                        <TextBlock Text="{Binding LastSnapshot.NodeCount, Mode=OneWay}"
                                    FontSize="48" FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource PrimaryBrush}" />
@@ -129,7 +166,7 @@
                     <StackPanel>
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.RecentOps}"
                                    FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
-                        <ItemsControl ItemsSource="{Binding LastSnapshot.RecentOperations}">
+                        <ItemsControl ItemsSource="{Binding LastSnapshot.RecentOperations, Mode=OneWay}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="0,0,0,4">
@@ -138,9 +175,9 @@
                                             <ColumnDefinition Width="100" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding ParsedTime, StringFormat='[{0:HH:mm:ss}]'}" Foreground="Gray" />
-                                        <TextBlock Grid.Column="1" Text="{Binding Subsystem}" Foreground="{DynamicResource PrimaryBrush}" />
-                                        <TextBlock Grid.Column="2" Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="0" Text="{Binding ParsedTime, Mode=OneWay, StringFormat='[{0:HH:mm:ss}]'}" Foreground="Gray" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Subsystem, Mode=OneWay}" Foreground="{DynamicResource PrimaryBrush}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Message, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -148,7 +185,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Card 4 (2,2): Latest Release -->
+                <!-- Card 4 (2,2): 最新发布 + 最近更新(changelog)合并 -->
                 <Border x:Name="VersionCard" Grid.Row="2" Grid.Column="2"
                         Background="{DynamicResource SurfaceBrush}"
                         CornerRadius="8" Padding="20"
@@ -156,21 +193,86 @@
                     <Border.RenderTransform>
                         <TranslateTransform Y="20" />
                     </Border.RenderTransform>
-                    <StackPanel VerticalAlignment="Center">
+                    <StackPanel>
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.LatestVersion}"
                                    FontSize="14" FontWeight="Bold" Margin="0,0,0,12"
                                    HorizontalAlignment="Center" />
-                        <TextBlock Text="{Binding LastSnapshot.LatestRelease}"
-                                   FontSize="32" FontWeight="Bold"
+                        <TextBlock Text="{Binding LastSnapshot.LatestRelease, Mode=OneWay, TargetNullValue='—'}"
+                                   FontSize="28" FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource PrimaryBrush}" />
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.GitHubFailed}"
                                    Foreground="#FF6B6B"
-                                   Visibility="{Binding LastSnapshot.GitHubFailed, Converter={StaticResource BoolToVisibility}}"
-                                   HorizontalAlignment="Center" Margin="0,8,0,0" />
+                                   Visibility="{Binding LastSnapshot.GitHubFailed, Mode=OneWay, Converter={StaticResource BoolToVisibility}}"
+                                   HorizontalAlignment="Center" Margin="0,4,0,0" />
+
+                        <Separator Margin="0,12,0,8" />
+
+                        <TextBlock Text="📋 最近更新" FontSize="12" FontWeight="Bold" Margin="0,0,0,4" />
+                        <ItemsControl ItemsSource="{Binding VisibleChangelog, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8" Margin="0,2"
+                                            BorderBrush="{DynamicResource PrimaryBrush}"
+                                            BorderThickness="0,0,0,1"
+                                            CornerRadius="4">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Version, Mode=OneWay}" FontWeight="Bold" FontSize="12" />
+                                                <TextBlock Text="{Binding Date, Mode=OneWay, StringFormat=' ({0:yyyy-MM-dd})'}"
+                                                           Foreground="Gray" FontSize="11" />
+                                            </StackPanel>
+                                            <ItemsControl ItemsSource="{Binding BulletPoints, Mode=OneWay}" Margin="0,2,0,0">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Mode=OneWay, StringFormat='• {0}'}"
+                                                                   FontSize="11" Margin="0,1"
+                                                                   TextWrapping="Wrap" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="{Binding ChangelogToggleLabel, Mode=OneWay}"
+                                Command="{Binding ToggleChangelogExpandCommand}"
+                                Style="{StaticResource MaterialButton}"
+                                HorizontalAlignment="Center" Margin="0,8,0,0"
+                                MinWidth="110" />
                     </StackPanel>
                 </Border>
             </Grid>
+
+            <!-- ============ 📥 下载地址 ============ -->
+            <Border Margin="0,16,0,0" Padding="20"
+                    Background="{DynamicResource SurfaceBrush}" CornerRadius="8">
+                <StackPanel>
+                    <TextBlock Text="📥 下载地址" FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
+
+                    <TextBlock Text="本地 staging:" FontSize="11" Foreground="Gray" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding StagingPath, Mode=OneWay}"
+                               FontFamily="Consolas" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <Button Content="📋 复制路径" Command="{Binding CopyStagingPathCommand}"
+                                Style="{StaticResource MaterialButton}" MinWidth="120" Margin="0,0,8,0" />
+                        <Button Content="📂 打开文件夹" Command="{Binding OpenStagingFolderCommand}"
+                                Style="{StaticResource MaterialButton}" MinWidth="120" />
+                    </StackPanel>
+
+                    <Separator Margin="0,0,0,12" />
+
+                    <TextBlock Text="GitHub Release:" FontSize="11" Foreground="Gray" Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding ReleaseUrl, Mode=OneWay}"
+                               FontFamily="Consolas" FontSize="11"
+                               TextTrimming="CharacterEllipsis" Margin="0,0,0,8" />
+                    <Button Content="🌐 浏览器打开" Command="{Binding OpenReleaseUrlCommand}"
+                            Style="{StaticResource MaterialButton}" MinWidth="120"
+                            HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

@@ -260,7 +260,9 @@ public class MainViewModel : ViewModelBase
             var svc = _dashboardService
                 ?? throw new InvalidOperationException(
                     "DashboardService not wired — App.xaml.cs 未在 MainViewModel ctor 传 IDashboardService");
-            _dashboardViewModel = new DashboardViewModel(svc);
+            // v0.6.11+ T3:传 browserLauncher 给「下载地址」区块的「浏览器打开」按钮
+            // (Chrome 优先 fallback 默认浏览器,跟组件报告 / OpenBrowser 同一套)。
+            _dashboardViewModel = new DashboardViewModel(svc, _browserLauncher);
             _dashboardView = new DashboardView { DataContext = _dashboardViewModel };
         }
         CurrentView = _dashboardView;
