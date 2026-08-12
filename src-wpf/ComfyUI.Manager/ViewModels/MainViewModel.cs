@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
@@ -110,6 +111,10 @@ public class MainViewModel : ViewModelBase
     // Catalog / BaseEnv / Settings / SystemStatus 暂不缓存(它们是无状态的目录)。
     private EnvironmentListViewModel? _environmentsViewModel;
     private EnvironmentListView? _environmentsView;
+    // v0.6.11+ SDD D1:AppLogger — RestartEnvAsync 在 env 找不到 / EnvListVM 未构造
+    // 时打 WARN。跟 EnvListVM 内部 _logger 同一份,nullable ctor,生产 DI 在
+    // App.xaml.cs 注入(已有 var logger = new AppLogger(projectRoot);)。
+    private readonly AppLogger? _logger;
 
     /// <summary>
     /// 测试 seam:构造 <see cref="EnvironmentListView"/> 的工厂 hook。
@@ -139,18 +144,54 @@ public class MainViewModel : ViewModelBase
 
     /// <summary>
     /// v0.6.11+ SDD D1: InstallDialog 装成功回调,触发 env 重启(Stop if running
-    /// + Start)。envId = 装成功的 env 标识;实现 = ShowEnvironments + 切到该 env + 调
-    /// EnvListVM.RestartEnvInternalAsync(env)。
-    /// T2 留 stub(此时 EnvListVM 还没构造,完全实现要等 T3 完成;stub 存在仅是为
-    /// T2 的 OpenInstallNodePicker 能编译通过)。
+    /// + Start)。envId = 装成功的 env 标识;实现 = 切到 env-list tab → 在
+    /// EnvListVM.Environments 找 env → 委托给 EnvListVM.RestartEnvInternalAsync。
+    /// 失败(异常)由 EnvListVM 内部 catch + status.Fail + AppLogger.Error 处理,
+    /// 节点不撤;本方法不 rethrow(节点装回调是 fire-and-forget,异常会丢)。
+    /// 跳过条件:env 找不到 / EnvListVM 未构造(ShowEnvironments 还没调过)/
+    /// env 已在 busy 状态(EnvListVM 内部 per-env 互斥锁)。
     /// </summary>
-    internal virtual Task RestartEnvAsync(string envId)
+    public async Task RestartEnvAsync(string envId)
     {
-        // T3 完整实现前 no-op:打开环境页 + 找到 env + 调 EnvListVM.RestartEnvInternalAsync。
-        // T2 阶段 MainViewModel 还在构造中(EnvListVM lazy 构造,MainViewModel 不知),
-        // stub 保证编译通过同时不触发重启(向后兼容)。
-        return Task.CompletedTask;
+        // test seam 优先 — 单元测试可注入只记录不真跑 stop+start 的函数,
+        // 避免 ProcessLauncher / STA / 进程启动副作用。
+        if (RestartEnvOverride is not null)
+        {
+            await RestartEnvOverride(envId);
+            return;
+        }
+
+        // 先切到 env-list tab — 用户立刻看到进度面板
+        // (MVM 端 CurrentSection + 触发 ShowEnvironments 让 EnvListVM 构造)。
+        // 如果 EnvListVM 已存在,直接复用(ShowEnvironments 是幂等的)。
+        ShowEnvironmentsCommand.Execute(null);
+
+        var envListVm = _environmentsViewModel;
+        if (envListVm is null)
+        {
+            _logger?.Warn("auto-restart-env",
+                $"EnvListVM 未构造,跳过重启 env {envId}");
+            return;
+        }
+
+        var env = envListVm.Environments.FirstOrDefault(e => e.Id == envId);
+        if (env is null)
+        {
+            _logger?.Warn("auto-restart-env",
+                $"env {envId} 不存在,跳过重启");
+            return;
+        }
+
+        // EnvListVM 内部 per-env 互斥锁 + EnvStartStatusViewModel 反馈 + 失败 catch
+        await envListVm.RestartEnvInternalAsync(env, CancellationToken.None);
     }
+
+    /// <summary>
+    /// v0.6.11+ SDD D1 test seam:替代默认的 envListVm.RestartEnvInternalAsync 调用。
+    /// 单元测试可注入只记录不真跑 stop+start 的函数,避免 STA / 进程启动副作用。
+    /// null = 走默认路径(envListVm.RestartEnvInternalAsync)。
+    /// </summary>
+    internal Func<string, Task>? RestartEnvOverride { get; set; }
 
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowEnvironmentsCommand { get; }
@@ -209,7 +250,8 @@ public class MainViewModel : ViewModelBase
         IDashboardService? dashboardService = null,
         IGlobalSearchService? globalSearchService = null,
         IBrowserLauncher? browserLauncher = null,
-        ComfyUIManagerInstaller? comfyUiManagerInstaller = null)
+        ComfyUIManagerInstaller? comfyUiManagerInstaller = null,
+        AppLogger? logger = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -242,6 +284,10 @@ public class MainViewModel : ViewModelBase
         // v0.6.11+ T4:ComfyUI Manager toggle 安装器 — 传给 EnvListVM 的
         // ToggleComfyUiManagerCommand(显示 inline 状态面板)。可空让测试 ctor 不传。
         _comfyUiManagerInstaller = comfyUiManagerInstaller;
+        // v0.6.11+ SDD D1:AppLogger — RestartEnvAsync 的 env-not-found / EnvListVM-未构造
+        // 诊断日志。nullable ctor(测试 ctor 不传走 _logger?.Warn 安全路径);生产 DI 在
+        // App.xaml.cs 注入(已有 var logger = new AppLogger(projectRoot);)。
+        _logger = logger;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -306,7 +352,9 @@ public class MainViewModel : ViewModelBase
                 envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader,
                 _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller,
                 _baseEnvUninstaller, _requirementsUninstaller,
-                _browserLauncher, ErrorBanner, _comfyUiManagerInstaller);
+                _browserLauncher, ErrorBanner, _comfyUiManagerInstaller,
+                logger: _logger);  // v0.6.11+ SDD D1:共享同一份 AppLogger,EnvListVM 内部
+                                   // RestartEnvInternalAsync 失败时打的 ERROR 走同一条流。
             // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
             // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget
             // 触发 env 重启。T2 加 wiring(T3 才会让 RestartEnvAsync 真正实现重启)。
