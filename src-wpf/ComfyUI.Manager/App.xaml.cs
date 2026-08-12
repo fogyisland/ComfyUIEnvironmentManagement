@@ -241,7 +241,10 @@ public partial class App : Application
             new BrowserLauncher(),
             // v0.6.11+ T4:ComfyUI Manager toggle 安装器 — 传给 EnvListVM
             // ToggleComfyUiManagerCommand(显示 inline 状态面板)。
-            comfyUiManagerInstaller);
+            comfyUiManagerInstaller,
+            // v0.6.11+ SDD D1:AppLogger — 跟其他 service 共享同一份 logger,
+            // RestartEnvAsync 在 env-not-found / EnvListVM-未构造时打 WARN。
+            logger: logger);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
