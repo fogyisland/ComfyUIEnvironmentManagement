@@ -84,4 +84,75 @@ public class CatalogViewLoadTests
                 caught);
         }
     }
+
+    [Fact]
+    public void CatalogView_LatestVersionBinding_RendersWithoutException()
+    {
+        Exception? caught = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
+
+                // 构造一个 ListBox 引用 Theme.xaml 里的 CatalogRowCardTemplate +
+                // CatalogCardItemContainerStyle,2 个 entry:1 个 LatestVersion="v0.6.7",
+                // 1 个 LatestVersion=null(走 TargetNullValue → "latest: —")
+                var app = System.Windows.Application.Current;
+                var template = (System.Windows.DataTemplate)app!.Resources["CatalogRowCardTemplate"];
+                var containerStyle = (System.Windows.Style)app.Resources["CatalogCardItemContainerStyle"];
+
+                var listBox = new System.Windows.Controls.ListBox
+                {
+                    ItemTemplate = template,
+                    ItemContainerStyle = containerStyle,
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    BorderThickness = new System.Windows.Thickness(0),
+                    HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
+                };
+
+                var entries = new System.Collections.Generic.List<ComfyUI.Manager.Models.CatalogEntry>
+                {
+                    new()
+                    {
+                        Id = "node-1",
+                        Package = "pkg-with-latest",
+                        Author = "Alice",
+                        Description = "Has version",
+                        LatestVersion = "v0.6.7",
+                    },
+                    new()
+                    {
+                        Id = "node-2",
+                        Package = "pkg-no-latest",
+                        Author = "Bob",
+                        Description = "No version",
+                        LatestVersion = null,
+                    },
+                };
+                listBox.ItemsSource = entries;
+
+                listBox.Measure(new System.Windows.Size(900, 700));
+                listBox.Arrange(new System.Windows.Rect(0, 0, 900, 700));
+                listBox.UpdateLayout();
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (caught is not null)
+        {
+            throw new Exception(
+                $"CatalogView LatestVersion binding render failed: {caught.GetType().FullName}: {caught.Message}\n" +
+                $"--- InnerException ---\n{caught.InnerException}\n" +
+                $"--- StackTrace ---\n{caught.StackTrace}",
+                caught);
+        }
+    }
 }
