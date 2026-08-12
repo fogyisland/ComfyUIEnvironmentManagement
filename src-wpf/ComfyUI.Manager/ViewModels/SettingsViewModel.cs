@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -291,6 +292,16 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         SaveCommand = new RelayCommand(
             _ => { _repo.Save(_settings); ClearDirty(); },
             _ => HasUnsavedChanges);
+        // v0.6.12 hotfix:BrowseLogDirectory 按钮绑的命令。initialPath = 当前 LogDirectory,
+        // 让用户从已有位置浏览,而不是每次从系统默认(可能是桌面)。
+        BrowseLogDirectoryCommand = new RelayCommand(_ =>
+        {
+            var picked = PickFolder("选择日志目录", LogDirectory);
+            if (!string.IsNullOrEmpty(picked))
+            {
+                LogDirectory = picked;
+            }
+        });
         DiscardCommand = new RelayCommand(
             _ =>
             {
@@ -770,9 +781,33 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     }
 
     // —— File pickers:用 Microsoft.Win32 (违反严格 MVVM,但 win-x64 单平台 OK) ——
+    /// <summary>
+    /// v0.6.12 hotfix:Browse 按钮的 folder dialog 测试 seam。
+    /// 测试里赋值为返回固定路径(<c>@&quot;D:\custom-logs&quot;</c>);null 时走真
+    /// <see cref="OpenFolderDialog"/>(STA 模态阻塞测试线程,所以测试必须 set)。
+    /// 入参是 <c>initialPath</c>(当前 LogDirectory 值),返回选中的 folder name 或 null(取消)。
+    /// </summary>
+    public Func<string?, string?>? FolderDialogOverride { get; set; }
+
     public string? PickFolder()
     {
+        if (FolderDialogOverride is not null) return FolderDialogOverride(null);
         var dlg = new OpenFolderDialog { Title = "选择目录" };
+        return dlg.ShowDialog() == true ? dlg.FolderName : null;
+    }
+
+    /// <summary>
+    /// v0.6.12 hotfix:带 initial directory 的 folder picker(给 LogDirectory Browse 用)。
+    /// initialPath = 当前 LogDirectory 值;null/不存在 = 不设 InitialDirectory(系统默认)。
+    /// </summary>
+    public string? PickFolder(string title, string? initialPath)
+    {
+        if (FolderDialogOverride is not null) return FolderDialogOverride(initialPath);
+        var dlg = new OpenFolderDialog { Title = title };
+        if (!string.IsNullOrEmpty(initialPath) && Directory.Exists(initialPath))
+        {
+            dlg.InitialDirectory = initialPath;
+        }
         return dlg.ShowDialog() == true ? dlg.FolderName : null;
     }
 
@@ -781,6 +816,12 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         var dlg = new OpenFileDialog { Title = title, Filter = filter };
         return dlg.ShowDialog() == true ? dlg.FileName : null;
     }
+
+    /// <summary>
+    /// v0.6.12 hotfix:打开 OpenFolderDialog 让用户选日志根目录。选了 → 写回
+    /// <see cref="LogDirectory"/>(触发 dirty marker + MarkDirty);取消 → no-op。
+    /// </summary>
+    public RelayCommand BrowseLogDirectoryCommand { get; }
 
     private void RaiseAllPropertiesChanged()
     {

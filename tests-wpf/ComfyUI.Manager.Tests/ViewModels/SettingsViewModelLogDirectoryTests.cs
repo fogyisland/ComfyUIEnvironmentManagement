@@ -78,6 +78,40 @@ public class SettingsViewModelLogDirectoryTests : IDisposable
         Assert.Equal("", vm.LogDirectory);
     }
 
+    // —— v0.6.12 hotfix:BrowseLogDirectoryCommand 测试 ——
+    // 走 FolderDialogOverride seam(跟 v0.6.5.19 MessageBoxOverride 同 pattern)。
+    // 不调真 OpenFolderDialog(STA 模态阻塞测试线程)。
+    [Fact]
+    public void BrowseLogDirectoryCommand_UserSelectsFolder_WritesLogDirectory()
+    {
+        var vm = CreateVm(new Settings());
+        const string picked = @"D:\my-custom-logs";
+        string? passedInitialPath = "sentinel";
+        vm.FolderDialogOverride = initial =>
+        {
+            passedInitialPath = initial;
+            return picked;
+        };
+
+        vm.BrowseLogDirectoryCommand.Execute(null);
+
+        Assert.Equal(picked, vm.LogDirectory);
+        Assert.True(vm.HasUnsavedChanges);
+        Assert.Equal("", passedInitialPath);  // 当前 LogDirectory 是空 → 传 null
+    }
+
+    [Fact]
+    public void BrowseLogDirectoryCommand_UserCancels_DoesNotChangeLogDirectory()
+    {
+        var vm = CreateVm(new Settings { LogDirectory = @"D:\existing" });
+        vm.FolderDialogOverride = _ => null;  // 用户点取消
+
+        vm.BrowseLogDirectoryCommand.Execute(null);
+
+        Assert.Equal(@"D:\existing", vm.LogDirectory);
+        Assert.False(vm.HasUnsavedChanges);
+    }
+
     private sealed class FakeValidator : IPythonInterpreterValidator
     {
         public FakeValidator(bool isValid) { _isValid = isValid; }
