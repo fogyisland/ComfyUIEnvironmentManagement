@@ -78,19 +78,10 @@
                 Background="{DynamicResource SurfaceBrush}"
                 Padding="12">
             <StackPanel>
-                <!-- v0.6.11+ T4:侧栏 header 加 24×24 icon Image,跟 Dashboard hero
-                     同 scheme 同文件(pack://siteoforigin:,,,/asset/icon.png)。
-                     96×96 太占侧栏,这里 24×24 是适中的视觉权重。 -->
-                <DockPanel Margin="0,0,0,16">
-                    <Image DockPanel.Dock="Left" Width="24" Height="24"
-                           Margin="0,0,8,0" VerticalAlignment="Center"
-                           Source="pack://siteoforigin:,,,/asset/icon.png" />
-                    <TextBlock Text="ComfyUI 多环境管理系统"
-                               FontSize="{StaticResource FontSizeTitle}"
-                               FontWeight="Bold"
-                               Foreground="{DynamicResource OnSurfaceBrush}"
-                               VerticalAlignment="Center" />
-                </DockPanel>
+                <!-- v0.6.12+:删侧栏 header (24×24 icon + "ComfyUI 多环境管理系统" 标题)。
+                     asset/icon.png 是 ComfyUI 官方"4 个 logo 集合参考图",24×24 看着像被
+                     清除;TextBlock 标题跟 Window.Title + 顶部状态栏重复。Logo 仅保留
+                     Window.Icon(任务栏 EXE icon)。 -->
                 <!-- v0.6.9 T7:替换 T3 加的 SearchBoxPlaceholder 为可用的 SpotlightSearchBox。
                      DataContext 绑 MainViewModel.Spotlight(懒构造 VM)。Ctrl+K 由 MainWindow.OnLoaded
                      在 Loaded 后注入 KeyBinding,直接触发 MainViewModel.OpenSpotlightCommand。 -->

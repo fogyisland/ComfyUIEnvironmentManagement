@@ -10,24 +10,14 @@
              Background="{DynamicResource BackgroundBrush}">
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
         <StackPanel>
-            <!-- ============ Hero 区:图标 + 标题 + 版本 + GitHub 数据条 ============ -->
-            <!-- 图标 URI 必须是 pack://siteoforigin: 而不是 pack://application: ——
-                 asset/** 在 csproj 里是 <None> + CopyToOutputDirectory(松散文件),
-                 不是编译进 assembly 的 <Resource>,application: scheme 会抛 IOException。
-                 (同 SplashWindow.xaml 的踩坑记录。) -->
+            <!-- ============ Hero 区:标题 + 版本 + GitHub 数据条 ============ -->
+            <!-- v0.6.12+:删 hero 图标 — asset/icon.png 是 ComfyUI 官方"4 个 logo 集合
+                 参考图",缩到 96×52 几乎看不出是 logo(用户报"被清除/难看")。Logo
+                 仅保留 Window.Icon(任务栏 EXE icon)。 -->
             <Border Margin="0,0,0,16" Padding="20"
                     Background="{DynamicResource SurfaceBrush}"
                     CornerRadius="8">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Image Grid.Column="0" Width="96" Height="96"
-                           Source="pack://siteoforigin:,,,/asset/icon.png"
-                           Margin="0,0,16,0"
-                           VerticalAlignment="Top" />
-                    <DockPanel Grid.Column="1">
+                <DockPanel>
                         <Button DockPanel.Dock="Right"
                                 Content="{x:Static models:DashboardPageLocalizable.Refresh}"
                                 Command="{Binding RefreshCommand}"
@@ -56,7 +46,6 @@
                                        Text="{Binding LastSnapshot.SnapshotAt, Mode=OneWay, StringFormat='更新于 {0:yyyy-MM-dd HH:mm:ss}'}" />
                         </StackPanel>
                     </DockPanel>
-                </Grid>
             </Border>
 
             <!-- Loading indicator -->
