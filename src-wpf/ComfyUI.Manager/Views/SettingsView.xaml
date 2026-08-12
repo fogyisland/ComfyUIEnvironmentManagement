@@ -130,6 +130,22 @@
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
+            <!-- v0.6.12: 日志根目录(Logs/ 子目录的父目录)。空 = 默认 <安装目录>。
+                 MVP 纯 TextBox,Browse 按钮略去避免 STA dialog 测试复杂度。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="日志目录" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[LogDirectory], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <TextBox Text="{Binding LogDirectory, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource MaterialTextBox}" />
+            <TextBlock Text="日志文件夹位置(Logs/ 子目录会创建在此目录下);空 = 默认 &lt;安装目录&gt;。"
+                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
                 <TextBlock Text="GitHub Token(可选 — 配置后刷新 catalog 时会同步拉取各节点最新版本号,留空则不拉)"
                            TextWrapping="Wrap" VerticalAlignment="Center"/>

@@ -483,4 +483,10 @@
   <data name="BulkUpdate_TargetComfyUiManager" xml:space="preserve">
     <value>ComfyUI Manager</value>
   </data>
+  <data name="SettingsPage_日志目录" xml:space="preserve">
+    <value>Log Directory</value>
+  </data>
+  <data name="SettingsPage_日志目录提示" xml:space="preserve">
+    <value>Where log files are written (Logs/ subdirectory is created here). Empty = default &lt;install dir&gt;.</value>
+  </data>
 </root>

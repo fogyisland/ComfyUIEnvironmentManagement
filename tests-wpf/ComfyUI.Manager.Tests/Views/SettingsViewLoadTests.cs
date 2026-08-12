@@ -142,6 +142,49 @@ public class SettingsViewLoadTests
         }
     }
 
+    /// <summary>
+    /// v0.6.12 T4:SettingsView 加了 LogDirectory 行(label + TextBox + hint)后
+    /// XAML 解析不抛。按 v0.6.9.2 `1945b4b` 教训:任何新 XAML 元素含 Theme Setter
+    /// binding 都可能让 XamlParseException 复发,所以每个新增 row 配套一个 STA load test。
+    /// </summary>
+    [Fact]
+    public void SettingsView_WithLogDirectoryRow_LoadsWithoutCrash()
+    {
+        Exception? caught = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
+                var vm = new SettingsViewModel(
+                    new SettingsRepository(Path.Combine(Path.GetTempPath(),
+                        $"settings-logdir-{Guid.NewGuid():N}.json")),
+                    GitProxyConfig.Disabled,
+                    new FakeValidator());
+                vm.LogDirectory = @"D:\my-logs";  // 标 dirty 一行让 Dirty binding 也走一遍
+                Assert.True(vm.HasUnsavedChanges);
+                var v = new SettingsView { DataContext = vm };
+                v.Measure(new Size(800, 600));
+                v.Arrange(new Rect(0, 0, 800, 600));
+                v.UpdateLayout();
+            }
+            catch (Exception ex) { caught = ex; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (caught is not null)
+        {
+            throw new Exception(
+                $"SettingsView LogDirectory row load failed: {caught.GetType().FullName}: {caught.Message}\n" +
+                $"--- InnerException ---\n{caught.InnerException}\n" +
+                $"--- StackTrace ---\n{caught.StackTrace}",
+                caught);
+        }
+    }
+
     private sealed class FakeValidator : IPythonInterpreterValidator
     {
         public Task<ValidationResult> ValidateAsync(string path, CancellationToken ct = default)

@@ -469,6 +469,22 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         get => _settings.DefaultModelsDirectory;
         set { _settings.DefaultModelsDirectory = value ?? ""; MarkDirty(nameof(DefaultModelsDirectory)); RaisePropertyChanged(); }
     }
+    /// <summary>
+    /// v0.6.12:日志根目录(Logs/ 子目录的父目录)。空 = 默认 &lt;projectRoot&gt;。
+    /// 改后 Settings.Save() 持久化,App 启动时 AppLogger / ProcessLauncher 读这个字段。
+    /// 例如:设置为 "D:/my-logs" → 日志写到 D:/my-logs/Logs/。
+    /// </summary>
+    public string LogDirectory
+    {
+        get => _settings.LogDirectory;
+        set
+        {
+            if (_settings.LogDirectory == value) return;
+            _settings.LogDirectory = value ?? "";
+            MarkDirty(nameof(LogDirectory));
+            RaisePropertyChanged();
+        }
+    }
 
     // —— 环境 / 工具 ——
     public string PythonVenvBaseline
@@ -780,6 +796,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(GlobalNodesDir));
         RaisePropertyChanged(nameof(LocalNodeDirectory));
         RaisePropertyChanged(nameof(DefaultModelsDirectory));
+        RaisePropertyChanged(nameof(LogDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
         RaisePropertyChanged(nameof(GitProxyUrl));

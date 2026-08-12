@@ -291,4 +291,10 @@
   <data name="BulkUpdate_TargetComfyUiManager" xml:space="preserve">
     <value>ComfyUI Manager</value>
   </data>
+  <data name="SettingsPage_日志目录" xml:space="preserve">
+    <value>日志目录</value>
+  </data>
+  <data name="SettingsPage_日志目录提示" xml:space="preserve">
+    <value>日志文件夹位置(Logs/ 子目录会创建在此目录下);空 = 默认 &lt;安装目录&gt;。</value>
+  </data>
 </root>
