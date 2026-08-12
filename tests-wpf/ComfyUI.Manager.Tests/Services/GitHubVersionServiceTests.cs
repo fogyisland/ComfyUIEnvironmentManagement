@@ -231,4 +231,66 @@ public class GitHubVersionServiceTests
         Assert.Equal(3, reported[^1].Completed);
         Assert.Equal(3, reported[^1].Total);
     }
+
+    /// <summary>
+    /// v0.6.13-B.2 hotfix:403 + X-RateLimit-Remaining=0 → throw RateLimitException,
+    /// CatalogRefreshService 顶层 catch fail-soft 让 refresh ~60s 完成而不用 9 分钟。
+    /// 之前 5883 个 entry 全部静默 403 慢失败浪费 10 分钟。
+    /// </summary>
+    [Fact]
+    public async Task FetchVersionsAsync_RateLimited_Throws()
+    {
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(() =>
+            {
+                var resp = new HttpResponseMessage(HttpStatusCode.Forbidden);
+                resp.Headers.Add("X-RateLimit-Remaining", "0");
+                return resp;
+            });
+        var http = new HttpClient(handler.Object);
+        var svc = new GitHubVersionService(http);
+
+        var nodes = new List<(string, string)>
+        {
+            ("a", "https://github.com/o/r1"),
+            ("b", "https://github.com/o/r2"),
+        };
+
+        await Assert.ThrowsAsync<RateLimitException>(async () =>
+            await svc.FetchVersionsAsync(nodes, token: null));
+    }
+
+    /// <summary>
+    /// 403 但 X-RateLimit-Remaining > 0(暂时性封禁 / 二次验证 / 其他)→ 不抛,
+    /// 按非 200 处理返回空 list(跟 NotFound / 5xx 同样的 fail-soft 路径)。
+    /// </summary>
+    [Fact]
+    public async Task FetchVersionsAsync_ForbiddenButNotRateLimit_ReturnsEmpty()
+    {
+        var handler = new Mock<HttpMessageHandler>();
+        handler.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(() =>
+            {
+                var resp = new HttpResponseMessage(HttpStatusCode.Forbidden);
+                resp.Headers.Add("X-RateLimit-Remaining", "42");
+                return resp;
+            });
+        var http = new HttpClient(handler.Object);
+        var svc = new GitHubVersionService(http);
+
+        var nodes = new List<(string, string)>
+        {
+            ("a", "https://github.com/o/r1"),
+        };
+        var result = await svc.FetchVersionsAsync(nodes, token: null);
+
+        Assert.Empty(result);
+    }
 }

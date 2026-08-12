@@ -252,6 +252,55 @@ public class CatalogRefreshServiceTests : IDisposable
         Assert.Null(result.Error);
     }
 
+    /// <summary>
+    /// v0.6.13-B.2 hotfix:version service 抛 RateLimitException(模拟 60/h 触发
+    /// 后 GitHubVersionService 真正抛的异常),CatalogRefreshService 顶层 catch
+    /// fail-soft,refresh 仍然 success,version_count=0,后续 metadata step 继续跑。
+    /// 之前路径是"等 9 分钟让 5883 个 entry 全静默 403 失败",这里改成 ~60s 报错并
+    /// 保留部分结果(虽然 versions 在抛 RateLimitException 时被丢弃,但 catalog
+    /// 本身 entry 仍写入 DB)。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_VersionServiceThrowsRateLimit_SucceedsWithZeroCount()
+    {
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new()
+                {
+                    Id = "node-c",
+                    Package = "ComfyUI-C",
+                    RawMetadata = new Dictionary<string, object?>
+                    {
+                        ["reference"] = "https://github.com/ownerC/repoC",
+                    },
+                },
+            },
+        };
+        var settings = new Settings
+        {
+            GitHubToken = "",  // 无 token 触发 60/h 限流
+            FetchNodeVersionsOnRefresh = true,
+        };
+        ComfyUI.Manager.Infrastructure.SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
+
+        var rateLimitedSvc = new RateLimitedThrowingVersionService();
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            settings,
+            versionService: rateLimitedSvc);
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success, $"expected success despite rate limit, got: {result.Error}");
+        Assert.Equal(1, result.EntryCount);
+        Assert.Equal(0, result.VersionCount);
+        Assert.Equal(1, rateLimitedSvc.CallCount);
+        Assert.Null(result.Error);
+    }
+
     [Fact]
     public async Task RefreshAsync_FetchNodeVersionsOn_WithToken_VersionCountPositive()
     {
@@ -343,6 +392,27 @@ public class CatalogRefreshServiceTests : IDisposable
         {
             CallCount++;
             return Task.FromResult(new Dictionary<string, List<VersionInfo>>());
+        }
+    }
+
+    /// <summary>
+    /// v0.6.13-B.2 hotfix:模拟无 token + 60/h 触发后 GitHubVersionService
+    /// 抛 RateLimitException,验证 CatalogRefreshService 顶层 catch 不再让
+    /// refresh 整个失败(之前会通过 catch (Exception ex) → Fail 路径)。
+    /// </summary>
+    private sealed class RateLimitedThrowingVersionService : GitHubVersionService
+    {
+        public int CallCount { get; private set; }
+        public RateLimitedThrowingVersionService()
+            : base(new HttpClient(new Mock<HttpMessageHandler>().Object)) { }
+        public override Task<Dictionary<string, List<VersionInfo>>> FetchVersionsAsync(
+            IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
+            string? token,
+            IProgress<VersionFetchProgress>? progress = null,
+            CancellationToken ct = default)
+        {
+            CallCount++;
+            throw new RateLimitException();
         }
     }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -123,6 +124,16 @@ public class GitHubVersionService
                     "Bearer", token);
             }
             using var resp = await _http.SendAsync(req, ct);
+            // v0.6.13-B.2 hotfix: rate-limit detection(对齐 v0.6.13-B 元数据 service)。
+            // 无 token 时 60/h 上限,5883 个 entry 拉完要 ~10 分钟因为全部静默 403
+            // 慢失败。抛 RateLimitException → CatalogRefreshService 顶层 catch fail-soft,
+            // refresh ~60s 完成 + Warn 日志一行,告诉用户"GitHub rate limit reached"。
+            if (resp.StatusCode == HttpStatusCode.Forbidden
+                && resp.Headers.TryGetValues("X-RateLimit-Remaining", out var vals)
+                && vals.FirstOrDefault() == "0")
+            {
+                throw new RateLimitException();
+            }
             if (!resp.IsSuccessStatusCode) return new List<VersionInfo>();
             var json = await resp.Content.ReadAsStringAsync(ct);
             using var doc = JsonDocument.Parse(json);
@@ -149,6 +160,7 @@ public class GitHubVersionService
             return list;
         }
         catch (OperationCanceledException) { throw; }
+        catch (RateLimitException) { throw; }
         catch
         {
             return new List<VersionInfo>();

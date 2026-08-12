@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,16 +75,28 @@ public class CatalogRefreshService
 
             // 第二步:拉 GitHub 版本(如开关 gate 开启—— v0.6.11 T3)
             // 用户没配 token 也能拉,只要勾"刷新时拉取节点版本"开关;空 token
-            // = 未鉴权(GitHub 限流 60/h),失败 fail-soft,不抛。
+            // = 未鉴权(GitHub 限流 60/h)。
+            // v0.6.13-B.2 hotfix:GitHubVersionService 检测 403 + X-RateLimit-Remaining=0
+            // → throw RateLimitException → 顶层 catch fail-soft + Warn 日志,refresh
+            // ~60s 完成不再 9 分钟。
             if (_versionService is not null && _settings.FetchNodeVersionsOnRefresh)
             {
                 var nodes = entries
                     .Select(e => (e.Id, ReferenceUrl: ExtractReference(e)))
                     .Where(t => !string.IsNullOrWhiteSpace(t.ReferenceUrl))
                     .ToList();
-                var versions = await _versionService.FetchVersionsAsync(
-                    nodes, _settings.GitHubToken, versionProgress, ct);
-                if (versions.Count > 0)
+                Dictionary<string, List<VersionInfo>>? versions = null;
+                try
+                {
+                    versions = await _versionService.FetchVersionsAsync(
+                        nodes, _settings.GitHubToken, versionProgress, ct);
+                }
+                catch (RateLimitException ex)
+                {
+                    _logger?.Warn("catalog-refresh",
+                        $"GitHub rate limit hit on version fetch,refresh 返回部分结果: {ex.Message}");
+                }
+                if (versions is { Count: > 0 })
                 {
                     versionCount = await Task.Run(() =>
                     {
