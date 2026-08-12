@@ -66,7 +66,7 @@ The app currently manages **nodes** (custom_nodes git repos, v0.6.5.9 local-down
 | **G8** | Existing patterns preserved: `AppLogger` subsystems, `MarkDirty` Settings plumbing (SDD B), `WpfTestResources.EnsureLoaded` STA-load helper (v0.6.9.3), `Property-element + DynamicResource` Setter shape in XAML (v0.6.9.2). | project conventions |
 | **G9** | SQLite `EnsureColumn` / `CREATE TABLE IF NOT EXISTS` patterns; new DB file isolated from `catalog-cache.db`. | project convention |
 | **G10** | Real-fetch integration tests are `[Fact(Skip=...)]` like `LiveGitHubVersionFetchTests.LiveFetch_RealGitHub_StoresTags`. CI does not hit the network. | project convention |
-| **G11** | Downloaded workflow subfolder = `<sanitized-title>-<id8>/`. Filenames inside: `workflow.json` (lowercase, mandatory), `cover.png` (optional), `meta.json` (mandatory sidecar). | user decision (subfolder + sidecar) |
+| **G11** | Downloaded workflow subfolder = `<sanitized-title>-<id8>/`. Filenames inside: `workflow.json` (lowercase, mandatory), `cover.<ext>` (optional, extension preserved from source URL — `.jpg` / `.png` / `.webp` etc.), `meta.json` (mandatory sidecar). | user decision (subfolder + sidecar) |
 | **G12** | Workflow cache DB file lives at `<AppBaseDir>/data/workflow-cache.db`, created on first use. AppContext.BaseDirectory-relative so it ships inside the self-contained exe. | project convention |
 | **G13** | New `MainSection.WorkflowMarketplace` enum value + 7th sidebar button. | this SDD |
 | **G14** | YAGNI: no auto-load into ComfyUI, no "My Downloads" view, no custom marketplace UI, no FTS5 search. | explicit YAGNI |
@@ -146,7 +146,7 @@ User clicks "Download" → ViewModel calls WorkflowDownloader.DownloadAsync(deta
   Downloader sanitizes title → <slug>-<id8>
   Creates subfolder
   GET workflow.json → parse JsonDocument → write back pretty-printed
-  Optional: GET cover.png → write (skip if already exists)
+  Optional: GET cover.<ext> → write with original extension (skip if already exists)
   Writes meta.json sidecar (title/desc/author/source/url/tags/downloaded_at)
   Returns WorkflowDownloadResult { Success, SubfolderPath, Reason }
 ViewModel surfaces result via InfoMessage / ErrorMessage
@@ -198,7 +198,6 @@ public class Workflow
     public string? Author { get; init; }
     public string? CoverImageUrl { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
-    public string RawJsonPreview { get; init; } = ""; // first ~2KB for detail panel
     public DateTimeOffset CachedAt { get; init; }
 }
 
@@ -241,7 +240,7 @@ public class WorkflowMarketplaceSettings
 <Settings.WorkflowDirectory>/
   <sanitized-title-slug>-<8-char-id>/
     workflow.json     (the ComfyUI workflow definition, pretty-printed UTF-8)
-    cover.png         (optional; only if API provided CoverImageUrl + succeeded)
+    cover.<ext>       (optional; only if API provided CoverImageUrl + succeeded; extension preserved from URL — .jpg/.png/.webp etc.)
     meta.json         (sidecar: title/desc/author/source/url/tags/downloaded_at)
 ```
 
