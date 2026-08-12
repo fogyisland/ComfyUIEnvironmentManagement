@@ -408,6 +408,18 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set { _settings.FetchNodeVersionsOnRefresh = value; MarkDirty(nameof(FetchNodeVersionsOnRefresh)); RaisePropertyChanged(); }
     }
 
+    /// <summary>
+    /// v0.6.13-B: 开关 gate — 开启时 refresh catalog 同步拉各节点 GitHub metadata
+    /// (License/Tags/Stars/Downloads/LastCommit/Readme/Changelog/Deprecated/PythonCompat/OsCompat)。
+    /// 默认 OFF 保持向后兼容;开启后无 token 会被 GitHub 限流 60/h。24h 本地缓存
+    /// 写 <c>%APPDATA%/ComfyUI-Manager/catalog_metadata_cache.json</c>。
+    /// </summary>
+    public bool FetchCatalogMetadata
+    {
+        get => _settings.FetchCatalogMetadata;
+        set { _settings.FetchCatalogMetadata = value; MarkDirty(nameof(FetchCatalogMetadata)); RaisePropertyChanged(); }
+    }
+
     // v0.6.11++ pip mirror
     public List<string> PipMirrorKinds { get; } = new()
     {
@@ -846,6 +858,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
         RaisePropertyChanged(nameof(FetchNodeVersionsOnRefresh));
+        RaisePropertyChanged(nameof(FetchCatalogMetadata));
         RaisePropertyChanged(nameof(PipMirror));
         RaisePropertyChanged(nameof(PipMirrorCustomUrl));
         RaisePropertyChanged(nameof(IsCustomPipMirrorSelected));

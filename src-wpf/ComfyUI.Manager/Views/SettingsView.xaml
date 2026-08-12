@@ -180,6 +180,22 @@
                            Visibility="{Binding Dirty[FetchNodeVersionsOnRefresh], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
 
+            <!-- v0.6.13-B: 开关 gate — 关闭 = 不拉 GitHub metadata(默认,向后兼容);
+                 开启 = refresh catalog 同步给每条 entry 填 License/Tags/Stars/Downloads/
+                 LastCommit/Readme/Changelog/Deprecated/PythonCompat/OsCompat(无 token
+                 会被 GitHub 限流 60/h,失败 fail-soft 不抛)。和上面版本号开关互不约束,
+                 各走各的 GitHub endpoint。结果本地缓存 24h,二次刷新走缓存不重拉。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <CheckBox Content="刷新时拉取节点 GitHub 元信息(License/Stars/Tags/Readme 等,慢且限流)"
+                          IsChecked="{Binding FetchCatalogMetadata}"
+                          VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[FetchCatalogMetadata], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+
             <!-- ============ 查询节点的源 ============ -->
             <TextBlock x:Name="SectionQuerySources" Text="查询节点的源" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
