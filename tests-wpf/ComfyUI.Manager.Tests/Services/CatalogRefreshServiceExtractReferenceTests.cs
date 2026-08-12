@@ -102,7 +102,7 @@ public class CatalogRefreshServiceExtractReferenceTests
     }
 
     [Fact]
-    public void ExtractReference_EmptyStringValues_ReturnsEmptyString_NotFallback()
+    public void ExtractReference_EmptyStringValues_FallsThroughToNextKey()
     {
         // reference="" url="" 但 repository="https://github.com/g/h" → 应返回 repository(不因 reference 空串继续返回 "")
         var entry = new CatalogEntry
