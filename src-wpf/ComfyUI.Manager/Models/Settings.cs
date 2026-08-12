@@ -45,6 +45,13 @@ public class Settings
     // 空字符串 = 不动 env 的 models 目录(沿用项目根 fallback)。
     [JsonPropertyName("default_models_directory")]
     public string DefaultModelsDirectory { get; set; } = "";
+    /// <summary>
+    /// v0.6.12:日志根目录(Logs/ 子目录的父目录)。空 = 默认 &lt;projectRoot&gt;(Logs/ 创建在 projectRoot 下)。
+    /// 设置后,AppLogger / ProcessLauncher / 各 subsystem 都从这个目录创建 Logs/ 子目录。
+    /// 例如:设置为 "D:/my-logs" → 日志写到 D:/my-logs/Logs/。
+    /// </summary>
+    [JsonPropertyName("log_directory")]
+    public string LogDirectory { get; set; } = "";
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
@@ -126,6 +133,7 @@ public class Settings
         target.GlobalNodesDir = source.GlobalNodesDir;
         target.LocalNodeDirectory = source.LocalNodeDirectory;
         target.DefaultModelsDirectory = source.DefaultModelsDirectory;
+        target.LogDirectory = source.LogDirectory;
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;

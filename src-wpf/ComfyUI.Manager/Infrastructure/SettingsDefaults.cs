@@ -159,6 +159,19 @@ public static class SettingsDefaults
 
         // v0.6.11++:首次启动种 curated 常用节点(只在空时 seed,G13)。
         s.CommonNodes = SeedCommonNodesIfEmpty(s.CommonNodes);
+
+        // v0.6.12:LogDirectory 非空则 Directory.CreateDirectory,失败静默
+        if (!string.IsNullOrWhiteSpace(s.LogDirectory))
+        {
+            try
+            {
+                var dir = s.LogDirectory;
+                if (!Path.IsPathRooted(dir))
+                    dir = Path.Combine(projectRoot, dir);
+                Directory.CreateDirectory(dir);
+            }
+            catch { /* 权限/盘满/路径非法 → 静默,运行时再 CreateDirectory 兜底 */ }
+        }
     }
 
     /// <summary>
