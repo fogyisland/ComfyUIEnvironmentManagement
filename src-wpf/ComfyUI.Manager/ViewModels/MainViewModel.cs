@@ -137,6 +137,21 @@ public class MainViewModel : ViewModelBase
     /// </summary>
     internal object? CurrentEnvironmentsView => _environmentsView;
 
+    /// <summary>
+    /// v0.6.11+ SDD D1: InstallDialog 装成功回调,触发 env 重启(Stop if running
+    /// + Start)。envId = 装成功的 env 标识;实现 = ShowEnvironments + 切到该 env + 调
+    /// EnvListVM.RestartEnvInternalAsync(env)。
+    /// T2 留 stub(此时 EnvListVM 还没构造,完全实现要等 T3 完成;stub 存在仅是为
+    /// T2 的 OpenInstallNodePicker 能编译通过)。
+    /// </summary>
+    internal virtual Task RestartEnvAsync(string envId)
+    {
+        // T3 完整实现前 no-op:打开环境页 + 找到 env + 调 EnvListVM.RestartEnvInternalAsync。
+        // T2 阶段 MainViewModel 还在构造中(EnvListVM lazy 构造,MainViewModel 不知),
+        // stub 保证编译通过同时不触发重启(向后兼容)。
+        return Task.CompletedTask;
+    }
+
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowEnvironmentsCommand { get; }
     public RelayCommand ShowCatalogCommand { get; }

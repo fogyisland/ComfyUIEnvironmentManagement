@@ -47,9 +47,42 @@ public class EnvironmentListViewModel : ViewModelBase
     /// v0.6.11+ T3:加 ComfyUiManagerInstall / ComfyUiManagerUninstall 让 toggle 命令
     /// 跟其他长操作互斥(避免并发的 git clone 跟卸载冲突)。
     /// </summary>
-    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete, ComfyUiManagerInstall, ComfyUiManagerUninstall }
+    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete, ComfyUiManagerInstall, ComfyUiManagerUninstall, Restart }
 
     private readonly Dictionary<string, BusyKind> _envBusy = new();
+
+    // v0.6.11+ SDD D1:MainViewModel 反向引用(打破构造期循环依赖),ctor 末尾由
+    // MainViewModel.SetMainViewModel(this) 注入。null = EnvListVM 早于 MVM 构造(测试),
+    // 此时 OpenInstallNodePicker 不传回调 → InstallDialog 装成功不触发重启。
+    private MainViewModel? _mvm;
+
+    // v0.6.11+ SDD D1:AppLogger — 自动重启失败 / env-not-found / busy 等诊断日志。
+    // 跟 BaseEnvInstaller 同 pattern:nullable ctor,生产 DI 在 App.xaml.cs 注入。
+    private readonly AppLogger? _logger;
+
+    /// <summary>
+    /// v0.6.11+ SDD D1:MainViewModel 注入反向引用。MainViewModel ctor 末尾调一次,
+    /// 把 _mvm 设上,这样 OpenInstallNodePicker 才能拿 _mvm.RestartEnvAsync 当回调。
+    /// </summary>
+    internal void SetMainViewModel(MainViewModel mvm) => _mvm = mvm;
+
+    /// <summary>
+    /// v0.6.11+ SDD D1 (test seam):测试拦截 StartEnvAsync 调用 — ProcessLauncher
+    /// 是 sealed 不可继承,这里加 Func delegate field,设了就代替 _launcher.StartEnvAsync
+    /// 被调,否则走默认 _launcher.StartEnvAsync。
+    /// </summary>
+    internal Func<
+        Environment,
+        IProgress<string>?,
+        IProgress<string>?,
+        CancellationToken,
+        Task>? StartEnvForTest { get; set; }
+
+    /// <summary>
+    /// v0.6.11+ SDD D1 (test seam):测试拦截 StopEnvAsync 调用 — 同 StartEnvForTest,
+    /// 设了代替 _launcher.StopEnvAsync 被调,默认走默认 _launcher.StopEnvAsync。
+    /// </summary>
+    internal Func<Environment, Task>? StopEnvForTest { get; set; }
 
     /// <summary>
     /// v0.6.5.22 fix-wave:卸载依赖 CancellationTokenSource — 跨 invocation 重建,
@@ -182,7 +215,8 @@ public class EnvironmentListViewModel : ViewModelBase
         RequirementsUninstaller? requirementsUninstaller = null,
         IBrowserLauncher? browserLauncher = null,
         ErrorBannerViewModel? errorBanner = null,
-        ComfyUIManagerInstaller? comfyUiManagerInstaller = null)
+        ComfyUIManagerInstaller? comfyUiManagerInstaller = null,
+        AppLogger? logger = null)
     {
         _repo = repo;
         _launcher = launcher;
@@ -203,6 +237,8 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.11+ T3:默认 new 一个 fallback 实例(让测试 ctor 不传也能构造);生产
         // DI 在 App.xaml.cs 注入 shareComfyUiManagerInstaller。
         _comfyUiManagerInstaller = comfyUiManagerInstaller ?? new ComfyUIManagerInstaller(new RequirementsFileInstaller());
+        // v0.6.11+ SDD D1:AppLogger — 自动重启诊断日志(nullable ctor param)。
+        _logger = logger;
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -468,6 +504,85 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     public EnvStartStatusViewModel? StartStatus { get; private set; }
+
+    /// <summary>
+    /// v0.6.11+ SDD D1:给 MainViewModel.RestartEnvAsync 调的内部入口。
+    /// Stop(若 env.Status == "running")+ Start,复用 per-env 互斥锁 + EnvStartStatusViewModel。
+    /// 失败 → AppLogger + env-start 面板 Fail(rethrow no,节点保留)。
+    /// 跳过条件:env 找不到 / env 已在 busy 状态(per-env 互斥锁,v0.6.5.22)。
+    ///
+    /// ProcessLauncher sealed 测试隔离:StartEnvForTest / StopEnvForTest 设了就代替
+    /// _launcher 被调(同 InstallDialogViewModelTests 用 Func delegate seam 替代 sealed
+    /// 依赖的 pattern);默认走 _launcher。
+    /// </summary>
+    internal async Task RestartEnvInternalAsync(Environment env, CancellationToken ct)
+    {
+        if (env is null)
+        {
+            _logger?.Warn("auto-restart-env", "env 为 null,跳过重启");
+            return;
+        }
+        if (IsEnvBusy(env))
+        {
+            _logger?.Warn("auto-restart-env-busy",
+                $"env {env.Name} 正忙,跳过自动重启");
+            return;
+        }
+
+        // 跟 StartEnvAsync 一样构造 status panel,复用现有 EnvStartStatusViewModel 显示
+        var status = new EnvStartStatusViewModel();
+        StartStatus = status;
+        RaisePropertyChanged(nameof(StartStatus));
+        status.Begin();
+        MarkEnvBusy(env, BusyKind.Restart);
+        // v0.6.5.11 fix:把 status 包成 Progress<string> 捕获 UI SynchronizationContext,
+        // 避免 AttachStdoutReader 后台线程改 LogLines ObservableCollection。
+        var stageProgress = new Progress<string>(s => status.Report(s));
+        var logProgress = new Progress<string>(line => status.Report(line));
+
+        try
+        {
+            // 1) Stop if running — test seam 优先,默认走 _launcher
+            if (string.Equals(env.Status, "running", StringComparison.Ordinal))
+            {
+                if (StopEnvForTest is not null)
+                {
+                    await StopEnvForTest(env);
+                }
+                else
+                {
+                    await _launcher.StopEnvAsync(env);
+                }
+            }
+
+            // 2) Start — test seam 优先,默认走 _launcher
+            if (StartEnvForTest is not null)
+            {
+                await StartEnvForTest(env, stageProgress, logProgress, default);
+            }
+            else
+            {
+                await _launcher.StartEnvAsync(env, stageProgress, logProgress, default);
+            }
+            status.Complete();
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            status.Hide();
+        }
+        catch (Exception ex)
+        {
+            status.Fail($"自动重启失败:{ex.Message}");
+            _logger?.Error("auto-restart-env-failed",
+                $"env {env.Name} 自动重启失败(节点保留):{ex.Message}", ex);
+            // 不抛 — InstallDialogViewModel 已经在 background 跑,异常会丢失
+            // AppLogger 已记录,env-start 面板显示用户可见错
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
 
     private async System.Threading.Tasks.Task StopEnvAsync(Environment? env)
     {
@@ -1128,7 +1243,16 @@ public class EnvironmentListViewModel : ViewModelBase
         var entry = Views.CatalogEntryPickerDialog.Show();
         if (entry is null) return;
 
-        Views.InstallDialog.Show(_repo, _nodeOps, entry, preselectedEnvId: env.Id);
+        // v0.6.11+ SDD D1: 注入自动重启回调 — 装成功时 fire-and-forget
+        // 触发 MainViewModel.RestartEnvAsync(env.Id),切到 env-list tab + 重启 env。
+        // _mvm null = EnvListVM 早于 MVM 构造(测试或极端 wiring)→ 不传回调,
+        // InstallDialog 装成功不触发重启,行为跟 v0.6.11 既有兼容。
+        Func<string, Task>? onSuccess = _mvm is not null ? _mvm.RestartEnvAsync : null;
+
+        Views.InstallDialog.Show(
+            _repo, _nodeOps, entry,
+            preselectedEnvId: env.Id,
+            onInstallSuccess: onSuccess);
     }
 
     /// <summary>
