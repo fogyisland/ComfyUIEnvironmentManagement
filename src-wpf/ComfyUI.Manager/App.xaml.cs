@@ -166,13 +166,22 @@ public partial class App : Application
             logger);
         var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings, diffService, logger: logger);
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        // v0.6.13-B: GitHub API 要求 User-Agent header,否则 403。
+        // 复用同一份 http(singleton,15s timeout)— Dashboard / Changelog / Version / Metadata 全共享。
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ComfyUI-Manager/0.6.13");
         var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes, logger);
         var catalogCacheStore = new CatalogCacheStore();
         var catalogRepo = new CatalogRepository(catalogCacheStore);
         var githubVersionService = new GitHubVersionService(http);
         var nodeVersionRepo = new NodeVersionRepository(catalogCacheStore);
+        // v0.6.13-B: GitHub metadata 抓取 service(2-round polling) +
+        // MetadataCache(24h TTL, %APPDATA%/ComfyUI-Manager/catalog_metadata_cache.json)。
+        // 复用共享 http + CatalogRefreshService 内部 settings.FetchCatalogMetadata 开关 gate。
+        var metadataCache = new MetadataCache();
+        var metadataService = new GitHubCatalogMetadataService(http, metadataCache, settings, logger);
         var catalogRefreshService = new CatalogRefreshService(
-            catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo, logger);
+            catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo, logger,
+            metadataService);  // v0.6.13-B: 7th param
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy, logger);
         var baseEnvInstaller = new BaseEnvInstaller(envRepo, logger);

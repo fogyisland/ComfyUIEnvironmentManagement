@@ -192,6 +192,114 @@ public class CatalogViewLoadTests
         Assert.Equal("latest: —", p3Actual);
     }
 
+    /// <summary>
+    /// v0.6.13-B:11 个 metadata 字段(License / Tags / Stars / Downloads /
+    /// LastCommit / ReadmeMarkdown / LatestChangelog / Deprecated /
+    /// PythonCompat / OsCompat / MetadataFetchedAt)新增到 CatalogEntry 后,
+    /// CatalogView 的 XAML 不应崩(G15:无 UI binding,但新增 setter 触发
+    /// ViewModel 属性变化可能影响任何引用了 CatalogEntry 的 converter —
+    /// 此处手动 serialize entries 跑完整 XAML load 路径作 sanity check)。
+    /// </summary>
+    [Fact]
+    public void CatalogView_AllMetadataColumnsPresent_RendersWithoutException()
+    {
+        Exception? caught = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
+
+                var app = System.Windows.Application.Current;
+                var template = (System.Windows.DataTemplate)app!.Resources["CatalogRowCardTemplate"];
+
+                // 2 个 entry:一个全部 11 个 metadata 字段 populated(含非空
+                // 数组 Tags/PythonCompat/OsCompat),另一个全部留空(null/empty
+                // arrays)— 覆盖有/无 metadata 两个 branch。
+                var entries = new System.Collections.Generic.List<ComfyUI.Manager.Models.CatalogEntry>
+                {
+                    new()
+                    {
+                        Id = "node-meta-1",
+                        Package = "pkg-with-metadata",
+                        Author = "Alice",
+                        Description = "All 11 metadata fields populated",
+                        LatestVersion = "v0.6.7",
+                        License = "MIT",
+                        Tags = new[] { "image", "video", "upscaler" },
+                        Stars = 1234,
+                        Downloads = 56789,
+                        LastCommit = "2026-08-10T12:34:56Z",
+                        ReadmeMarkdown = "# ComfyUI Node\nA *rich* README with **markdown**.\n```python\nprint('hi')\n```",
+                        LatestChangelog = "## v0.6.7\n- Fix bug\n- Add feature",
+                        Deprecated = false,
+                        PythonCompat = new[] { "3.10", "3.11", "3.12" },
+                        OsCompat = new[] { "windows", "linux", "macos" },
+                        MetadataFetchedAt = "2026-08-12T08:00:00Z",
+                    },
+                    new()
+                    {
+                        Id = "node-meta-2",
+                        Package = "pkg-without-metadata",
+                        Author = "Bob",
+                        Description = "No metadata fields populated",
+                        LatestVersion = null,
+                        // License = null (default)
+                        // Tags = empty array (default)
+                        // Stars = 0 (default)
+                        // Downloads = 0 (default)
+                        // LastCommit = null (default)
+                        // ReadmeMarkdown = null (default)
+                        // LatestChangelog = null (default)
+                        // Deprecated = false (default)
+                        // PythonCompat = empty array (default)
+                        // OsCompat = empty array (default)
+                        // MetadataFetchedAt = null (default)
+                    },
+                };
+
+                // 用 ContentPresenter + DataTemplate 跑完整 XAML load 路径
+                // (跟 LatestVersionBinding 测试同款 pattern,绕过 ListBox 虚拟化)
+                var presenters = new System.Windows.Controls.ContentPresenter[entries.Count];
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    presenters[i] = new System.Windows.Controls.ContentPresenter
+                    {
+                        Content = entries[i],
+                        ContentTemplate = template,
+                        Width = 880,
+                    };
+                }
+                var stack = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Vertical };
+                foreach (var cp in presenters) stack.Children.Add(cp);
+
+                stack.Measure(new System.Windows.Size(900, 700));
+                stack.Arrange(new System.Windows.Rect(0, 0, 900, 700));
+                stack.UpdateLayout();
+
+                // 不对具体 binding 文本做断言(G15:新字段无 XAML binding)—
+                // load 成功无异常 = 测试 invariant。
+            }
+            catch (Exception ex)
+            {
+                caught = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (caught is not null)
+        {
+            throw new Exception(
+                $"CatalogView all-metadata-columns render failed: {caught.GetType().FullName}: {caught.Message}\n" +
+                $"--- InnerException ---\n{caught.InnerException}\n" +
+                $"--- StackTrace ---\n{caught.StackTrace}",
+                caught);
+        }
+    }
+
     private static System.Collections.Generic.IEnumerable<T> FindVisualChildren<T>(System.Windows.DependencyObject parent)
         where T : System.Windows.DependencyObject
     {
