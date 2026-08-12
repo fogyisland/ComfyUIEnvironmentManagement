@@ -49,7 +49,7 @@ public class GitHubCatalogMetadataService
     /// Enrich each entry's 11 metadata fields + write to cache + write
     /// entry.MetadataFetchedAt. Returns count of entries successfully enriched.
     /// </summary>
-    public async Task<int> EnrichAsync(
+    public virtual async Task<int> EnrichAsync(
         IList<CatalogEntry> entries,
         IProgress<MetadataFetchProgress>? progress = null,
         CancellationToken ct = default)

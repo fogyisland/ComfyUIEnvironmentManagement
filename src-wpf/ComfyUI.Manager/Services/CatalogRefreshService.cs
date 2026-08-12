@@ -23,6 +23,7 @@ public class CatalogRefreshService
     private readonly GitHubVersionService? _versionService;
     private readonly Settings _settings;
     private readonly AppLogger? _logger;
+    private readonly GitHubCatalogMetadataService? _metadataService;
 
     public CatalogRefreshService(
         CatalogFetcher fetcher,
@@ -30,7 +31,8 @@ public class CatalogRefreshService
         Settings settings,
         GitHubVersionService? versionService = null,
         NodeVersionRepository? versionRepo = null,
-        AppLogger? logger = null)
+        AppLogger? logger = null,
+        GitHubCatalogMetadataService? metadataService = null)
     {
         _fetcher = fetcher;
         _repo = repo;
@@ -38,6 +40,7 @@ public class CatalogRefreshService
         _versionService = versionService;
         _versionRepo = versionRepo;
         _logger = logger;
+        _metadataService = metadataService;
     }
 
     public virtual async Task<RefreshResult> RefreshAsync(
@@ -103,9 +106,38 @@ public class CatalogRefreshService
                 }
             }
 
+            // 第三步:拉 GitHub metadata(开关 gate 开启时,v0.6.13-B)
+            int metadataCount = 0;
+            if (_metadataService is not null && _settings.FetchCatalogMetadata)
+            {
+                try
+                {
+                    var metaProgress = new Progress<MetadataFetchProgress>(p =>
+                        _logger?.Info("catalog-metadata",
+                            $"progress done={p.Done}/{p.Total} current={p.CurrentPackage}"));
+                    metadataCount = await _metadataService.EnrichAsync(entries, metaProgress, ct);
+                    _logger?.Info("catalog-metadata",
+                        $"enrich done count={metadataCount}");
+                    if (metadataCount > 0)
+                    {
+                        // 写回 SQLite(11 个新列)
+                        await Task.Run(() => _repo.UpsertBatch(entries), ct);
+                    }
+                }
+                catch (RateLimitException ex)
+                {
+                    _logger?.Warn("catalog-metadata", $"rate limit hit,resume on next refresh: {ex.Message}");
+                    metadataCount = 0;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("catalog-metadata", $"metadata enrich fail (non-fatal): {ex.Message}");
+                }
+            }
+
             _logger?.Info("catalog-refresh",
-                $"完成 refresh upsert_count={count} version_count={versionCount} duration_ms={sw.ElapsedMilliseconds}");
-            return RefreshResult.Ok(count, versionCount);
+                $"完成 refresh upsert_count={count} version_count={versionCount} metadata_count={metadataCount} duration_ms={sw.ElapsedMilliseconds}");
+            return RefreshResult.Ok(count, versionCount, metadataCount);
         }
         catch (OperationCanceledException)
         {
@@ -132,8 +164,8 @@ public class CatalogRefreshService
     }
 }
 
-public record RefreshResult(bool Success, int EntryCount, int VersionCount, string? Error)
+public record RefreshResult(bool Success, int EntryCount, int VersionCount, int MetadataCount, string? Error = null)
 {
-    public static RefreshResult Ok(int n, int v = 0) => new(true, n, v, null);
-    public static RefreshResult Fail(string err) => new(false, 0, 0, err);
+    public static RefreshResult Ok(int n, int v = 0, int m = 0) => new(true, n, v, m, null);
+    public static RefreshResult Fail(string err) => new(false, 0, 0, 0, err);
 }
