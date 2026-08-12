@@ -119,13 +119,15 @@ public class CatalogRefreshService
         }
     }
 
-    private static string ExtractReference(CatalogEntry entry)
+    internal static string ExtractReference(CatalogEntry entry)
     {
         if (entry.RawMetadata is null) return "";
-        if (entry.RawMetadata.TryGetValue("reference", out var r) && r is string rs)
+        if (entry.RawMetadata.TryGetValue("reference", out var r) && r is string rs && !string.IsNullOrEmpty(rs))
             return rs;
-        if (entry.RawMetadata.TryGetValue("url", out var u) && u is string us)
+        if (entry.RawMetadata.TryGetValue("url", out var u) && u is string us && !string.IsNullOrEmpty(us))
             return us;
+        if (entry.RawMetadata.TryGetValue("repository", out var repo) && repo is string repos && !string.IsNullOrEmpty(repos))
+            return repos;
         return "";
     }
 }

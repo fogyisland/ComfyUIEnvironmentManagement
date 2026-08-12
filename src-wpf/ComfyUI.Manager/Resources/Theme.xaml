@@ -488,6 +488,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <!-- Row 0: Package + ⭐ -->
                 <Grid Grid.Row="0">
@@ -533,6 +534,32 @@
                            TextWrapping="Wrap" MaxHeight="40"
                            TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource OnSurfaceBrush}" />
+                <!-- Row 3 (v0.6.11+ SDD A): latest 版本 + tooltip -->
+                <TextBlock Grid.Row="3"
+                           FontSize="12" Margin="0,6,0,0"
+                           Foreground="{DynamicResource OnSurfaceBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="非 GitHub 源或尚未刷新时无法自动获取版本">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <!-- 绑定放进 base Setter(property-element 形态),让 trigger 可以 override
+                                 (v0.6.9.2 convention:本地 TextBlock.Text 在 DP 优先级中高于 Style trigger Setter) -->
+                            <Setter Property="Text">
+                                <Setter.Value>
+                                    <Binding Path="LatestVersion"
+                                             StringFormat="latest: {0}"
+                                             TargetNullValue="latest: —" />
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <!-- 空串走同一 fallback 文本 -->
+                                <DataTrigger Binding="{Binding LatestVersion}" Value="">
+                                    <Setter Property="Text" Value="latest: —" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </Grid>
         </Border>
     </DataTemplate>
