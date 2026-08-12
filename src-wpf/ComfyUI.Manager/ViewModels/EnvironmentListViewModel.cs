@@ -610,7 +610,7 @@ public class EnvironmentListViewModel : ViewModelBase
     private void ShowLog(Environment? env)
     {
         if (env is null) return;
-        var logPath = _launcher.LogFilePath(env.Id);
+        var logPath = _launcher.LogFilePath(env.Name, env.Id);
         LogViewerDialog.Show(env.Id, logPath);
     }
 

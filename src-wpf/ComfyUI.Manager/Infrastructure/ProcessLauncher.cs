@@ -32,6 +32,7 @@ public sealed class ProcessLauncher : IDisposable
     private readonly string _comfyUiLocale;
     private readonly string _modelsDirectory;
     private readonly JunctionLinker _linker;
+    private readonly string _logsDir;  // v0.6.12: Settings.LogDirectory (Logs parent) or projectRoot fallback
     private readonly Dictionary<string, ProcessEntry> _running = new();
     private readonly object _runningLock = new();
     private bool _disposed;
@@ -45,7 +46,8 @@ public sealed class ProcessLauncher : IDisposable
         int comfyUiStartupTimeoutSeconds = 600,
         string comfyUiLocale = "",
         string modelsDirectory = "",
-        JunctionLinker? linker = null)
+        JunctionLinker? linker = null,
+        string? logsDir = null)
     {
         _projectRoot = projectRoot;
         _dbFactory = dbFactory;
@@ -62,6 +64,9 @@ public sealed class ProcessLauncher : IDisposable
         _modelsDirectory = modelsDirectory ?? "";
         // 默认 real,App 端不传也跑得动;测试可注入 RecordingJunctionLinker。
         _linker = linker ?? new JunctionLinker();
+        // v0.6.12: Settings.LogDirectory (Logs 父目录) — null = 用 projectRoot。
+        // AppLogger.OperationLogPath 会自己加 Logs 子目录。
+        _logsDir = (logsDir ?? projectRoot).TrimEnd('\\', '/');
     }
 
     public string ProjectRoot => _projectRoot;
@@ -72,11 +77,17 @@ public sealed class ProcessLauncher : IDisposable
     public int StartupTimeoutSeconds => _startupTimeoutSeconds;
 
     /// <summary>
-    /// log 文件路径:&lt;projectRoot&gt;/logs/&lt;env-id&gt;.log。
+    /// v0.6.12:per-env operation log 路径。
+    /// 从 &lt;logsDir&gt;/logs/&lt;env-id&gt;.log(单文件,无滚动)改为
+    /// &lt;logsDir&gt;/Logs/operation-{sanitized envName}-{date}.log(按日切)。
+    /// <paramref name="envId"/> 保留参数是向后兼容 + 未来使用 —— 当前实现只用 envName。
+    /// <paramref name="date"/> 默认 = DateTime.Now(测试可显式传固定值)。
     /// </summary>
-    public string LogFilePath(string envId)
+    public string LogFilePath(string envName, string envId, DateTime? date = null)
     {
-        return Path.Combine(_projectRoot, "logs", $"{envId}.log");
+        var d = date ?? DateTime.Now;
+        // delegate filename sanitization + Logs/ subdirectory to AppLogger
+        return AppLogger.OperationLogPath(envName, d, _logsDir);
     }
 
     public bool IsRunning(Environment env)
@@ -186,7 +197,7 @@ public sealed class ProcessLauncher : IDisposable
                 }
             }
 
-            var logPath = LogFilePath(env.Id);
+            var logPath = LogFilePath(env.Name, env.Id);
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
 
             var psi = new ProcessStartInfo

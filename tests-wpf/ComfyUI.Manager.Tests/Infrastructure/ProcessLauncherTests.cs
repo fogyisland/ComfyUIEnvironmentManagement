@@ -136,4 +136,77 @@ time.sleep(60)
 
         try { Directory.Delete(tempRoot, recursive: true); } catch { }
     }
+
+    // ===== v0.6.12: LogFilePath uses envName + date + LogDirectory =====
+
+    [Fact]
+    public void LogFilePath_RegularEnvName_ReturnsNewFormat()
+    {
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var stateRepo = new ProcessStateRepository(db.Factory);
+        using var launcher = new ProcessLauncher(
+            @"C:\root", db.Factory, envRepo, stateRepo,
+            logger: null, comfyUiStartupTimeoutSeconds: 600,
+            comfyUiLocale: "", modelsDirectory: "",
+            linker: null, logsDir: @"C:\root");
+
+        var path = launcher.LogFilePath("firstEnv", "env-d651ab01", new DateTime(2026, 8, 12));
+
+        Assert.Equal(@"C:\root\Logs\operation-firstEnv-2026-08-12.log", path);
+    }
+
+    [Fact]
+    public void LogFilePath_SpecialCharsInName_Sanitized()
+    {
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var stateRepo = new ProcessStateRepository(db.Factory);
+        using var launcher = new ProcessLauncher(
+            @"C:\root", db.Factory, envRepo, stateRepo,
+            logger: null, comfyUiStartupTimeoutSeconds: 600,
+            comfyUiLocale: "", modelsDirectory: "",
+            linker: null, logsDir: @"C:\root");
+
+        var path = launcher.LogFilePath("foo/bar", "env-x", new DateTime(2026, 8, 12));
+
+        Assert.Equal(@"C:\root\Logs\operation-foo_bar-2026-08-12.log", path);
+    }
+
+    [Fact]
+    public void LogFilePath_LogsDirNull_FallsBackToProjectRoot()
+    {
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var stateRepo = new ProcessStateRepository(db.Factory);
+        // logsDir: null → falls back to projectRoot (same value here)
+        using var launcher = new ProcessLauncher(
+            @"C:\root", db.Factory, envRepo, stateRepo,
+            logger: null, comfyUiStartupTimeoutSeconds: 600,
+            comfyUiLocale: "", modelsDirectory: "",
+            linker: null, logsDir: null);
+
+        var path = launcher.LogFilePath("firstEnv", "env-d651ab01", new DateTime(2026, 8, 12));
+
+        Assert.Equal(@"C:\root\Logs\operation-firstEnv-2026-08-12.log", path);
+    }
+
+    [Fact]
+    public void LogFilePath_LogsDirWithTrailingSeparator_Trimmed()
+    {
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var stateRepo = new ProcessStateRepository(db.Factory);
+        // logsDir with trailing backslash — ctor must TrimEnd to avoid double separator
+        using var launcher = new ProcessLauncher(
+            @"C:\root", db.Factory, envRepo, stateRepo,
+            logger: null, comfyUiStartupTimeoutSeconds: 600,
+            comfyUiLocale: "", modelsDirectory: "",
+            linker: null, logsDir: @"C:\custom\logs\");
+
+        var path = launcher.LogFilePath("firstEnv", "env-x", new DateTime(2026, 8, 12));
+
+        // Path.Combine normalizes separators — expect single backslash before Logs
+        Assert.Equal(@"C:\custom\logs\Logs\operation-firstEnv-2026-08-12.log", path);
+    }
 }
