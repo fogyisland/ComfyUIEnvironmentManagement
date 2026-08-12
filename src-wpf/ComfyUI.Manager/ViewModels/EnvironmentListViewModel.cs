@@ -611,7 +611,8 @@ public class EnvironmentListViewModel : ViewModelBase
     {
         if (env is null) return;
         var logPath = _launcher.LogFilePath(env.Name, env.Id);
-        LogViewerDialog.Show(env.Id, logPath);
+        // v0.6.12: 第一参数其实只是窗口 Title 显示用,这里改传 env.Name(用户友好)。
+        LogViewerDialog.Show(env.Name, logPath);
     }
 
     private void CreateEnv()

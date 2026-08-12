@@ -82,11 +82,27 @@ public partial class App : Application
         // v0.6.11+ dashboard/splash polish:Stage 2 LoadDatabase 完成。
         _splashVm?.ReportStageProgress(Stage.LoadDatabase, 100);
 
+        // v0.6.7.1 + v0.6.12: 在 logger / launcher 构造前先 Load settings —
+        // logger 读 LogDirectory(决定 Logs 父目录),launcher 读 startupTimeoutSeconds / locale / models。
+        // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
+        // 不会改 ComfyUiStartupTimeoutSeconds,所以顺序安全。
+        var settingsRepo = new SettingsRepository();
+        var settings = settingsRepo.Load();
+
+        // v0.6.12:Settings.LogDirectory 注入 — 计算 Logs 父目录(parent of Logs/)。
+        // 非空 + 绝对 → 直接用;非空 + 相对 → 相对 projectRoot 解析;空 → 回退 projectRoot。
+        var logsDir = !string.IsNullOrWhiteSpace(settings.LogDirectory)
+            ? (Path.IsPathRooted(settings.LogDirectory)
+                ? settings.LogDirectory
+                : Path.Combine(projectRoot, settings.LogDirectory))
+            : projectRoot;
+
         // v0.6.5.13: 集中日志 — 所有 subsystem 写到 projectRoot/Logs/YYYY-MM-DD.log
-        var logger = new AppLogger(projectRoot);
+        // v0.6.12: AppLogger 接受 logsDir(parent of Logs/)— Settings.LogDirectory 决定。
+        var logger = new AppLogger(projectRoot, logsDir);
         // 启动时清理 >30 天的日志(用户原话:30 天保留)
-        int cleaned = AppLogger.CleanupOlderThan(projectRoot, 30);
-        logger.Info("app-startup", $"App 启动 cleaned={cleaned} projectRoot={projectRoot}");
+        int cleaned = AppLogger.CleanupOlderThan(logsDir, 30);
+        logger.Info("app-startup", $"App 启动 cleaned={cleaned} logsDir={logsDir}");
 
         // v0.6.5.8: 启动 reconciliation — 把上次未装完的 "installing" 行翻成
         // "failed" + "上次未完成"。必须先于 MainViewModel.Load(),否则 UI 看到
@@ -95,12 +111,6 @@ public partial class App : Application
 
         var nodeRepo = new NodeRepository(dbFactory);
         var processStateRepo = new ProcessStateRepository(dbFactory);
-
-        // v0.6.7.1: 在 launcher 构造前先 Load settings — 让 startupTimeoutSeconds 可读。
-        // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
-        // 不会改 ComfyUiStartupTimeoutSeconds,所以顺序安全。
-        var settingsRepo = new SettingsRepository();
-        var settings = settingsRepo.Load();
 
         // v0.6.9 T2:Apply stored theme BEFORE MainWindow.Show,避免先 Dark(默认)再切 Light 闪屏。
         // 必须早于 _mainVm 构造(MainViewModel 接收 IThemeService 引用),且 Application.Current.Resources
@@ -118,7 +128,9 @@ public partial class App : Application
             projectRoot, dbFactory, envRepo, processStateRepo, logger,
             settings.ComfyUiStartupTimeoutSeconds,
             settings.ComfyUiLocale,
-            settings.DefaultModelsDirectory);
+            settings.DefaultModelsDirectory,
+            linker: null,
+            logsDir: logsDir);  // v0.6.12: 末参 Settings.LogDirectory (Logs parent) or projectRoot fallback
 
         // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
         // 1) 空字段 → 默认子目录名(相对)
