@@ -35,4 +35,28 @@ public class CatalogEntry
     // 解析后的 pip requirements 列表(从 pip_json 反序列化)
     [JsonIgnore] public IReadOnlyList<PipRequirement> PipRequirements { get; init; }
         = Array.Empty<PipRequirement>();
+
+    // v0.6.13-B: GitHub metadata 抓取后填回的 11 个字段(由 GitHubCatalogMetadataService 写入)
+    [JsonPropertyName("license")]
+    public string? License { get; set; }
+    [JsonPropertyName("tags")]
+    public IReadOnlyList<string> Tags { get; set; } = Array.Empty<string>();
+    [JsonPropertyName("stars")]
+    public int Stars { get; set; }
+    [JsonPropertyName("downloads")]
+    public int Downloads { get; set; }
+    [JsonPropertyName("last_commit")]
+    public string? LastCommit { get; set; }   // ISO 8601 UTC
+    [JsonPropertyName("readme_markdown")]
+    public string? ReadmeMarkdown { get; set; }
+    [JsonPropertyName("latest_changelog")]
+    public string? LatestChangelog { get; set; }
+    [JsonPropertyName("deprecated")]
+    public bool Deprecated { get; set; }
+    [JsonPropertyName("python_compat")]
+    public IReadOnlyList<string> PythonCompat { get; set; } = Array.Empty<string>();
+    [JsonPropertyName("os_compat")]
+    public IReadOnlyList<string> OsCompat { get; set; } = Array.Empty<string>();
+    [JsonPropertyName("metadata_fetched_at")]
+    public string? MetadataFetchedAt { get; set; }  // ISO 8601 UTC
 }

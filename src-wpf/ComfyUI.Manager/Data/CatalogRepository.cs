@@ -25,7 +25,9 @@ public sealed class CatalogRepository
     /// </summary>
     private const string CatalogCacheColumns =
         "id, source_url, package, raw_metadata, cached_at, expires_at, " +
-        "latest_version, author, description, install_type, reference, last_update, pip_json";
+        "latest_version, author, description, install_type, reference, last_update, pip_json, " +
+        "license, tags_json, stars, downloads, last_commit, readme_markdown, " +
+        "latest_changelog, deprecated, python_compat_json, os_compat_json, metadata_fetched_at";
 
     public CatalogRepository(CatalogCacheStore store)
     {
@@ -112,6 +114,17 @@ public sealed class CatalogRepository
         cmd.Parameters.Add("@reference", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Parameters.Add("@last_update", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Parameters.Add("@pip_json", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@license", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@tags_json", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@stars", Microsoft.Data.Sqlite.SqliteType.Integer);
+        cmd.Parameters.Add("@downloads", Microsoft.Data.Sqlite.SqliteType.Integer);
+        cmd.Parameters.Add("@last_commit", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@readme_markdown", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@latest_changelog", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@deprecated", Microsoft.Data.Sqlite.SqliteType.Integer);
+        cmd.Parameters.Add("@python_compat_json", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@os_compat_json", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@metadata_fetched_at", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Prepare();
         int count = 0;
         foreach (var entry in entries)
@@ -130,6 +143,17 @@ public sealed class CatalogRepository
             cmd.Parameters["@reference"].Value = (object?)typed.reference ?? DBNull.Value;
             cmd.Parameters["@last_update"].Value = (object?)typed.lastUpdate ?? DBNull.Value;
             cmd.Parameters["@pip_json"].Value = typed.pipJson;
+            cmd.Parameters["@license"].Value = (object?)entry.License ?? DBNull.Value;
+            cmd.Parameters["@tags_json"].Value = SerializeStringArray(entry.Tags);
+            cmd.Parameters["@stars"].Value = entry.Stars;
+            cmd.Parameters["@downloads"].Value = entry.Downloads;
+            cmd.Parameters["@last_commit"].Value = (object?)entry.LastCommit ?? DBNull.Value;
+            cmd.Parameters["@readme_markdown"].Value = (object?)entry.ReadmeMarkdown ?? DBNull.Value;
+            cmd.Parameters["@latest_changelog"].Value = (object?)entry.LatestChangelog ?? DBNull.Value;
+            cmd.Parameters["@deprecated"].Value = entry.Deprecated ? 1 : 0;
+            cmd.Parameters["@python_compat_json"].Value = SerializeStringArray(entry.PythonCompat);
+            cmd.Parameters["@os_compat_json"].Value = SerializeStringArray(entry.OsCompat);
+            cmd.Parameters["@metadata_fetched_at"].Value = (object?)entry.MetadataFetchedAt ?? DBNull.Value;
             cmd.ExecuteNonQuery();
             count++;
             onUpserted?.Invoke(entry);
@@ -199,10 +223,14 @@ public sealed class CatalogRepository
     private const string UpsertCommandText = @"
         INSERT INTO catalog_cache
             (id, source_url, package, raw_metadata, cached_at, expires_at,
-             author, description, install_type, reference, last_update, pip_json)
+             author, description, install_type, reference, last_update, pip_json,
+             license, tags_json, stars, downloads, last_commit, readme_markdown,
+             latest_changelog, deprecated, python_compat_json, os_compat_json, metadata_fetched_at)
         VALUES
             (@id, @source_url, @package, @raw_metadata, @cached_at, @expires_at,
-             @author, @description, @install_type, @reference, @last_update, @pip_json)
+             @author, @description, @install_type, @reference, @last_update, @pip_json,
+             @license, @tags_json, @stars, @downloads, @last_commit, @readme_markdown,
+             @latest_changelog, @deprecated, @python_compat_json, @os_compat_json, @metadata_fetched_at)
         ON CONFLICT(source_url, package) DO UPDATE SET
             raw_metadata=excluded.raw_metadata,
             cached_at=excluded.cached_at,
@@ -212,7 +240,18 @@ public sealed class CatalogRepository
             install_type=excluded.install_type,
             reference=excluded.reference,
             last_update=excluded.last_update,
-            pip_json=excluded.pip_json";
+            pip_json=excluded.pip_json,
+            license=excluded.license,
+            tags_json=excluded.tags_json,
+            stars=excluded.stars,
+            downloads=excluded.downloads,
+            last_commit=excluded.last_commit,
+            readme_markdown=excluded.readme_markdown,
+            latest_changelog=excluded.latest_changelog,
+            deprecated=excluded.deprecated,
+            python_compat_json=excluded.python_compat_json,
+            os_compat_json=excluded.os_compat_json,
+            metadata_fetched_at=excluded.metadata_fetched_at";
 
     private static void BindUpsertParameters(SqliteCommand cmd, CatalogEntry entry)
     {
@@ -230,6 +269,17 @@ public sealed class CatalogRepository
         cmd.Parameters.AddWithValue("@reference", (object?)typed.reference ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@last_update", (object?)typed.lastUpdate ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@pip_json", typed.pipJson);
+        cmd.Parameters.AddWithValue("@license", (object?)entry.License ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@tags_json", SerializeStringArray(entry.Tags));
+        cmd.Parameters.AddWithValue("@stars", entry.Stars);
+        cmd.Parameters.AddWithValue("@downloads", entry.Downloads);
+        cmd.Parameters.AddWithValue("@last_commit", (object?)entry.LastCommit ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@readme_markdown", (object?)entry.ReadmeMarkdown ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@latest_changelog", (object?)entry.LatestChangelog ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@deprecated", entry.Deprecated ? 1 : 0);
+        cmd.Parameters.AddWithValue("@python_compat_json", SerializeStringArray(entry.PythonCompat));
+        cmd.Parameters.AddWithValue("@os_compat_json", SerializeStringArray(entry.OsCompat));
+        cmd.Parameters.AddWithValue("@metadata_fetched_at", (object?)entry.MetadataFetchedAt ?? DBNull.Value);
     }
 
     /// <summary>
@@ -258,6 +308,28 @@ public sealed class CatalogRepository
         return count;
     }
 
+    private static string SerializeStringArray(IReadOnlyList<string> list)
+    {
+        if (list is null || list.Count == 0) return "[]";
+        return JsonSerializer.Serialize(list, JsonOptions);
+    }
+
+    private static IReadOnlyList<string> ParseStringArray(SqliteDataReader r, int i)
+    {
+        if (r.IsDBNull(i)) return Array.Empty<string>();
+        var json = r.GetString(i);
+        if (string.IsNullOrWhiteSpace(json)) return Array.Empty<string>();
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json, JsonOptions)
+                ?? new List<string>();
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
+
     private static CatalogEntry Read(SqliteDataReader reader)
     {
         var rawJson = reader.GetString(3);
@@ -279,6 +351,17 @@ public sealed class CatalogRepository
             Reference = reader.IsDBNull(10) ? null : reader.GetString(10),
             LastUpdate = reader.IsDBNull(11) ? null : reader.GetString(11),
             PipRequirements = reqs,
+            License = reader.IsDBNull(13) ? null : reader.GetString(13),
+            Tags = ParseStringArray(reader, 14),
+            Stars = reader.IsDBNull(15) ? 0 : reader.GetInt32(15),
+            Downloads = reader.IsDBNull(16) ? 0 : reader.GetInt32(16),
+            LastCommit = reader.IsDBNull(17) ? null : reader.GetString(17),
+            ReadmeMarkdown = reader.IsDBNull(18) ? null : reader.GetString(18),
+            LatestChangelog = reader.IsDBNull(19) ? null : reader.GetString(19),
+            Deprecated = !reader.IsDBNull(20) && reader.GetInt32(20) != 0,
+            PythonCompat = ParseStringArray(reader, 21),
+            OsCompat = ParseStringArray(reader, 22),
+            MetadataFetchedAt = reader.IsDBNull(23) ? null : reader.GetString(23),
         };
     }
 
