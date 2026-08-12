@@ -71,6 +71,31 @@ public sealed class CatalogCacheStore
         EnsureColumn(conn, "catalog_cache", "last_update", "TEXT");
         EnsureColumn(conn, "catalog_cache", "pip_json", "TEXT");
 
+        // v0.6.13-B: GitHub metadata 11 列(License/Tags/Stars/Downloads/LastCommit/
+        // Readme/Changelog/Deprecated/PythonCompat/OsCompat/FetchedAt)。JSON-array
+        // 字段用 *_json 后缀,跟 v0.6.7.4 pip_json 同模式。
+        EnsureColumn(conn, "catalog_cache", "license", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "tags_json", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "stars", "INTEGER");
+        EnsureColumn(conn, "catalog_cache", "downloads", "INTEGER");
+        EnsureColumn(conn, "catalog_cache", "last_commit", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "readme_markdown", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "latest_changelog", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "deprecated", "INTEGER");
+        EnsureColumn(conn, "catalog_cache", "python_compat_json", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "os_compat_json", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "metadata_fetched_at", "TEXT");
+
+        // 3 个排序/过滤索引(stars/downloads 降序 + deprecated 0 过滤)
+        using (var idx = conn.CreateCommand())
+        {
+            idx.CommandText = @"
+                CREATE INDEX IF NOT EXISTS idx_catalog_cache_stars ON catalog_cache(stars DESC);
+                CREATE INDEX IF NOT EXISTS idx_catalog_cache_downloads ON catalog_cache(downloads DESC);
+                CREATE INDEX IF NOT EXISTS idx_catalog_cache_deprecated ON catalog_cache(deprecated);";
+            idx.ExecuteNonQuery();
+        }
+
         // v0.6.4+:节点历史 release 列表(tag + 发布时间 + 是否 prerelease)
         using (var tbl = conn.CreateCommand())
         {
