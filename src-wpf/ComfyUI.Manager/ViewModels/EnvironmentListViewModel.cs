@@ -1240,7 +1240,11 @@ public class EnvironmentListViewModel : ViewModelBase
             return;
         }
 
-        var entry = Views.CatalogEntryPickerDialog.Show();
+        // v0.6.11+ SDD D1 R1:测试拦截 catalog picker — 返回 stub entry 让测试
+        // 不弹真 dialog 也能跑到 InstallDialog.Show(...)。
+        var entry = CatalogPickerOverride is not null
+            ? CatalogPickerOverride()
+            : Views.CatalogEntryPickerDialog.Show();
         if (entry is null) return;
 
         // v0.6.11+ SDD D1: 注入自动重启回调 — 装成功时 fire-and-forget
@@ -1248,6 +1252,14 @@ public class EnvironmentListViewModel : ViewModelBase
         // _mvm null = EnvListVM 早于 MVM 构造(测试或极端 wiring)→ 不传回调,
         // InstallDialog 装成功不触发重启,行为跟 v0.6.11 既有兼容。
         Func<string, Task>? onSuccess = _mvm is not null ? _mvm.RestartEnvAsync : null;
+
+        // v0.6.11+ SDD D1 R1:test seam 让测试捕获 InstallDialog.Show 的参数
+        // (preselectedEnvId + onInstallSuccess),verify 回调注入。
+        if (InstallDialogShowOverride is not null)
+        {
+            InstallDialogShowOverride(env.Id, onSuccess);
+            return;
+        }
 
         Views.InstallDialog.Show(
             _repo, _nodeOps, entry,
@@ -1261,6 +1273,21 @@ public class EnvironmentListViewModel : ViewModelBase
     /// Receives the env the command was bound to.
     /// </summary>
     public Action<Environment>? OpenInstallPickerOverride { get; set; }
+
+    /// <summary>
+    /// v0.6.11+ SDD D1 R1 (test seam):测试拦截 catalog picker dialog — 返回 stub
+    /// entry 让 OpenInstallNodePicker 不弹真 WPF dialog 也能走到 InstallDialog.Show。
+    /// 生产代码不需要(走 Views.CatalogEntryPickerDialog.Show 路径)。
+    /// </summary>
+    public Func<CatalogEntry?>? CatalogPickerOverride { get; set; }
+
+    /// <summary>
+    /// v0.6.11+ SDD D1 R1 (test seam):测试拦截 InstallDialog.Show 调用,捕获
+    /// (preselectedEnvId, onInstallSuccess) 实际传入的参数 — 用于 verify EnvListVM
+    /// 在 _mvm 设上后,OpenInstallNodePicker 把 _mvm.RestartEnvAsync 当回调注入。
+    /// 生产代码不需要(走 Views.InstallDialog.Show 路径)。
+    /// </summary>
+    public Action<string, Func<string, Task>?>? InstallDialogShowOverride { get; set; }
 
     /// <summary>
     /// v0.6.7:生成 env 组件报告 HTML,写到 &lt;projectRoot&gt;/reports/,用默认浏览器打开。

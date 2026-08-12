@@ -307,6 +307,10 @@ public class MainViewModel : ViewModelBase
                 _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller,
                 _baseEnvUninstaller, _requirementsUninstaller,
                 _browserLauncher, ErrorBanner, _comfyUiManagerInstaller);
+            // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
+            // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget
+            // 触发 env 重启。T2 加 wiring(T3 才会让 RestartEnvAsync 真正实现重启)。
+            _environmentsViewModel.SetMainViewModel(this);
             _environmentsView = EnvironmentsViewFactory is null
                 ? new EnvironmentListView { DataContext = _environmentsViewModel }
                 : EnvironmentsViewFactory(_environmentsViewModel) as EnvironmentListView;
