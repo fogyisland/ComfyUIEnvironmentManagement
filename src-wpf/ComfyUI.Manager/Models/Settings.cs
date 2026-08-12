@@ -97,6 +97,13 @@ public class Settings
     [JsonPropertyName("fetch_node_versions_on_refresh")]
     public bool FetchNodeVersionsOnRefresh { get; set; }
 
+    // v0.6.13-B: 开关 gate 控制 refresh 时是否拉 GitHub metadata(License/Tags/
+    // Stars/Downloads/LastCommit/Readme/Changelog/Deprecated)。默认 false 保持
+    // 向后兼容(跟 v0.6.11 T3 FetchNodeVersionsOnRefresh 同 pattern,避免没配
+    // token 的用户被 GitHub 限流 60/h)。
+    [JsonPropertyName("fetch_catalog_metadata")]
+    public bool FetchCatalogMetadata { get; set; }
+
     // —— v0.6.5.6: 多 Python 解释器管理 ——
     [JsonPropertyName("python_interpreters")]
     public List<PythonInterpreter> PythonInterpreters { get; set; } = new();
@@ -151,6 +158,7 @@ public class Settings
         // —— GitHub ——
         target.GitHubToken = source.GitHubToken;
         target.FetchNodeVersionsOnRefresh = source.FetchNodeVersionsOnRefresh;
+        target.FetchCatalogMetadata = source.FetchCatalogMetadata;
         // —— Python ——
         target.ActivePythonInterpreterName = source.ActivePythonInterpreterName;
         // —— Pip mirror ——
