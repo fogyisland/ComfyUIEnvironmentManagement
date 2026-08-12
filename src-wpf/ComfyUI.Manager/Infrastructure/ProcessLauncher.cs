@@ -147,6 +147,9 @@ public sealed class ProcessLauncher : IDisposable
         }
 
         _logger?.Info("env-start", $"env='{env.Name}' 开始启动 port={env.Port}");
+        // v0.6.12:per-env 生命周期事件。ComfyUI stdout 只有进程起来了才有输出,
+        // 「开始启动」之前这一段用户看不到 — 这里补一行。
+        _logger?.WriteOperation(env.Name, $"[env-start] spawning comfui port={env.Port}");
 
         try
         {
@@ -363,6 +366,9 @@ public sealed class ProcessLauncher : IDisposable
         catch { }
 
         _logger?.Info("env-stop", $"env='{env.Name}' 已停止");
+        // v0.6.12:per-env 生命周期事件。stdout/stderr reader 会在 exit 时写一行,
+        // 但那是 reader 线程异步写入;用户主动 Stop 时 UI 反馈先到这里 — 写一行立刻看到。
+        _logger?.WriteOperation(env.Name, "[env-stop] stopped");
     }
 
     public void Dispose()
@@ -587,6 +593,11 @@ public sealed class ProcessLauncher : IDisposable
                     $"[{ts}] [pid {process.Id}] EXIT: env '{envName}' exit code {exitCode?.ToString() ?? "?"}");
             }
             catch { }
+            // v0.6.12:per-env 操作日志。意外退出 / 自然退出都在这里统一记一行,跟 StopEnvAsync 的 [env-stop] stopped 区分开。
+            int? code = null;
+            try { code = process.ExitCode; } catch { }
+            _logger?.WriteOperation(envName,
+                $"[env-stop] pid={process.Id} exit_code={code?.ToString() ?? "?"}");
         };
     }
 

@@ -133,6 +133,11 @@ public class BaseEnvInstaller
                 // 写失败不致命,继续装(终态回写仍会写 done/failed)
             }
 
+            // v0.6.12:per-env 操作日志。ComfyUI stdout 不包含「开始装 BED」事件本身
+            // — pip 输出才是;这里补一行让用户看 per-env log 立刻知道在装哪个 profile。
+            _logger?.WriteOperation(env.Name,
+                $"[bed-install] start profile={profile.Id} cuda={profile.CudaVersion} torch={profile.TorchVersion}");
+
             progress?.Report(new BaseEnvProgress(
                 BaseEnvStatus.Running, completed, total,
                 envId, env.Name, 0, $"开始安装 ({env.Name})", null));

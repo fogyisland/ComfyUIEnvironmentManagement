@@ -77,6 +77,8 @@ public class RequirementsInstaller
             throw new ArgumentException("env.RootPath 为空", nameof(env));
 
         _logger?.Info("requirements", $"env='{env.Name}' 开始装 requirements.txt");
+        // v0.6.12:per-env 生命周期事件。ComfyUI stdout 不包含「开始装依赖」这件事。
+        _logger?.WriteOperation(env.Name, "[requirements-install] start");
 
         var candidates = ResolveRequirementsCandidates(env);
         var requirementsPath = candidates.FirstOrDefault(File.Exists);
