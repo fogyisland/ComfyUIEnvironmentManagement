@@ -351,6 +351,71 @@ public sealed class CatalogRepository
     }
 
     /// <summary>
+    /// v0.6.14: 硬删 source_url 下不再出现在 catalog JSON 里的 packages,同时 cascade
+    /// 删掉它们的 node_versions 行。
+    ///
+    /// 顺序很重要:先 SELECT 出 node_id(catalog_cache.id),再删 node_versions,
+    /// 最后删 catalog_cache。反过来做的话 catalog_cache 行已消失,node_id 查不到,
+    /// cascade 会静默漏删(node_versions.node_id 是裸 TEXT,不是真 FK)。
+    /// 三步在同一个 transaction 里,要么全成要么全滚。
+    /// 返回被删的 package 数量。
+    /// </summary>
+    public async Task<int> DeleteRemovedEntriesAsync(
+        string sourceUrl, IEnumerable<string> removedPackages, CancellationToken ct = default)
+    {
+        var pkgs = removedPackages.Distinct(StringComparer.Ordinal).ToList();
+        if (pkgs.Count == 0) return 0;
+
+        using var conn = _store.Open();
+        using var tx = conn.BeginTransaction();
+
+        var pkgPlaceholders = string.Join(",", pkgs.Select((_, i) => $"@p{i}"));
+
+        // 1) 先收集要 cascade 的 node_ids(必须在删 catalog_cache 之前)
+        var nodeIds = new List<string>();
+        using (var sel = conn.CreateCommand())
+        {
+            sel.Transaction = tx;
+            sel.CommandText =
+                $"SELECT id FROM catalog_cache WHERE source_url = @url AND package IN ({pkgPlaceholders})";
+            sel.Parameters.AddWithValue("@url", sourceUrl);
+            for (int i = 0; i < pkgs.Count; i++)
+                sel.Parameters.AddWithValue($"@p{i}", pkgs[i]);
+            using var reader = await sel.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                nodeIds.Add(reader.GetString(0));
+        }
+
+        // 2) 删 node_versions(cascade)
+        if (nodeIds.Count > 0)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            var nodePlaceholders = string.Join(",", nodeIds.Select((_, i) => $"@n{i}"));
+            cmd.CommandText = $"DELETE FROM node_versions WHERE node_id IN ({nodePlaceholders})";
+            for (int i = 0; i < nodeIds.Count; i++)
+                cmd.Parameters.AddWithValue($"@n{i}", nodeIds[i]);
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        // 3) 删 catalog_cache rows
+        int deleted;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText =
+                $"DELETE FROM catalog_cache WHERE source_url = @url AND package IN ({pkgPlaceholders})";
+            cmd.Parameters.AddWithValue("@url", sourceUrl);
+            for (int i = 0; i < pkgs.Count; i++)
+                cmd.Parameters.AddWithValue($"@p{i}", pkgs[i]);
+            deleted = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        tx.Commit();
+        return deleted;
+    }
+
+    /// <summary>
     /// 批量 UPDATE latest_version。一次 connection + transaction,5000+ 条
     /// ~几百毫秒。items 中 null value 跳过(不更新)。
     /// </summary>

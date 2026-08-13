@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,14 +32,27 @@ public class CatalogRefreshServiceTests : IDisposable
     {
         public List<CatalogEntry> EntriesToReturn { get; set; } = new();
         public Exception? ThrowOnFetch { get; set; }
+        public bool Force304 { get; set; }  // v0.6.14
+
+        /// <summary>v0.6.14: 记录 service 传下来的 conditional headers,验证 HTTP cache 读到了。</summary>
+        public string? LastEtagSeen { get; private set; }
+        public string? LastLastModifiedSeen { get; private set; }
 
         public FakeCatalogFetcher()
             : base(new HttpClient(new Mock<HttpMessageHandler>().Object), 60) { }
 
-        public override Task<CatalogFetchResult> FetchAsync(string url, CancellationToken ct = default)
+        public override Task<CatalogFetchResult> FetchAsync(
+            string url, string? etag, string? lastModified, CancellationToken ct = default)
         {
+            LastEtagSeen = etag;
+            LastLastModifiedSeen = lastModified;
             if (ThrowOnFetch is not null) throw ThrowOnFetch;
-            return Task.FromResult(new CatalogFetchResult(false, EntriesToReturn, null, null));
+            if (Force304)
+                return Task.FromResult(new CatalogFetchResult(
+                    Is304: true, Entries: null, NewEtag: null, NewLastModified: null));
+            return Task.FromResult(new CatalogFetchResult(
+                Is304: false, Entries: EntriesToReturn,
+                NewEtag: "\"v1\"", NewLastModified: null));
         }
     }
 
@@ -434,5 +449,314 @@ public class CatalogRefreshServiceTests : IDisposable
             LastTokenSeen = token;
             return Task.FromResult(_result);
         }
+    }
+
+    /// <summary>
+    /// v0.6.14: 真 fake http cache store — 内存存 etag/lastModified,refresh 测试用。
+    /// 基类的 GetAsync/PutAsync 是 virtual,这里 override(不能用 new —— service
+    /// 持的是基类引用,new 不会被虚派发,fake 就形同虚设)。
+    /// </summary>
+    private sealed class FakeCatalogHttpCacheStore : CatalogHttpCacheStore
+    {
+        public Dictionary<string, (string? etag, string? lastMod)> Store { get; } = new();
+        public bool ThrowOnGet { get; set; }
+
+        public FakeCatalogHttpCacheStore()
+            : base(Path.Combine(Path.GetTempPath(), $"fake-{Guid.NewGuid():N}.db")) { }
+
+        public override Task<(string? Etag, string? LastModified)> GetAsync(
+            string url, CancellationToken ct = default)
+        {
+            if (ThrowOnGet) throw new InvalidOperationException("corrupted");
+            return Task.FromResult(Store.TryGetValue(url, out var v) ? v : (null, null));
+        }
+
+        public override Task PutAsync(string url, string? etag, string? lastModified,
+            CancellationToken ct = default)
+        {
+            Store[url] = (etag, lastModified);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.14: HTTP cache 304 — RefreshAsync 短路返回 SkippedCount = 现有 rows。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_304NotModified_ShortCircuitsReturnsZeroChanges()
+    {
+        var fetcher = new FakeCatalogFetcher { Force304 = true };
+        var httpCache = new FakeCatalogHttpCacheStore();
+        // 预存 etag 让 fetcher 发 If-None-Match
+        var url = _settings.QuerySources[0].Url;
+        await httpCache.PutAsync(url, "\"v1\"", null);
+
+        // 预填 DB 一行
+        var pre = new CatalogCacheStore(_db.Path);
+        new CatalogRepository(pre).UpsertBatch(new[] {
+            new CatalogEntry {
+                Id = "x1", SourceUrl = url, Package = "pkg-pre",
+                RawMetadata = new Dictionary<string, object?>(),
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            }
+        });
+
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            _settings,
+            httpCacheStore: httpCache);
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(0, result.EntryCount);
+        Assert.Equal(1, result.SkippedCount);  // pre-filled row 是 unchanged
+        Assert.Equal(0, result.AddedCount);
+        Assert.Equal(0, result.UpdatedCount);
+        Assert.Equal(0, result.DeletedCount);
+        // conditional header 真被读出来传给 fetcher 了
+        Assert.Equal("\"v1\"", fetcher.LastEtagSeen);
+    }
+
+    /// <summary>
+    /// v0.6.14: 200 fetch 后新 ETag/Last-Modified 要写回 http cache store。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_Success_SavesNewEtagToHttpCache()
+    {
+        var url = _settings.QuerySources[0].Url;
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new() { Id = Guid.NewGuid().ToString(), Package = "pkg-etag" },
+            }
+        };
+        var httpCache = new FakeCatalogHttpCacheStore();
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            _settings,
+            httpCacheStore: httpCache);
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.True(httpCache.Store.ContainsKey(url));
+        Assert.Equal("\"v1\"", httpCache.Store[url].etag);
+    }
+
+    /// <summary>
+    /// v0.6.14: 旧 DB 首次 refresh — 所有 entry content_hash='' 视为 "added"。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_FirstRefreshWithOldDb_AllEntriesAdded()
+    {
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new() { Id = Guid.NewGuid().ToString(), Package = "pkg-a" },
+                new() { Id = Guid.NewGuid().ToString(), Package = "pkg-b" },
+            }
+        };
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            _settings,
+            httpCacheStore: new FakeCatalogHttpCacheStore());
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(2, result.AddedCount);
+        Assert.Equal(0, result.UpdatedCount);
+        Assert.Equal(0, result.SkippedCount);
+        Assert.Equal(0, result.DeletedCount);
+    }
+
+    /// <summary>
+    /// v0.6.14: DB 已有 entries,refresh 后 hash 不变 → 全部 skipped。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_HashUnchanged_AllEntriesSkipped()
+    {
+        var url = _settings.QuerySources[0].Url;
+        // 预填 DB 2 行
+        var pre = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        var preEntries = new[] {
+            new CatalogEntry {
+                Id = "x1", SourceUrl = url, Package = "pkg-a",
+                RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-a" },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            },
+            new CatalogEntry {
+                Id = "x2", SourceUrl = url, Package = "pkg-b",
+                RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-b" },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            },
+        };
+        pre.UpsertBatch(preEntries);
+        // hash 已写入 DB(走 UpsertBatch 自动算)
+
+        var fetcher = new FakeCatalogFetcher { EntriesToReturn = preEntries.ToList() };
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            _settings,
+            httpCacheStore: new FakeCatalogHttpCacheStore());
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(0, result.AddedCount);
+        Assert.Equal(0, result.UpdatedCount);
+        Assert.Equal(2, result.SkippedCount);
+    }
+
+    /// <summary>
+    /// v0.6.14: DB 已有 entry,JSON 改了 title → hash 变 → 走 Updated 路径。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_HashChanged_EntryUpdated()
+    {
+        var url = _settings.QuerySources[0].Url;
+        var pre = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        var original = new CatalogEntry {
+            Id = "x1", SourceUrl = url, Package = "pkg-a",
+            RawMetadata = new Dictionary<string, object?> {
+                ["id"] = "pkg-a", ["title"] = "Old Title"
+            },
+            CachedAt = "2026-08-13T00:00:00Z",
+            ExpiresAt = "2026-08-14T00:00:00Z",
+        };
+        pre.UpsertBatch(new[] { original });
+
+        var modified = new CatalogEntry {
+            Id = "x2", SourceUrl = url, Package = "pkg-a",
+            RawMetadata = new Dictionary<string, object?> {
+                ["id"] = "pkg-a", ["title"] = "New Title"  // ← 改了
+            },
+            CachedAt = "2026-08-13T00:00:01Z",
+            ExpiresAt = "2026-08-14T00:00:00Z",
+        };
+        var fetcher = new FakeCatalogFetcher { EntriesToReturn = new() { modified } };
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            _settings,
+            httpCacheStore: new FakeCatalogHttpCacheStore());
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(0, result.AddedCount);
+        Assert.Equal(1, result.UpdatedCount);
+        Assert.Equal(0, result.SkippedCount);
+    }
+
+    /// <summary>
+    /// v0.6.14: catalog JSON 加 1 条新 entry → AddedCount=1。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_NewEntry_Added()
+    {
+        var url = _settings.QuerySources[0].Url;
+        var pre = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        pre.UpsertBatch(new[] { new CatalogEntry {
+            Id = "x1", SourceUrl = url, Package = "pkg-existing",
+            RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-existing" },
+            CachedAt = "2026-08-13T00:00:00Z",
+            ExpiresAt = "2026-08-14T00:00:00Z",
+        }});
+
+        var fetcher = new FakeCatalogFetcher { EntriesToReturn = new() {
+            new CatalogEntry {
+                Id = Guid.NewGuid().ToString(), SourceUrl = url, Package = "pkg-existing",
+                RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-existing" },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            },
+            new CatalogEntry {
+                Id = Guid.NewGuid().ToString(), SourceUrl = url, Package = "pkg-new",
+                RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-new" },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            },
+        }};
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            _settings,
+            httpCacheStore: new FakeCatalogHttpCacheStore());
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.AddedCount);
+        Assert.Equal(0, result.UpdatedCount);
+        Assert.Equal(1, result.SkippedCount);
+    }
+
+    /// <summary>
+    /// v0.6.14: catalog JSON 删 1 条 → 硬删 catalog_cache + node_versions,DeletedCount=1。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_RemovedEntry_CascadeDeletesNodeVersions()
+    {
+        var url = _settings.QuerySources[0].Url;
+        var store = new CatalogCacheStore(_db.Path);
+        var repo = new CatalogRepository(store);
+
+        // 预填 2 entry
+        repo.UpsertBatch(new[] {
+            new CatalogEntry {
+                Id = "x1", SourceUrl = url, Package = "pkg-a",
+                RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-a" },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            },
+            new CatalogEntry {
+                Id = "x2", SourceUrl = url, Package = "pkg-b",
+                RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-b" },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            },
+        });
+        // 预填 node_versions 给 x1 和 x2(x2 会被 cascade 删,x1 保留)
+        var versionRepo = new NodeVersionRepository(store);
+        versionRepo.UpsertBatch(new[] {
+            ("x1", new VersionInfo {
+                Tag = "v1.0.0", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false }),
+            ("x2", new VersionInfo {
+                Tag = "v2.0.0", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false }),
+        });
+
+        // refresh 只返回 pkg-a,pkg-b 被删
+        var fetcher = new FakeCatalogFetcher { EntriesToReturn = new() {
+            new CatalogEntry {
+                Id = "x1", SourceUrl = url, Package = "pkg-a",
+                RawMetadata = new Dictionary<string, object?> { ["id"] = "pkg-a" },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            }
+        }};
+        var svc = new CatalogRefreshService(
+            fetcher, repo, _settings,
+            httpCacheStore: new FakeCatalogHttpCacheStore());
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.DeletedCount);
+        // pkg-b 硬删
+        Assert.DoesNotContain(repo.Search("pkg-b", 10), e => e.Package == "pkg-b");
+        // x1 的 node_versions 仍在,x2 的被 cascade 删
+        Assert.Single(versionRepo.ListByNode("x1"));
+        Assert.Empty(versionRepo.ListByNode("x2"));
     }
 }

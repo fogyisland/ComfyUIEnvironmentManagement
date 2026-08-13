@@ -179,9 +179,13 @@ public partial class App : Application
         // 复用共享 http + CatalogRefreshService 内部 settings.FetchCatalogMetadata 开关 gate。
         var metadataCache = new MetadataCache();
         var metadataService = new GitHubCatalogMetadataService(http, metadataCache, settings, logger);
+        // v0.6.14: HTTP conditional-request 缓存(ETag / Last-Modified per source URL)。
+        // 跟 catalog_cache 同一个 DB 文件 —— 表由 CatalogCacheStore.Open() 建(T3)。
+        var catalogHttpCacheStore = new CatalogHttpCacheStore(catalogCacheStore.DbPath, logger);
         var catalogRefreshService = new CatalogRefreshService(
             catalogFetcher, catalogRepo, settings, githubVersionService, nodeVersionRepo, logger,
-            metadataService);  // v0.6.13-B: 7th param
+            metadataService,                            // v0.6.13-B: 7th param
+            httpCacheStore: catalogHttpCacheStore);     // v0.6.14: 8th param
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy, logger);
         var baseEnvInstaller = new BaseEnvInstaller(envRepo, logger);

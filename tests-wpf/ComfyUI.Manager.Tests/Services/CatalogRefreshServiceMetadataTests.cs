@@ -39,7 +39,9 @@ public class CatalogRefreshServiceMetadataTests : IDisposable
             },
         };
         public FakeFetcher() : base(new HttpClient(new Mock<HttpMessageHandler>().Object), 60) { }
-        public override Task<CatalogFetchResult> FetchAsync(string url, CancellationToken ct = default)
+        // v0.6.14: 跟 service 的 4-arg HTTP-cache-aware 调用点对齐。
+        public override Task<CatalogFetchResult> FetchAsync(
+            string url, string? etag, string? lastModified, CancellationToken ct = default)
             => Task.FromResult(new CatalogFetchResult(false, Entries, null, null));
     }
 
