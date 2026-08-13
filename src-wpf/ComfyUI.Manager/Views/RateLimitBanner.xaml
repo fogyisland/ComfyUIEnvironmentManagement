@@ -1,0 +1,22 @@
+<UserControl x:Class="ComfyUI.Manager.Views.RateLimitBanner"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{DynamicResource WarningContainerBrush}"
+            BorderBrush="{DynamicResource WarningBrush}"
+            BorderThickness="1" CornerRadius="4"
+            Padding="12,8" Margin="0,0,0,8"
+            Visibility="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}">
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="✕" FontSize="14"
+                       Foreground="{DynamicResource OnWarningBrush}"
+                       Cursor="Hand" Margin="8,0,0,0"
+                       MouseLeftButtonUp="OnDismissClick" />
+            <StackPanel>
+                <TextBlock Text="{Binding Title}" FontWeight="Bold"
+                           Foreground="{DynamicResource OnWarningBrush}" />
+                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="0,2,0,0"
+                           Foreground="{DynamicResource OnWarningBrush}" />
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</UserControl>
