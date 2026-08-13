@@ -185,6 +185,65 @@ public class SettingsViewLoadTests
         }
     }
 
+    /// <summary>
+    /// v0.6.14.1 hotfix:SettingsView 加载时 SyncTokenFromViewModel 把 VM 里的
+    /// GitHubToken 推到 PasswordBox,但 PasswordBox.Password = X 会触发
+    /// PasswordChanged → OnGitHubTokenChanged → VM 调 MarkDirty("GitHubToken")
+    /// → 每次打开 Settings 都显示 ⚠"尚未保存"(用户报告)。期望:PasswordBox 灌入
+    /// 之后 vm.Dirty["GitHubToken"] 必须为 false。
+    /// </summary>
+    [Fact]
+    public void SettingsView_WithPresetGitHubToken_DataContextSet_DoesNotMarkDirty()
+    {
+        Exception? caught = null;
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
+                // 模拟"用户已经保存过 token":Settings 实例直接持有 token
+                var shared = new ComfyUI.Manager.Models.Settings
+                {
+                    GitHubToken = "ghp_test_preexisting",
+                };
+                var repo = new SettingsRepository(Path.Combine(Path.GetTempPath(),
+                    $"settings-token-{Guid.NewGuid():N}.json"));
+                var vm = new SettingsViewModel(repo, GitProxyConfig.Disabled,
+                    new FakeValidator(), sharedSettings: shared);
+                Assert.Equal("ghp_test_preexisting", vm.GitHubToken);
+                Assert.False(vm.Dirty["GitHubToken"]);  // 刚构造,没动过
+
+                // 设 DataContext → 触发 SettingsView.DataContextChanged →
+                // SyncTokenFromViewModel → PasswordBox.Password = vm.GitHubToken
+                var v = new SettingsView { DataContext = vm };
+                v.Measure(new Size(800, 600));
+                v.Arrange(new Rect(0, 0, 800, 600));
+                v.UpdateLayout();
+
+                // 关键断言:PasswordBox 灌入后,VM 不应被标 dirty
+                Assert.Equal("ghp_test_preexisting",
+                    v.GitHubTokenBox.Password);  // 确认 sync 真的跑了
+                Assert.False(vm.Dirty["GitHubToken"],
+                    "SyncTokenFromViewModel 不应把 GitHubToken 标 dirty(回环 bug)");
+            }
+            catch (Exception ex) { caught = ex; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (caught is not null)
+        {
+            throw new Exception(
+                $"SettingsView GitHubToken dirty-guard test failed: " +
+                $"{caught.GetType().FullName}: {caught.Message}\n" +
+                $"--- InnerException ---\n{caught.InnerException}\n" +
+                $"--- StackTrace ---\n{caught.StackTrace}",
+                caught);
+        }
+    }
+
     private sealed class FakeValidator : IPythonInterpreterValidator
     {
         public Task<ValidationResult> ValidateAsync(string path, CancellationToken ct = default)

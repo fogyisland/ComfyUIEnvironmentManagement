@@ -116,6 +116,7 @@ public class CatalogRefreshServiceNoTokenTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            AppLogger? logger = null,
             CancellationToken ct = default)
         {
             CallCount++;
@@ -175,6 +176,7 @@ public class CatalogRefreshServiceNoTokenTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            AppLogger? logger = null,
             CancellationToken ct = default)
         {
             LastTokenSeen = token;

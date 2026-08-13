@@ -387,6 +387,7 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            AppLogger? logger = null,
             CancellationToken ct = default)
         {
             CallCount++;
@@ -403,6 +404,7 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            AppLogger? logger = null,
             CancellationToken ct = default)
         {
             CallCount++;
@@ -424,6 +426,7 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            AppLogger? logger = null,
             CancellationToken ct = default)
         {
             CallCount++;
@@ -444,6 +447,7 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            AppLogger? logger = null,
             CancellationToken ct = default)
         {
             LastTokenSeen = token;
@@ -468,6 +472,7 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            AppLogger? logger = null,
             CancellationToken ct = default)
         {
             CapturedNodes.AddRange(nodes);

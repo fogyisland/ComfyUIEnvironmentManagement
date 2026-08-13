@@ -20,6 +20,11 @@ public partial class SettingsView : UserControl
 
     private SettingsViewModel? _vm;
     private bool _scrollSubscribed;
+    // v0.6.14.1 hotfix:SyncTokenFromViewModel 设 GitHubTokenBox.Password 时
+    // PasswordBox 内部会触发 PasswordChanged → OnGitHubTokenChanged → VM 标
+    // Dirty["GitHubToken"] → ⚠"尚未保存" 警告一直亮。_syncingToken 标志让
+    // OnGitHubTokenChanged 在 sync 期间短路,避免回环。
+    private bool _syncingToken;
 
     /// <summary>
     /// v0.6.9 T7:订阅 VM 的 SectionScrollRequested event。DataContext 变化时重新订阅
@@ -54,14 +59,26 @@ public partial class SettingsView : UserControl
     {
         // PasswordBox 不参与 XAML 双向绑定(string 会明文显示),
         // 首次加载时把 VM 里已存的 token 灌进 PasswordBox。
+        // _syncingToken 防止 PasswordBox.Password = X 触发的回环标 Dirty。
         if (DataContext is SettingsViewModel vm && GitHubTokenBox.Password != vm.GitHubToken)
         {
-            GitHubTokenBox.Password = vm.GitHubToken;
+            _syncingToken = true;
+            try
+            {
+                GitHubTokenBox.Password = vm.GitHubToken;
+            }
+            finally
+            {
+                _syncingToken = false;
+            }
         }
     }
 
     private void OnGitHubTokenChanged(object sender, RoutedEventArgs e)
     {
+        // sync 期间短路:PasswordBox.Password = vm.GitHubToken 内部触发的
+        // PasswordChanged 不应被视为用户编辑。
+        if (_syncingToken) return;
         if (DataContext is SettingsViewModel vm && sender is PasswordBox pb)
         {
             vm.GitHubToken = pb.Password;

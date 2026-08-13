@@ -40,30 +40,46 @@ public class GitHubVersionService
 
     /// <summary>
     /// 旧单条 API(详情面板需要时调)。返回最新 release 的 tag。
+    /// 单条场景:撞 rate limit 仍然 fail-fast 抛 RateLimitException(没有
+    /// partial result 概念,调用方应该 catch)。
     /// </summary>
     public virtual async Task<string?> GetLatestVersionAsync(
         string referenceUrl,
         string? token,
         CancellationToken ct = default)
     {
-        var versions = await GetReleasesAsync(referenceUrl, token, ct);
-        var first = versions.FirstOrDefault(v => !v.IsPrerelease) ?? versions.FirstOrDefault();
+        var (releases, header) = await GetReleasesWithRateLimitAsync(referenceUrl, token, ct);
+        if (header.RateLimitHit)
+        {
+            throw new RateLimitException();
+        }
+        var first = releases.FirstOrDefault(v => !v.IsPrerelease) ?? releases.FirstOrDefault();
         return first?.Tag;
     }
 
     /// <summary>
     /// 批量:输入每个节点的 (id, referenceUrl),返回 (id → 版本列表,按
     /// published_at 倒序,最多 10 个)。没解析出的 / 失败的 → 不出现。
+    ///
+    /// v0.6.14.1 hotfix:rate limit 时**不抛** `RateLimitException`,而是
+    /// 立即停止后续请求 + return 当前 partial result + log Warn。旧实现
+    /// `Task.WhenAll` 在第一个 rate limit 时 aggregate throw,前面已经
+    /// lock 写入的 result 全部丢失,下次 refresh 还会撞同样 5000+ entries
+    /// 死循环。partial 落库后下次 refresh hash-diff 短路,自然恢复。
     /// </summary>
     public virtual async Task<Dictionary<string, List<VersionInfo>>> FetchVersionsAsync(
         IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
         string? token,
         IProgress<VersionFetchProgress>? progress = null,
+        AppLogger? logger = null,
         CancellationToken ct = default)
     {
         var result = new Dictionary<string, List<VersionInfo>>();
         var total = nodes.Count;
         var completed = 0;
+        var rateLimitHit = false;
+        long? resetUnix = null;
+        long? remaining = null;
 
         using var sem = new SemaphoreSlim(Concurrency);
         var tasks = nodes.Select(async node =>
@@ -72,7 +88,22 @@ public class GitHubVersionService
             try
             {
                 if (ct.IsCancellationRequested) return;
-                var releases = await GetReleasesAsync(node.ReferenceUrl, token, ct);
+                var (releases, headerInfo) = await GetReleasesWithRateLimitAsync(
+                    node.ReferenceUrl, token, ct);
+                if (headerInfo.RateLimitRemaining is not null)
+                {
+                    remaining = headerInfo.RateLimitRemaining;
+                }
+                if (headerInfo.RateLimitReset is not null)
+                {
+                    resetUnix = headerInfo.RateLimitReset;
+                }
+                if (headerInfo.RateLimitHit)
+                {
+                    // 第一个撞 rate limit 的 task 设标志,后续 task 看到标志直接退出
+                    Volatile.Write(ref rateLimitHit, true);
+                    return;
+                }
                 if (releases.Count > 0)
                 {
                     lock (result) { result[node.Id] = releases; }
@@ -86,7 +117,39 @@ public class GitHubVersionService
             }
         });
 
-        await Task.WhenAll(tasks);
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;  // 用户取消照常透传
+        }
+        catch (RateLimitException)
+        {
+            // v0.6.14.1 旧行为:这里 aggregate 抛 → 丢 partial。改:
+            // task 内部不再抛 RateLimitException(改用 RateLimitHit 标志),
+            // 这里不再 catch,直接 fall through 返回 partial。
+        }
+        catch
+        {
+            // 别的异常(网络/反序列化)同样不丢 partial。
+        }
+
+        if (Volatile.Read(ref rateLimitHit))
+        {
+            var resetHint = "";
+            if (resetUnix is not null)
+            {
+                var resetAt = DateTimeOffset.FromUnixTimeSeconds(resetUnix.Value).ToLocalTime();
+                var waitMin = Math.Max(0, (int)Math.Ceiling((resetAt - DateTimeOffset.Now).TotalMinutes));
+                resetHint = $",GitHub 限流将在 {resetAt:HH:mm}(约 {waitMin} 分钟后)重置";
+            }
+            logger?.Warn("version-rate-limit",
+                $"拉取版本时撞 GitHub rate limit,已返回 {result.Count}/{total} 条 partial results" +
+                $" (remaining={remaining ?? 0}{resetHint})");
+        }
+
         return result;
     }
 
@@ -105,12 +168,19 @@ public class GitHubVersionService
     /// 拉单个 repo 的 release 列表(/releases?per_page=10)。返回按
     /// published_at 倒序,最多 10 个。draft / 未来 release 会被 API 自然
     /// 过滤掉。
+    ///
+    /// v0.6.14.1 hotfix:撞 rate limit 时**不抛** RateLimitException,
+    /// 改回 (empty, RateLimitHeaderInfo { RateLimitHit=true, Reset, Remaining })。
+    /// 调用方决定怎么处理:单条调用 GetLatestVersionAsync 收到 hit 会自己
+    /// 抛 RateLimitException(单条 fail-fast 没 partial concerns);
+    /// 批量调用 FetchVersionsAsync 收到 hit 写共享标志 + return partial。
+    /// 这样保证 partial results 不被 Task.WhenAll aggregate exception 吞掉。
     /// </summary>
-    private async Task<List<VersionInfo>> GetReleasesAsync(
+    private async Task<(List<VersionInfo> Releases, RateLimitHeaderInfo Header)> GetReleasesWithRateLimitAsync(
         string referenceUrl, string? token, CancellationToken ct)
     {
         var (owner, repo) = ParseRepo(referenceUrl);
-        if (owner is null || repo is null) return new List<VersionInfo>();
+        if (owner is null || repo is null) return (new List<VersionInfo>(), RateLimitHeaderInfo.Empty);
 
         var url = $"https://api.github.com/repos/{owner}/{repo}/releases?per_page={MaxVersionsPerRepo}";
         try
@@ -124,20 +194,18 @@ public class GitHubVersionService
                     "Bearer", token);
             }
             using var resp = await _http.SendAsync(req, ct);
-            // v0.6.13-B.2 hotfix: rate-limit detection(对齐 v0.6.13-B 元数据 service)。
-            // 无 token 时 60/h 上限,5883 个 entry 拉完要 ~10 分钟因为全部静默 403
-            // 慢失败。抛 RateLimitException → CatalogRefreshService 顶层 catch fail-soft,
-            // refresh ~60s 完成 + Warn 日志一行,告诉用户"GitHub rate limit reached"。
-            if (resp.StatusCode == HttpStatusCode.Forbidden
-                && resp.Headers.TryGetValues("X-RateLimit-Remaining", out var vals)
-                && vals.FirstOrDefault() == "0")
+            // v0.6.13-B.2: rate-limit detection(对齐 v0.6.13-B 元数据 service)。
+            // v0.6.14.1 改:不再抛 RateLimitException,改回 (empty, hit=true) tuple。
+            // 单条调用方自己转 throw,批量调用方不抛只记标志。
+            var header = RateLimitHeaderInfo.FromHeaders(resp.Headers);
+            if (resp.StatusCode == HttpStatusCode.Forbidden && header.RateLimitRemaining == 0)
             {
-                throw new RateLimitException();
+                return (new List<VersionInfo>(), header with { RateLimitHit = true });
             }
-            if (!resp.IsSuccessStatusCode) return new List<VersionInfo>();
+            if (!resp.IsSuccessStatusCode) return (new List<VersionInfo>(), header);
             var json = await resp.Content.ReadAsStringAsync(ct);
             using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array) return new List<VersionInfo>();
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return (new List<VersionInfo>(), header);
 
             var list = new List<VersionInfo>();
             foreach (var rel in doc.RootElement.EnumerateArray())
@@ -157,14 +225,42 @@ public class GitHubVersionService
             }
             // published_at 倒序(API 一般已排序,这里兜底)
             list.Sort((a, b) => string.Compare(b.PublishedAt, a.PublishedAt, StringComparison.Ordinal));
-            return list;
+            return (list, header);
         }
         catch (OperationCanceledException) { throw; }
-        catch (RateLimitException) { throw; }
         catch
         {
-            return new List<VersionInfo>();
+            return (new List<VersionInfo>(), RateLimitHeaderInfo.Empty);
         }
+    }
+}
+
+/// <summary>
+/// v0.6.14.1 hotfix:从 GitHub 响应 headers 抓 rate limit 元数据,
+/// 让 FetchVersionsAsync 撞 limit 时能给用户"X 分钟后再试"提示。
+/// </summary>
+public record RateLimitHeaderInfo(
+    bool RateLimitHit,
+    long? RateLimitRemaining,
+    long? RateLimitReset)
+{
+    public static readonly RateLimitHeaderInfo Empty = new(false, null, null);
+
+    public static RateLimitHeaderInfo FromHeaders(System.Net.Http.Headers.HttpResponseHeaders headers)
+    {
+        long? remaining = null;
+        long? reset = null;
+        if (headers.TryGetValues("X-RateLimit-Remaining", out var remVals)
+            && long.TryParse(remVals.FirstOrDefault(), out var r))
+        {
+            remaining = r;
+        }
+        if (headers.TryGetValues("X-RateLimit-Reset", out var rstVals)
+            && long.TryParse(rstVals.FirstOrDefault(), out var rs))
+        {
+            reset = rs;
+        }
+        return new RateLimitHeaderInfo(false, remaining, reset);
     }
 }
 

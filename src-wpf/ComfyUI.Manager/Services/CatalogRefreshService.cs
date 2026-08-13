@@ -189,11 +189,15 @@ public class CatalogRefreshService
                 Dictionary<string, List<VersionInfo>>? versions = null;
                 try
                 {
+                    // v0.6.14.1:FetchVersionsAsync 撞 rate limit 时**不抛**,改
+                    // return partial result + logger.Warn("version-rate-limit", ...)。
+                    // 这里仍然保留 catch 防其他异常(网络/反序列化)。
                     versions = await _versionService.FetchVersionsAsync(
-                        nodes, _settings.GitHubToken, versionProgress, ct);
+                        nodes, _settings.GitHubToken, versionProgress, _logger, ct);
                 }
                 catch (RateLimitException ex)
                 {
+                    // 防御:即便单条 GetLatestVersionAsync 仍会抛,这里兜底
                     _logger?.Warn("catalog-refresh",
                         $"GitHub rate limit hit on version fetch,refresh 返回部分结果: {ex.Message}");
                 }
