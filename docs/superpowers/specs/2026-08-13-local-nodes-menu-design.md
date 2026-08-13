@@ -13,8 +13,8 @@
 **本 spec 要做的**:
 - 侧栏新 tab **"本地节点"** 进入,展示 `LocalNodeDirectory` 下的所有节点卡(card)
 - 每张卡片给操作:① **复制到 env**(选 env 弹 env picker → 复制目录到 env 的 `custom_nodes/`)② **删除本地节点**(清目录 + ScannedNode row)
-- 卡片显示 **跨 env 安装状态**:badge "已装: env-A, env-B" (从 `scanned_nodes` WHERE `Source="download"` OR `Source="github"` 查;来源是本地节点的去重)
-- Catalog 页 + env-list 行内"安装节点"按钮都加 **"下载到本地"** 入口(复用现有 `DownloadAsync`)
+- 卡片显示 **跨 env 安装状态**:badge "已装: env-A, env-B"(从 `scanned_nodes` 按 `package = nodeId` 查所有 `Source="github"` 且 `EnvId != ""` 的行,join environments 拿 display name)
+- Catalog 页每行加 **"下载到本地"** 按钮(复用现有 `DownloadAsync`);v0.6.7.9 已存在,本 spec 加 "已下载" badge + disable 增强
 
 **用户原话**:
 > "增加一个本地节点菜单,我们通过节点目录点击下载就下载到节点目录中。我们也可以在节点目录中直接点击安装安装选择对应的环境进行安装"
@@ -69,7 +69,7 @@
 | `ViewModels/EnvPickerDialogViewModel.cs` | **新** (~60 行) | `EnvList` ObservableCollection + `SelectedEnv` + `OkCommand` |
 | `Views/EnvPickerDialog.xaml` + `.xaml.cs` | **新** (~80 行) | ListBox env + Ok/Cancel 按钮,`Show(title, envs) → EnvInfo?` |
 | `Views/LocalNodeListView.xaml` + `.xaml.cs` | **新** (~150 行) | 卡片布局 + 每行 BadgeBlock + 2 按钮(复制到 env / 删除) |
-| `ViewModels/CatalogViewModel.cs` | **修改** | 每行加 "下载到本地" 按钮(复用 `DownloadAsync`);已下载节点行显示 "已本地下载" badge |
+| `ViewModels/CatalogViewModel.cs` | **修改** | 每行 "下载" 按钮(v0.6.7.9 已加)升级:已下载节点 badge "已本地下载" + 按钮 disabled + 文案 "已下载"(复用 `DownloadAsync`) |
 | `App.xaml.cs` | **修改** | DI 注册 `LocalNodeService` / `LocalNodeCopyInstaller` |
 | `MainWindow.xaml` | **修改** | sidebar 加 RadioButton "本地节点" + ContentControl 绑定 `LocalNodeListView` |
 | `MainViewModel.cs` | **修改** | 加 `LocalNodeListVM` property + 加载 |
@@ -97,16 +97,16 @@ public sealed record LocalNodeInfo
 ```
 
 **`InstalledEnvIds` / `InstalledEnvNames` 来源**:
-- Step A:`SELECT pkg.name FROM env_id_or_name` — 单 SQL: `SELECT package, env_id FROM scanned_nodes WHERE package = @nodeId` 不够,因 `Source="download"` 行的 `Id` = `nodeId` 但 env 装的 `Source="github"` 行 `Id` 不同于 `nodeId`(env 装的也是 git clone,目录名 = `nodeId` 是巧合 — ComfyUI 节点目录约定)
-- **策略**:本地节点 `nodeId` 跟 env 装的 `nodeId` **不保证一致** — env 装的是 `git clone <repoUrl>` 后用 `repoUrl` 末段作目录名(`Path.GetFileName(repoUrl.TrimEnd('/').Replace('.git',''))`),本地下载也一样。但 `package` 字段在 `scanned_nodes` 都是 `nodeId`(`NodeOperations` 写库的 `Package = Path.GetFileName(repoUrl)`)
-- **修法**:跨 env 查 `scanned_nodes` 用 `package = ?` 不用 `id = ?`:
+- env 装的 `scanned_nodes` 行 `Id` 字段 = `nodeId`(目录名);`Source="github"` 行 `EnvId` = env_id
+- 本地下载的 `scanned_nodes` 行 `EnvId=""` + `Source="download"`,只是 sentinel,不算"已装"
+- 跨 env 状态查询走 `scanned_nodes` 用 `package = ?` —— `package` 字段在 `NodeOperations.InstallAsync` 和 `DownloadAsync` 写库时都设为 `nodeId`,稳定可查:
   ```sql
-  SELECT env_id, id FROM scanned_nodes
+  SELECT env_id FROM scanned_nodes
   WHERE package = @nodeId
     AND env_id != ''
     AND source = 'github'
   ```
-- `InstalledEnvNames` 再 join `environments` 表 `WHERE env_id IN (...)` 拿 display name
+- `InstalledEnvNames` 再 join `environments` 表 `WHERE env_id IN (...)` 拿 display name;env 不存在(被删)显示 env_id fallback
 
 ### 3.3 入口位置
 
@@ -126,40 +126,47 @@ public sealed record LocalNodeInfo
 
 env-list 行内操作列已经 10 按钮(v0.6.10.2 后),再加第 11 按钮会让卡片翻倍。**不**在 env-list 加 下载入口,用户从 Catalog 走。或从侧栏 "本地节点" tab 先下载。
 
-### 3.4 Install flow(本地节点 → env)
+### 3.4 Install flow(本地节点 → env,纯数据层 copy 路径)
 
 ```
 [User clicks "复制到 env" on local-node card]
         ↓
-EnvPickerDialog.Show(title="安装 <nodeId> 到哪个 env?", envs=...)
+LocalNodeListViewModel.InstallCommand.Execute(Info)
         ↓
-User selects env-A → clicks OK
+EnvPickerDialog.Show(title="将 <nodeId> 复制到哪个 env?", envs=...)
+        ↓
+User selects env-A → clicks OK → dialog closes
+        ↓
+LocalNodeListViewModel.InstallCommand.Execute(...) 拿到 EnvInfo
         ↓
 LocalNodeCopyInstaller.InstallAsync(envId=<env-A>, sourcePath=<LocalNodeDir>/<nodeId>, nodeId=<nodeId>, ct)
         ↓
-1. Check env exists (env_repo.Get(envId))
+1. Check env exists (env_repo.Get(envId)) → Fail if missing
         ↓
 2. Compute targetDir = <env.CustomNodesPath>/<nodeId>
         ↓
-3. If targetDir exists → Fail("目录已存在: <path>")
+3. If targetDir exists → Fail("目录已存在: <path>")  // 不自动覆盖
         ↓
-4. Directory.Copy(sourcePath, targetDir, recursive: true)
+4. Directory.CreateDirectory(<env.CustomNodesPath>)
         ↓
-5. Try read head sha from targetDir (git rev-parse HEAD → ScannedNode.Version)
+5. Directory.Copy(sourcePath, targetDir, recursive: true)
         ↓
-6. _nodeRepo.Upsert(new ScannedNode {
+6. Try read head sha from targetDir (git rev-parse HEAD → ScannedNode.Version)
+         若非 git 仓库(用户手动放的)→ Version = ""
+        ↓
+7. _nodeRepo.Upsert(new ScannedNode {
        Id = nodeId,
        EnvId = envId,
        Package = nodeId,
        Source = "github",
-       Version = headSha,
+       Version = headSha ?? "",
        Status = "enabled",
        InstallDate = DateTime.UtcNow,
    })
         ↓
-7. Return Success
+8. Return Success
         ↓
-On exception:
+On exception(any step 3-7):
    - TryDelete(targetDir)
    - Return Failure(msg)
         ↓
@@ -167,10 +174,12 @@ On exception:
         ↓
 Update LocalNodeInfo.InstalledEnvIds += envId
    - Re-fetch env name from env_repo
-   - Update BadgeText in INPC
+   - NotifyPropertyChanged(BadgeText, InstalledEnvNames)
         ↓
-[User sees badge "已装: env-A" on the card]
+[User sees badge "已装: env-A" on the card;无 re-fetch 全 list]
 ```
+
+**性能优化**:复制完成后只更新受影响 card 的 badge,**不重 fetch 整个列表**(`LocalNodeService.ListAsync` 走全盘扫描,GB 级本地目录 < 500ms 但无谓跑);用户主动点 Refresh 才重 fetch。
 
 ### 3.5 Delete flow(本地节点)
 
