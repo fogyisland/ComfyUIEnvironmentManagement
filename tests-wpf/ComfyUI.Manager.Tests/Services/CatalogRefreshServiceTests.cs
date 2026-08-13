@@ -458,8 +458,12 @@ public class CatalogRefreshServiceTests : IDisposable
     private sealed class CapturingVersionService : GitHubVersionService
     {
         public List<(string Id, string ReferenceUrl)> CapturedNodes { get; } = new();
-        public CapturingVersionService()
-            : base(new HttpClient(new Mock<HttpMessageHandler>().Object)) { }
+        private readonly Dictionary<string, List<VersionInfo>> _result;
+        public CapturingVersionService(Dictionary<string, List<VersionInfo>>? result = null)
+            : base(new HttpClient(new Mock<HttpMessageHandler>().Object))
+        {
+            _result = result ?? new Dictionary<string, List<VersionInfo>>();
+        }
         public override Task<Dictionary<string, List<VersionInfo>>> FetchVersionsAsync(
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
@@ -467,7 +471,7 @@ public class CatalogRefreshServiceTests : IDisposable
             CancellationToken ct = default)
         {
             CapturedNodes.AddRange(nodes);
-            return Task.FromResult(new Dictionary<string, List<VersionInfo>>());
+            return Task.FromResult(_result);
         }
     }
 
@@ -1104,5 +1108,85 @@ public class CatalogRefreshServiceTests : IDisposable
 
         Assert.True(result.Success);
         Assert.Empty(capturing.CapturedNodes);
+    }
+
+    /// <summary>
+    /// v0.6.14 hotfix regression: 之前 backfill 检测后,idToKey 是从 toUpsert 构造的,
+    /// hash 全 match 时 toUpsert=0 → idToKey 空 → 写 0 行,node_versions 仍然空。
+    /// 这个测试跑完整 backfill 路径(version service 真的返回数据),验证 DB
+    /// 里出现 version row。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_Backfill_WithVersionData_ActuallyWritesToNodeVersions()
+    {
+        var url = _settings.QuerySources[0].Url;
+        var prefillStore = new CatalogCacheStore(_db.Path);
+        var prefillRepo = new CatalogRepository(prefillStore);
+        var versionRepo = new NodeVersionRepository(prefillStore);
+        var entryA = new CatalogEntry
+        {
+            Id = "seed-A",
+            SourceUrl = url,
+            Package = "ComfyUI-A",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["reference"] = "https://github.com/ownerA/repoA",
+            },
+        };
+        prefillRepo.Upsert(entryA);
+        Assert.Equal(0, versionRepo.Count());
+
+        // 第二次 refresh,hash 不变 → toUpsert=0,走 backfill 路径
+        var newIdA = Guid.NewGuid().ToString();
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new CatalogEntry
+                {
+                    Id = newIdA,
+                    SourceUrl = url,
+                    Package = "ComfyUI-A",
+                    RawMetadata = new Dictionary<string, object?>
+                    {
+                        ["reference"] = "https://github.com/ownerA/repoA",
+                    },
+                },
+            },
+        };
+        var settings = new Settings
+        {
+            GitHubToken = "ghp_test",
+            FetchNodeVersionsOnRefresh = true,
+        };
+        ComfyUI.Manager.Infrastructure.SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
+
+        // version service 真的返回数据
+        var versionResult = new Dictionary<string, List<VersionInfo>>
+        {
+            [newIdA] = new()
+            {
+                new VersionInfo { Tag = "v2.0.0", PublishedAt = "2026-07-01T00:00:00Z", IsPrerelease = false },
+                new VersionInfo { Tag = "v1.0.0", PublishedAt = "2025-12-01T00:00:00Z", IsPrerelease = false },
+            },
+        };
+        var capturing = new CapturingVersionService(versionResult);
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(prefillStore),
+            settings,
+            versionService: capturing,
+            versionRepo: versionRepo);
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        // 关键:node_versions 表有 2 行(2 个 version),不是 0
+        Assert.Equal(2, versionRepo.Count());
+        // 按 (source_url, package) 寻址命中 seed-A 那一行
+        var list = versionRepo.ListByNode("seed-A");
+        Assert.Equal(2, list.Count);
+        Assert.Equal("v2.0.0", list[0].Tag);  // published_at DESC
+        Assert.Equal("v1.0.0", list[1].Tag);
     }
 }

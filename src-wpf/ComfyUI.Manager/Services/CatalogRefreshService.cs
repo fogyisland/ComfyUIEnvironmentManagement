@@ -199,8 +199,11 @@ public class CatalogRefreshService
                 }
                 if (versions is { Count: > 0 })
                 {
-                    // build id → (source_url, package) 用于把 versions 字典的结果翻译成 stable key
-                    var idToKey = toUpsert
+                    // build id → (source_url, package) 用于把 versions 字典的结果翻译成 stable key。
+                    // v0.6.14 hotfix:必须从 versionSource 取(backfill 模式 = entries,
+                    // toUpsert 可能为空;非 backfill 模式 = toUpsert)。老代码用 toUpsert
+                    // 在 backfill 模式下拿不到任何 key → 写 0 行。
+                    var idToKey = versionSource
                         .Where(e => versions.ContainsKey(e.Id))
                         .GroupBy(e => e.Id)
                         .ToDictionary(
