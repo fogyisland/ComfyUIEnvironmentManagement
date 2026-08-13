@@ -24,6 +24,10 @@
     <SolidColorBrush x:Key="ErrorVariantBrush" Color="{StaticResource ErrorVariantColor}" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
+    <Color x:Key="WarningContainerColor">#3D2F00</Color>
+    <Color x:Key="OnWarningColor">#FFE0A6</Color>
+    <SolidColorBrush x:Key="WarningContainerBrush" Color="{StaticResource WarningContainerColor}" />
+    <SolidColorBrush x:Key="OnWarningBrush" Color="{StaticResource OnWarningColor}" />
     <SolidColorBrush x:Key="OnPrimaryBrush" Color="{StaticResource OnPrimaryColor}" />
     <SolidColorBrush x:Key="OnSurfaceBrush" Color="{StaticResource OnSurfaceColor}" />
     <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#252525" />
