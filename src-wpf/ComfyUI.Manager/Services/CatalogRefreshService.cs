@@ -168,10 +168,24 @@ public class CatalogRefreshService
             // 三元组给 CatalogRepository.UpdateLatestVersions / NodeVersionRepository。
             if (_versionService is not null && _settings.FetchNodeVersionsOnRefresh)
             {
-                var nodes = toUpsert
+                // v0.6.14 hotfix backfill: 第一次刷新时 node_versions 表为空是常见
+                // 情况(用户开启 fetch_node_versions_on_refresh 之前 catalog 已经
+                // 缓存过,hash-diff 短路让 toUpsert=0 → version fetch 整个跳过)。
+                // 检测 node_versions.Count()==0 时,对所有 entry(不只是 toUpsert)
+                // 拉 version,只触发一次;后续 refresh node_versions 非空 → 走正常
+                // hash-diff 优化路径(只对变了的 entry 拉)。
+                bool isBackfill = _versionRepo is not null && _versionRepo.Count() == 0;
+                var versionSource = isBackfill ? (IReadOnlyList<CatalogEntry>)entries : toUpsert;
+                var nodes = versionSource
                     .Select(e => (e.Id, ReferenceUrl: ExtractReference(e)))
                     .Where(t => !string.IsNullOrWhiteSpace(t.ReferenceUrl))
                     .ToList();
+                if (isBackfill)
+                {
+                    _logger?.Info("catalog-backfill",
+                        $"node_versions 表为空,触发首次 backfill,对 {nodes.Count} 个 entry 拉 version" +
+                        $" (后续 refresh 走正常 hash-diff 路径)");
+                }
                 Dictionary<string, List<VersionInfo>>? versions = null;
                 try
                 {

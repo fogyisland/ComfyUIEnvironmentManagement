@@ -452,6 +452,26 @@ public class CatalogRefreshServiceTests : IDisposable
     }
 
     /// <summary>
+    /// v0.6.14 hotfix:捕获 FetchVersionsAsync 收到的 nodes 列表(对比 backfill
+    /// 路径传 all entries vs 正常 hash-diff 路径传 toUpsert)。
+    /// </summary>
+    private sealed class CapturingVersionService : GitHubVersionService
+    {
+        public List<(string Id, string ReferenceUrl)> CapturedNodes { get; } = new();
+        public CapturingVersionService()
+            : base(new HttpClient(new Mock<HttpMessageHandler>().Object)) { }
+        public override Task<Dictionary<string, List<VersionInfo>>> FetchVersionsAsync(
+            IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
+            string? token,
+            IProgress<VersionFetchProgress>? progress = null,
+            CancellationToken ct = default)
+        {
+            CapturedNodes.AddRange(nodes);
+            return Task.FromResult(new Dictionary<string, List<VersionInfo>>());
+        }
+    }
+
+    /// <summary>
     /// v0.6.14: 真 fake http cache store — 内存存 etag/lastModified,refresh 测试用。
     /// 基类的 GetAsync/PutAsync 是 virtual,这里 override(不能用 new —— service
     /// 持的是基类引用,new 不会被虚派发,fake 就形同虚设)。
@@ -844,5 +864,245 @@ public class CatalogRefreshServiceTests : IDisposable
         Assert.Equal(url, existing.SourceUrl);
         Assert.Equal("pkg-x", existing.Package);
         Assert.Equal("v2.0.0", existing.LatestVersion);
+    }
+
+    // ===== v0.6.14 hotfix backfill =====
+    // 场景:用户开了 fetch_node_versions_on_refresh 但 node_versions 表为空(hash-diff
+    // 让 toUpsert=0 → 老逻辑下永不拉)。RefreshAsync 必须检测空表 → 对所有 entries
+    // 拉 version,只触发一次。
+
+    [Fact]
+    public async Task RefreshAsync_NodeVersionsEmpty_BackfillFetchesForAllEntries()
+    {
+        // 三条 entry 都带有效 reference URL,refresh 后 toUpsert 应该 = 0(DB 已有,
+        // hash 一致),正常路径下 version fetch 会被 toUpsert.Count==0 跳过。
+        // 但 node_versions 表为空 → 走 backfill 路径,对所有 entry 拉。
+        var entryA = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            Package = "ComfyUI-A",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["reference"] = "https://github.com/ownerA/repoA",
+            },
+        };
+        var entryB = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            Package = "ComfyUI-B",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["reference"] = "https://github.com/ownerB/repoB",
+            },
+        };
+        var entryC = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            Package = "ComfyUI-C",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["reference"] = "https://github.com/ownerC/repoC",
+            },
+        };
+        // 预填 catalog_cache(3 行),让 hash-diff 后 toUpsert=0 — 模拟"历史 catalog 已
+        // 缓存,只是从来没拉过 version"的状态
+        var prefillStore = new CatalogCacheStore(_db.Path);
+        var url = _settings.QuerySources[0].Url;
+        var prefillRepo = new CatalogRepository(prefillStore);
+        foreach (var e in new[] { entryA, entryB, entryC })
+        {
+            e.SourceUrl = url;
+            e.RawMetadata["reference"] = e.RawMetadata["reference"];  // 保 reference
+            // 用现在的 hash 写入,确保 hash 一致
+            prefillRepo.Upsert(e);
+        }
+        var versionRepo = new NodeVersionRepository(prefillStore);
+        Assert.Equal(0, versionRepo.Count());  // 预填后 node_versions 仍空
+
+        // 第二次 refresh:entries 内容不变,hash 一致 → toUpsert=0
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new CatalogEntry
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Package = entryA.Package,
+                    RawMetadata = new Dictionary<string, object?>
+                    {
+                        ["reference"] = entryA.RawMetadata["reference"],
+                    },
+                    SourceUrl = url,
+                },
+                new CatalogEntry
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Package = entryB.Package,
+                    RawMetadata = new Dictionary<string, object?>
+                    {
+                        ["reference"] = entryB.RawMetadata["reference"],
+                    },
+                    SourceUrl = url,
+                },
+                new CatalogEntry
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Package = entryC.Package,
+                    RawMetadata = new Dictionary<string, object?>
+                    {
+                        ["reference"] = entryC.RawMetadata["reference"],
+                    },
+                    SourceUrl = url,
+                },
+            },
+        };
+
+        var settings = new Settings
+        {
+            GitHubToken = "ghp_test",
+            FetchNodeVersionsOnRefresh = true,
+        };
+        ComfyUI.Manager.Infrastructure.SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
+
+        var capturing = new CapturingVersionService();
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(prefillStore),
+            settings,
+            versionService: capturing,
+            versionRepo: versionRepo);
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        // 关键:3 个 entry 全传给了 version service(backfill 路径),不只是 toUpsert
+        Assert.Equal(3, capturing.CapturedNodes.Count);
+        // 按 package 排序无关紧要,检查 3 个 ref URL 都在
+        var urls = capturing.CapturedNodes.Select(n => n.ReferenceUrl).OrderBy(u => u).ToList();
+        Assert.Equal("https://github.com/ownerA/repoA", urls[0]);
+        Assert.Equal("https://github.com/ownerB/repoB", urls[1]);
+        Assert.Equal("https://github.com/ownerC/repoC", urls[2]);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_NodeVersionsPopulated_DoesNotBackfill()
+    {
+        // 预填 catalog + node_versions,模拟"version 之前已经拉过"的稳态。
+        // 第二次 refresh,hash 一致 → toUpsert=0;node_versions 非空 → 不 backfill。
+        var url = _settings.QuerySources[0].Url;
+        var prefillStore = new CatalogCacheStore(_db.Path);
+        var prefillRepo = new CatalogRepository(prefillStore);
+        var versionRepo = new NodeVersionRepository(prefillStore);
+        var entrySeed = new CatalogEntry
+        {
+            Id = "seed-1",
+            SourceUrl = url,
+            Package = "ComfyUI-X",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["reference"] = "https://github.com/ownerX/repoX",
+            },
+        };
+        prefillRepo.Upsert(entrySeed);
+        versionRepo.UpsertBatch(new (string, string, VersionInfo)[]
+        {
+            (url, "ComfyUI-X", new VersionInfo { Tag = "v1.0.0", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false }),
+        });
+        Assert.Equal(1, versionRepo.Count());
+
+        // 第二次 refresh — 内容不变
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new CatalogEntry
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    SourceUrl = url,
+                    Package = "ComfyUI-X",
+                    RawMetadata = new Dictionary<string, object?>
+                    {
+                        ["reference"] = "https://github.com/ownerX/repoX",
+                    },
+                },
+            },
+        };
+        var settings = new Settings
+        {
+            GitHubToken = "ghp_test",
+            FetchNodeVersionsOnRefresh = true,
+        };
+        ComfyUI.Manager.Infrastructure.SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
+
+        var capturing = new CapturingVersionService();
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(prefillStore),
+            settings,
+            versionService: capturing,
+            versionRepo: versionRepo);
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        // 关键:稳态下 version service 一次都不该被调用(toUpsert=0 + node_versions 非空)
+        Assert.Empty(capturing.CapturedNodes);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_NodeVersionsEmpty_GateOff_DoesNotBackfill()
+    {
+        // 边界:node_versions 空 + 开关 OFF → 不应触发 backfill(开关优先)
+        var url = _settings.QuerySources[0].Url;
+        var prefillStore = new CatalogCacheStore(_db.Path);
+        var prefillRepo = new CatalogRepository(prefillStore);
+        var versionRepo = new NodeVersionRepository(prefillStore);
+        prefillRepo.Upsert(new CatalogEntry
+        {
+            Id = "seed-2",
+            SourceUrl = url,
+            Package = "ComfyUI-Y",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["reference"] = "https://github.com/ownerY/repoY",
+            },
+        });
+        Assert.Equal(0, versionRepo.Count());
+
+        var fetcher = new FakeCatalogFetcher
+        {
+            EntriesToReturn = new List<CatalogEntry>
+            {
+                new CatalogEntry
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    SourceUrl = url,
+                    Package = "ComfyUI-Y",
+                    RawMetadata = new Dictionary<string, object?>
+                    {
+                        ["reference"] = "https://github.com/ownerY/repoY",
+                    },
+                },
+            },
+        };
+        var settings = new Settings
+        {
+            GitHubToken = "ghp_test",
+            FetchNodeVersionsOnRefresh = false,  // OFF
+        };
+        ComfyUI.Manager.Infrastructure.SettingsDefaults.Apply(settings, @"D:\ToolDevelop\ComfyUI");
+
+        var capturing = new CapturingVersionService();
+        var svc = new CatalogRefreshService(
+            fetcher,
+            new CatalogRepository(prefillStore),
+            settings,
+            versionService: capturing,
+            versionRepo: versionRepo);
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Empty(capturing.CapturedNodes);
     }
 }

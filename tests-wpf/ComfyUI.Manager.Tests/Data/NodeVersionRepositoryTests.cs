@@ -189,4 +189,27 @@ public class NodeVersionRepositoryTests : IDisposable
         Assert.Equal("v2.0.0", _repo.ListByNode("new-guid")[0].Tag);
         Assert.Empty(_repo.ListByNode("old-guid"));
     }
+
+    // v0.6.14 hotfix:Count() 给 CatalogRefreshService backfill 检测用 — 表空 + 开关 ON → 全量拉。
+
+    [Fact]
+    public void Count_EmptyTable_ReturnsZero()
+    {
+        Assert.Equal(0, _repo.Count());
+    }
+
+    [Fact]
+    public void Count_AfterInserts_ReturnsRowCountAcrossNodes()
+    {
+        SeedCatalog("node-a", "pkg-a");
+        SeedCatalog("node-b", "pkg-b");
+        SeedCatalog("node-c", "pkg-c");
+        _repo.UpsertBatch(new (string, string, VersionInfo)[]
+        {
+            (SourceUrl, "pkg-a", new VersionInfo { Tag = "v1.0.0", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false }),
+            (SourceUrl, "pkg-a", new VersionInfo { Tag = "v0.9.0", PublishedAt = "2025-12-01T00:00:00Z", IsPrerelease = false }),
+            (SourceUrl, "pkg-b", new VersionInfo { Tag = "v1.0.0", PublishedAt = "2026-02-01T00:00:00Z", IsPrerelease = false }),
+        });
+        Assert.Equal(3, _repo.Count());
+    }
 }

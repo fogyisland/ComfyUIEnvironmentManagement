@@ -115,6 +115,19 @@ public sealed class NodeVersionRepository
     }
 
     /// <summary>
+    /// v0.6.14 hotfix: node_versions 表行数。CatalogRefreshService 在 version fetch
+    /// 前查这个数 — 为 0 + 开关 ON → 触发 backfill,对所有 entry 拉 version(绕过
+    /// hash-diff 短路)。
+    /// </summary>
+    public int Count()
+    {
+        using var conn = _store.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM node_versions";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    /// <summary>
     /// 取一个节点的所有版本,按发布时间倒序(最新在前)。
     /// </summary>
     public List<VersionInfo> ListByNode(string nodeId)

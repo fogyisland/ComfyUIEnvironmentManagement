@@ -257,7 +257,8 @@
                                           ItemsSource="{Binding Versions}"
                                           SelectedItem="{Binding SelectedVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                           DisplayMemberPath="DisplayLabel"
-                                          MinWidth="120">
+                                          MinWidth="120"
+                                          MaxWidth="220">
                                     <ComboBox.Style>
                                         <Style TargetType="ComboBox">
                                             <Setter Property="Visibility" Value="Visible" />
