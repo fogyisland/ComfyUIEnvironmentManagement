@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
 using Microsoft.Data.Sqlite;
 
@@ -27,7 +29,9 @@ public sealed class CatalogRepository
         "id, source_url, package, raw_metadata, cached_at, expires_at, " +
         "latest_version, author, description, install_type, reference, last_update, pip_json, " +
         "license, tags_json, stars, downloads, last_commit, readme_markdown, " +
-        "latest_changelog, deprecated, python_compat_json, os_compat_json, metadata_fetched_at";
+        "latest_changelog, deprecated, python_compat_json, os_compat_json, metadata_fetched_at, " +
+        "content_hash, html_url, homepage, language, forks_count, open_issues_count, " +
+        "release_tag, subscribers_count, created_at";
 
     public CatalogRepository(CatalogCacheStore store)
     {
@@ -125,6 +129,16 @@ public sealed class CatalogRepository
         cmd.Parameters.Add("@python_compat_json", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Parameters.Add("@os_compat_json", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Parameters.Add("@metadata_fetched_at", Microsoft.Data.Sqlite.SqliteType.Text);
+        // v0.6.14: 9 新列(content_hash + 8 GitHub typed props)
+        cmd.Parameters.Add("@content_hash", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@html_url", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@homepage", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@language", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@forks_count", Microsoft.Data.Sqlite.SqliteType.Integer);
+        cmd.Parameters.Add("@open_issues_count", Microsoft.Data.Sqlite.SqliteType.Integer);
+        cmd.Parameters.Add("@release_tag", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@subscribers_count", Microsoft.Data.Sqlite.SqliteType.Integer);
+        cmd.Parameters.Add("@created_at", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Prepare();
         int count = 0;
         foreach (var entry in entries)
@@ -154,6 +168,16 @@ public sealed class CatalogRepository
             cmd.Parameters["@python_compat_json"].Value = SerializeStringArray(entry.PythonCompat);
             cmd.Parameters["@os_compat_json"].Value = SerializeStringArray(entry.OsCompat);
             cmd.Parameters["@metadata_fetched_at"].Value = (object?)entry.MetadataFetchedAt ?? DBNull.Value;
+            // v0.6.14: 9 新列
+            cmd.Parameters["@content_hash"].Value = CatalogEntryHasher.ComputeHash(entry);
+            cmd.Parameters["@html_url"].Value = (object?)entry.HtmlUrl ?? DBNull.Value;
+            cmd.Parameters["@homepage"].Value = (object?)entry.Homepage ?? DBNull.Value;
+            cmd.Parameters["@language"].Value = (object?)entry.Language ?? DBNull.Value;
+            cmd.Parameters["@forks_count"].Value = entry.ForksCount;
+            cmd.Parameters["@open_issues_count"].Value = entry.OpenIssuesCount;
+            cmd.Parameters["@release_tag"].Value = (object?)entry.ReleaseTag ?? DBNull.Value;
+            cmd.Parameters["@subscribers_count"].Value = entry.SubscribersCount;
+            cmd.Parameters["@created_at"].Value = (object?)entry.CreatedAt ?? DBNull.Value;
             cmd.ExecuteNonQuery();
             count++;
             onUpserted?.Invoke(entry);
@@ -225,12 +249,16 @@ public sealed class CatalogRepository
             (id, source_url, package, raw_metadata, cached_at, expires_at,
              author, description, install_type, reference, last_update, pip_json,
              license, tags_json, stars, downloads, last_commit, readme_markdown,
-             latest_changelog, deprecated, python_compat_json, os_compat_json, metadata_fetched_at)
+             latest_changelog, deprecated, python_compat_json, os_compat_json, metadata_fetched_at,
+             content_hash, html_url, homepage, language, forks_count, open_issues_count,
+             release_tag, subscribers_count, created_at)
         VALUES
             (@id, @source_url, @package, @raw_metadata, @cached_at, @expires_at,
              @author, @description, @install_type, @reference, @last_update, @pip_json,
              @license, @tags_json, @stars, @downloads, @last_commit, @readme_markdown,
-             @latest_changelog, @deprecated, @python_compat_json, @os_compat_json, @metadata_fetched_at)
+             @latest_changelog, @deprecated, @python_compat_json, @os_compat_json, @metadata_fetched_at,
+             @content_hash, @html_url, @homepage, @language, @forks_count, @open_issues_count,
+             @release_tag, @subscribers_count, @created_at)
         ON CONFLICT(source_url, package) DO UPDATE SET
             raw_metadata=excluded.raw_metadata,
             cached_at=excluded.cached_at,
@@ -251,7 +279,16 @@ public sealed class CatalogRepository
             deprecated=excluded.deprecated,
             python_compat_json=excluded.python_compat_json,
             os_compat_json=excluded.os_compat_json,
-            metadata_fetched_at=excluded.metadata_fetched_at";
+            metadata_fetched_at=excluded.metadata_fetched_at,
+            content_hash=excluded.content_hash,
+            html_url=excluded.html_url,
+            homepage=excluded.homepage,
+            language=excluded.language,
+            forks_count=excluded.forks_count,
+            open_issues_count=excluded.open_issues_count,
+            release_tag=excluded.release_tag,
+            subscribers_count=excluded.subscribers_count,
+            created_at=excluded.created_at";
 
     private static void BindUpsertParameters(SqliteCommand cmd, CatalogEntry entry)
     {
@@ -280,6 +317,37 @@ public sealed class CatalogRepository
         cmd.Parameters.AddWithValue("@python_compat_json", SerializeStringArray(entry.PythonCompat));
         cmd.Parameters.AddWithValue("@os_compat_json", SerializeStringArray(entry.OsCompat));
         cmd.Parameters.AddWithValue("@metadata_fetched_at", (object?)entry.MetadataFetchedAt ?? DBNull.Value);
+        // v0.6.14: 9 新列
+        cmd.Parameters.AddWithValue("@content_hash", CatalogEntryHasher.ComputeHash(entry));
+        cmd.Parameters.AddWithValue("@html_url", (object?)entry.HtmlUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@homepage", (object?)entry.Homepage ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@language", (object?)entry.Language ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@forks_count", entry.ForksCount);
+        cmd.Parameters.AddWithValue("@open_issues_count", entry.OpenIssuesCount);
+        cmd.Parameters.AddWithValue("@release_tag", (object?)entry.ReleaseTag ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@subscribers_count", entry.SubscribersCount);
+        cmd.Parameters.AddWithValue("@created_at", (object?)entry.CreatedAt ?? DBNull.Value);
+    }
+
+    /// <summary>
+    /// v0.6.14: 拉一个 source_url 下所有 (package, content_hash),给 CatalogRefreshService
+    /// 做 hash diff 用。
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string>> GetContentHashesBySourceAsync(
+        string sourceUrl, CancellationToken ct = default)
+    {
+        using var conn = _store.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT package, content_hash FROM catalog_cache WHERE source_url = @url";
+        cmd.Parameters.AddWithValue("@url", sourceUrl);
+        using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            result[reader.GetString(0)] = reader.IsDBNull(1) ? "" : reader.GetString(1);
+        }
+        return result;
     }
 
     /// <summary>
@@ -335,6 +403,9 @@ public sealed class CatalogRepository
         var rawJson = reader.GetString(3);
         var pipJson = reader.IsDBNull(12) ? "" : reader.GetString(12);
         var reqs = TryParsePipRequirements(pipJson);
+        // v0.6.14: content_hash 在 index 24,仅供 GetContentHashesBySourceAsync
+        // 使用,这里消费但不存到 CatalogEntry(没有 typed property)。
+        _ = reader.IsDBNull(24) ? null : reader.GetString(24);
         return new CatalogEntry
         {
             Id = reader.GetString(0),
@@ -362,6 +433,14 @@ public sealed class CatalogRepository
             PythonCompat = ParseStringArray(reader, 21),
             OsCompat = ParseStringArray(reader, 22),
             MetadataFetchedAt = reader.IsDBNull(23) ? null : reader.GetString(23),
+            HtmlUrl = reader.IsDBNull(25) ? null : reader.GetString(25),
+            Homepage = reader.IsDBNull(26) ? null : reader.GetString(26),
+            Language = reader.IsDBNull(27) ? null : reader.GetString(27),
+            ForksCount = reader.IsDBNull(28) ? 0 : reader.GetInt32(28),
+            OpenIssuesCount = reader.IsDBNull(29) ? 0 : reader.GetInt32(29),
+            ReleaseTag = reader.IsDBNull(30) ? null : reader.GetString(30),
+            SubscribersCount = reader.IsDBNull(31) ? 0 : reader.GetInt32(31),
+            CreatedAt = reader.IsDBNull(32) ? null : reader.GetString(32),
         };
     }
 
