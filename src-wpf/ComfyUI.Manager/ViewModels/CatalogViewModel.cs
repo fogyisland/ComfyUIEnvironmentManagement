@@ -347,8 +347,6 @@ public class CatalogViewModel : ViewModelBase
                 metadataProgress, _rateLimitState, ct);
             if (result.Success)
             {
-                CurrentPage = 1;
-                ApplyPage();
                 // v0.6.15: WriteProgress 直接 populate result 4 计数,
                 // InfoMessage 沿用既有 4 计数格式(用户已习惯)
                 WriteProgress =
@@ -368,6 +366,10 @@ public class CatalogViewModel : ViewModelBase
         }
         finally
         {
+            // 流式 progress 只是 refresh 期间的实时反馈,不是权威数据。
+            // 命中 304 / 取消 / 出错时一条都不会 report,列表会留空。
+            // 结束时统一从 DB 重读,顺带让当前 Query 过滤生效。
+            Search();
             IsBusy = false;
             RefreshPercent = 0;
             ProgressMessage = null;

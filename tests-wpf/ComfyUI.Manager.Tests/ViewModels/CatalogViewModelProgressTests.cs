@@ -93,6 +93,13 @@ public class CatalogViewModelProgressTests : IDisposable
     private static (CatalogViewModel vm, FakeCatalogRefreshService fake)
         CreateVm()
     {
+        var (vm, fake, _) = CreateVmWithRepo();
+        return (vm, fake);
+    }
+
+    private static (CatalogViewModel vm, FakeCatalogRefreshService fake,
+        CatalogRepository repo) CreateVmWithRepo()
+    {
         var dbPath = Path.Combine(Path.GetTempPath(),
             $"cvm-progress-{Guid.NewGuid():N}.db");
         var cacheStore = new CatalogCacheStore(dbPath);
@@ -105,7 +112,7 @@ public class CatalogViewModelProgressTests : IDisposable
         var vm = new CatalogViewModel(
             catRepo, verRepo, nodeOps, fake, new Settings(), settingsRepo,
             Path.GetTempPath(), rateLimitState: state);
-        return (vm, fake);
+        return (vm, fake, catRepo);
     }
 
     [Fact]
@@ -200,5 +207,23 @@ public class CatalogViewModelProgressTests : IDisposable
 
         Assert.True(vm.RateLimitBanner.IsVisible);
         Assert.Contains("200/5500", vm.RateLimitBanner.Message);
+    }
+
+    /// <summary>
+    /// 命中 304 Not Modified 时 refresh service 一条 entry 都不 report,
+    /// 列表必须仍从 DB 重读回来,而不是留在 refresh 入口清空后的空状态。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_NoEntriesReported_RestoresListFromDb()
+    {
+        var (vm, fake, repo) = CreateVmWithRepo();
+        repo.Upsert(new CatalogEntry { Id = "e1", Package = "p1" });
+        repo.Upsert(new CatalogEntry { Id = "e2", Package = "p2" });
+        fake.OnRefresh = (_, _, _, _, _, _) => { /* 304:一条都不 report */ };
+
+        await vm.RefreshAsync();
+
+        Assert.True(vm.HasEntries);
+        Assert.Equal(2, vm.PagedEntries.Count);
     }
 }
