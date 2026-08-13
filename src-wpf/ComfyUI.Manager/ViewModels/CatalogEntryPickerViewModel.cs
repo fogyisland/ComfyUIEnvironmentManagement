@@ -25,6 +25,7 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     private readonly CatalogRepository _catalogRepo;
     private readonly NodeRepository _nodeRepo;
     private readonly NodeOperations _nodeOps;
+    private readonly NodeVersionRepository _versionRepo;
     private readonly string _envId;
     private readonly AppLogger? _logger;
 
@@ -98,12 +99,14 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         CatalogRepository catalogRepo,
         NodeRepository nodeRepo,
         NodeOperations nodeOps,
+        NodeVersionRepository versionRepo,
         string envId,
         AppLogger? logger = null)
     {
         _catalogRepo = catalogRepo;
         _nodeRepo = nodeRepo;
         _nodeOps = nodeOps;
+        _versionRepo = versionRepo;
         _envId = envId;
         _logger = logger;
         OkCommand = new RelayCommand(
@@ -148,12 +151,29 @@ public class CatalogEntryPickerViewModel : ViewModelBase
             {
                 sha8 = node.Version[..Math.Min(8, node.Version.Length)];
             }
+            // v0.6.14 T4: 拉版本列表(node_id = CatalogEntry.Id,schema 已经 cascade 删,
+            // 老 id 在 node_versions 里查不到 = 空 list 不会抛)。
+            var versions = _versionRepo.ListByNode(e.Id);
+            // Default SelectedVersion:LatestVersion 优先 → 命中 versions 就用;否则 list 第一条;
+            // 都没有 → null(XAML ComboBox collapsed,LastUpdate 仍显示 raw_metadata.LastUpdate)。
+            string? selected = null;
+            if (!string.IsNullOrEmpty(e.LatestVersion)
+                && versions.Any(v => string.Equals(v.Tag, e.LatestVersion, StringComparison.Ordinal)))
+            {
+                selected = e.LatestVersion;
+            }
+            else if (versions.Count > 0)
+            {
+                selected = versions[0].Tag;
+            }
             return new CatalogEntryPickerItem
             {
                 Entry = e,
                 IsInstalled = node is not null,
                 InstalledTag = tag,
                 InstalledSha = sha8,
+                Versions = versions,
+                SelectedVersion = selected,
             };
         }).ToList();
 

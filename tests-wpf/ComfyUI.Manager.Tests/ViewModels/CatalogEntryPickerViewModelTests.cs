@@ -34,6 +34,9 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
 
     private NodeRepository NewNodeRepo() => new NodeRepository(_db.Factory);
 
+    private NodeVersionRepository NewVersionRepo() =>
+        new NodeVersionRepository(new CatalogCacheStore(_db.Path));
+
     /// <summary>
     /// Seed 一个 env(必填 fields,NodeOperations.UninstallAsync 路径会查 env)。
     /// </summary>
@@ -107,7 +110,7 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
         SeedEnv(envId);
         var fakeOps = ops ?? new FakeNodeOps(envRepo, nodeRepo, new Settings());
         return new CatalogEntryPickerViewModel(
-            NewCatalogRepo(), nodeRepo, fakeOps, envId);
+            NewCatalogRepo(), nodeRepo, fakeOps, NewVersionRepo(), envId);
     }
 
     /// <summary>
@@ -411,5 +414,92 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
         vm.OkCommand.Execute(null);
         Assert.True(closed);
         Assert.True(picked);
+    }
+
+    // ---- v0.6.14 T4: per-row version dropdown + LastUpdate ----
+
+    private const string SeedSourceUrl = "https://example.com/catalog.json";
+
+    /// <summary>
+    /// Seed 一个 entry + 一次 catalog_version upsert。UpsertBatch 按 (source_url, package)
+    /// 寻址,所以所有版本 upsert 都走相同的 sourceUrl + package。
+    /// </summary>
+    private void SeedVersions(string package, params (string tag, string published)[] versions)
+    {
+        var catRepo = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        // 用 seed 跑过的 helper 写 catalog row(同 GUID = Entry.Id = node_id,后面 ListByNode 用)
+        SeedCatalogEntry(package);
+        var versionRepo = new NodeVersionRepository(new CatalogCacheStore(_db.Path));
+        var items = versions.Select(v => (
+            SourceUrl: SeedSourceUrl,
+            Package: package,
+            Version: new VersionInfo
+            {
+                Tag = v.tag,
+                PublishedAt = v.published,
+                IsPrerelease = false,
+            })).ToArray();
+        versionRepo.UpsertBatch(items);
+    }
+
+    [Fact]
+    public void BuildItems_PopulatesVersionsFromNodeVersionRepo()
+    {
+        SeedVersions("pkg-versioned",
+            ("v1.0.0", "2025-01-01T00:00:00Z"),
+            ("v1.1.0", "2025-06-01T00:00:00Z"),
+            ("v1.2.0", "2025-12-01T00:00:00Z"));
+
+        var vm = NewVm();
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-versioned");
+        Assert.Equal(3, item.Versions.Count);
+        // ListByNode 已经按 published_at DESC 排序,VM 不再 reorder
+        Assert.Equal("v1.2.0", item.Versions[0].Tag);
+        Assert.Equal("v1.1.0", item.Versions[1].Tag);
+        Assert.Equal("v1.0.0", item.Versions[2].Tag);
+    }
+
+    [Fact]
+    public void BuildItems_SelectedVersion_DefaultsToLatestVersion_WhenInList()
+    {
+        // LatestVersion 命中 versions 里的某条 → 用 LatestVersion
+        SeedVersions("pkg-a",
+            ("v1.0.0", "2025-01-01T00:00:00Z"),
+            ("v1.1.0", "2025-06-01T00:00:00Z"),
+            ("v1.2.0", "2025-12-01T00:00:00Z"));
+        // 覆盖 LatestVersion = "v1.1.0"(不是最新,但用户视角的 "latest" = GitHub metadata)
+        var catRepo = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        catRepo.UpdateLatestVersions(new[]
+        {
+            (SeedSourceUrl, "pkg-a", "v1.1.0"),
+        });
+
+        var vm = NewVm();
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-a");
+        Assert.Equal("v1.1.0", item.SelectedVersion);
+    }
+
+    [Fact]
+    public void BuildItems_SelectedVersion_FallsBackToFirstVersion_WhenLatestMissing()
+    {
+        // LatestVersion 不在 versions 里(可能 catalog fetch 早于 version metadata),
+        // fallback 用列表第一项(已按 published_at DESC 排序,就是最新发布的)。
+        SeedVersions("pkg-no-latest",
+            ("v1.0.0", "2025-01-01T00:00:00Z"),
+            ("v0.9.0", "2024-12-01T00:00:00Z"));
+        // LatestVersion 写 "v9.9.9" — 不会命中 versions
+        var catRepo = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        catRepo.UpdateLatestVersions(new[]
+        {
+            (SeedSourceUrl, "pkg-no-latest", "v9.9.9"),
+        });
+
+        var vm = NewVm();
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-no-latest");
+        // 列表第一项 = v1.0.0(最新)
+        Assert.Equal("v1.0.0", item.SelectedVersion);
     }
 }

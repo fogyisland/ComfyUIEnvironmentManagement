@@ -22,6 +22,7 @@ public partial class CatalogEntryPickerDialog : Window
         NodeOperations,
         CatalogRepository,
         NodeRepository,
+        NodeVersionRepository,
         AppLogger?,
         string,
         CatalogEntry?>? ShowOverride { get; set; }
@@ -45,7 +46,7 @@ public partial class CatalogEntryPickerDialog : Window
     }
 
     /// <summary>
-    /// Show(envRepo, nodeOps, catalogRepo, nodeRepo, logger, envId):打开 picker,
+    /// Show(envRepo, nodeOps, catalogRepo, nodeRepo, versionRepo, logger, envId):打开 picker,
     /// 绑定到指定 env 的安装状态。envId 非空时 picker 知道哪些 catalog 条目已
     /// 装入此 env,显示"已装"/"已过时" 徽标 + 行内卸载按钮。
     ///
@@ -60,15 +61,16 @@ public partial class CatalogEntryPickerDialog : Window
         NodeOperations nodeOps,
         CatalogRepository catalogRepo,
         NodeRepository nodeRepo,
+        NodeVersionRepository versionRepo,
         AppLogger? logger,
         string envId,
         Action? onClosed = null)
     {
         if (ShowOverride is not null)
-            return ShowOverride(envRepo, nodeOps, catalogRepo, nodeRepo, logger, envId);
+            return ShowOverride(envRepo, nodeOps, catalogRepo, nodeRepo, versionRepo, logger, envId);
 
         var vm = new CatalogEntryPickerViewModel(
-            catalogRepo, nodeRepo, nodeOps, envId, logger);
+            catalogRepo, nodeRepo, nodeOps, versionRepo, envId, logger);
         // v0.6.14 T3:onClosed 在 dialog 实际关闭时 fire 一次(任意路径)。
         // VM 的 OkCommand / CancelCommand 已经 fire Closed;
         // 这里再 hook dialog 的 Closing 覆盖 X 按钮 / Alt+F4 路径。

@@ -27,10 +27,11 @@ public class CatalogEntryPickerDialogLoadTests
         // 构造 VM 不需要 db 数据,BuildItems() 内部空 catalog / 空 scanned_nodes 即可。
         var catalogRepo = new CatalogRepository(new CatalogCacheStore());
         var nodeRepo = new NodeRepository(new SqliteConnectionFactory());
+        var versionRepo = new NodeVersionRepository(new CatalogCacheStore());
         var envRepo = new EnvironmentRepository(new SqliteConnectionFactory());
         var ops = new TestOnlyOps(envRepo, nodeRepo);
         return new CatalogEntryPickerViewModel(
-            catalogRepo, nodeRepo, ops, envId: "env-test", logger: null);
+            catalogRepo, nodeRepo, ops, versionRepo, envId: "env-test", logger: null);
     }
 
     [Fact]
@@ -263,6 +264,7 @@ public class CatalogEntryPickerDialogLoadTests
             new CatalogRepository(new CatalogCacheStore(db.Path)),
             nodeRepo,
             ops,
+            new NodeVersionRepository(new CatalogCacheStore(db.Path)),
             envId: "env-1",
             logger: null);
     }

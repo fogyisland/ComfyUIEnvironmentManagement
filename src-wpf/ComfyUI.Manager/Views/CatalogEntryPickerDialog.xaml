@@ -97,6 +97,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <!-- Row 0: Package + Status badge -->
@@ -194,6 +195,60 @@
                                 <TextBlock Text="{Binding Entry.LatestVersion, StringFormat='  |  latest: {0}'}"
                                            FontSize="12" Foreground="{DynamicResource OnSurfaceBrush}" />
                             </StackPanel>
+
+                            <!-- Row 4: v0.6.14 T4 version dropdown + LastUpdate meta
+                                 ComboBox:StatusKind=NotInstalled 显示(只有未装条目允许选版本
+                                 安装;已装条目只能卸载,不暴露版本选择免得误导)。
+                                 LastUpdate:raw_metadata.LastUpdate(ISO 8601)显示 —
+                                 updated 信息对选择安装哪个版本有用。 -->
+                            <Grid Grid.Row="4" Grid.Column="0" Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="选择版本:" VerticalAlignment="Center"
+                                           Margin="0,0,6,0" FontSize="12"
+                                           Foreground="{DynamicResource OnSurfaceBrush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Installed">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Outdated">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding Versions}"
+                                          SelectedItem="{Binding SelectedVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          DisplayMemberPath="DisplayLabel"
+                                          MinWidth="120">
+                                    <ComboBox.Style>
+                                        <Style TargetType="ComboBox">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Installed">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Outdated">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ComboBox.Style>
+                                </ComboBox>
+                                <TextBlock Grid.Column="2" VerticalAlignment="Center"
+                                           Margin="8,0,0,0"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource OutlineBrush}"
+                                           Text="{Binding Entry.LastUpdate, StringFormat='更新: {0}'}" />
+                            </Grid>
                         </Grid>
                     </Border>
                 </DataTemplate>
