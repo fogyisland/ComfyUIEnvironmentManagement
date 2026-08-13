@@ -71,6 +71,8 @@ public class GitHubVersionService
         IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
         string? token,
         IProgress<VersionFetchProgress>? progress = null,
+        IProgress<RateLimitInfo>? rateLimitProgress = null,   // v0.6.15 new
+        IRateLimitState? rateLimitState = null,               // v0.6.15 new
         AppLogger? logger = null,
         CancellationToken ct = default)
     {
@@ -138,6 +140,21 @@ public class GitHubVersionService
 
         if (Volatile.Read(ref rateLimitHit))
         {
+            // v0.6.15: 撞 rate limit 时构造 RateLimitInfo(Version) → IProgress.Report
+            // 给 UI banner + IRateLimitState.MarkBlocked 让下次 refresh 入口跳过
+            // version stage。仍然**不抛**(per v0.6.14.1 R1 —— partial data 必须落库),
+            // banner 文案跟下面的 Warn log 用同一份 header 信息。
+            int partial;
+            lock (result) { partial = result.Count; }
+            rateLimitProgress?.Report(new RateLimitInfo(
+                RateLimitStage.Version,
+                Remaining: remaining ?? 0,
+                ResetUnix: resetUnix,
+                PartialCount: partial,
+                TotalCount: total));
+            rateLimitState?.MarkBlocked(RateLimitStage.Version, resetUnix,
+                partialCount: partial, totalCount: total);
+
             var resetHint = "";
             if (resetUnix is not null)
             {
@@ -146,7 +163,7 @@ public class GitHubVersionService
                 resetHint = $",GitHub 限流将在 {resetAt:HH:mm}(约 {waitMin} 分钟后)重置";
             }
             logger?.Warn("version-rate-limit",
-                $"拉取版本时撞 GitHub rate limit,已返回 {result.Count}/{total} 条 partial results" +
+                $"拉取版本时撞 GitHub rate limit,已返回 {partial}/{total} 条 partial results" +
                 $" (remaining={remaining ?? 0}{resetHint})");
         }
 

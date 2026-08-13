@@ -88,6 +88,9 @@ public class CatalogViewModelTests : IDisposable
         public override Task<RefreshResult> RefreshAsync(
             IProgress<ComfyUI.Manager.Models.CatalogEntry>? progress = null,
             IProgress<VersionFetchProgress>? versionProgress = null,
+            IProgress<ComfyUI.Manager.Models.RateLimitInfo>? rateLimitProgress = null,
+            IProgress<MetadataFetchProgress>? metadataProgress = null,
+            IRateLimitState? rateLimitState = null,
             System.Threading.CancellationToken ct = default)
         {
             RefreshCallCount++;

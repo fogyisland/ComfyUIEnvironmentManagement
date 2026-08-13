@@ -137,7 +137,7 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
         var entry = MakeEntry("foo-bar", "Pkg", "https://github.com/foo/bar");
         var svc = CreateService();
 
-        var count = await svc.EnrichAsync(new[] { entry }, null, CancellationToken.None);
+        var count = await svc.EnrichAsync(new[] { entry }, null, ct: CancellationToken.None);
 
         Assert.Equal(1, count);
         Assert.Equal("MIT", entry.License);
@@ -157,7 +157,7 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
         var entry = MakeEntry("g", "Pkg", "https://gitlab.com/foo/bar");
         var svc = CreateService();
 
-        var count = await svc.EnrichAsync(new[] { entry }, null, CancellationToken.None);
+        var count = await svc.EnrichAsync(new[] { entry }, null, ct: CancellationToken.None);
 
         Assert.Equal(0, count);
         Assert.Null(entry.License);
@@ -184,7 +184,7 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
         var svc = CreateService();
 
         await Assert.ThrowsAsync<RateLimitException>(async () =>
-            await svc.EnrichAsync(new[] { entry }, null, CancellationToken.None));
+            await svc.EnrichAsync(new[] { entry }, null, ct: CancellationToken.None));
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
 
         var entry = MakeEntry("retry", "Pkg", "https://github.com/foo/bar");
         var svc = CreateService();
-        var count = await svc.EnrichAsync(new[] { entry }, null, CancellationToken.None);
+        var count = await svc.EnrichAsync(new[] { entry }, null, ct: CancellationToken.None);
 
         Assert.Equal(1, count);
         Assert.Equal("MIT", entry.License);
@@ -260,7 +260,7 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
 
         var entry = MakeEntry("nf", "Pkg", "https://github.com/foo/bar");
         var svc = CreateService();
-        var count = await svc.EnrichAsync(new[] { entry }, null, CancellationToken.None);
+        var count = await svc.EnrichAsync(new[] { entry }, null, ct: CancellationToken.None);
 
         Assert.Equal(1, count);  // entry still counted as enriched (Round 1 succeeded)
         Assert.Equal("GPL-3.0", entry.License);
@@ -315,7 +315,7 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
 
         var entry = MakeEntry("dl", "Pkg", "https://github.com/foo/bar");
         var svc = CreateService();
-        await svc.EnrichAsync(new[] { entry }, null, CancellationToken.None);
+        await svc.EnrichAsync(new[] { entry }, null, ct: CancellationToken.None);
 
         Assert.Equal(10, entry.Downloads);  // 1+2+3+4
     }
@@ -346,7 +346,7 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
 
         var entry = MakeEntry("tg", "Pkg", "https://github.com/foo/bar");
         var svc = CreateService();
-        await svc.EnrichAsync(new[] { entry }, null, CancellationToken.None);
+        await svc.EnrichAsync(new[] { entry }, null, ct: CancellationToken.None);
 
         Assert.Equal(new[] { "foo", "bar", "baz" }, entry.Tags);
     }
@@ -518,6 +518,8 @@ public class GitHubCatalogMetadataServiceTests : IDisposable
         public override async Task<int> EnrichAsync(
             IList<CatalogEntry> entries,
             IProgress<MetadataFetchProgress>? progress = null,
+            IProgress<RateLimitInfo>? rateLimitProgress = null,
+            IRateLimitState? rateLimitState = null,
             CancellationToken ct = default)
         {
             foreach (var e in entries)

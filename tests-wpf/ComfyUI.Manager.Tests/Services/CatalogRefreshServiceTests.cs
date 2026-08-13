@@ -387,6 +387,8 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            IProgress<RateLimitInfo>? rateLimitProgress = null,
+            IRateLimitState? rateLimitState = null,
             AppLogger? logger = null,
             CancellationToken ct = default)
         {
@@ -404,6 +406,8 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            IProgress<RateLimitInfo>? rateLimitProgress = null,
+            IRateLimitState? rateLimitState = null,
             AppLogger? logger = null,
             CancellationToken ct = default)
         {
@@ -426,6 +430,8 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            IProgress<RateLimitInfo>? rateLimitProgress = null,
+            IRateLimitState? rateLimitState = null,
             AppLogger? logger = null,
             CancellationToken ct = default)
         {
@@ -447,6 +453,8 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            IProgress<RateLimitInfo>? rateLimitProgress = null,
+            IRateLimitState? rateLimitState = null,
             AppLogger? logger = null,
             CancellationToken ct = default)
         {
@@ -472,6 +480,8 @@ public class CatalogRefreshServiceTests : IDisposable
             IReadOnlyList<(string Id, string ReferenceUrl)> nodes,
             string? token,
             IProgress<VersionFetchProgress>? progress = null,
+            IProgress<RateLimitInfo>? rateLimitProgress = null,
+            IRateLimitState? rateLimitState = null,
             AppLogger? logger = null,
             CancellationToken ct = default)
         {

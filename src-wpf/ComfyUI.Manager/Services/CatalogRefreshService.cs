@@ -54,6 +54,9 @@ public class CatalogRefreshService
     public virtual async Task<RefreshResult> RefreshAsync(
         IProgress<CatalogEntry>? progress = null,
         IProgress<VersionFetchProgress>? versionProgress = null,
+        IProgress<RateLimitInfo>? rateLimitProgress = null,          // v0.6.15
+        IProgress<MetadataFetchProgress>? metadataProgress = null,   // v0.6.15
+        IRateLimitState? rateLimitState = null,                      // v0.6.15
         CancellationToken ct = default)
     {
         var src = _settings.QuerySources
@@ -66,6 +69,27 @@ public class CatalogRefreshService
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // v0.6.15: 入口 stage-skip —— 检查 IRateLimitState 是否在冷却中,
+        // 跳过整个 stage 不浪费 GitHub 配额(用户原话"撞 rate limit 没 UI 提示
+        // → 下次 refresh 再撞同样 5000+ entries 死循环")。
+        bool skipVersion = _versionService is not null
+            && _settings.FetchNodeVersionsOnRefresh
+            && rateLimitState?.IsBlocked(RateLimitStage.Version, out _) == true;
+        bool skipMetadata = _metadataService is not null
+            && _settings.FetchCatalogMetadata
+            && rateLimitState?.IsBlocked(RateLimitStage.Metadata, out _) == true;
+        if (skipVersion)
+        {
+            _logger?.Info("catalog-refresh",
+                "skip version fetch (GitHub rate limit cooling down)");
+        }
+        if (skipMetadata)
+        {
+            _logger?.Info("catalog-refresh",
+                "skip metadata fetch (GitHub rate limit cooling down)");
+        }
+
         _logger?.Info("catalog-refresh", $"开始 refresh url={src.Url} ttl={_settings.CatalogCacheTtlMinutes}min");
 
         int versionCount = 0;
@@ -166,7 +190,9 @@ public class CatalogRefreshService
             // entry.Id 是 CatalogFetcher 每次新分配的 Guid,跨 refresh 不稳定。
             // 这里 build id → (sourceUrl, package) 字典在结果回传时翻译成 stable
             // 三元组给 CatalogRepository.UpdateLatestVersions / NodeVersionRepository。
-            if (_versionService is not null && _settings.FetchNodeVersionsOnRefresh)
+            // v0.6.15:skipVersion 时整个 stage 不跑(等价于 plan 里"包一层
+            // if (!skipVersion)",这里直接并进已有 gate 条件避免整段重缩进)。
+            if (_versionService is not null && _settings.FetchNodeVersionsOnRefresh && !skipVersion)
             {
                 // v0.6.14 hotfix backfill: 第一次刷新时 node_versions 表为空是常见
                 // 情况(用户开启 fetch_node_versions_on_refresh 之前 catalog 已经
@@ -193,7 +219,8 @@ public class CatalogRefreshService
                     // return partial result + logger.Warn("version-rate-limit", ...)。
                     // 这里仍然保留 catch 防其他异常(网络/反序列化)。
                     versions = await _versionService.FetchVersionsAsync(
-                        nodes, _settings.GitHubToken, versionProgress, _logger, ct);
+                        nodes, _settings.GitHubToken, versionProgress,
+                        rateLimitProgress, rateLimitState, _logger, ct);
                 }
                 catch (RateLimitException ex)
                 {
@@ -251,14 +278,23 @@ public class CatalogRefreshService
             // v0.6.14:同样只 enrich toUpsert —— MetadataCache(T7)对没变的 entry
             // 本来也会命中缓存,这里直接不传省一轮循环。
             int metadataCount = 0;
-            if (_metadataService is not null && _settings.FetchCatalogMetadata && toUpsert.Count > 0)
+            // v0.6.15:skipMetadata 时整个 stage 不跑(等价于 plan 里"包一层
+            // if (!skipMetadata)")。
+            if (_metadataService is not null && _settings.FetchCatalogMetadata
+                && toUpsert.Count > 0 && !skipMetadata)
             {
                 try
                 {
+                    // v0.6.15:既往只写日志,现在同时把进度转给调用方(UI 进度面板)。
                     var metaProgress = new Progress<MetadataFetchProgress>(p =>
+                    {
                         _logger?.Info("catalog-metadata",
-                            $"progress done={p.Done}/{p.Total} current={p.CurrentPackage}"));
-                    metadataCount = await _metadataService.EnrichAsync(toUpsert, metaProgress, ct);
+                            $"progress done={p.Done}/{p.Total} current={p.CurrentPackage}");
+                        metadataProgress?.Report(p);
+                    });
+                    metadataCount = await _metadataService.EnrichAsync(
+                        toUpsert, metaProgress,
+                        rateLimitProgress, rateLimitState, ct);
                     _logger?.Info("catalog-metadata",
                         $"enrich done count={metadataCount}");
                     if (metadataCount > 0)
@@ -276,6 +312,20 @@ public class CatalogRefreshService
                 {
                     _logger?.Warn("catalog-metadata", $"metadata enrich fail (non-fatal): {ex.Message}");
                 }
+            }
+
+            // v0.6.15: Clear 只清"本轮实际跑了、且没撞 limit"的 stage。
+            // - skip 过的 stage 不动(沿用上次 blocked 状态,等 reset 时间自然过期);
+            // - 本轮撞了 limit 的 stage 也不能清 —— service 刚 MarkBlocked 完,
+            //   无脑 Clear 会立刻把它抹掉,下次 refresh 又去撞同一堵墙。
+            //   用 IsBlocked 复查区分(它顺带把已过期的 entry 自动清成 null)。
+            if (!skipVersion && rateLimitState?.IsBlocked(RateLimitStage.Version, out _) != true)
+            {
+                rateLimitState?.Clear(RateLimitStage.Version);
+            }
+            if (!skipMetadata && rateLimitState?.IsBlocked(RateLimitStage.Metadata, out _) != true)
+            {
+                rateLimitState?.Clear(RateLimitStage.Metadata);
             }
 
             _logger?.Info("catalog-refresh",

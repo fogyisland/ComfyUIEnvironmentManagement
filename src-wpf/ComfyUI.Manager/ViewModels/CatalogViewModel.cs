@@ -292,7 +292,9 @@ public class CatalogViewModel : ViewModelBase
                 RefreshPercent = (int)(100.0 * vp.Completed / vp.Total);
                 ProgressMessage = $"正在拉取版本 {vp.Completed}/{vp.Total}";
             });
-            var result = await _refreshService.RefreshAsync(progress, versionProgress, ct);
+            // v0.6.15:RefreshAsync 新增 rateLimitProgress / metadataProgress /
+            // rateLimitState 三参(T5 接 UI 时填),这里先用命名参数保持调用正确。
+            var result = await _refreshService.RefreshAsync(progress, versionProgress, ct: ct);
             if (result.Success)
             {
                 CurrentPage = 1;

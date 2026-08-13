@@ -66,6 +66,8 @@ public class CatalogRefreshServiceMetadataTests : IDisposable
         public override Task<int> EnrichAsync(
             IList<CatalogEntry> entries,
             IProgress<MetadataFetchProgress>? progress = null,
+            IProgress<RateLimitInfo>? rateLimitProgress = null,
+            IRateLimitState? rateLimitState = null,
             CancellationToken ct = default)
         {
             CallCount++;

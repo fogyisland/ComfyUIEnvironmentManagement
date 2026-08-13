@@ -153,6 +153,9 @@ public sealed class CatalogViewModelDownloadTests : IDisposable
         public override Task<RefreshResult> RefreshAsync(
             IProgress<ComfyUI.Manager.Models.CatalogEntry>? progress = null,
             IProgress<VersionFetchProgress>? versionProgress = null,
+            IProgress<ComfyUI.Manager.Models.RateLimitInfo>? rateLimitProgress = null,
+            IProgress<MetadataFetchProgress>? metadataProgress = null,
+            IRateLimitState? rateLimitState = null,
             CancellationToken ct = default)
         {
             return Task.FromResult(RefreshResult.Ok(0));

@@ -52,6 +52,8 @@ public class GitHubCatalogMetadataService
     public virtual async Task<int> EnrichAsync(
         IList<CatalogEntry> entries,
         IProgress<MetadataFetchProgress>? progress = null,
+        IProgress<RateLimitInfo>? rateLimitProgress = null,   // v0.6.15 new
+        IRateLimitState? rateLimitState = null,               // v0.6.15 new
         CancellationToken ct = default)
     {
         var done = 0;
@@ -77,6 +79,16 @@ public class GitHubCatalogMetadataService
             }
             catch (RateLimitException)
             {
+                // v0.6.15: 撞 rate limit 时构造 RateLimitInfo(Metadata) →
+                // IProgress.Report 给 UI banner + IRateLimitState.MarkBlocked 让
+                // 下次 refresh 入口跳过 metadata stage。RateLimitException 当前
+                // 不带 header 信息,Remaining/ResetUnix 只能用 0/null 占位
+                // (banner 会 fallback 到 "剩余 X 次配额用尽" 文案)。
+                rateLimitProgress?.Report(new RateLimitInfo(
+                    RateLimitStage.Metadata, Remaining: 0, ResetUnix: null,
+                    PartialCount: done, TotalCount: total));
+                rateLimitState?.MarkBlocked(RateLimitStage.Metadata, null,
+                    partialCount: done, totalCount: total);
                 throw;  // 顶层 catch,不继续后面的 entry
             }
             catch (OperationCanceledException) { throw; }
