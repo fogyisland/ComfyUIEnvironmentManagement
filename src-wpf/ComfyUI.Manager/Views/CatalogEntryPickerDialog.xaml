@@ -37,12 +37,23 @@
                                  Style="{StaticResource CatalogSegmentedRadioButton}"
                                  Tag="{Binding}"
                                  Click="OnFilterChipClicked"
-                                 IsChecked="{Binding DataContext.ActiveFilter,
-                                             RelativeSource={RelativeSource AncestorType=Window},
-                                             Converter={StaticResource EnumEqualsConverter},
-                                             ConverterParameter={Binding FilterName},
-                                             Mode=OneWay}"
-                                 Content="{Binding Label}" />
+                                 Content="{Binding Label}">
+                        <RadioButton.IsChecked>
+                            <!-- v0.6.14 picker hotfix:DataTemplate 里 RadioButton 不能用
+                                 ConverterParameter={Binding} (WPF 把 Binding 实例赋给
+                                 ConverterParameter → XamlParseException at template load),
+                                 改用 MultiBinding 把 Filter + ActiveFilter 两值都拿到,
+                                 走 IMultiValueConverter 直接比。
+                                 两路 binding 都必须 Mode=OneWay:PickerFilterOption.Filter
+                                 是 get-only,默认 TwoWay 会抛 InvalidOperationException。 -->
+                            <MultiBinding Converter="{StaticResource PickerFilterEqualsConverter}">
+                                <Binding Path="Filter" Mode="OneWay" />
+                                <Binding Path="DataContext.ActiveFilter"
+                                         RelativeSource="{RelativeSource AncestorType=Window}"
+                                         Mode="OneWay" />
+                            </MultiBinding>
+                        </RadioButton.IsChecked>
+                    </RadioButton>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>

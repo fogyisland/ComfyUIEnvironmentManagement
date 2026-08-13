@@ -49,6 +49,59 @@ public class CatalogEntryPickerDialogLoadTests
     }
 
     /// <summary>
+    /// v0.6.14 picker hotfix(after GUI smoke):XAML 里 DataTemplate 的 RadioButton
+    /// 写 <c>ConverterParameter={Binding FilterName}</c> → runtime 在
+    /// FrameworkTemplate.LoadTemplateXaml 时抛 XamlParseException("不能对
+    /// 'Binding' 类型设 'ConverterParameter'")。光 ctor dialog 不够,因为 template
+    /// 实例化要等 Measure/Arrange 才触发。这里用 SizeToContent + Show() 强制 layout,
+    /// 才能在 test 阶段就把 XAML 陷阱暴露。
+    ///
+    /// <para>回归钉住:R2/R1 之前的 STA load test 没 fail 是因为只 ctor 没 Show,
+    /// template 永远不实例化。</para>
+    /// </summary>
+    [Fact]
+    public void Show_ForcesLayout_InstantiatesAllTemplatesWithoutXamlParseException()
+    {
+        using var db = new TestDb();
+        SeedCatalogEntry(db, "pkg-a", latestVersion: "1.0.0");
+        SeedCatalogEntry(db, "pkg-b");
+        SeedEnv(db, "env-1");
+        SeedScannedNode(db, "env-1", "pkg-a", installedTag: "1.0.0");
+
+        var vm = NewVmWithDb(db);
+        Assert.NotEmpty(vm.Items);  // sanity:2 catalog entries seeded
+
+        StaFact.RunOnSTA(() =>
+        {
+            var dlg = new CatalogEntryPickerDialog(vm)
+            {
+                WindowStartupLocation = System.Windows.WindowStartupLocation.Manual,
+                Left = -10000,   // off-screen 避免闪烁
+                Top = -10000,
+                ShowInTaskbar = false,
+                SizeToContent = System.Windows.SizeToContent.WidthAndHeight,
+            };
+            // Show + Measure 触发 template 实例化(包括 RadioButton DataTemplate +
+            // ListBox ItemTemplate)。如果有 XAML 缺陷会在这里抛。
+            Exception? caught = null;
+            try
+            {
+                dlg.Show();
+                dlg.UpdateLayout();
+                // 给 ItemsControl 一次 generation pass,然后再 layout 一次。
+                dlg.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() => { }));
+                dlg.UpdateLayout();
+            }
+            catch (Exception ex) { caught = ex; }
+            finally
+            {
+                try { dlg.Close(); } catch { }
+            }
+            Assert.Null(caught);
+        });
+    }
+
+    /// <summary>
     /// R1 fix 行为验证:设 ActiveFilter = NotInstalled,ListBox Items 应该重新筛选
     /// (无 catalog entries → Items.Count 仍 0,但 rebuild pipeline 不抛)。这一条
     /// 验证 filter chip 点击 → ApplyFilter() → Items.Clear() + Add 全链路通。
