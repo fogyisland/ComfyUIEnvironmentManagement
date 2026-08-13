@@ -29,6 +29,8 @@
     <SolidColorBrush x:Key="WarningContainerBrush" Color="{StaticResource WarningContainerColor}" />
     <SolidColorBrush x:Key="OnWarningBrush" Color="{StaticResource OnWarningColor}" />
     <SolidColorBrush x:Key="OnPrimaryBrush" Color="{StaticResource OnPrimaryColor}" />
+    <SolidColorBrush x:Key="SurfaceVariantBrush" Color="#E7E0EC" />
+    <SolidColorBrush x:Key="OnSurfaceVariantBrush" Color="#49454F" />
     <SolidColorBrush x:Key="OnSurfaceBrush" Color="{StaticResource OnSurfaceColor}" />
     <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#EEEAF3" />
     <SolidColorBrush x:Key="StatusBarForegroundBrush" Color="{StaticResource OnSurfaceColor}" />
