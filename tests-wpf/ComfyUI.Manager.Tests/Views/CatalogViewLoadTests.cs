@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Views;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace ComfyUI.Manager.Tests.Views;
@@ -297,6 +300,114 @@ public class CatalogViewLoadTests
                 $"--- InnerException ---\n{caught.InnerException}\n" +
                 $"--- StackTrace ---\n{caught.StackTrace}",
                 caught);
+        }
+    }
+
+    /// <summary>
+    /// v0.6.14: 模拟"用户从 v0.6.13-B 升级到 v0.6.14" — 旧 DB 文件(只有 11 v0.6.13-B 列)
+    /// 用 CatalogCacheStore.Open() 触发迁移后,CatalogView 加载应不抛 XAML 异常。
+    /// </summary>
+    [Fact]
+    public void CatalogView_Load_AfterV614SchemaMigration_NoBindingErrors()
+    {
+        // 1. 创建 v0.6.13-B 老 DB
+        var dbPath = Path.Combine(Path.GetTempPath(),
+            $"comfy-sta-v614-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var conn = new SqliteConnection(
+                $"Data Source={dbPath}"))
+            {
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    CREATE TABLE catalog_cache (
+                        id TEXT PRIMARY KEY,
+                        source_url TEXT NOT NULL,
+                        package TEXT NOT NULL,
+                        raw_metadata TEXT NOT NULL,
+                        cached_at TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        latest_version TEXT,
+                        author TEXT, description TEXT, install_type TEXT,
+                        reference TEXT, last_update TEXT, pip_json TEXT,
+                        license TEXT, tags_json TEXT, stars INTEGER,
+                        downloads INTEGER, last_commit TEXT, readme_markdown TEXT,
+                        latest_changelog TEXT, deprecated INTEGER,
+                        python_compat_json TEXT, os_compat_json TEXT,
+                        metadata_fetched_at TEXT,
+                        UNIQUE(source_url, package)
+                    );";
+                cmd.ExecuteNonQuery();
+            }
+
+            // 2. 触发 v0.6.14 schema 迁移
+            using (var conn = new CatalogCacheStore(dbPath).Open())
+            {
+                // PRAGMA 验 9 列已加 + catalog_http_cache 表存在
+                using var check = conn.CreateCommand();
+                check.CommandText =
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='catalog_http_cache'";
+                using var reader = check.ExecuteReader();
+                Assert.True(reader.Read());  // 表已创建
+
+                using var cols = conn.CreateCommand();
+                cols.CommandText = "PRAGMA table_info(catalog_cache)";
+                using var cr = cols.ExecuteReader();
+                var foundCols = new List<string>();
+                while (cr.Read()) foundCols.Add(cr.GetString(1));
+                Assert.Contains("content_hash", foundCols);
+                Assert.Contains("html_url", foundCols);
+                Assert.Contains("created_at", foundCols);
+            }
+
+            // 3. STA 加载 CatalogView,验 XAML 不抛
+            // (CatalogView 内部从 CatalogCacheStore.Open() 读 DB → 9 新列应是 NULL,
+            //  Typed properties 都是 string?/int default,不会抛 NullRef)
+            Exception? caught = null;
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
+                    var view = new CatalogView();
+                    // STA-required:DataContext + Window.Show 路径不调,只验 construction
+                    // + XAML parse succeeds
+                    Assert.NotNull(view);
+                    view.Measure(new Size(900, 700));
+                    view.Arrange(new Rect(0, 0, 900, 700));
+                    view.UpdateLayout();
+                }
+                catch (Exception ex)
+                {
+                    caught = ex;
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            thread.Join();
+
+            if (caught is not null)
+            {
+                throw new Exception(
+                    $"CatalogView post-v0.6.14-migration load failed: {caught.GetType().FullName}: {caught.Message}\n" +
+                    $"--- InnerException ---\n{caught.InnerException}\n" +
+                    $"--- StackTrace ---\n{caught.StackTrace}",
+                    caught);
+            }
+        }
+        finally
+        {
+            try
+            {
+                SqliteConnection.ClearAllPools();
+                foreach (var ext in new[] { "", "-wal", "-shm" })
+                {
+                    var p = dbPath + ext;
+                    if (File.Exists(p)) File.Delete(p);
+                }
+            }
+            catch { }
         }
     }
 

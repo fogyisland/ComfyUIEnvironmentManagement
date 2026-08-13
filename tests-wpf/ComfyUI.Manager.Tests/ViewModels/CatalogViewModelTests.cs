@@ -203,7 +203,9 @@ public class CatalogViewModelTests : IDisposable
     [Fact]
     public async Task RefreshCommand_Success_ShowsInfoMessageAndJumpsToFirstPage()
     {
-        _refreshService.NextResult = RefreshResult.Ok(120);
+        // v0.6.14:RefreshResult 加 4 个计数 — 测试传完整 set 让 InfoMessage 显示新格式
+        _refreshService.NextResult = RefreshResult.Ok(n: 120, v: 0, m: 0,
+            added: 120, updated: 0, skipped: 0, deleted: 0);
         for (var i = 0; i < 21; i++) SeedCatalog($"pkg-{i:D2}");
         var vm = NewVm();
         vm.NextPageCommand.Execute(null);
@@ -213,7 +215,8 @@ public class CatalogViewModelTests : IDisposable
         await Task.Delay(50);
 
         Assert.Equal(1, vm.CurrentPage);
-        Assert.Contains("刷新成功,共 120 个条目", vm.InfoMessage);
+        // v0.6.14:4 个计数 UI 文本 "+120 ~0 ⟳0 -0"(全 Added / 无 Skip/Delete)
+        Assert.Contains("+120 ~0 ⟳0 -0", vm.InfoMessage);
     }
 
     [Fact]

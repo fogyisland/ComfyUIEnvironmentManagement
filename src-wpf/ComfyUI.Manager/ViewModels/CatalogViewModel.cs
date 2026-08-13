@@ -297,9 +297,16 @@ public class CatalogViewModel : ViewModelBase
             {
                 CurrentPage = 1;
                 ApplyPage();
-                var msg = $"刷新成功,共 {result.EntryCount} 个条目";
+                // v0.6.14:EntryCount 不再是 catalog 总条数 = "rows upserted" —
+                // 304 短路时是 0,正常 refresh 是 added+updated 之和。
+                // 改用 4 个计数把一次 refresh 拆开让用户看清"动了什么":
+                //   +Added / ~Updated(真的改字段) / ⟳Skipped(hash 一致)
+                //   -Deleted(JSON 里消失的 → 已硬删)
+                var msg = $"刷新成功 +{result.AddedCount} ~{result.UpdatedCount} ⟳{result.SkippedCount} -{result.DeletedCount}";
                 if (result.VersionCount > 0)
                     msg += $",其中 {result.VersionCount} 个已获取版本号";
+                if (result.MetadataCount > 0)
+                    msg += $",{result.MetadataCount} 个已拉取 metadata";
                 InfoMessage = msg;
             }
             else
