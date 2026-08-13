@@ -8,6 +8,8 @@
 
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     <converters:SectionEqualityToBoolConverter x:Key="SectionEquality" />
+    <converters:EnumEqualsConverter x:Key="EnumEqualsConverter" />
+    <converters:PickerFilterToLabelConverter x:Key="PickerFilterToLabelConverter" />
     <views:BoolToBrushConverter x:Key="BoolToBrush" />
     <views:NullToVisibilityConverter x:Key="NullToVisibility" />
     <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />

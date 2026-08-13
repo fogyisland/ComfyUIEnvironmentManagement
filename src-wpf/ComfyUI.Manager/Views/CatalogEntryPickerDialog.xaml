@@ -1,46 +1,172 @@
 <Window x:Class="ComfyUI.Manager.Views.CatalogEntryPickerDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="选择节点" Height="500" Width="600"
+        Title="选择节点" Height="600" Width="720"
         Background="{StaticResource BackgroundBrush}"
         Icon="pack://siteoforigin:,,,/asset/icon.png">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- Row 0: search box -->
         <DockPanel Grid.Row="0" Margin="0,0,0,8">
             <TextBlock Text="搜索:" VerticalAlignment="Center" Margin="0,0,8,0" />
             <TextBox Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" />
         </DockPanel>
 
-        <ListBox Grid.Row="1"
-                 ItemsSource="{Binding Entries}"
+        <!-- Row 1: filter chips (全部/未装/已装/已过时) -->
+        <ItemsControl Grid.Row="1" Margin="0,0,0,8"
+                      ItemsSource="{Binding FilterOptions}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <RadioButton GroupName="PickerFilter"
+                                 Margin="0,0,8,0"
+                                 Style="{StaticResource CatalogSegmentedRadioButton}"
+                                 IsChecked="{Binding DataContext.ActiveFilter,
+                                             RelativeSource={RelativeSource AncestorType=Window},
+                                             Converter={StaticResource EnumEqualsConverter},
+                                             ConverterParameter={Binding}}"
+                                 Content="{Binding ., Converter={StaticResource PickerFilterToLabelConverter}}" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Row 2: list of picker items (cards) -->
+        <ListBox Grid.Row="2"
+                 ItemsSource="{Binding Items}"
                  SelectedItem="{Binding Selected}"
-                 MouseDoubleClick="OnListDoubleClick">
+                 ItemContainerStyle="{StaticResource CatalogCardItemContainerStyle}">
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <StackPanel>
-                        <TextBlock Text="{Binding Package}" FontWeight="SemiBold" />
-                        <TextBlock FontSize="11" Foreground="#FF888888">
-                            <Run Text="id: " />
-                            <Run Text="{Binding Id}" />
-                            <Run Text="   latest: " />
-                            <Run Text="{Binding LatestVersion}" />
-                        </TextBlock>
-                    </StackPanel>
+                    <Border Padding="12" CornerRadius="6"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderThickness="1">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="BorderBrush" Value="{DynamicResource OutlineBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Value="True">
+                                        <DataTrigger.Binding>
+                                            <Binding Path="IsSelected"
+                                                     RelativeSource="{RelativeSource AncestorType=ListBoxItem}" />
+                                        </DataTrigger.Binding>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                        <Setter Property="BorderThickness" Value="2" />
+                                        <Setter Property="Padding" Value="11" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- Row 0: Package + Status badge -->
+                            <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                                <TextBlock Text="{Binding Entry.Package}"
+                                           FontSize="16" FontWeight="Bold"
+                                           Foreground="{DynamicResource OnSurfaceBrush}"
+                                           VerticalAlignment="Center" />
+                                <Border Margin="8,0,0,0" Padding="6,2" CornerRadius="3"
+                                        VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource OutlineBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Installed">
+                                                    <Setter Property="Background" Value="{DynamicResource SecondaryBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Outdated">
+                                                    <Setter Property="Background" Value="{DynamicResource ErrorVariantBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding StatusBadge}" FontSize="11"
+                                               Foreground="{DynamicResource OnPrimaryBrush}" />
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Row 0 right: per-row action button -->
+                            <StackPanel Grid.Row="0" Grid.RowSpan="4" Grid.Column="1"
+                                        VerticalAlignment="Center" Margin="8,0,0,0">
+                                <!-- Installed or Outdated: show 卸载 button;NotInstalled 隐藏 -->
+                                <Button Command="{Binding DataContext.UninstallCommand,
+                                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        Content="卸载"
+                                        MinWidth="80">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource DangerButton}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Installed">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="Outdated">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- Row 1: Author + install_type pill (复用 CatalogInstallTypeBadgeStyle) -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="{Binding Entry.Author}" FontSize="12"
+                                           Foreground="{DynamicResource OutlineBrush}" />
+                                <Border Style="{StaticResource CatalogInstallTypeBadgeStyle}">
+                                    <TextBlock Text="{Binding Entry.InstallType}" FontSize="10"
+                                               Foreground="{DynamicResource OnPrimaryBrush}" />
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Row 2: Description -->
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Entry.Description}"
+                                       FontSize="12" Margin="0,6,0,0"
+                                       TextWrapping="Wrap" MaxHeight="40"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource OnSurfaceBrush}" />
+
+                            <!-- Row 3: installed version + latest version -->
+                            <StackPanel Grid.Row="3" Grid.Column="0" Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="{Binding InstalledVersionDisplay, StringFormat='已装: {0}'}"
+                                           FontSize="12" Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <TextBlock Text="{Binding Entry.LatestVersion, StringFormat='  |  latest: {0}'}"
+                                           FontSize="12" Foreground="{DynamicResource OnSurfaceBrush}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,12,0,0"
+        <!-- Row 4: footer with cancel -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0"
                     HorizontalAlignment="Right">
-            <Button Content="安装" Command="{Binding OkCommand}"
-                    Style="{StaticResource MaterialButton}" Width="80" />
+            <TextBlock Text="双击未装条目 或 点击行内卸载按钮"
+                       FontSize="11" Foreground="{DynamicResource OutlineBrush}"
+                       VerticalAlignment="Center" Margin="0,0,16,0" />
             <Button Content="取消" Command="{Binding CancelCommand}"
-                    Style="{StaticResource MaterialButton}" Margin="8,0,0,0" Width="80" />
+                    Style="{StaticResource MaterialButton}" Width="80" />
         </StackPanel>
     </Grid>
 </Window>
