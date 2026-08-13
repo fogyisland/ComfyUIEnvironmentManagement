@@ -416,26 +416,35 @@ public sealed class CatalogRepository
     }
 
     /// <summary>
-    /// 批量 UPDATE latest_version。一次 connection + transaction,5000+ 条
-    /// ~几百毫秒。items 中 null value 跳过(不更新)。
+    /// v0.6.14 hotfix: 批量 UPDATE latest_version,**按 (source_url, package) 寻址**
+    /// 而不是 id。原因:catalog_cache.id 是 CatalogFetcher 每次 fetch 都重新分配
+    /// 的 Guid.NewGuid();增量 refresh 时 Updated entry 的新 GUID 永远匹配不上
+    /// DB 里现有 row 的老 GUID → 用 id 寻址会让 latest_version 静默不更新。
+    /// (source_url, package) 是 schema 里的 UNIQUE 约束,跨 refresh 稳定。
+    /// items 中空 version 跳过(不更新);(source_url, package) 不存在的也跳过。
+    /// 返回成功 UPDATE 的行数。
     /// </summary>
-    public int UpdateLatestVersions(IEnumerable<(string Id, string Version)> items)
+    public int UpdateLatestVersions(IEnumerable<(string SourceUrl, string Package, string Version)> items)
     {
         using var conn = _store.Open();
         using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE catalog_cache SET latest_version = @v WHERE id = @id";
+        cmd.CommandText =
+            "UPDATE catalog_cache SET latest_version = @v " +
+            "WHERE source_url = @sourceUrl AND package = @package";
         cmd.Parameters.Add("@v", Microsoft.Data.Sqlite.SqliteType.Text);
-        cmd.Parameters.Add("@id", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@sourceUrl", Microsoft.Data.Sqlite.SqliteType.Text);
+        cmd.Parameters.Add("@package", Microsoft.Data.Sqlite.SqliteType.Text);
         cmd.Prepare();
         int count = 0;
-        foreach (var (id, ver) in items)
+        foreach (var (sourceUrl, package, ver) in items)
         {
             if (string.IsNullOrEmpty(ver)) continue;
+            if (string.IsNullOrEmpty(sourceUrl) || string.IsNullOrEmpty(package)) continue;
             cmd.Parameters["@v"].Value = ver;
-            cmd.Parameters["@id"].Value = id;
-            cmd.ExecuteNonQuery();
-            count++;
+            cmd.Parameters["@sourceUrl"].Value = sourceUrl;
+            cmd.Parameters["@package"].Value = package;
+            count += cmd.ExecuteNonQuery();
         }
         tx.Commit();
         return count;

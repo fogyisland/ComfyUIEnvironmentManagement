@@ -161,6 +161,11 @@ public class CatalogRefreshService
             // ~60s 完成不再 9 分钟。
             // v0.6.14:只对 toUpsert(Added + Updated)拉版本 —— skipped 的 entry
             // latest_version 已经在 DB 里,重拉纯浪费 GitHub 配额。
+            // v0.6.14 hotfix:GithubVersionService.FetchVersionsAsync 仍按 entry.Id
+            // 键返回(上游不改),但下游写库必须按 (source_url, package) ——
+            // entry.Id 是 CatalogFetcher 每次新分配的 Guid,跨 refresh 不稳定。
+            // 这里 build id → (sourceUrl, package) 字典在结果回传时翻译成 stable
+            // 三元组给 CatalogRepository.UpdateLatestVersions / NodeVersionRepository。
             if (_versionService is not null && _settings.FetchNodeVersionsOnRefresh)
             {
                 var nodes = toUpsert
@@ -180,23 +185,43 @@ public class CatalogRefreshService
                 }
                 if (versions is { Count: > 0 })
                 {
+                    // build id → (source_url, package) 用于把 versions 字典的结果翻译成 stable key
+                    var idToKey = toUpsert
+                        .Where(e => versions.ContainsKey(e.Id))
+                        .GroupBy(e => e.Id)
+                        .ToDictionary(
+                            g => g.Key,
+                            g => (SourceUrl: g.First().SourceUrl, Package: g.First().Package),
+                            StringComparer.Ordinal);
+
                     versionCount = await Task.Run(() =>
                     {
-                        // 1) 写完整历史(10 个/node)到 node_versions
+                        // 1) 写完整历史(10 个/node)到 node_versions — 用 (source_url, package)
                         if (_versionRepo is not null)
                         {
-                            _versionRepo.UpsertBatch(
-                                versions.SelectMany(kv =>
-                                    kv.Value.Select(v => (kv.Key, v))));
+                            var rowsForNodeVersions = new List<(string, string, VersionInfo)>();
+                            foreach (var (id, vs) in versions)
+                            {
+                                if (!idToKey.TryGetValue(id, out var key)) continue;
+                                foreach (var v in vs)
+                                {
+                                    rowsForNodeVersions.Add((key.SourceUrl, key.Package, v));
+                                }
+                            }
+                            _versionRepo.UpsertBatch(rowsForNodeVersions);
                         }
                         // 2) 更新 catalog_cache.latest_version 列(每个 node 取
-                        //    第一个非 prerelease,fallback 到第一个)
-                        return _repo.UpdateLatestVersions(
-                            versions.Select(kv => (
-                                kv.Key,
-                                kv.Value.FirstOrDefault(v => !v.IsPrerelease)?.Tag
-                                    ?? kv.Value.FirstOrDefault()?.Tag
-                                    ?? "")));
+                        //    第一个非 prerelease,fallback 到第一个) — 按 (source_url, package)
+                        var rowsForLatest = new List<(string SourceUrl, string Package, string Version)>();
+                        foreach (var (id, vs) in versions)
+                        {
+                            if (!idToKey.TryGetValue(id, out var key)) continue;
+                            var tag = vs.FirstOrDefault(v => !v.IsPrerelease)?.Tag
+                                ?? vs.FirstOrDefault()?.Tag
+                                ?? "";
+                            rowsForLatest.Add((key.SourceUrl, key.Package, tag));
+                        }
+                        return _repo.UpdateLatestVersions(rowsForLatest);
                     }, ct);
                 }
             }

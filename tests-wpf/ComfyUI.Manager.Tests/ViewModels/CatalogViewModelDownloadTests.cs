@@ -179,8 +179,9 @@ public sealed class CatalogViewModelDownloadTests : IDisposable
         var entry = SeedEntry("pkg-dl-1", "https://example.com/pkg-dl-1.git");
         FixRawMetadataToStrings(entry);
         // 选一个 selected version,验证 tag 传参
+        // v0.6.14: NodeVersionRepository.UpsertBatch 接 (source_url, package, VersionInfo)
         _versionRepo.UpsertBatch(new[] {
-            (entry.Id, new VersionInfo { Tag = "v9.9.9", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false })
+            (entry.SourceUrl, entry.Package, new VersionInfo { Tag = "v9.9.9", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false })
         });
         vm.Selected = entry;  // 触发 LoadVersionsForSelected
         Assert.NotNull(vm.SelectedVersion);

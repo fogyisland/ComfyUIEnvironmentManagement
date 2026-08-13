@@ -62,7 +62,12 @@ public class CatalogViewModelTests : IDisposable
 
     private void SeedVersions(string nodeId, params (string Tag, string Date, bool Pre)[] versions)
     {
+        // v0.6.14: NodeVersionRepository.UpsertBatch 接 (source_url, package, VersionInfo)
+        // 而不是 (node_id, VersionInfo)。这里 SeedCatalog 已经把 row 写进 catalog_cache,
+        // (source_url, package) 反向解析得到 node_id。nodeId 参数现在被当作 package。
+        var sourceUrl = _settings.QuerySources[0].Url;
         _versionRepo.UpsertBatch(versions.Select(v => (
+            sourceUrl,
             nodeId,
             new VersionInfo { Tag = v.Tag, PublishedAt = v.Date, IsPrerelease = v.Pre })));
     }

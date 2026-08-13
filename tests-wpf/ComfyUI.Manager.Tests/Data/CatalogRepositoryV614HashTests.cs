@@ -126,6 +126,123 @@ public class CatalogRepositoryV614HashTests : IDisposable
         Assert.Equal("2025-01-01T00:00:00Z", fetched.CreatedAt);
     }
 
+    /// <summary>
+    /// v0.6.14 hotfix: UpdateLatestVersions 必须按 (source_url, package) 而不是 id 写,
+    /// 否则增量 refresh 时 CatalogFetcher 给 Updated entry 分配的新 GUID 永远匹配不上
+    /// DB 里现有 row 的老 GUID → latest_version 静默不更新。
+    /// 预填老 GUID 的 row,然后用 (source_url, package, "v2.0.0") 调 → 验证行被更新。
+    /// </summary>
+    [Fact]
+    public void UpdateLatestVersions_KeysBySourceUrlAndPackage_NotById()
+    {
+        // Arrange: 预填一行 id="old-guid-A", package="pkg-x", source_url=...
+        var sourceUrl = "https://example.com/catalog.json";
+        var pre = MakeEntry("old-guid-A", "pkg-x");
+        pre.SourceUrl = sourceUrl;
+        _repo.UpsertBatch(new[] { pre });
+
+        // Act: 用 (source_url, package, version) — 不传 id。模拟"refresh 拉了新 GUID
+        // 但 service 只拿得到 (source_url, package, tag)"的真实场景。
+        var n = _repo.UpdateLatestVersions(new[] {
+            (sourceUrl, "pkg-x", "v2.0.0"),
+        });
+
+        // Assert: 1 行被更新,latest_version 写到了 pkg-x 的现有 row
+        Assert.Equal(1, n);
+        var fetched = _repo.Search("pkg-x", 10).Single();
+        Assert.Equal("v2.0.0", fetched.LatestVersion);
+        // id 没变(老 GUID 仍在 row 上)
+        Assert.Equal("old-guid-A", fetched.Id);
+    }
+
+    /// <summary>
+    /// v0.6.14 hotfix: UpdateLatestVersions 一次批量里多个不同 (source_url, package)
+    /// 必须各自打到对的行,不能跨行写串。
+    /// </summary>
+    [Fact]
+    public void UpdateLatestVersions_MultipleEntries_EachHitsItsOwnRow()
+    {
+        var url = "https://example.com/catalog.json";  // MakeEntry 默认 URL
+        _repo.UpsertBatch(new[] {
+            MakeEntry("old-A", "pkg-a"),
+            MakeEntry("old-B", "pkg-b"),
+        });
+
+        var n = _repo.UpdateLatestVersions(new[] {
+            (url, "pkg-a", "v1.0.0"),
+            (url, "pkg-b", "v9.9.9"),
+        });
+
+        Assert.Equal(2, n);
+        Assert.Equal("v1.0.0",
+            _repo.Search("pkg-a", 10).Single().LatestVersion);
+        Assert.Equal("v9.9.9",
+            _repo.Search("pkg-b", 10).Single().LatestVersion);
+    }
+
+    /// <summary>
+    /// v0.6.14 hotfix: 不同 source_url + 同一 package 的两条 row(罕见但合法)
+    /// 各自按 source_url 区分;不能写串。
+    /// </summary>
+    [Fact]
+    public void UpdateLatestVersions_DifferentSources_SamePackage_EachHitsOwnRow()
+    {
+        // MakeEntry 写死 url,所以手动造两条 entry
+        var a = MakeEntry("old-A", "pkg-x");
+        a.SourceUrl = "https://a.example.com/c.json";
+        var b = MakeEntry("old-B", "pkg-x");
+        b.SourceUrl = "https://b.example.com/c.json";
+        _repo.UpsertBatch(new[] { a, b });
+
+        var n = _repo.UpdateLatestVersions(new[] {
+            ("https://a.example.com/c.json", "pkg-x", "v1.0.0"),
+            ("https://b.example.com/c.json", "pkg-x", "v2.0.0"),
+        });
+
+        Assert.Equal(2, n);
+        Assert.Equal("v1.0.0",
+            _repo.Search("pkg-x", 10).Single(e => e.SourceUrl == "https://a.example.com/c.json").LatestVersion);
+        Assert.Equal("v2.0.0",
+            _repo.Search("pkg-x", 10).Single(e => e.SourceUrl == "https://b.example.com/c.json").LatestVersion);
+    }
+
+    /// <summary>
+    /// v0.6.14 hotfix: source_url+package 都不存在的 tuple 应该被静默跳过
+    /// (0 行被 UPDATE),不应该 NRE 也不应该 UPDATE 到不存在的行。
+    /// </summary>
+    [Fact]
+    public void UpdateLatestVersions_NonExistentPackage_SilentlySkipped()
+    {
+        _repo.UpsertBatch(new[] { MakeEntry("e1", "pkg-exists") });
+
+        var n = _repo.UpdateLatestVersions(new[] {
+            ("https://example.com/catalog.json", "pkg-not-there", "v1.0.0"),
+        });
+
+        Assert.Equal(0, n);
+        // 现有 row 没被污染
+        Assert.Null(_repo.Search("pkg-exists", 10).Single().LatestVersion);
+    }
+
+    /// <summary>
+    /// v0.6.14 hotfix: 空字符串 version 被跳过(沿用既有"items 中 null/空 version 跳过"约定)。
+    /// </summary>
+    [Fact]
+    public void UpdateLatestVersions_EmptyVersion_Skipped()
+    {
+        var sourceUrl = "https://example.com/catalog.json";
+        var pre = MakeEntry("e1", "pkg-x");
+        pre.SourceUrl = sourceUrl;
+        _repo.UpsertBatch(new[] { pre });
+
+        var n = _repo.UpdateLatestVersions(new[] {
+            (sourceUrl, "pkg-x", ""),
+        });
+
+        Assert.Equal(0, n);
+        Assert.Null(_repo.Search("pkg-x", 10).Single().LatestVersion);
+    }
+
     private static Dictionary<string, string> GetHashes(string dbPath, params string[] packages)
     {
         var result = new Dictionary<string, string>();

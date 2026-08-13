@@ -728,11 +728,13 @@ public class CatalogRefreshServiceTests : IDisposable
             },
         });
         // 预填 node_versions 给 x1 和 x2(x2 会被 cascade 删,x1 保留)
+        // v0.6.14: UpsertBatch 现在接 (source_url, package, VersionInfo) —— catalog_cache 里
+        // (url, "pkg-a") 的 node_id 是 "x1",(url, "pkg-b") 的 node_id 是 "x2"
         var versionRepo = new NodeVersionRepository(store);
         versionRepo.UpsertBatch(new[] {
-            ("x1", new VersionInfo {
+            (url, "pkg-a", new VersionInfo {
                 Tag = "v1.0.0", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false }),
-            ("x2", new VersionInfo {
+            (url, "pkg-b", new VersionInfo {
                 Tag = "v2.0.0", PublishedAt = "2026-01-01T00:00:00Z", IsPrerelease = false }),
         });
 
@@ -758,5 +760,89 @@ public class CatalogRefreshServiceTests : IDisposable
         // x1 的 node_versions 仍在,x2 的被 cascade 删
         Assert.Single(versionRepo.ListByNode("x1"));
         Assert.Empty(versionRepo.ListByNode("x2"));
+    }
+
+    /// <summary>
+    /// v0.6.14 hotfix: 增量 refresh 时 Updated entry 拿到 CatalogFetcher 给的新
+    /// GUID("new-guid"),version service 返回 "v2.0.0" 给这个 entry —— update
+    /// latest_version 必须写到 catalog_cache 里 pkg-x 的现有 row(老 GUID "old-guid-A"),
+    /// 不能因为 GUID 不匹配而静默漏更新。
+    /// </summary>
+    [Fact]
+    public async Task RefreshAsync_UpdatedEntryGetsNewGuid_LatestVersionStillWrittenToExistingRow()
+    {
+        var url = _settings.QuerySources[0].Url;
+        var store = new CatalogCacheStore(_db.Path);
+        var repo = new CatalogRepository(store);
+
+        // 预填老 GUID 的 catalog row + 一条最新版本 v1.0.0(模拟上次 refresh 写过)
+        repo.UpsertBatch(new[] {
+            new CatalogEntry {
+                Id = "old-guid-A", SourceUrl = url, Package = "pkg-x",
+                RawMetadata = new Dictionary<string, object?> {
+                    ["id"] = "pkg-x",
+                    ["title"] = "Old Title",  // ← 故意造 hash 不同
+                    ["reference"] = "https://github.com/foo/bar",
+                },
+                CachedAt = "2026-08-13T00:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+                LatestVersion = "v1.0.0",
+            },
+        });
+
+        // refresh 模拟:CatalogFetcher 给 pkg-x 分配全新 GUID + 改了 title
+        var fetcher = new FakeCatalogFetcher { EntriesToReturn = new() {
+            new CatalogEntry {
+                Id = "new-guid-B", SourceUrl = url, Package = "pkg-x",
+                RawMetadata = new Dictionary<string, object?> {
+                    ["id"] = "pkg-x",
+                    ["title"] = "New Title",  // hash 变了 → Updated 路径
+                    ["reference"] = "https://github.com/foo/bar",
+                },
+                CachedAt = "2026-08-13T01:00:00Z",
+                ExpiresAt = "2026-08-14T00:00:00Z",
+            }
+        }};
+
+        // version service 模拟 GitHub 返 v2.0.0 给 pkg-x
+        // 注意 FakeVersionServiceForPackage 仍然按 entry.Id 键返回(模拟 GitHubVersionService 行为)
+        var versions = new Dictionary<string, List<VersionInfo>> {
+            ["new-guid-B"] = new() {
+                new() { Tag = "v2.0.0", PublishedAt = "2026-08-13T01:00:00Z", IsPrerelease = false },
+            },
+        };
+        var versionSvc = new CountingVersionService(versions);
+        var versionRepo = new NodeVersionRepository(store);
+
+        // 把 settings 改成开 FetchNodeVersionsOnRefresh(默认是 false,跟既有测试一致)
+        var settingsWithVersions = new Settings
+        {
+            QuerySources = _settings.QuerySources,
+            ActiveQuerySourceName = _settings.ActiveQuerySourceName,
+            GitHubToken = _settings.GitHubToken,
+            FetchNodeVersionsOnRefresh = true,
+        };
+        ComfyUI.Manager.Infrastructure.SettingsDefaults.Apply(settingsWithVersions, @"D:\ToolDevelop\ComfyUI");
+
+        var svc = new CatalogRefreshService(
+            fetcher, repo, settingsWithVersions,
+            versionService: versionSvc,
+            versionRepo: versionRepo,
+            httpCacheStore: new FakeCatalogHttpCacheStore());
+
+        var result = await svc.RefreshAsync();
+
+        Assert.True(result.Success);
+        Assert.Equal(0, result.AddedCount);
+        Assert.Equal(1, result.UpdatedCount);   // hash 变了 → Updated
+        // 版本数 = UpdateLatestVersions 写到现有 row 的数(1)
+        Assert.Equal(1, result.VersionCount);
+
+        // 关键 assertion:existing row 的 latest_version 被更新到 v2.0.0
+        // —— 哪怕 entry.Id 现在是 new-guid-B,但原 row 仍按 (source_url, package) 寻址被命中
+        var existing = repo.Search("pkg-x", 10).Single();
+        Assert.Equal(url, existing.SourceUrl);
+        Assert.Equal("pkg-x", existing.Package);
+        Assert.Equal("v2.0.0", existing.LatestVersion);
     }
 }
