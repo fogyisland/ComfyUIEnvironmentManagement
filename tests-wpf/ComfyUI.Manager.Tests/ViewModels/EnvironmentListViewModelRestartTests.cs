@@ -75,12 +75,15 @@ public class EnvironmentListViewModelRestartTests : IDisposable
         return new EnvironmentListViewModel(
             _repo, null!, null!, null!, null!, null!, null!, null!,
             _tempRoot, null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!);
+            null!,   // baseEnvUninstaller
+            null!,   // requirementsUninstaller
+            null!,   // browserLauncher
+            null!,   // errorBanner
+            null!,   // comfyUiManagerInstaller
+            null!,   // logger
+            new CatalogRepository(new CatalogCacheStore(_db.Path)),
+            new NodeRepository(_db.Factory),
+            new NodeVersionRepository(new CatalogCacheStore(_db.Path)));
     }
 
     /// <summary>
@@ -182,11 +185,13 @@ public class EnvironmentListViewModelRestartTests : IDisposable
     }
 
     /// <summary>
-    /// v0.6.11+ SDD D1 R1:verify OpenInstallNodePicker 把 _mvm.RestartEnvAsync 当
-    /// onInstallSuccess 回调注入 InstallDialog.Show。这是 §4 spec 的核心 wiring ——
-    /// reviewer 反馈 T2 commit `1be68df` 没接 MVM wiring,EnvListVM._mvm 永远 null,
-    /// 装成功不触发重启。这个测试保证:(a) SetMainViewModel 真正接到 _mvm,(b)
-    /// OpenInstallNodePicker 实际把 _mvm.RestartEnvAsync 当回调传给 InstallDialog.Show。
+    /// v0.6.14 T5:verify OpenInstallNodePicker 把 _mvm.RestartEnvAsync 当
+    /// onInstallSuccess 回调注入 CatalogEntryPickerDialog.Show(v0.6.11 走的是
+    /// InstallDialog.Show,T5 改走 picker 行内安装 — picker 接管回调)。
+    /// 这是 §4 spec 的核心 wiring —— reviewer 反馈 T2 commit `1be68df` 没接 MVM
+    /// wiring,EnvListVM._mvm 永远 null,装成功不触发重启。这个测试保证:(a)
+    /// SetMainViewModel 真正接到 _mvm,(b) OpenInstallNodePicker 实际把
+    /// _mvm.RestartEnvAsync 当回调传给 picker。
     /// delegate equality 用 System.Delegate.op_Equality — 同一个 instance 的同 method 必等。
     /// </summary>
     [Fact]
@@ -199,33 +204,38 @@ public class EnvironmentListViewModelRestartTests : IDisposable
         // (a) 验证 SetMainViewModel 注入
         vm.SetMainViewModel(mvm);
 
-        // 设 stub catalog picker 返非 null entry,不让真 WPF dialog 弹
-        var stubEntry = new CatalogEntry { Id = "stub-entry", SourceUrl = "stub" };
-        vm.CatalogPickerOverride = () => stubEntry;
-
-        // 捕获 InstallDialog.Show 的实际参数
+        // 拦截 CatalogEntryPickerDialog.Show,捕获 (envId, onInstallSuccess) 实际传入
         string? capturedEnvId = null;
         Func<string, Task>? capturedCallback = null;
-        vm.InstallDialogShowOverride = (envId, onSuccess) =>
+        global::ComfyUI.Manager.Views.CatalogEntryPickerDialog.ShowOverride =
+            (_, _, _, _, _, _, envId, onSuccess, _) =>
+            {
+                capturedEnvId = envId;
+                capturedCallback = onSuccess;
+                return null;
+            };
+
+        try
         {
-            capturedEnvId = envId;
-            capturedCallback = onSuccess;
-        };
+            // 触发 env-list 行 "安装节点" 命令(RelayCommand fire-and-forget 但同步构造完路径)
+            vm.InstallNodeCommand.Execute(env);
 
-        // 触发 env-list 行 "安装节点" 命令(RelayCommand fire-and-forget 但同步构造完路径)
-        vm.InstallNodeCommand.Execute(env);
-
-        // (b) 验证 callback 注入:env.Id 跟 mvm.RestartEnvAsync 一致
-        Assert.Equal("env-cb", capturedEnvId);
-        Assert.NotNull(capturedCallback);
-        // 注:不直接 Assert.Same — C# method-group conversion 在某些版本下会缓存,
-        // 但更稳的做法是比 Method+Target — 同一个 instance + 同 method 必命中。
-        Assert.Same(mvm, capturedCallback!.Target);
-        Assert.Equal(nameof(MainViewModel.RestartEnvAsync), capturedCallback.Method.Name);
+            // (b) 验证 callback 注入:env.Id 跟 mvm.RestartEnvAsync 一致
+            Assert.Equal("env-cb", capturedEnvId);
+            Assert.NotNull(capturedCallback);
+            // 注:不直接 Assert.Same — C# method-group conversion 在某些版本下会缓存,
+            // 但更稳的做法是比 Method+Target — 同一个 instance + 同 method 必命中。
+            Assert.Same(mvm, capturedCallback!.Target);
+            Assert.Equal(nameof(MainViewModel.RestartEnvAsync), capturedCallback.Method.Name);
+        }
+        finally
+        {
+            global::ComfyUI.Manager.Views.CatalogEntryPickerDialog.ShowOverride = null;
+        }
     }
 
     /// <summary>
-    /// v0.6.11+ SDD D1 R1:验证 OpenInstallNodePicker 在 _mvm == null 时(EnvListVM
+    /// v0.6.14 T5:验证 OpenInstallNodePicker 在 _mvm == null 时(EnvListVM
     /// 早于 MVM 构造,如测试直接构造 EnvListVM)不传回调 — 行为跟 v0.6.11 既有兼容。
     /// 这是 reviewer 担心的另一面:如果没 _mvm 时传 null callback 是 OK 的,
     /// 证明 wiring 是 _mvm-aware 而不是无脑 always pass。
@@ -236,14 +246,23 @@ public class EnvironmentListViewModelRestartTests : IDisposable
         var env = SeedEnv("env-cb-null", "stopped");
         var vm = NewVm();  // 注意:没调 SetMainViewModel → _mvm 仍 null
 
-        var stubEntry = new CatalogEntry { Id = "stub-entry", SourceUrl = "stub" };
-        vm.CatalogPickerOverride = () => stubEntry;
+        Func<string, Task>? capturedCallback = _ => Task.CompletedTask;
+        global::ComfyUI.Manager.Views.CatalogEntryPickerDialog.ShowOverride =
+            (_, _, _, _, _, _, envId, onSuccess, _) =>
+            {
+                capturedCallback = onSuccess;
+                return null;
+            };
 
-        Func<string, Task>? capturedCallback = null;
-        vm.InstallDialogShowOverride = (envId, onSuccess) => capturedCallback = onSuccess;
+        try
+        {
+            vm.InstallNodeCommand.Execute(env);
 
-        vm.InstallNodeCommand.Execute(env);
-
-        Assert.Null(capturedCallback);
+            Assert.Null(capturedCallback);
+        }
+        finally
+        {
+            global::ComfyUI.Manager.Views.CatalogEntryPickerDialog.ShowOverride = null;
+        }
     }
 }

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -8,12 +10,46 @@ namespace ComfyUI.Manager.ViewModels;
 /// v0.6.14 picker redesign: 一行 catalog 条目 + 当前 env 的安装状态。
 /// 不实现 INPC —— 全 read-only derived from Entry + ScannedNode,刷新时整个 rebuild。
 /// </summary>
-public class CatalogEntryPickerItem
+public class CatalogEntryPickerItem : INotifyPropertyChanged
 {
     public CatalogEntry Entry { get; init; } = null!;
     public bool IsInstalled { get; init; }
     public string? InstalledTag { get; init; }      // ScannedNode.ScanMeta["installed_tag"] 或 null
     public string? InstalledSha { get; init; }      // ScannedNode.Version 前 8 字符(或 null)
+
+    // ---- v0.6.14 T5:行内安装进度 + 错误(3 个 INPC prop,装的时候改) ----
+
+    private bool _isInstalling;
+    /// <summary>该行正在被装,UI 显示进度文本 + 禁用安装按钮。</summary>
+    public bool IsInstalling
+    {
+        get => _isInstalling;
+        set => SetField(ref _isInstalling, value);
+    }
+
+    private string? _installProgress;
+    /// <summary>NodeOperations.InstallAsync 通过 Progress&lt;string&gt; 报的阶段消息。</summary>
+    public string? InstallProgress
+    {
+        get => _installProgress;
+        set => SetField(ref _installProgress, value);
+    }
+
+    private string? _installError;
+    /// <summary>装失败原因(成功时被清空)。null 时 UI 隐藏错误区。</summary>
+    public string? InstallError
+    {
+        get => _installError;
+        set => SetField(ref _installError, value);
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
 
     /// <summary>
     /// v0.6.14 T4:此 catalog entry 的版本列表(从 node_versions 表按 published_at DESC 拉)。

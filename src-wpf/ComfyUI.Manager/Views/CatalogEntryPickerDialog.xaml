@@ -1,6 +1,7 @@
 <Window x:Class="ComfyUI.Manager.Views.CatalogEntryPickerDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         Title="选择节点" Height="600" Width="720"
         Background="{StaticResource BackgroundBrush}"
         Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
@@ -126,7 +127,7 @@
                                 </Border>
                             </StackPanel>
 
-                            <!-- Row 0 right: per-row action button -->
+                            <!-- Row 0 right: per-row action button + inline progress/error (v0.6.14 T5) -->
                             <StackPanel Grid.Row="0" Grid.RowSpan="4" Grid.Column="1"
                                         VerticalAlignment="Center" Margin="8,0,0,0">
                                 <!-- Installed or Outdated: show 卸载 button;NotInstalled 隐藏 -->
@@ -149,10 +150,10 @@
                                         </Style>
                                     </Button.Style>
                                 </Button>
-                                <!-- v0.6.14 R1 fix:per-row 安装 button,NotInstalled 显示,
-                                     让用户单点也能选(双击也走 OnListDoubleClick 同一路径)。
+                                <!-- v0.6.14 T5:per-row 安装 button,NotInstalled 显示,
+                                     直接走 NodeOperations.InstallAsync(不再弹 InstallDialog)。
                                      Installed/Outdated 隐藏 — 那两种已装,不需要安装。 -->
-                                <Button Command="{Binding DataContext.OkCommand,
+                                <Button Command="{Binding DataContext.InstallCommand,
                                                   RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}"
                                         Content="安装"
@@ -169,6 +170,34 @@
                                         </Style>
                                     </Button.Style>
                                 </Button>
+                                <!-- v0.6.14 T5:行内安装进度 — IsInstalling=true 时显示,
+                                     文本由 Progress<string> 从 NodeOperations.InstallAsync
+                                     推到 UI 线程。默认 Collapsed,DataTrigger 切 Visible。 -->
+                                <TextBlock Text="{Binding InstallProgress}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource OutlineBrush}"
+                                           VerticalAlignment="Center" Margin="0,4,0,0"
+                                           TextWrapping="Wrap" MaxWidth="160">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsInstalling}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <!-- v0.6.14 T5:行内安装错误 — InstallError 非 null 时显示,
+                                     走 NullToVisibilityConverter(Theme.xaml 已注册)。 -->
+                                <TextBlock Text="{Binding InstallError}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource ErrorVariantBrush}"
+                                           VerticalAlignment="Center" Margin="0,4,0,0"
+                                           TextWrapping="Wrap" MaxWidth="160"
+                                           Visibility="{Binding InstallError,
+                                                Converter={x:Static views:NullToVisibilityConverter.Instance}}" />
                             </StackPanel>
 
                             <!-- Row 1: Author + install_type pill (复用 CatalogInstallTypeBadgeStyle) -->

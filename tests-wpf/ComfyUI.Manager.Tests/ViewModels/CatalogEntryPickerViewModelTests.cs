@@ -114,13 +114,14 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// FakeNodeOps:不真跑 git / 删目录,记录 UninstallAsync 调用并返 canned result。
-    /// 必须 override UninstallAsync(virtual)才能在 VM 调用时被派发到这里。
+    /// FakeNodeOps:不真跑 git / 删目录,记录 UninstallAsync + InstallAsync 调用并返
+    /// canned result。必须 override UninstallAsync(virtual)才能在 VM 调用时被派发到这里。
     /// 走真实 base ctor(envRepo/nodeRepo 必传,GitRunner="git" 测试机可能没有但不调,
     /// 不会真启动 git)。
     ///
-    /// Success 路径会真删 scanned_nodes row(nodeRepo.Delete)— 否则 VM rebuild 后
-    /// ListByEnv 仍返回 pkg-a,IsInstalled 不变,test 验不出 rebuild 行为。
+    /// v0.6.14 T5:扩展 — override InstallAsync 记录 (envId, nodeId, repoUrl, targetTag)
+    /// 调用 + 返 canned result。Success 路径会真 upsert ScannedNode row(envId, package),
+    /// 这样 VM rebuild 后 ListByEnv 返 pkg-a,IsInstalled 变 true,test 验得出 rebuild。
     /// Fail 路径不动 db。
     /// </summary>
     private sealed class FakeNodeOps : NodeOperations
@@ -129,13 +130,20 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
         public NodeOperationResult NextUninstallResult { get; set; } =
             NodeOperationResult.Ok(null);
 
+        public List<(string EnvId, string NodeId, string RepoUrl, string? TargetTag,
+            IReadOnlyList<PipRequirement>? CatalogPipReqs)> InstallCalls { get; } = new();
+        public NodeOperationResult NextInstallResult { get; set; } =
+            NodeOperationResult.Ok("fake-sha");
+
         private readonly NodeRepository _nodeRepo;
+        private readonly EnvironmentRepository _envRepo;
 
         public FakeNodeOps(EnvironmentRepository envRepo, NodeRepository nodeRepo, Settings settings)
             : base(new GitRunner("git"), envRepo, nodeRepo, settings,
                    new NodeInstallDiffService((_, _, _, _) => Task.FromResult(new ProcessResult(true, 0, "[]", ""))))
         {
             _nodeRepo = nodeRepo;
+            _envRepo = envRepo;
         }
 
         public override Task<NodeOperationResult> UninstallAsync(
@@ -148,6 +156,31 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
                 _nodeRepo.Delete(nodeId);
             }
             return Task.FromResult(NextUninstallResult);
+        }
+
+        public override Task<NodeOperationResult> InstallAsync(
+            string envId, string nodeId, string repoUrl,
+            string? targetTag = null,
+            IReadOnlyList<PipRequirement>? catalogPipReqs = null,
+            CancellationToken ct = default)
+        {
+            InstallCalls.Add((envId, nodeId, repoUrl, targetTag, catalogPipReqs));
+            // Success → upsert ScannedNode row(envId, package)让 VM rebuild 后 IsInstalled=true
+            if (NextInstallResult.Success)
+            {
+                var env = _envRepo.Get(envId);
+                _nodeRepo.Upsert(new ScannedNode
+                {
+                    Id = nodeId,
+                    EnvId = envId,
+                    Package = nodeId,
+                    PackagePath = $"/tmp/{envId}/custom_nodes/{nodeId}",
+                    Version = NextInstallResult.Version ?? "fake-sha",
+                    Status = "enabled",
+                    ScanMeta = new Dictionary<string, string>(),
+                });
+            }
+            return Task.FromResult(NextInstallResult);
         }
     }
 
@@ -301,30 +334,190 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
 
     // ---- Command 行为 ----
 
+    // ---- v0.6.14 T5:行内安装 InstallCommand ----
+
     [Fact]
-    public void OkCommand_FiresCloseWithEntry_OnlyForNotInstalled()
+    public async Task InstallCommand_CallsNodeOps_InstallAsync_WithCorrectArgs()
     {
-        SeedCatalogEntry("pkg-a");
-        SeedScannedNode("env-1", "pkg-a", installedTag: "1.0.0");
+        // Seed entry + raw_metadata["repository"] = "https://github.com/owner/repo"
+        var catRepo = NewCatalogRepo();
+        var entry = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-install",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        };
+        catRepo.Upsert(entry);
+        // 没装 scanned_node row — IsInstalled 必 false
+
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings());
+        var vm = NewVm(ops);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-install");
+        Assert.False(item.IsInstalled);
+
+        vm.InstallCommand.Execute(item);
+        await WaitForCondition(() => ops.InstallCalls.Count == 1, timeoutMs: 2000);
+
+        Assert.Single(ops.InstallCalls);
+        var call = ops.InstallCalls[0];
+        Assert.Equal("env-1", call.EnvId);
+        Assert.Equal("pkg-install", call.NodeId);
+        Assert.Equal("https://github.com/owner/repo", call.RepoUrl);
+        Assert.Null(call.TargetTag);   // entry 没 seed versions → SelectedVersion 仍 null
+    }
+
+    [Fact]
+    public async Task InstallCommand_Success_RefreshesItems_SetsInstalledBadge()
+    {
+        var catRepo = NewCatalogRepo();
+        var entry = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-install-ok",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        };
+        catRepo.Upsert(entry);
+
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings())
+        {
+            NextInstallResult = NodeOperationResult.Ok("fake-sha"),
+        };
+        var vm = NewVm(ops);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-install-ok");
+        vm.InstallCommand.Execute(item);
+
+        // 等 rebuild 完成(InstallAsync → BuildItems)
+        await WaitForCondition(
+            () => vm.Items.Any(i => i.Entry.Package == "pkg-install-ok" && i.IsInstalled),
+            timeoutMs: 2000);
+
+        var after = vm.Items.Single(i => i.Entry.Package == "pkg-install-ok");
+        Assert.True(after.IsInstalled);
+        Assert.Equal("Installed", after.StatusKind);
+        Assert.False(after.IsInstalling);   // rebuild 后旧 row 已被替换
+    }
+
+    [Fact]
+    public async Task InstallCommand_Failure_ShowsError_KeepsRowNotInstalled()
+    {
+        var catRepo = NewCatalogRepo();
+        var entry = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-install-fail",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        };
+        catRepo.Upsert(entry);
+
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings())
+        {
+            NextInstallResult = NodeOperationResult.Fail("git clone failed: 404"),
+        };
+        var vm = NewVm(ops);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-install-fail");
+        vm.InstallCommand.Execute(item);
+
+        // 等异步完成(InstallCalls 计数 + InstallError 写)
+        await WaitForCondition(
+            () => ops.InstallCalls.Count == 1 && vm.Items[0].InstallError is not null,
+            timeoutMs: 2000);
+
+        Assert.Single(ops.InstallCalls);
+        // failure path 不 upsert ScannedNode row,IsInstalled 保持 false,IsInstalling 解除
+        var after = vm.Items.Single(i => i.Entry.Package == "pkg-install-fail");
+        Assert.False(after.IsInstalled);
+        Assert.False(after.IsInstalling);
+        Assert.Equal("git clone failed: 404", after.InstallError);
+    }
+
+    [Fact]
+    public void InstallCommand_WhileAlreadyInstalling_IsDisabled()
+    {
+        SeedCatalogEntry("pkg-busy");
 
         var vm = NewVm();
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-busy");
 
-        // installed → CanExecute false
-        vm.Selected = vm.Items[0];
-        Assert.False(vm.OkCommand.CanExecute(null));
+        Assert.True(vm.InstallCommand.CanExecute(item));
 
-        // 选 not-installed:seed 第二个
-        SeedCatalogEntry("pkg-b");
-        vm = NewVm();
-        // 找到 not-installed 那条
-        var notInstalled = vm.Items.Single(i => !i.IsInstalled);
-        CatalogEntry? firedEntry = null;
-        vm.CloseWithEntry += e => firedEntry = e;
-        vm.Selected = notInstalled;
-        Assert.True(vm.OkCommand.CanExecute(null));
-        vm.OkCommand.Execute(null);
-        Assert.NotNull(firedEntry);
-        Assert.Equal("pkg-b", firedEntry!.Package);
+        // 模拟另一条并发正在装(设 IsInstalling=true)→ CanExecute 返 false
+        item.IsInstalling = true;
+        Assert.False(vm.InstallCommand.CanExecute(item));
+
+        // 恢复:既没在装也没装过,CanExecute 重新为 true
+        item.IsInstalling = false;
+        Assert.True(vm.InstallCommand.CanExecute(item));
+    }
+
+    [Fact]
+    public async Task InstallCommand_UsesSelectedVersion_AsTargetTag()
+    {
+        var catRepo = NewCatalogRepo();
+        var entry = new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = SeedSourceUrl,
+            Package = "pkg-versioned-install",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        };
+        catRepo.Upsert(entry);
+        // Seed 2 versions
+        var versionRepo = new NodeVersionRepository(new CatalogCacheStore(_db.Path));
+        versionRepo.UpsertBatch(new[]
+        {
+            (SeedSourceUrl, "pkg-versioned-install",
+                new VersionInfo { Tag = "v1.0.0", PublishedAt = "2025-01-01T00:00:00Z", IsPrerelease = false }),
+            (SeedSourceUrl, "pkg-versioned-install",
+                new VersionInfo { Tag = "v2.0.0", PublishedAt = "2025-06-01T00:00:00Z", IsPrerelease = false }),
+        });
+
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings());
+        var vm = NewVm(ops);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-versioned-install");
+        Assert.Equal(2, item.Versions.Count);
+        // 默认 SelectedVersion = LatestVersion(没设)/ 第一项 v1.0.0 → 改成 v2.0.0
+        item.SelectedVersion = "v2.0.0";
+
+        vm.InstallCommand.Execute(item);
+        await WaitForCondition(() => ops.InstallCalls.Count == 1, timeoutMs: 2000);
+
+        Assert.Single(ops.InstallCalls);
+        Assert.Equal("v2.0.0", ops.InstallCalls[0].TargetTag);
     }
 
     [Fact]
@@ -399,21 +592,6 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
         vm.Closed += () => closed = true;
         vm.CancelCommand.Execute(null);
         Assert.True(closed);
-    }
-
-    [Fact]
-    public void OkCommand_OnNotInstalled_FiresClosedEvent()
-    {
-        SeedCatalogEntry("pkg-a");
-        var vm = NewVm();
-        vm.Selected = vm.Items.First(i => !i.IsInstalled);
-        bool closed = false;
-        bool picked = false;
-        vm.Closed += () => closed = true;
-        vm.CloseWithEntry += _ => picked = true;
-        vm.OkCommand.Execute(null);
-        Assert.True(closed);
-        Assert.True(picked);
     }
 
     // ---- v0.6.14 T4: per-row version dropdown + LastUpdate ----

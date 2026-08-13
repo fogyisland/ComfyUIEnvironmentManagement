@@ -1243,8 +1243,12 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// OpenInstallNodePicker:从 env 行点"安装节点" → 弹 CatalogEntryPickerDialog 选条目
-    /// → 弹 InstallDialog(预填 env) → 用户选则 install。
+    /// OpenInstallNodePicker:从 env 行点"安装节点" → 弹 CatalogEntryPickerDialog,
+    /// picker 自己管安装(行内 InstallCommand,不再弹 InstallDialog)。
+    ///
+    /// v0.6.14 T5:简化 — picker 接管 install,只需 onInstallSuccess 回调(等同 v0.6.11
+    /// InstallDialog 的同名参数 — 装成功时 fire-and-forget 触发 MainViewModel.RestartEnvAsync)
+    /// + onClosed(picker 关时刷新 env-list)。
     /// </summary>
     private void OpenInstallNodePicker(Environment? env)
     {
@@ -1256,69 +1260,48 @@ public class EnvironmentListViewModel : ViewModelBase
             return;
         }
 
-        // v0.6.11+ SDD D1 R1:测试拦截 catalog picker — 返回 stub entry 让测试
-        // 不弹真 dialog 也能跑到 InstallDialog.Show(...)。
-        CatalogEntry? entry;
-        if (CatalogPickerOverride is not null)
-        {
-            entry = CatalogPickerOverride();
-        }
-        else if (_catalogRepo is null || _nodeRepo is null || _versionRepo is null)
+        // v0.6.11+ SDD D1:_mvm null = EnvListVM 早于 MVM 构造(测试或极端 wiring)
+        // → 不传 onInstallSuccess,装成功不触发重启,行为跟 v0.6.11 既有兼容。
+        Func<string, Task>? onInstallSuccess = _mvm is not null ? _mvm.RestartEnvAsync : null;
+
+        // v0.6.14 T5:picker 自己管 install,不再需要 CatalogPickerOverride 返 entry
+        // 也不再调 InstallDialog.Show。CatalogPickerOverride / InstallDialogShowOverride
+        // 仍保留为 no-op 测试 seam(向后兼容现有 test suite),生产路径直接 Show。
+        if (_catalogRepo is null || _nodeRepo is null || _versionRepo is null)
         {
             // v0.6.14 R1 fix:EnvListVM 在测试 / 旧 wiring 下 catalogRepo / nodeRepo 未注入,
-            // 走不了 Show。弹 picker 没意义(它要查 catalog + scanned_nodes),
-            // 直接走 InstallDialog 让用户手填 entry — 保持 caller 不至于完全失败。
+            // 走不了 Show。直接 return(不再 fallback InstallDialog — T5 删了)。
             // 正常生产路径这三个 repo 必非空(App.xaml.cs 注入)。
-            entry = null;
-        }
-        else
-        {
-            entry = Views.CatalogEntryPickerDialog.Show(
-                _repo, _nodeOps, _catalogRepo, _nodeRepo, _versionRepo, _logger, env.Id,
-                onClosed: () => Load());
-        }
-        if (entry is null) return;
-
-        // v0.6.11+ SDD D1: 注入自动重启回调 — 装成功时 fire-and-forget
-        // 触发 MainViewModel.RestartEnvAsync(env.Id),切到 env-list tab + 重启 env。
-        // _mvm null = EnvListVM 早于 MVM 构造(测试或极端 wiring)→ 不传回调,
-        // InstallDialog 装成功不触发重启,行为跟 v0.6.11 既有兼容。
-        Func<string, Task>? onSuccess = _mvm is not null ? _mvm.RestartEnvAsync : null;
-
-        // v0.6.11+ SDD D1 R1:test seam 让测试捕获 InstallDialog.Show 的参数
-        // (preselectedEnvId + onInstallSuccess),verify 回调注入。
-        if (InstallDialogShowOverride is not null)
-        {
-            InstallDialogShowOverride(env.Id, onSuccess);
             return;
         }
 
-        Views.InstallDialog.Show(
-            _repo, _nodeOps, entry,
-            preselectedEnvId: env.Id,
-            onInstallSuccess: onSuccess);
+        Views.CatalogEntryPickerDialog.Show(
+            _repo, _nodeOps, _catalogRepo, _nodeRepo, _versionRepo, _logger, env.Id,
+            onInstallSuccess: onInstallSuccess,
+            onClosed: () => Load());
     }
 
     /// <summary>
-    /// Test seam — unit tests set this to intercept the picker + InstallDialog launch
-    /// (both call Application.Current.MainWindow and would throw in test context).
+    /// Test seam — unit tests set this to intercept the picker launch
+    /// (Show calls Application.Current.MainWindow and would throw in test context).
     /// Receives the env the command was bound to.
     /// </summary>
     public Action<Environment>? OpenInstallPickerOverride { get; set; }
 
     /// <summary>
-    /// v0.6.11+ SDD D1 R1 (test seam):测试拦截 catalog picker dialog — 返回 stub
-    /// entry 让 OpenInstallNodePicker 不弹真 WPF dialog 也能走到 InstallDialog.Show。
-    /// 生产代码不需要(走 Views.CatalogEntryPickerDialog.Show 路径)。
+    /// v0.6.11+ SDD D1 R1 (test seam):保留为 no-op,production code 在 v0.6.14 T5
+    /// 已不再调 InstallDialog.Show(由 picker 行内完成)。测试 suite 仍可赋值,生产
+    /// 代码忽略 — 保持旧测试用例不抛 NRE。
     /// </summary>
+    [Obsolete("v0.6.14 T5:picker 行内安装,不再调 InstallDialog.Show。此 seam 仅作向后兼容保留。")]
     public Func<CatalogEntry?>? CatalogPickerOverride { get; set; }
 
     /// <summary>
-    /// v0.6.11+ SDD D1 R1 (test seam):测试拦截 InstallDialog.Show 调用,捕获
-    /// (preselectedEnvId, onInstallSuccess) 实际传入的参数 — 用于 verify EnvListVM
-    /// 在 _mvm 设上后,OpenInstallNodePicker 把 _mvm.RestartEnvAsync 当回调注入。
-    /// 生产代码不需要(走 Views.InstallDialog.Show 路径)。
+    /// v0.6.11+ SDD D1 R1 (test seam):保留为 no-op,production code 在 v0.6.14 T5
+    /// 已不再调 InstallDialog.Show(由 picker 行内完成)。测试 suite 仍可赋值,
+    /// production 永远不 invoke — 保持旧测试用例不抛 NRE。
     /// </summary>
+    [Obsolete("v0.6.14 T5:picker 行内安装,不再调 InstallDialog.Show。此 seam 仅作向后兼容保留。")]
     public Action<string, Func<string, Task>?>? InstallDialogShowOverride { get; set; }
 
     /// <summary>

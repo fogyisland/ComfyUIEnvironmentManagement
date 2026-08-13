@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -18,7 +19,8 @@ public enum PickerFilter { All, NotInstalled, Installed, Outdated }
 /// 2. 跟当前 env 的 scanned_nodes 按 Package join,标记 IsInstalled + InstalledTag
 /// 3. 提供 query(自由文本搜索 Package/Description/Author)+ 4 个 filter chips
 /// 4. 已装条目行内"卸载"按钮(走 NodeOperations.UninstallAsync)
-/// 5. 选未装条目 → fire CloseWithEntry → caller 接着弹 InstallDialog
+/// 5. v0.6.14 T5:未装条目行内"安装"按钮直接走 NodeOperations.InstallAsync(不再弹
+///    第二个 InstallDialog),成功后 BuildItems rebuild,picker 保持打开
 /// </summary>
 public class CatalogEntryPickerViewModel : ViewModelBase
 {
@@ -28,6 +30,7 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     private readonly NodeVersionRepository _versionRepo;
     private readonly string _envId;
     private readonly AppLogger? _logger;
+    private readonly Func<string, Task>? _onInstallSuccess;
 
     private List<CatalogEntryPickerItem> _allItems = new();
     public ObservableCollection<CatalogEntryPickerItem> Items { get; } = new();
@@ -59,26 +62,22 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     public CatalogEntryPickerItem? Selected
     {
         get => _selected;
-        set { if (SetField(ref _selected, value)) OkCommand.RaiseCanExecuteChanged(); }
+        set { if (SetField(ref _selected, value)) RaiseCanExecuteChanged(); }
     }
 
     private bool _busy;
-    /// <summary>卸载中 disable 操作(OkCommand + UninstallCommand)。</summary>
+    /// <summary>卸载中或安装中 disable 操作(InstallCommand + UninstallCommand)。</summary>
     public bool Busy
     {
         get => _busy;
         private set { if (SetField(ref _busy, value)) RaiseCanExecuteChanged(); }
     }
 
-    public RelayCommand OkCommand { get; }             // 安装选中(仅未装)
+    public RelayCommand InstallCommand { get; }       // v0.6.14 T5:行内安装,参数:CatalogEntryPickerItem
     public RelayCommand CancelCommand { get; }
-    public RelayCommand UninstallCommand { get; }      // 参数:CatalogEntryPickerItem
+    public RelayCommand UninstallCommand { get; }     // 参数:CatalogEntryPickerItem
 
-    /// <summary>用户选了未装条目,关 dialog 触发安装流程。caller 拿 entry + envId。</summary>
-    public event Action<CatalogEntry>? CloseWithEntry;
-    public event Action? Cancelled;
-
-    /// <summary>Picker 关 dialog 时 fire 一次(Ok / Cancel / X 都触发),caller 用来刷新 env-list。</summary>
+    /// <summary>Picker 关 dialog 时 fire 一次(Cancel / X / Alt+F4 都触发),caller 用来刷新 env-list。</summary>
     public event Action? Closed;
 
     private bool _closedFired;
@@ -86,7 +85,7 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     /// <summary>
     /// v0.6.14 T3:让 dialog code-behind 在 X 按钮 / Alt+F4 路径上 fire Closed。
     /// event 外部只能 +=/-,用这个方法中转给 Closing handler 调用。
-    /// 幂等:OkCommand/CancelCommand 已经 fire 过一次就不重复 fire。
+    /// 幂等:已经 fire 过一次就不重复 fire。
     /// </summary>
     public void RaiseClosed()
     {
@@ -101,7 +100,8 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         NodeOperations nodeOps,
         NodeVersionRepository versionRepo,
         string envId,
-        AppLogger? logger = null)
+        AppLogger? logger = null,
+        Func<string, Task>? onInstallSuccess = null)
     {
         _catalogRepo = catalogRepo;
         _nodeRepo = nodeRepo;
@@ -109,16 +109,12 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         _versionRepo = versionRepo;
         _envId = envId;
         _logger = logger;
-        OkCommand = new RelayCommand(
-            _ => {
-                if (Selected is { IsInstalled: false })
-                {
-                    CloseWithEntry?.Invoke(Selected.Entry);
-                    RaiseClosed();
-                }
-            },
-            _ => Selected is { IsInstalled: false } && !Busy);
-        CancelCommand = new RelayCommand(_ => { Cancelled?.Invoke(); RaiseClosed(); });
+        _onInstallSuccess = onInstallSuccess;
+        InstallCommand = new RelayCommand(
+            async item => await InstallAsync(item as CatalogEntryPickerItem),
+            item => item is CatalogEntryPickerItem { IsInstalled: false, IsInstalling: false }
+                    && !Busy);
+        CancelCommand = new RelayCommand(_ => RaiseClosed());
         UninstallCommand = new RelayCommand(
             async item => await UninstallAsync(item as CatalogEntryPickerItem),
             item => item is CatalogEntryPickerItem { IsInstalled: true } && !Busy);
@@ -208,6 +204,108 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         _ => true,
     };
 
+    /// <summary>
+    /// v0.6.14 T5:行内安装 — 直接走 NodeOperations.InstallAsync,不再弹第二个 InstallDialog。
+    /// 成功 → BuildItems rebuild,该行变成 Installed(IsInstalling 自动清掉,因 row 被替换)。
+    /// 失败 → InstallError 写原因,IsInstalling=false,行状态不变(可重试)。
+    /// 装成功后再 fire-and-forget 调 _onInstallSuccess(等同 InstallDialog 的 onInstallSuccess 行为)。
+    /// </summary>
+    private async Task InstallAsync(CatalogEntryPickerItem? item)
+    {
+        if (item is null || item.IsInstalled || item.IsInstalling) return;
+
+        var entry = item.Entry;
+        var repoUrl = ExtractRepoUrl(entry);
+        if (string.IsNullOrWhiteSpace(repoUrl))
+        {
+            item.InstallError = "catalog 条目缺 repository url";
+            return;
+        }
+
+        item.InstallError = null;
+        item.IsInstalling = true;
+        item.InstallProgress = "准备...";
+        Busy = true;
+        try
+        {
+            // 进度回调:marshal 到 UI 线程 + 更新当前 item 的 InstallProgress
+            var progress = new Progress<string>(msg => item.InstallProgress = msg);
+
+            var result = await _nodeOps.InstallAsync(
+                _envId,
+                entry.Package,
+                repoUrl,
+                targetTag: item.SelectedVersion,
+                catalogPipReqs: entry.PipRequirements,
+                ct: default);
+
+            if (result.Success)
+            {
+                _logger?.Info("catalog-picker",
+                    $"env='{_envId}' node='{entry.Package}' tag='{item.SelectedVersion}' 装成功");
+                // rebuild:item 被换成 IsInstalled=true 的新 row,IsInstalling 自动清掉
+                BuildItems();
+                // 自动重启回调(等同原 InstallDialog 的 onInstallSuccess)
+                if (_onInstallSuccess is not null)
+                {
+                    var cb = _onInstallSuccess;
+                    _ = Task.Run(() => cb(_envId));
+                }
+            }
+            else
+            {
+                item.InstallError = result.Reason ?? "安装失败";
+                item.InstallProgress = null;
+                item.IsInstalling = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("catalog-picker",
+                $"env='{_envId}' node='{entry.Package}' 装异常:{ex.Message}");
+            item.InstallError = ex.Message;
+            item.InstallProgress = null;
+            item.IsInstalling = false;
+        }
+        finally
+        {
+            Busy = false;
+            RaiseCanExecuteChanged();
+        }
+    }
+
+    private static string? ExtractRepoUrl(CatalogEntry entry)
+    {
+        if (entry.RawMetadata is not null)
+        {
+            if (entry.RawMetadata.TryGetValue("repository", out var r))
+            {
+                var rs = ToStringValue(r);
+                if (!string.IsNullOrWhiteSpace(rs)) return rs;
+            }
+            if (entry.RawMetadata.TryGetValue("url", out var u))
+            {
+                var us = ToStringValue(u);
+                if (!string.IsNullOrWhiteSpace(us)) return us;
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(entry.SourceUrl)) return entry.SourceUrl;
+        return null;
+    }
+
+    /// <summary>
+    /// raw_metadata 反序列化后 value 可能是 string 也可能是 JsonElement(走 SQLite
+    /// 往返后),统一 ToString 提取字符串值。
+    /// </summary>
+    private static string? ToStringValue(object? value)
+    {
+        if (value is null) return null;
+        if (value is string s) return s;
+        // JsonElement.GetString() 返 null 当 element 不是 string 时
+        if (value is System.Text.Json.JsonElement je) return je.GetString();
+        return value.ToString();
+    }
+
     private async System.Threading.Tasks.Task UninstallAsync(CatalogEntryPickerItem? item)
     {
         if (item is null || !item.IsInstalled) return;
@@ -243,7 +341,7 @@ public class CatalogEntryPickerViewModel : ViewModelBase
 
     private void RaiseCanExecuteChanged()
     {
-        OkCommand.RaiseCanExecuteChanged();
+        InstallCommand.RaiseCanExecuteChanged();
         UninstallCommand.RaiseCanExecuteChanged();
     }
 }
