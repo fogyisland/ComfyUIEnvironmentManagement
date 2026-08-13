@@ -133,45 +133,9 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        // v0.6.14 T6: 退出清理 — 弹 confirm 同步询问,有 running env 就 graceful stop。
-        // 必须放在 settings 检查之前:用户明确要"关掉所有进程再退出",先确认这件事,
-        // 再处理 dirty settings / UI prefs 持久化。短路逻辑:
-        //   - 没 cleanup service(测试 ctor 没传)→ 走老路径
-        //   - running count == 0 → 跳过 confirm,直接清理(空循环,啥也不做)
-        //   - 用户 No → e.Cancel=true,留下
-        //   - 用户 Yes → 走 async cleanup(Dispatcher.InvokeAsync 异步,window close 不阻塞),
-        //     App.OnExit 的 _launcher.Dispose 兜底任何没跑完的进程。
-        if (DataContext is MainViewModel mvm)
-        {
-            var cleanup = mvm.GetExitCleanupService();
-            if (cleanup is not null)
-            {
-                var runningCount = mvm.GetRunningEnvCount();
-                if (runningCount > 0)
-                {
-                    var proceed = cleanup.ConfirmShutdown?.Invoke(runningCount) ?? cleanup.DefaultConfirm(runningCount);
-                    if (!proceed)
-                    {
-                        e.Cancel = true;
-                        return;
-                    }
-                }
-                // 异步跑 cleanup — window 立即关闭,后台 stop + 翻 status。
-                // Dispatcher 关闭后 InvokeAsync 不一定 fire,App.OnExit 兜底。
-                Dispatcher.InvokeAsync(async () =>
-                {
-                    try
-                    {
-                        await cleanup.ShutdownRunningEnvsAsync();
-                    }
-                    catch
-                    {
-                        // 退出期 stop 失败 → App.OnExit → _launcher.Dispose force-kill
-                        // 已经兜底,这里吞掉不冒到 UI。
-                    }
-                });
-            }
-        }
+        // v0.6.14 R1: 把所有 hook 逻辑拆到 TryHandleExitCleanup,测试可直接调
+        // internal 方法,不再用 BindingFlags.DeclaredOnly 反射 private OnClosing。
+        TryHandleExitCleanup(e);
 
         // v0.6.11+ SDD B T3:settings 未保存改动拦截。
         // 切侧栏离开 settings tab 不拦(VM 缓存 + dirty 状态活着),
@@ -203,5 +167,54 @@ public partial class MainWindow : Window
             LastViewName = _startupPrefs.LastViewName,
         };
         svc.SaveToFile(svc.DefaultPath, write);
+    }
+
+    /// <summary>
+    /// v0.6.14 R1: 退出清理 hook(从 OnClosing 抽出,internal 便于测试直接调用)。
+    /// 处理流程:
+    /// - 没 cleanup service(测试 ctor 没传)→ 走老路径(空操作,return)
+    /// - running count == 0 → 跳过 confirm,直接清理(空循环,啥也不做)
+    /// - 用户 No → e.Cancel=true,留下
+    /// - 用户 Yes → 异步 cleanup(Dispatcher.InvokeAsync,window close 不阻塞),
+    ///   App.OnExit 的 _launcher.Dispose 兜底任何没跑完的进程。
+    ///
+    /// v0.6.14 R1: 异步 cleanup 异常不再静默吞掉 — 用 EnvExitCleanupService.Logger
+    /// 写 <c>[env-exit-failed]</c> 标签。OCE 也不 rethrow(这是 exit path,无 caller
+    /// 监听 rethrow),所有异常走 logger 兜底。
+    /// </summary>
+    internal void TryHandleExitCleanup(System.ComponentModel.CancelEventArgs e)
+    {
+        if (DataContext is not MainViewModel mvm) return;
+        var cleanup = mvm.GetExitCleanupService();
+        if (cleanup is null) return;
+
+        var runningCount = mvm.GetRunningEnvCount();
+        if (runningCount > 0)
+        {
+            var proceed = cleanup.ConfirmShutdown?.Invoke(runningCount) ?? cleanup.DefaultConfirm(runningCount);
+            if (!proceed)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+        // 异步跑 cleanup — window 立即关闭,后台 stop + 翻 status。
+        // Dispatcher 关闭后 InvokeAsync 不一定 fire,App.OnExit 兜底。
+        var logger = cleanup.Logger;
+        Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                await cleanup.ShutdownRunningEnvsAsync();
+            }
+            catch (Exception ex)
+            {
+                // R1: 退出期 stop 失败 — 写日志(用 cleanup 自己的 logger,跟
+                // 主流程同一份),不再静默吞。App.OnExit → _launcher.Dispose
+                // force-kill 仍然兜底,这里只负责记录。
+                logger?.Error("env-exit-failed",
+                    $"exit cleanup threw {ex.GetType().Name}: {ex.Message}", ex);
+            }
+        });
     }
 }

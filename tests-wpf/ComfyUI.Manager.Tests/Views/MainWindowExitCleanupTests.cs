@@ -83,19 +83,20 @@ public class MainWindowExitCleanupTests : IDisposable
                     new Settings(), null!, null!, null!, null!, null!,
                     null!, "", _projectRoot, null!, null!,
                     new UiPreferencesService(_projectRoot),
-                    envExitCleanup: cleanup);
+                    envExitCleanup: cleanup,
+                    // v0.6.14 R1: GetRunningEnvCount 走 _envRepo.CountByStatus,
+                    // 测试必须 wire repo,否则 count 返 0 跳过 cleanup 路径。
+                    envRepo: repo);
 
                 window = new MainWindow { DataContext = mvm };
                 setup((window, cleanup, repo));
 
                 var e = new CancelEventArgs();
-                // 反射调 private OnClosing — 用 DeclaredOnly + NonPublic 避开 WPF
-                // Window 基类的 protected virtual OnClosing (同名签名)。
-                var closingMethod = typeof(MainWindow).GetMethod("OnClosing",
-                    System.Reflection.BindingFlags.NonPublic
-                    | System.Reflection.BindingFlags.Instance
-                    | System.Reflection.BindingFlags.DeclaredOnly);
-                closingMethod?.Invoke(window, new object?[] { window, e });
+                // v0.6.14 R1: 直接调 internal TryHandleExitCleanup —— 不再用
+                // BindingFlags.DeclaredOnly 反射 private OnClosing(避开 WPF
+                // Window 基类同名 protected virtual 的 brittle 假设)。
+                // OnClosing event handler 在 ctor 里 wired,它内部委托给本方法。
+                window.TryHandleExitCleanup(e);
 
                 // Flush Dispatcher — 异步 cleanup 在 InvokeAsync 队列上跑
                 FlushDispatcher();

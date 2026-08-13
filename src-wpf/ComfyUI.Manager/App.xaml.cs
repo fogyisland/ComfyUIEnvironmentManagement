@@ -279,7 +279,10 @@ public partial class App : Application
             // RestartEnvAsync 在 env-not-found / EnvListVM-未构造时打 WARN。
             logger: logger,
             // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 调它。
-            envExitCleanup: _envExitCleanup);
+            envExitCleanup: _envExitCleanup,
+            // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*)
+            // 而不是全表 ListAll().Where().Count()。
+            envRepo: envRepo);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

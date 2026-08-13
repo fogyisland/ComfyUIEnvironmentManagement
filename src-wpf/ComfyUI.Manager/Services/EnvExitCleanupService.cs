@@ -22,9 +22,21 @@ namespace ComfyUI.Manager.Services;
 /// - 每次 StopEnvAsync 之后 Upsert env.Status="stopped",idempotent —— 即使
 ///   launcher 内部已经写过一遍,这步保证 status 一定翻成 stopped
 /// - 测试 seam <see cref="ConfirmShutdown"/> 让测试侧弹 confirm 不阻塞 STA
+/// - v0.6.14 R1: 测试 seam <see cref="Stopper"/> 让 OneStopFails 等失败路径
+///   测试可注入 throwing fake(默认走真实 _launcher.StopEnvAsync)
 /// </summary>
 public sealed class EnvExitCleanupService
 {
+    /// <summary>
+    /// v0.6.14 R1: 单方法 delegate seam —— 让测试可注入会抛异常的 fake,
+    /// 验证 ShutdownRunningEnvsAsync 在单 env StopEnvAsync 抛时仍能:
+    /// 1) catch 异常不 rethrow(OCE 例外)
+    /// 2) 继续处理剩余 env
+    /// 3) 仍把每个 env Status 翻成 stopped
+    /// 默认 = <c>_launcher.StopEnvAsync(env, 5, ct)</c>;null = 同默认(显式重置)。
+    /// </summary>
+    internal Func<Environment, int, CancellationToken, Task>? Stopper { get; set; }
+
     private readonly EnvironmentRepository _envRepo;
     private readonly ProcessLauncher _launcher;
     private readonly AppLogger? _logger;
@@ -37,6 +49,7 @@ public sealed class EnvExitCleanupService
         _envRepo = envRepo ?? throw new ArgumentNullException(nameof(envRepo));
         _launcher = launcher ?? throw new ArgumentNullException(nameof(launcher));
         _logger = logger;
+        Stopper = (env, timeout, ct) => _launcher.StopEnvAsync(env, timeout, ct);
     }
 
     /// <summary>
@@ -47,14 +60,10 @@ public sealed class EnvExitCleanupService
     public Func<int, bool>? ConfirmShutdown { get; set; }
 
     /// <summary>
-    /// 同步取 running env 数,给 OnClosing 的 confirm dialog 用。
-    /// 单条 <c>SELECT COUNT(*)</c> — exit time 必走(<c>App.OnExit</c> force-kill
-    /// fallback 在后面兜底,所以这个数可以略 staleness-OK)。
+    /// v0.6.14 R1: 暴露内部 logger,让 <c>MainWindow.OnClosing</c> 异步 cleanup
+    /// 跑异常时能用同一份 logger 写 <c>[env-exit-failed]</c> 标签(不再静默吞)。
     /// </summary>
-    public int CountRunningEnvs()
-    {
-        return _envRepo.ListAll().Count(e => string.Equals(e.Status, "running", StringComparison.OrdinalIgnoreCase));
-    }
+    public AppLogger? Logger => _logger;
 
     /// <summary>
     /// 顺序停掉所有 <c>status="running"</c> 的 env,Upsert 成 stopped。
@@ -71,13 +80,14 @@ public sealed class EnvExitCleanupService
         if (running.Count == 0) return 0;
 
         _logger?.Info("env-exit", $"开始退出清理,共 {running.Count} 个 running env");
+        var stopper = Stopper ?? ((env, timeout, c) => _launcher.StopEnvAsync(env, timeout, c));
         var count = 0;
         foreach (var env in running)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                await _launcher.StopEnvAsync(env, timeoutSeconds: 5, ct).ConfigureAwait(false);
+                await stopper(env, 5, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -86,7 +96,7 @@ public sealed class EnvExitCleanupService
             }
             catch (Exception ex)
             {
-                // launcher 失败(process 已死 / 信号失败)— 静默继续,下一个 env。
+                // stopper 失败(process 已死 / 信号失败)— 静默继续,下一个 env。
                 // 我们仍然要把 status 翻成 stopped(DB 一致性)。
                 _logger?.Warn("env-exit", $"env='{env.Name}' StopEnvAsync 异常:{ex.GetType().Name}: {ex.Message}");
             }

@@ -102,21 +102,28 @@ public class EnvExitCleanupServiceTests : IDisposable
     [Fact]
     public async Task ShutdownRunningEnvsAsync_OneStopFails_ContinuesToNext_StillUpdatesStopped()
     {
-        // 真实 ProcessLauncher 不会 throw(env 不在 _running map 里走 no-op),
-        // 但我们用 Func<int, CancellationToken, Task> override 模拟 "throw"。
-        // 由于 ProcessLauncher 是 sealed + 不接受 Func 注入,我们靠 Status 翻转
-        // 兜底逻辑本身就能覆盖这个场景:即使 StopEnvAsync 抛,service 仍然翻 status。
-        // 这里用一个特殊种子 env(放在不存在的 launcher 路径 + 注 env-stop call)
-        // 来模拟。
+        // v0.6.14 R1: 用 Stopper seam 注入会抛的 fake —— 默认 _launcher.StopEnvAsync
+        // 不会 throw(env 不在 _running map 里走 no-op),没法测真实的失败路径。
+        // 注入让 env-x 抛 InvalidOperationException、env-y 走正常路径,验证:
+        // 1) service 不 rethrow
+        // 2) 两个 env 都翻成 stopped(StopEnvAsync 失败那个也翻)
+        // 3) 两个 env 都被处理(throw 没中断循环)
         var (svc, repo, _) = MakeService();
         repo.Upsert(MakeRunningEnv("env-x"));
         repo.Upsert(MakeRunningEnv("env-y"));
 
+        svc.Stopper = (env, _, _) =>
+        {
+            if (env.Id == "env-x")
+                throw new InvalidOperationException("simulated launcher failure");
+            return Task.CompletedTask;
+        };
+
         var count = await svc.ShutdownRunningEnvsAsync();
 
-        // 验证 service 不抛,且每个 env 都翻成 stopped
         Assert.Equal(2, count);
-        Assert.All(repo.ListAll(), e => Assert.Equal("stopped", e.Status));
+        var rows = repo.ListAll().OrderBy(e => e.Name).ToList();
+        Assert.All(rows, e => Assert.Equal("stopped", e.Status));
     }
 
     [Fact]

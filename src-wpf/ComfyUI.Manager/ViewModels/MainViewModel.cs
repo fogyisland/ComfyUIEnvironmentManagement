@@ -79,6 +79,9 @@ public class MainViewModel : ViewModelBase
     // + 翻 status=stopped);MainWindow 通过 GetExitCleanupService() 拿到。
     // 测试侧可不传(App.xaml.cs 总是传非 null)。
     private readonly EnvExitCleanupService? _envExitCleanup;
+    // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 SELECT COUNT(*)
+    // 不再 ListAll().Where().Count()。可空:测试 ctor 不传走 null fallback。
+    private readonly EnvironmentRepository? _envRepo;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -258,7 +261,10 @@ public class MainViewModel : ViewModelBase
         AppLogger? logger = null,
         // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 通过 GetExitCleanupService()
         // 拿到它来 graceful 停 running env。可空保留旧测试 ctor 兼容。
-        EnvExitCleanupService? envExitCleanup = null)
+        EnvExitCleanupService? envExitCleanup = null,
+        // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*) 查询;
+        // 可空保持旧测试 ctor 兼容。生产 DI(App.xaml.cs)总是传。
+        EnvironmentRepository? envRepo = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -297,6 +303,9 @@ public class MainViewModel : ViewModelBase
         _logger = logger;
         // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 拿它停 env。
         _envExitCleanup = envExitCleanup;
+        // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*) 而不是
+        // ListAll().Where().Count() 的全表扫。可空 ctor 让旧测试不传也 compile。
+        _envRepo = envRepo;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -735,11 +744,12 @@ public class MainViewModel : ViewModelBase
     public EnvExitCleanupService? GetExitCleanupService() => _envExitCleanup;
 
     /// <summary>
-    /// v0.6.14 T6: 同步取 running env 数(给 OnClosing 的 confirm dialog)。
-    /// 单条 <c>SELECT COUNT(*)</c>。Cleanup service 不存在时返 0(MainWindow
-    /// 短路,不弹 confirm)。
+    /// v0.6.14 R1: 同步取 running env 数(给 OnClosing 的 confirm dialog)。
+    /// 单条 <c>SELECT COUNT(*)</c> via <see cref="IEnvironmentRepository.CountByStatus"/>
+    /// — 替代 v0.6.14 T6 的 <c>ListAll().Where().Count()</c> 全表扫。
+    /// Cleanup service / repo 不存在时返 0(MainWindow 短路,不弹 confirm)。
     /// </summary>
-    public int GetRunningEnvCount() => _envExitCleanup?.CountRunningEnvs() ?? 0;
+    public int GetRunningEnvCount() => _envRepo?.CountByStatus("running") ?? 0;
 
     /// <summary>
     /// 检查当前缓存的 SettingsViewModel 是否有未保存改动,有则弹三按钮框。
