@@ -200,9 +200,40 @@ public class CatalogViewModel : ViewModelBase
         private set => SetField(ref _progressMessage, value);
     }
 
+    private string _readProgress = "";
+    public string ReadProgress
+    {
+        get => _readProgress;
+        private set => SetField(ref _readProgress, value);
+    }
+
+    private string _writeProgress = "";
+    public string WriteProgress
+    {
+        get => _writeProgress;
+        private set => SetField(ref _writeProgress, value);
+    }
+
+    private string _versionProgress = "";
+    public string VersionProgress
+    {
+        get => _versionProgress;
+        private set => SetField(ref _versionProgress, value);
+    }
+
+    private string _metadataProgress = "";
+    public string MetadataProgress
+    {
+        get => _metadataProgress;
+        private set => SetField(ref _metadataProgress, value);
+    }
+
+    public RateLimitBannerViewModel RateLimitBanner { get; } = new();
+
     public RelayCommand CancelRefreshCommand { get; }
 
     private CancellationTokenSource? _refreshCts;
+    private readonly IRateLimitState? _rateLimitState;
 
     public CatalogViewModel(
         CatalogRepository repo,
@@ -211,7 +242,8 @@ public class CatalogViewModel : ViewModelBase
         CatalogRefreshService refreshService,
         Settings settings,
         SettingsRepository settingsRepo,
-        string projectRoot)
+        string projectRoot,
+        IRateLimitState? rateLimitState = null)
     {
         _repo = repo;
         _versionRepo = versionRepo;
@@ -220,6 +252,7 @@ public class CatalogViewModel : ViewModelBase
         _settings = settings;
         _settingsRepo = settingsRepo;
         _projectRoot = projectRoot;
+        _rateLimitState = rateLimitState;
 
         RefreshCommand = new RelayCommand(_ => _ = RefreshAsync(), _ => !IsBusy);
         CancelRefreshCommand = new RelayCommand(_ => _refreshCts?.Cancel(), _ => IsBusy);
@@ -276,6 +309,14 @@ public class CatalogViewModel : ViewModelBase
         InfoMessage = null;
         ProgressMessage = "拉取 catalog...";
         RefreshPercent = 0;
+        // v0.6.15: 入口清 stale state —— 上次 refresh 撞的 limit banner
+        // 用户没手动 dismiss 也得在本次 refresh 开始时清掉(避免 banner
+        // 永远挂在那误导用户认为当前还在限流)
+        RateLimitBanner.Hide();
+        ReadProgress = "";
+        WriteProgress = "";
+        VersionProgress = "";
+        MetadataProgress = "";
         IsBusy = true;
         _refreshCts?.Dispose();
         _refreshCts = new CancellationTokenSource();
@@ -285,25 +326,34 @@ public class CatalogViewModel : ViewModelBase
         try
         {
             // Progress<T> 在构造时捕获 SynchronizationContext(UI 线程),回调自动 marshal 回来。
-            var progress = new Progress<CatalogEntry>(e => OnEntryArrived(e));
+            var progress = new Progress<CatalogEntry>(e =>
+            {
+                OnEntryArrived(e);
+                ReadProgress = $"拉取 catalog: {_allEntries.Count} entries";
+            });
             var versionProgress = new Progress<VersionFetchProgress>(vp =>
             {
                 if (vp.Total <= 0) return;
                 RefreshPercent = (int)(100.0 * vp.Completed / vp.Total);
                 ProgressMessage = $"正在拉取版本 {vp.Completed}/{vp.Total}";
+                VersionProgress = $"拉取版本: {vp.Completed}/{vp.Total}";
             });
-            // v0.6.15:RefreshAsync 新增 rateLimitProgress / metadataProgress /
-            // rateLimitState 三参(T5 接 UI 时填),这里先用命名参数保持调用正确。
-            var result = await _refreshService.RefreshAsync(progress, versionProgress, ct: ct);
+            var metadataProgress = new Progress<MetadataFetchProgress>(mp =>
+                MetadataProgress = $"拉取 metadata: {mp.Done}/{mp.Total}");
+            var rateLimitProgress = new Progress<RateLimitInfo>(info =>
+                RateLimitBanner.Show(info, DateTimeOffset.Now));
+            var result = await _refreshService.RefreshAsync(
+                progress, versionProgress, rateLimitProgress,
+                metadataProgress, _rateLimitState, ct);
             if (result.Success)
             {
                 CurrentPage = 1;
                 ApplyPage();
-                // v0.6.14:EntryCount 不再是 catalog 总条数 = "rows upserted" —
-                // 304 短路时是 0,正常 refresh 是 added+updated 之和。
-                // 改用 4 个计数把一次 refresh 拆开让用户看清"动了什么":
-                //   +Added / ~Updated(真的改字段) / ⟳Skipped(hash 一致)
-                //   -Deleted(JSON 里消失的 → 已硬删)
+                // v0.6.15: WriteProgress 直接 populate result 4 计数,
+                // InfoMessage 沿用既有 4 计数格式(用户已习惯)
+                WriteProgress =
+                    $"写库: +{result.AddedCount} ~{result.UpdatedCount} " +
+                    $"⟳{result.SkippedCount} -{result.DeletedCount}";
                 var msg = $"刷新成功 +{result.AddedCount} ~{result.UpdatedCount} ⟳{result.SkippedCount} -{result.DeletedCount}";
                 if (result.VersionCount > 0)
                     msg += $",其中 {result.VersionCount} 个已获取版本号";
