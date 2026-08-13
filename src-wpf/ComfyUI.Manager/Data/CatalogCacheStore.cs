@@ -86,6 +86,35 @@ public sealed class CatalogCacheStore
         EnsureColumn(conn, "catalog_cache", "os_compat_json", "TEXT");
         EnsureColumn(conn, "catalog_cache", "metadata_fetched_at", "TEXT");
 
+        // v0.6.14: 增量刷新 — content_hash(SHA256 of canonical entry JSON)
+        // + 8 个新 GitHub 字段(html_url/homepage/language/forks_count/
+        // open_issues_count/release_tag/subscribers_count/created_at)
+        // content_hash NOT NULL DEFAULT '' 让旧 row 自动回填空串
+        EnsureColumn(conn, "catalog_cache", "content_hash",
+            "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(conn, "catalog_cache", "html_url", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "homepage", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "language", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "forks_count", "INTEGER");
+        EnsureColumn(conn, "catalog_cache", "open_issues_count", "INTEGER");
+        EnsureColumn(conn, "catalog_cache", "release_tag", "TEXT");
+        EnsureColumn(conn, "catalog_cache", "subscribers_count", "INTEGER");
+        EnsureColumn(conn, "catalog_cache", "created_at", "TEXT");
+
+        // v0.6.14: HTTP cache 表 — per source URL 存 ETag/Last-Modified
+        // 同 DB(不开 JSON 文件,原子事务)。FetchedAt 用于 debug / 排查过期。
+        using (var hc = conn.CreateCommand())
+        {
+            hc.CommandText = @"
+                CREATE TABLE IF NOT EXISTS catalog_http_cache (
+                    url TEXT PRIMARY KEY,
+                    etag TEXT,
+                    last_modified TEXT,
+                    fetched_at TEXT NOT NULL
+                );";
+            hc.ExecuteNonQuery();
+        }
+
         // 3 个排序/过滤索引(stars/downloads 降序 + deprecated 0 过滤)
         using (var idx = conn.CreateCommand())
         {
