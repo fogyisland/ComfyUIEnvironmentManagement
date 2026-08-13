@@ -91,6 +91,7 @@ public class EnvironmentListViewModelReportTests
         public List<Environment> ListAll() => new();
         public void Upsert(Environment env) { }
         public int? GetMaxPort() => null;
+        public int CountByStatus(string status) => 0;
     }
 
     [Fact]

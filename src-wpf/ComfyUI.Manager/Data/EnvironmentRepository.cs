@@ -115,6 +115,21 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
         return result is null or DBNull ? null : Convert.ToInt32(result);
     }
 
+    /// <summary>
+    /// v0.6.14 T6: 同步 count — exit-time confirm dialog 用,
+    /// 单条 SELECT COUNT(*),空表返 0。
+    /// </summary>
+    public int CountByStatus(string status)
+    {
+        if (status is null) throw new ArgumentNullException(nameof(status));
+        using var conn = _factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM environments WHERE status = @status";
+        cmd.Parameters.AddWithValue("@status", status);
+        var result = cmd.ExecuteScalar();
+        return result is null or DBNull ? 0 : Convert.ToInt32(result);
+    }
+
     private static Environment Read(SqliteDataReader reader)
     {
         var result = new Environment

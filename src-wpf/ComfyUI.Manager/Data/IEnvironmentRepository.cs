@@ -26,4 +26,10 @@ public interface IEnvironmentRepository
     /// SELECT MAX(port) FROM environments。空 DB / 全 NULL port 返回 null。
     /// </summary>
     int? GetMaxPort();
+
+    /// <summary>
+    /// v0.6.14 T6: 按 status 计数,exit-time confirm dialog 用。
+    /// 空表返 0;status 不存在返 0。
+    /// </summary>
+    int CountByStatus(string status);
 }

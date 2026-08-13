@@ -22,6 +22,10 @@ public partial class App : Application
     // 同一份 _logger;测试可注入自己 derived 类的实例。
     private BaseEnvUninstaller? _baseEnvUninstaller;
     private RequirementsUninstaller? _requirementsUninstaller;
+    // v0.6.14 T6: 退出清理 service —— 用户点 X 关闭主窗口时,graceful 停掉所有
+    // running env 并把 SQLite status 翻成 stopped。构造后传给 MainViewModel,
+    // MainWindow.OnClosing 在 settings 检查之前调它。
+    private EnvExitCleanupService? _envExitCleanup;
     // v0.6.8: Splash 画面引用 — OnStartup 立即 Show,MainWindow 加载好后
     // NotifyMainWindowReady 触发 fade;FadeCompleted 由 Window self-close raise。
     private SplashWindow? _splash;
@@ -224,6 +228,10 @@ public partial class App : Application
         // EnvListVM 行内"卸载基础环境" / "卸载依赖"按钮 + 互斥 mutex 用这两份。
         _baseEnvUninstaller = new BaseEnvUninstaller(logger);
         _requirementsUninstaller = new RequirementsUninstaller(logger);
+        // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 在 settings 检查之前
+        // 调它(graceful 停 + status 翻 stopped);App.OnExit 仍然 force-kill 兜底。
+        // 跟其他 service 共用同一份 _logger,ConfirmShutdown 默认弹 MessageBox。
+        _envExitCleanup = new EnvExitCleanupService(envRepo, _launcher, logger);
         // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
         // cache 目录 = %APPDATA%/ComfyUI-Manager(PyTorchVersionCache 直接在此存
         // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。
@@ -269,7 +277,9 @@ public partial class App : Application
             comfyUiManagerInstaller,
             // v0.6.11+ SDD D1:AppLogger — 跟其他 service 共享同一份 logger,
             // RestartEnvAsync 在 env-not-found / EnvListVM-未构造时打 WARN。
-            logger: logger);
+            logger: logger,
+            // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 调它。
+            envExitCleanup: _envExitCleanup);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

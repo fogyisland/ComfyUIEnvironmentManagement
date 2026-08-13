@@ -75,6 +75,10 @@ public class MainViewModel : ViewModelBase
     // v0.6.10 T2:组件报告 + OpenBrowser 共享的 Chrome 优先 fallback service。
     // 默认 null 保留旧测试 ctor;生产 DI 在 App.xaml.cs 注入 new BrowserLauncher()。
     private readonly IBrowserLauncher? _browserLauncher;
+    // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 调它(graceful stop
+    // + 翻 status=stopped);MainWindow 通过 GetExitCleanupService() 拿到。
+    // 测试侧可不传(App.xaml.cs 总是传非 null)。
+    private readonly EnvExitCleanupService? _envExitCleanup;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -251,7 +255,10 @@ public class MainViewModel : ViewModelBase
         IGlobalSearchService? globalSearchService = null,
         IBrowserLauncher? browserLauncher = null,
         ComfyUIManagerInstaller? comfyUiManagerInstaller = null,
-        AppLogger? logger = null)
+        AppLogger? logger = null,
+        // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 通过 GetExitCleanupService()
+        // 拿到它来 graceful 停 running env。可空保留旧测试 ctor 兼容。
+        EnvExitCleanupService? envExitCleanup = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -288,6 +295,8 @@ public class MainViewModel : ViewModelBase
         // 诊断日志。nullable ctor(测试 ctor 不传走 _logger?.Warn 安全路径);生产 DI 在
         // App.xaml.cs 注入(已有 var logger = new AppLogger(projectRoot);)。
         _logger = logger;
+        // v0.6.14 T6: 退出清理 service —— MainWindow.OnClosing 拿它停 env。
+        _envExitCleanup = envExitCleanup;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -717,6 +726,20 @@ public class MainViewModel : ViewModelBase
     /// 测试 seam:STA 测试环境外不能弹真 MessageBox。生产路径为 null,走 <see cref="PromptUnsaved"/>。
     /// </summary>
     internal Func<int, UnsavedChoice>? UnsavedPromptOverride { get; set; }
+
+    /// <summary>
+    /// v0.6.14 T6: 暴露 <see cref="EnvExitCleanupService"/> 给 <c>MainWindow.OnClosing</c>
+    /// (在 ConfirmDiscardUnsavedSettings 之前调)。测试 ctor 不传时为 null,
+    /// MainWindow.OnClosing 走 if (svc is null) 短路。
+    /// </summary>
+    public EnvExitCleanupService? GetExitCleanupService() => _envExitCleanup;
+
+    /// <summary>
+    /// v0.6.14 T6: 同步取 running env 数(给 OnClosing 的 confirm dialog)。
+    /// 单条 <c>SELECT COUNT(*)</c>。Cleanup service 不存在时返 0(MainWindow
+    /// 短路,不弹 confirm)。
+    /// </summary>
+    public int GetRunningEnvCount() => _envExitCleanup?.CountRunningEnvs() ?? 0;
 
     /// <summary>
     /// 检查当前缓存的 SettingsViewModel 是否有未保存改动,有则弹三按钮框。

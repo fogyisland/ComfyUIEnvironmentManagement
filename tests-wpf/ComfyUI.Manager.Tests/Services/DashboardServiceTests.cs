@@ -195,6 +195,7 @@ public sealed class DashboardServiceTests
             public Environment? Get(string envId) => null;
             public void Upsert(Environment env) { }
             public int? GetMaxPort() => null;
+            public int CountByStatus(string status) => 0;
         }
 
         private sealed class FakeNodeRepository : INodeRepository

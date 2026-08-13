@@ -336,6 +336,7 @@ public sealed class DashboardViewModelTests
             public ComfyUI.Manager.Models.Environment? Get(string envId) => null;
             public void Upsert(ComfyUI.Manager.Models.Environment env) { }
             public int? GetMaxPort() => null;
+            public int CountByStatus(string status) => 0;
         }
 
         private sealed class EmptyNodeRepo : INodeRepository
