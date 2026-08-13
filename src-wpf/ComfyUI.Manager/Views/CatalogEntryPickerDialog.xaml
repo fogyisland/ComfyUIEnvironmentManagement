@@ -18,7 +18,11 @@
             <TextBox Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" />
         </DockPanel>
 
-        <!-- Row 1: filter chips (全部/未装/已装/已过时) -->
+        <!-- Row 1: filter chips (全部/未装/已装/已过时)
+             v0.6.14 R1 fix:ConverterParameter 写 enum-name 字面串(不能再写 {Binding},
+             WPF markup 评估返 Binding 实例 ≠ enum 值)。OneWay binding + RadioButton.Click
+             代码后端调 SetActiveFilterCommand 改 VM.ActiveFilter(详见 code-behind)。
+             pattern 同 MainWindow.xaml 的 SidebarRadioButton。 -->
         <ItemsControl Grid.Row="1" Margin="0,0,0,8"
                       ItemsSource="{Binding FilterOptions}">
             <ItemsControl.ItemsPanel>
@@ -31,19 +35,25 @@
                     <RadioButton GroupName="PickerFilter"
                                  Margin="0,0,8,0"
                                  Style="{StaticResource CatalogSegmentedRadioButton}"
+                                 Tag="{Binding Filter}"
+                                 Click="OnFilterChipClicked"
                                  IsChecked="{Binding DataContext.ActiveFilter,
                                              RelativeSource={RelativeSource AncestorType=Window},
                                              Converter={StaticResource EnumEqualsConverter},
-                                             ConverterParameter={Binding}}"
-                                 Content="{Binding ., Converter={StaticResource PickerFilterToLabelConverter}}" />
+                                             ConverterParameter={Binding FilterName},
+                                             Mode=OneWay}"
+                                 Content="{Binding Label}" />
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <!-- Row 2: list of picker items (cards) -->
+        <!-- Row 2: list of picker items (cards)
+             v0.6.14 R1 fix:MouseDoubleClick 触发 OkCommand(只对 IsInstalled==false 生效,
+             OkCommand.CanExecute 已 gate)。配合行内安装按钮用户单双击都能选。 -->
         <ListBox Grid.Row="2"
                  ItemsSource="{Binding Items}"
                  SelectedItem="{Binding Selected}"
+                 MouseDoubleClick="OnListDoubleClick"
                  ItemContainerStyle="{StaticResource CatalogCardItemContainerStyle}">
             <ListBox.ItemTemplate>
                 <DataTemplate>
@@ -127,6 +137,26 @@
                                         </Style>
                                     </Button.Style>
                                 </Button>
+                                <!-- v0.6.14 R1 fix:per-row 安装 button,NotInstalled 显示,
+                                     让用户单点也能选(双击也走 OnListDoubleClick 同一路径)。
+                                     Installed/Outdated 隐藏 — 那两种已装,不需要安装。 -->
+                                <Button Command="{Binding DataContext.OkCommand,
+                                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        Content="安装"
+                                        MinWidth="80"
+                                        Margin="0,6,0,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MaterialButton}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusKind}" Value="NotInstalled">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                             </StackPanel>
 
                             <!-- Row 1: Author + install_type pill (复用 CatalogInstallTypeBadgeStyle) -->
@@ -162,7 +192,7 @@
         <!-- Row 4: footer with cancel -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0"
                     HorizontalAlignment="Right">
-            <TextBlock Text="双击未装条目 或 点击行内卸载按钮"
+            <TextBlock Text="双击未装条目 或 点击行内安装 / 卸载按钮"
                        FontSize="11" Foreground="{DynamicResource OutlineBrush}"
                        VerticalAlignment="Center" Margin="0,0,16,0" />
             <Button Content="取消" Command="{Binding CancelCommand}"

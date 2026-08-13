@@ -45,8 +45,14 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         set { if (SetField(ref _activeFilter, value)) ApplyFilter(); }
     }
 
-    public IReadOnlyList<PickerFilter> FilterOptions { get; } =
-        new[] { PickerFilter.All, PickerFilter.NotInstalled, PickerFilter.Installed, PickerFilter.Outdated };
+    public IReadOnlyList<PickerFilterOption> FilterOptions { get; } =
+        new[]
+        {
+            new PickerFilterOption(PickerFilter.All, "All", "全部"),
+            new PickerFilterOption(PickerFilter.NotInstalled, "NotInstalled", "未装"),
+            new PickerFilterOption(PickerFilter.Installed, "Installed", "已装"),
+            new PickerFilterOption(PickerFilter.Outdated, "Outdated", "已过时"),
+        };
 
     private CatalogEntryPickerItem? _selected;
     public CatalogEntryPickerItem? Selected
@@ -177,6 +183,14 @@ public class CatalogEntryPickerViewModel : ViewModelBase
                 _logger?.Warn("catalog-picker",
                     $"env='{_envId}' node='{item.Entry.Package}' 卸载失败:{result.Reason}");
             }
+        }
+        // v0.6.14 R1 fix:async void(走 RelayCommand 的 async lambda)无 catch 会
+        // 把异常扔到 WPF dispatcher → ShutdownMode=OnMainWindowClose 直接杀进程
+        // (v0.6.9.2 postmortem 同款)。这里 top-level catch 记日志并保持 UI 可用。
+        catch (System.Exception ex)
+        {
+            _logger?.Error("catalog-picker",
+                $"env='{_envId}' node='{item.Entry.Package}' 卸载异常:{ex.Message}");
         }
         finally
         {

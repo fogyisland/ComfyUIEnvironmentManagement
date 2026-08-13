@@ -348,13 +348,22 @@ public class MainViewModel : ViewModelBase
         if (_environmentsViewModel is null)
         {
             var envRepo = new EnvironmentRepository(_dbFactory);
+            // v0.6.14 picker redesign:EnvListVM.OpenInstallNodePicker 弹
+            // CatalogEntryPickerDialog 需要 catalogRepo(查 catalog 全表) +
+            // nodeRepo(按 env 拉 scanned_nodes)。跟 CatalogViewModel 共用
+            // 同一份 CatalogCacheStore / 同一 SqliteConnectionFactory →
+            // picker 看到的 catalog 跟 Catalog tab 同步,scanned_nodes 跟
+            // NodeOperations 读同一份 db。
+            var catalogRepo = new CatalogRepository(_catalogCacheStore);
+            var nodeRepo = new NodeRepository(_dbFactory);
             _environmentsViewModel = new EnvironmentListViewModel(
                 envRepo, _launcher, _envCreator, _baseEnvInstaller, _settings, _profileLoader,
                 _envDeleter, _nodeOps, _projectRoot, _requirementsInstaller,
                 _baseEnvUninstaller, _requirementsUninstaller,
                 _browserLauncher, ErrorBanner, _comfyUiManagerInstaller,
-                logger: _logger);  // v0.6.11+ SDD D1:共享同一份 AppLogger,EnvListVM 内部
-                                   // RestartEnvInternalAsync 失败时打的 ERROR 走同一条流。
+                logger: _logger,                          // v0.6.11+ SDD D1
+                catalogRepo: catalogRepo,                 // v0.6.14 picker
+                nodeRepo: nodeRepo);                      // v0.6.14 picker
             // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
             // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget
             // 触发 env 重启。T2 加 wiring(T3 才会让 RestartEnvAsync 真正实现重启)。

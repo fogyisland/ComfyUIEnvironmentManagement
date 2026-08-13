@@ -25,6 +25,11 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly BaseEnvProfileLoader _profileLoader;
     private readonly EnvDeleterService _envDeleter;
     private readonly NodeOperations _nodeOps;
+    // v0.6.14 picker redesign:env-aware CatalogEntryPickerDialog 需要 catalogRepo +
+    // nodeRepo(查 catalog 全表 + 按 env 拉 scanned_nodes)。null = 测试 ctor 兜底;
+    // 生产 DI 在 App.xaml.cs 注入。
+    private readonly CatalogRepository? _catalogRepo;
+    private readonly NodeRepository? _nodeRepo;
     private readonly RequirementsInstaller _requirementsInstaller;
     private readonly BaseEnvUninstaller _baseEnvUninstaller;
     private readonly RequirementsUninstaller _requirementsUninstaller;
@@ -216,7 +221,9 @@ public class EnvironmentListViewModel : ViewModelBase
         IBrowserLauncher? browserLauncher = null,
         ErrorBannerViewModel? errorBanner = null,
         ComfyUIManagerInstaller? comfyUiManagerInstaller = null,
-        AppLogger? logger = null)
+        AppLogger? logger = null,
+        CatalogRepository? catalogRepo = null,
+        NodeRepository? nodeRepo = null)
     {
         _repo = repo;
         _launcher = launcher;
@@ -239,6 +246,11 @@ public class EnvironmentListViewModel : ViewModelBase
         _comfyUiManagerInstaller = comfyUiManagerInstaller ?? new ComfyUIManagerInstaller(new RequirementsFileInstaller());
         // v0.6.11+ SDD D1:AppLogger — 自动重启诊断日志(nullable ctor param)。
         _logger = logger;
+        // v0.6.14 picker redesign:catalog + node repo(默认 null,测试 ctor 不传
+        // 也能构造)。生产 DI 在 App.xaml.cs 注入。null 时 OpenInstallNodePicker 走
+        // CatalogPickerOverride / fallback short-circuit(详见方法体)。
+        _catalogRepo = catalogRepo;
+        _nodeRepo = nodeRepo;
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -1243,9 +1255,24 @@ public class EnvironmentListViewModel : ViewModelBase
 
         // v0.6.11+ SDD D1 R1:测试拦截 catalog picker — 返回 stub entry 让测试
         // 不弹真 dialog 也能跑到 InstallDialog.Show(...)。
-        var entry = CatalogPickerOverride is not null
-            ? CatalogPickerOverride()
-            : Views.CatalogEntryPickerDialog.Show();
+        CatalogEntry? entry;
+        if (CatalogPickerOverride is not null)
+        {
+            entry = CatalogPickerOverride();
+        }
+        else if (_catalogRepo is null || _nodeRepo is null)
+        {
+            // v0.6.14 R1 fix:EnvListVM 在测试 / 旧 wiring 下 catalogRepo / nodeRepo 未注入,
+            // 走不了 6-arg Show。弹 picker 没意义(它要查 catalog + scanned_nodes),
+            // 直接走 InstallDialog 让用户手填 entry — 保持 caller 不至于完全失败。
+            // 正常生产路径这两个 repo 必非空(App.xaml.cs 注入)。
+            entry = null;
+        }
+        else
+        {
+            entry = Views.CatalogEntryPickerDialog.Show(
+                _repo, _nodeOps, _catalogRepo, _nodeRepo, _logger, env.Id);
+        }
         if (entry is null) return;
 
         // v0.6.11+ SDD D1: 注入自动重启回调 — 装成功时 fire-and-forget

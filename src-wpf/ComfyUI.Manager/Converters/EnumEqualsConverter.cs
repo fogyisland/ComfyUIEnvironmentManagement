@@ -5,27 +5,33 @@ using System.Windows.Data;
 namespace ComfyUI.Manager.Converters;
 
 /// <summary>
-/// 比较 bound value 跟 ConverterParameter 是否相等(同一枚举值)。
-/// 用于 RadioButton IsChecked 双向绑 enum 值 — RadioButton.IsChecked 是 bool,
-/// 所以 Convert 把 "value == parameter" 折成 bool,ConvertBack 把 bool 转回 enum。
+/// v0.6.14 picker redesign:比较 bound value 跟 ConverterParameter(字符串解析到 enum)是否相等。
+/// 用于 RadioButton IsChecked OneWay 绑 enum 值 — RadioButton.IsChecked 是 bool,
+/// 所以 Convert 把 "value == parsed-parameter" 折成 bool。ConvertBack 不需要
+/// (RadioButton.Checked 通过命令/事件设 ActiveFilter,不走 ConvertBack)。
 ///
-/// pattern 跟 SectionEqualityToBoolConverter 一致,但 SectionEqualityToBoolConverter
-/// 写死 enum 名字符串比对,不可复用。这里加通用的 enum equality converter。
+/// <para>
+/// ConverterParameter 是字符串(enum name),XAML 里写 <c>ConverterParameter="All"</c>。
+/// 这样不需要 {Binding} 当 parameter(那会在 WPF markup evaluation 里返 Binding 实例,
+/// 永远不等于 enum 值 — Critical 1 的踩坑)。这也是 MainWindow.xaml SidebarRadioButton
+/// 用的 SectionEqualityToBoolConverter 同款 pattern。
+/// </para>
 /// </summary>
 public sealed class EnumEqualsConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is null || parameter is null) return false;
-        // Enum 直接 Equals 同值返 true;底层 type 不同会 false。
-        return value.Equals(parameter);
+        if (parameter is not string paramStr) return false;
+        if (!Enum.TryParse(value.GetType(), paramStr, ignoreCase: false, out var parsed))
+            return false;
+        return value.Equals(parsed);
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        // RadioButton IsChecked → bool → 参数就是绑定的 enum value,
-        // 由 binding system 直接 set ActiveFilter;这里只需保证非 null 返回 parameter。
-        if (value is bool b && b) return parameter!;
+        // RadioButton 用 OneWay binding(从 VM → RadioButton.IsChecked)。
+        // 用户点击 RadioButton 由 Checked 事件或 Command 改 VM,不走 ConvertBack。
         return Binding.DoNothing;
     }
 }
