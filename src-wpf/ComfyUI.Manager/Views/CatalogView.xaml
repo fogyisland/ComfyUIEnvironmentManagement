@@ -73,7 +73,7 @@
                 <!-- rate limit banner(条件显示) -->
                 <views:RateLimitBanner DataContext="{Binding RateLimitBanner}" />
                 <!-- 进度条 -->
-                <ProgressBar Value="{Binding RefreshPercent}" Maximum="100"
+                <ProgressBar Value="{Binding RefreshPercent, Mode=OneWay}" Maximum="100"
                              Height="6" Margin="0,0,0,8" />
                 <!-- 4 行实时进度 -->
                 <TextBlock Text="{Binding ReadProgress}" FontSize="12"
