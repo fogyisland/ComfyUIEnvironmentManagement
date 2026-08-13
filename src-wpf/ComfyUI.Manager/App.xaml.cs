@@ -113,6 +113,12 @@ public partial class App : Application
         // ⏳ 装中 几秒后变 ❌ 闪烁。
         BaseEnvInstaller.ReconcileStaleOnStartup(envRepo);
 
+        // v0.6.14 T7: 启动 reconcile stale-running envs — 处理上次 crash / hard-kill
+        // 留下的脏状态(env.Status="running" 但进程已死)。只 reconcile 不 auto-start
+        // (用户原话"启动的时候节点不自动启动")。同 BED reconcile: 先于 MainViewModel
+        // 构造,让 MVM 第一次 Load() 看到 clean 状态。
+        new EnvStartupReconciler(envRepo, logger).ReconcileStaleRunning();
+
         var nodeRepo = new NodeRepository(dbFactory);
         var processStateRepo = new ProcessStateRepository(dbFactory);
 
