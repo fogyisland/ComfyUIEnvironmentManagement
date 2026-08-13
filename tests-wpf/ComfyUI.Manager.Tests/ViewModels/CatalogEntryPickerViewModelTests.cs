@@ -385,4 +385,31 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
             await Task.Delay(20);
         }
     }
+
+    // ---- v0.6.14 T3: Closed event ----
+
+    [Fact]
+    public void CancelCommand_FiresClosedEvent()
+    {
+        var vm = NewVm();
+        bool closed = false;
+        vm.Closed += () => closed = true;
+        vm.CancelCommand.Execute(null);
+        Assert.True(closed);
+    }
+
+    [Fact]
+    public void OkCommand_OnNotInstalled_FiresClosedEvent()
+    {
+        SeedCatalogEntry("pkg-a");
+        var vm = NewVm();
+        vm.Selected = vm.Items.First(i => !i.IsInstalled);
+        bool closed = false;
+        bool picked = false;
+        vm.Closed += () => closed = true;
+        vm.CloseWithEntry += _ => picked = true;
+        vm.OkCommand.Execute(null);
+        Assert.True(closed);
+        Assert.True(picked);
+    }
 }

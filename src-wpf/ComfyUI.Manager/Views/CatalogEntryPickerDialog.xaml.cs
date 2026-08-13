@@ -52,6 +52,8 @@ public partial class CatalogEntryPickerDialog : Window
     /// 取消返回 null;选中未装条目(Ok / 双击未装条目 / 点行内"安装"按钮)返回 CatalogEntry,
     /// 由 caller 接着弹 InstallDialog。repos 全部由 caller 注入,保证 picker 跟
     /// 其他 view 共享同一份 db 连接 / service 实例。
+    ///
+    /// onClosed: picker 关后(任意路径)fire 一次,caller 用来刷新 env-list。
     /// </summary>
     public static CatalogEntry? Show(
         EnvironmentRepository envRepo,
@@ -59,19 +61,35 @@ public partial class CatalogEntryPickerDialog : Window
         CatalogRepository catalogRepo,
         NodeRepository nodeRepo,
         AppLogger? logger,
-        string envId)
+        string envId,
+        Action? onClosed = null)
     {
         if (ShowOverride is not null)
             return ShowOverride(envRepo, nodeOps, catalogRepo, nodeRepo, logger, envId);
 
         var vm = new CatalogEntryPickerViewModel(
             catalogRepo, nodeRepo, nodeOps, envId, logger);
-        var dlg = new CatalogEntryPickerDialog(vm)
+        // v0.6.14 T3:onClosed 在 dialog 实际关闭时 fire 一次(任意路径)。
+        // VM 的 OkCommand / CancelCommand 已经 fire Closed;
+        // 这里再 hook dialog 的 Closing 覆盖 X 按钮 / Alt+F4 路径。
+        if (onClosed is not null)
+        {
+            vm.Closed += onClosed;
+            var dlg = new CatalogEntryPickerDialog(vm)
+            {
+                Owner = Application.Current.MainWindow,
+            };
+            dlg.Closing += (_, _) => vm.RaiseClosed();
+            dlg.ShowDialog();
+            return dlg.Result;
+        }
+
+        var dlg2 = new CatalogEntryPickerDialog(vm)
         {
             Owner = Application.Current.MainWindow,
         };
-        dlg.ShowDialog();
-        return dlg.Result;
+        dlg2.ShowDialog();
+        return dlg2.Result;
     }
 
     /// <summary>

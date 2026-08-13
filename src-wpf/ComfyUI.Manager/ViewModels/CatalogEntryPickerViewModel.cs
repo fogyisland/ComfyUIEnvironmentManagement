@@ -77,6 +77,23 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     public event Action<CatalogEntry>? CloseWithEntry;
     public event Action? Cancelled;
 
+    /// <summary>Picker 关 dialog 时 fire 一次(Ok / Cancel / X 都触发),caller 用来刷新 env-list。</summary>
+    public event Action? Closed;
+
+    private bool _closedFired;
+
+    /// <summary>
+    /// v0.6.14 T3:让 dialog code-behind 在 X 按钮 / Alt+F4 路径上 fire Closed。
+    /// event 外部只能 +=/-,用这个方法中转给 Closing handler 调用。
+    /// 幂等:OkCommand/CancelCommand 已经 fire 过一次就不重复 fire。
+    /// </summary>
+    public void RaiseClosed()
+    {
+        if (_closedFired) return;
+        _closedFired = true;
+        Closed?.Invoke();
+    }
+
     public CatalogEntryPickerViewModel(
         CatalogRepository catalogRepo,
         NodeRepository nodeRepo,
@@ -90,9 +107,15 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         _envId = envId;
         _logger = logger;
         OkCommand = new RelayCommand(
-            _ => { if (Selected is { IsInstalled: false }) CloseWithEntry?.Invoke(Selected.Entry); },
+            _ => {
+                if (Selected is { IsInstalled: false })
+                {
+                    CloseWithEntry?.Invoke(Selected.Entry);
+                    RaiseClosed();
+                }
+            },
             _ => Selected is { IsInstalled: false } && !Busy);
-        CancelCommand = new RelayCommand(_ => Cancelled?.Invoke());
+        CancelCommand = new RelayCommand(_ => { Cancelled?.Invoke(); RaiseClosed(); });
         UninstallCommand = new RelayCommand(
             async item => await UninstallAsync(item as CatalogEntryPickerItem),
             item => item is CatalogEntryPickerItem { IsInstalled: true } && !Busy);

@@ -1271,7 +1271,8 @@ public class EnvironmentListViewModel : ViewModelBase
         else
         {
             entry = Views.CatalogEntryPickerDialog.Show(
-                _repo, _nodeOps, _catalogRepo, _nodeRepo, _logger, env.Id);
+                _repo, _nodeOps, _catalogRepo, _nodeRepo, _logger, env.Id,
+                onClosed: () => Load());
         }
         if (entry is null) return;
 
