@@ -82,6 +82,8 @@ public class MainViewModel : ViewModelBase
     // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 SELECT COUNT(*)
     // 不再 ListAll().Where().Count()。可空:测试 ctor 不传走 null fallback。
     private readonly EnvironmentRepository? _envRepo;
+    // v0.6.15: 进程级 rate limit 单例 —— 透传给 CatalogViewModel。可空保留旧测试 ctor。
+    private readonly IRateLimitState? _rateLimitState;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -264,7 +266,9 @@ public class MainViewModel : ViewModelBase
         EnvExitCleanupService? envExitCleanup = null,
         // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*) 查询;
         // 可空保持旧测试 ctor 兼容。生产 DI(App.xaml.cs)总是传。
-        EnvironmentRepository? envRepo = null)
+        EnvironmentRepository? envRepo = null,
+        // v0.6.15: rate limit 单例 — 透传给 CatalogViewModel。
+        IRateLimitState? rateLimitState = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -306,6 +310,8 @@ public class MainViewModel : ViewModelBase
         // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*) 而不是
         // ListAll().Where().Count() 的全表扫。可空 ctor 让旧测试不传也 compile。
         _envRepo = envRepo;
+        // v0.6.15: rate limit 单例 透传给 CatalogViewModel(ShowCatalog 内用)。
+        _rateLimitState = rateLimitState;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -403,7 +409,8 @@ public class MainViewModel : ViewModelBase
             var catRepo = new CatalogRepository(_catalogCacheStore);
             var versionRepo = new NodeVersionRepository(_catalogCacheStore);
             _catalogViewModel = new CatalogViewModel(
-                catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot);
+                catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot,
+                rateLimitState: _rateLimitState);
             _catalogView = new CatalogView { DataContext = _catalogViewModel };
         }
         CurrentView = _catalogView;

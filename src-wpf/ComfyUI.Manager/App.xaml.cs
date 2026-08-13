@@ -30,6 +30,11 @@ public partial class App : Application
     // NotifyMainWindowReady 触发 fade;FadeCompleted 由 Window self-close raise。
     private SplashWindow? _splash;
     private SplashViewModel? _splashVm;
+    // v0.6.15: 进程级 rate limit 单例 —— 所有 stage 的 IsBlocked/MarkBlocked
+    // 共享。生命周期 = 进程生命周期;无需 dispose, GC 兜底。传给 MainViewModel
+    // → CatalogViewModel。RateLimitBannerViewModel 共享此 state 显示历史
+    // banner 状态。
+    private IRateLimitState? _rateLimitState;
 
     /// <summary>
     /// v0.6.5.21:挂在静态以便 MainWindow.OnClosing 写回(G7)— 无主项目别的地方
@@ -118,6 +123,10 @@ public partial class App : Application
         // (用户原话"启动的时候节点不自动启动")。同 BED reconcile: 先于 MainViewModel
         // 构造,让 MVM 第一次 Load() 看到 clean 状态。
         new EnvStartupReconciler(envRepo, logger).ReconcileStaleRunning();
+
+        // v0.6.15: 进程级 rate limit 单例 (无依赖,纯 in-memory lock dict)。
+        var rateLimitState = new RateLimitState();
+        _rateLimitState = rateLimitState;
 
         var nodeRepo = new NodeRepository(dbFactory);
         var processStateRepo = new ProcessStateRepository(dbFactory);
@@ -288,7 +297,10 @@ public partial class App : Application
             envExitCleanup: _envExitCleanup,
             // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*)
             // 而不是全表 ListAll().Where().Count()。
-            envRepo: envRepo);
+            envRepo: envRepo,
+            // v0.6.15: 进程级 rate limit 单例 —— MainViewModel 透传给
+            // CatalogViewModel,触发入口 stage-skip + banner 状态共享。
+            rateLimitState: rateLimitState);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
