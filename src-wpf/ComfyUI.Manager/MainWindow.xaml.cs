@@ -137,6 +137,11 @@ public partial class MainWindow : Window
         // internal 方法,不再用 BindingFlags.DeclaredOnly 反射 private OnClosing。
         TryHandleExitCleanup(e);
 
+        // v0.6.14 R2: 早期返回 —— 用户在 exit cleanup confirm 选 No 时,
+        // TryHandleExitCleanup 已经 e.Cancel=true;后面的 settings 未保存
+        // 检查 + UI prefs 持久化不能跑(否则用户看到第二次 modal 且 prefs 被写)。
+        if (e.Cancel) return;
+
         // v0.6.11+ SDD B T3:settings 未保存改动拦截。
         // 切侧栏离开 settings tab 不拦(VM 缓存 + dirty 状态活着),
         // 只在主窗口关闭时一次性拦:Yes=Save&Exit, No=Discard&Exit, Cancel=留下。

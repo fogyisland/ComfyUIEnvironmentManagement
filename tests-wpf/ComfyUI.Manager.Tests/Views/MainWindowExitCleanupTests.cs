@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Windows.Threading;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -199,5 +200,209 @@ public class MainWindowExitCleanupTests : IDisposable
         Assert.True(cancelObserved);
         // DefaultConfirm 没被调 — override 模式下走 ConfirmShutdown 直接 false。
         Assert.Equal("running", repo.ListAll().Single().Status);
+    }
+
+    // ===================================================================
+    // v0.6.14 R2: OnClosing 早期返回回归测试
+    // -------------------------------------------------------------------
+    // R1 #3 把所有 hook 逻辑抽到 internal TryHandleExitCleanup,e.Cancel=true
+    // (用户选 No) 时原 OnClosing 的 return 被吞,继续往下跑:
+    //   1) ConfirmDiscardUnsavedSettings 弹第二个 modal
+    //   2) UI prefs 持久化(写出 prefs 文件)
+    // 测试只能通过 internal helper 验 cleanup,但验证 OnClosing 本体的 early-out
+    // 必须直接调 OnClosing,所以这里用 reflection 调 private 方法。
+    //
+    // R2 fix:OnClosing 在 TryHandleExitCleanup 之后加 `if (e.Cancel) return;`。
+    // ===================================================================
+
+    /// <summary>
+    /// STA helper,直接调 MainWindow.OnClosing (private) 验证 e.Cancel + 副作用。
+    /// 比 event-raise 更稳:WPF headless Window 的 Closing event 不一定真 fire handler。
+    /// </summary>
+    private (MainWindow window, MainViewModel mvm, EnvExitCleanupService cleanup,
+              EnvironmentRepository repo, UiPreferencesService prefs)
+        RunOnClosingOnSTAWithSeededSettings(System.Action<(MainWindow w, MainViewModel mvm, EnvExitCleanupService c, EnvironmentRepository r)> setup)
+    {
+        MainWindow? window = null;
+        MainViewModel? mvm = null;
+        EnvExitCleanupService? cleanup = null;
+        EnvironmentRepository? repo = null;
+        UiPreferencesService? prefs = null;
+
+        Exception? caught = null;
+        StaFact.RunOnSTA(() =>
+        {
+            try
+            {
+                repo = new EnvironmentRepository(_db.Factory);
+                var processStateRepo = new ProcessStateRepository(_db.Factory);
+                var launcher = new ProcessLauncher(_projectRoot, _db.Factory, repo, processStateRepo);
+                cleanup = new EnvExitCleanupService(repo, launcher);
+                prefs = new UiPreferencesService(_projectRoot);
+
+                mvm = new MainViewModel(
+                    _db.Factory,
+                    launcher, null!, null!, null!, null!, null!, null!,
+                    new Settings(), null!, null!, null!, null!, null!,
+                    null!, "", _projectRoot, null!, null!,
+                    prefs,
+                    envExitCleanup: cleanup,
+                    envRepo: repo);
+
+                // 强制缓存一份 SettingsViewModel,标 dirty 让 HasUnsavedChanges=true —
+                // 如果 R2 fix 没生效,ConfirmDiscardUnsavedSettings 会进 UnsavedPromptOverride。
+                var settingsField = typeof(MainViewModel).GetField(
+                    "_settingsViewModel",
+                    BindingFlags.NonPublic | BindingFlags.Instance)!;
+                var svm = new SettingsViewModel(
+                    new SettingsRepository(Path.Combine(_projectRoot, "settings-r2-test.json")),
+                    new GitProxyConfig(),
+                    new PythonInterpreterValidator(),
+                    new Settings());
+                svm.Dirty.Mark("R2-test-dirty");
+                settingsField.SetValue(mvm, svm);
+
+                window = new MainWindow { DataContext = mvm };
+                setup((window, mvm, cleanup, repo));
+
+                // 通过 reflection 调 private OnClosing(object?, CancelEventArgs) — 模拟
+                // WPF 真的 raise Closing event。headless Window 的 event raise 不可靠
+                // (无 HwndSource),直接调 handler 是 R1 之前测试的同款写法。
+                // DeclaredOnly 排除 Window 基类的同名 protected override,避免
+                // AmbiguousMatchException。
+                var mi = typeof(MainWindow).GetMethod(
+                    "OnClosing",
+                    BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                Assert.NotNull(mi);
+                var e = new CancelEventArgs();
+                mi!.Invoke(window, new object?[] { window, e });
+                FlushDispatcher();
+
+                Assert.True(e.Cancel, "R2 fix 验证点:OnClosing 跑完后 e.Cancel 必须 true");
+                Assert.True(svm.HasUnsavedChanges, "fixture 验证:Dirty 必须留着(否则 ConfirmDiscardUnsavedSettings 短路)");
+            }
+            catch (Exception ex) { caught = ex; }
+        });
+
+        if (caught is not null) throw caught;
+        return (window!, mvm!, cleanup!, repo!, prefs!);
+    }
+
+    [Fact]
+    public void OnClosing_R2_UserCancelsShutdownConfirm_DoesNotInvokeUnsavedPrompt()
+    {
+        // 关键回归:用户在 exit cleanup confirm 选 No 后,ConfirmDiscardUnsavedSettings
+        // 不应该被调(否则弹第二个 modal)。UnsavedPromptOverride 被设了 counter spy,
+        // 调用次数 = 0 证明整个 settings 拦截路径被早返短路。
+        var unsavedPromptCalls = 0;
+        var (_, mvm, cleanup, repo, _) = RunOnClosingOnSTAWithSeededSettings(t =>
+        {
+            t.r.Upsert(MakeRunningEnv("env-r2-cancel"));
+            t.c.ConfirmShutdown = _ => false;   // user: No
+            t.mvm.UnsavedPromptOverride = _ =>
+            {
+                unsavedPromptCalls++;
+                return MainViewModel.UnsavedChoice.Cancel;
+            };
+        });
+
+        Assert.Equal(0, unsavedPromptCalls);  // R2 回归:UnsavedPromptOverride 不该被调(early-out 后 ConfirmDiscardUnsavedSettings 不进)
+        // env 没动(stop 没跑)
+        Assert.Equal("running", repo.ListAll().Single().Status);
+    }
+
+    [Fact]
+    public void OnClosing_R2_UserCancelsShutdownConfirm_DoesNotWriteUiPrefs()
+    {
+        // 关键回归:用户在 exit cleanup confirm 选 No 后,UI prefs 不应该被持久化。
+        // 同时 wire App.UiPreferencesService + ApplyStartupPreferences 让 prefs 路径
+        // 真有东西可写(R2 没生效时 SaveToFile 会跑)。SaveToFile 非 virtual,所以用
+        // 文件是否存在作为 spy:R2 没生效时 prefs 文件会被写出,R2 fix 后保持不存在。
+        Exception? caught = null;
+
+        StaFact.RunOnSTA(() =>
+        {
+            try
+            {
+                var repo = new EnvironmentRepository(_db.Factory);
+                var processStateRepo = new ProcessStateRepository(_db.Factory);
+                var launcher = new ProcessLauncher(_projectRoot, _db.Factory, repo, processStateRepo);
+                var cleanup = new EnvExitCleanupService(repo, launcher);
+
+                var prefsService = new UiPreferencesService(_projectRoot);
+                // DefaultPath = <projectRoot>/config/ui-preferences.json — 用它作 spy:
+                // R2 fix 没生效时 SaveToFile 会创建该文件,有 fix 时不创建。
+                var writeTargetPath = prefsService.DefaultPath;
+                if (File.Exists(writeTargetPath)) File.Delete(writeTargetPath);
+
+                // App.UiPreferencesService 是 static private set,reflection 注入。
+                var svcProp = typeof(App).GetProperty(
+                    "UiPreferencesService",
+                    BindingFlags.Public | BindingFlags.Static)!;
+                var originalSvc = svcProp.GetValue(null);
+                svcProp.SetValue(null, prefsService);
+
+                try
+                {
+                    var mvm = new MainViewModel(
+                        _db.Factory,
+                        launcher, null!, null!, null!, null!, null!, null!,
+                        new Settings(), null!, null!, null!, null!, null!,
+                        null!, "", _projectRoot, null!, null!,
+                        prefsService,
+                        envExitCleanup: cleanup,
+                        envRepo: repo);
+
+                    repo.Upsert(MakeRunningEnv("env-r2-prefs-no-write"));
+                    cleanup.ConfirmShutdown = _ => false;
+
+                    var window = new MainWindow { DataContext = mvm };
+                    // 给 Window 设具体尺寸 — headless Window.Width 默认 NaN,
+                    // SaveToFile JSON 序列化会抛 ArgumentException(infinity 不能写),
+                    // prefs 路径永远到不了。设具体值让 prefs 路径真能跑。
+                    window.Width = 800;
+                    window.Height = 600;
+                    window.Left = 100;
+                    window.Top = 100;
+                    // _startupPrefs 必须非 null(否则 prefs 路径立即 return,无法测)
+                    window.ApplyStartupPreferences(new UiPreferences
+                    {
+                        WindowWidth = 800,
+                        WindowHeight = 600,
+                        WindowLeft = 100,
+                        WindowTop = 100,
+                        WindowMaximized = false,
+                    });
+
+                    var mi = typeof(MainWindow).GetMethod(
+                        "OnClosing",
+                        BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                    var e = new CancelEventArgs();
+
+                    try
+                    {
+                        mi!.Invoke(window, new object?[] { window, e });
+                    }
+                    catch (System.Reflection.TargetInvocationException tie)
+                    {
+                        throw tie.InnerException ?? tie;
+                    }
+                    FlushDispatcher();
+
+                    Assert.True(e.Cancel, "OnClosing 必须 e.Cancel=true");
+
+                    // Spy:文件不存在 = R2 fix 让 prefs 路径没跑到
+                    Assert.False(File.Exists(writeTargetPath),
+                        $"R2 回归:OnClosing 在 e.Cancel=true 后应 early-out,但 prefs 文件 {writeTargetPath} 被写出");
+                }
+                finally
+                {
+                    svcProp.SetValue(null, originalSvc);
+                }
+            }
+            catch (Exception ex) { caught = ex; }
+        });
+
+        if (caught is not null) throw caught;
     }
 }
