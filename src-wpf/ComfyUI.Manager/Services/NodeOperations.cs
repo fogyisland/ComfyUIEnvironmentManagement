@@ -201,6 +201,14 @@ public class NodeOperations
         // 取 HEAD sha 作为 version
         var headSha = await TryReadHeadShaAsync(targetDir, ct);
 
+        // 顺手记 installed_tag(若有),picker 拿来显示"v1.2.3"而不是 raw sha
+        var installedTag = await TryReadInstalledTagAsync(targetDir, ct);
+        var scanMeta = new Dictionary<string, string>();
+        if (!string.IsNullOrEmpty(installedTag))
+        {
+            scanMeta["installed_tag"] = installedTag;
+        }
+
         _nodeRepo.Upsert(new ScannedNode
         {
             Id = nodeId,
@@ -209,10 +217,11 @@ public class NodeOperations
             PackagePath = targetDir,
             Version = headSha,
             Status = "enabled",
+            ScanMeta = scanMeta,
             LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
             Source = "env",
         });
-        _logger?.Info("node-install", $"env='{envId}' node='{nodeId}' 安装成功 sha={(headSha is null ? "?" : headSha[..Math.Min(8, headSha.Length)])}");
+        _logger?.Info("node-install", $"env='{envId}' node='{nodeId}' 安装成功 sha={(headSha is null ? "?" : headSha[..Math.Min(8, headSha.Length)])} tag={(installedTag ?? "-")}");
         return NodeOperationResult.Ok(headSha);
     }
 
@@ -418,6 +427,13 @@ public class NodeOperations
         {
             node.Version = headSha;
             node.LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+            // 顺手刷 installed_tag(升级后可能落在 tag 上)
+            var installedTag = await TryReadInstalledTagAsync(node.PackagePath, ct);
+            if (!string.IsNullOrEmpty(installedTag))
+            {
+                node.ScanMeta ??= new Dictionary<string, string>();
+                node.ScanMeta["installed_tag"] = installedTag;
+            }
             try { _nodeRepo.Upsert(node); } catch { }
         }
         _logger?.Info("node-upgrade", $"env='{envId}' node='{nodeId}' 升级成功");
@@ -500,8 +516,53 @@ public class NodeOperations
         }
         node.Version = sha;
         node.LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+        var installedTag = await TryReadInstalledTagAsync(node.PackagePath, ct);
+        if (!string.IsNullOrEmpty(installedTag))
+        {
+            node.ScanMeta ??= new Dictionary<string, string>();
+            node.ScanMeta["installed_tag"] = installedTag;
+        }
         try { _nodeRepo.Upsert(node); } catch { }
         return NodeOperationResult.Ok(sha);
+    }
+
+    /// <summary>
+    /// 删除已装节点:删目录 + 删 ScannedNode row。
+    /// 失败语义:
+    /// - env 不存在 → Fail("env 不存在")
+    /// - node row 不存在 → Fail("节点未注册")
+    /// - 删目录失败 → Fail("删目录失败:{ex.Message}")
+    /// - 成功 → Ok(原 version,让 caller 看是哪个 sha 被删的)
+    ///
+    /// 复用私有 <see cref="TryDelete(string)"/> 处理 Windows readonly pack/idx 文件。
+    /// 目录不存在仍删 row(避免 "uninstall 永远 unregister 不了")。
+    /// </summary>
+    public virtual async Task<NodeOperationResult> UninstallAsync(
+        string envId, string nodeId, CancellationToken ct = default)
+    {
+        _logger?.Info("node-uninstall", $"env='{envId}' node='{nodeId}' 开始卸载");
+        var env = _envRepo.Get(envId);
+        if (env is null) return NodeOperationResult.Fail("env 不存在");
+
+        var node = _nodeRepo.Get(nodeId);
+        if (node is null) return NodeOperationResult.Fail("节点未注册");
+
+        var targetDir = !string.IsNullOrWhiteSpace(node.PackagePath)
+            ? node.PackagePath
+            : Path.Combine(env.CustomNodesPath ?? "", nodeId);
+
+        if (Directory.Exists(targetDir))
+        {
+            try { TryDelete(targetDir); }
+            catch (Exception ex)
+            {
+                return NodeOperationResult.Fail($"删目录失败:{ex.Message}");
+            }
+        }
+
+        _nodeRepo.Delete(nodeId);
+        _logger?.Info("node-uninstall", $"env='{envId}' node='{nodeId}' 卸载成功");
+        return NodeOperationResult.Ok(node.Version);
     }
 
     public virtual void Lock(string nodeId)
@@ -543,6 +604,28 @@ public class NodeOperations
                 TimeSpan.FromSeconds(10), ct);
             if (!r.Ok) return null;
             return r.Stdout.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 读节点当前所在 tag(<c>git describe --tags --abbrev=0</c>)。
+    /// 没打 tag / 非 git 目录 / 命令失败 → 返 null,不抛。
+    /// </summary>
+    private async Task<string?> TryReadInstalledTagAsync(string workdir, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _git.RunAsync(
+                workdir,
+                new[] { "describe", "--tags", "--abbrev=0" },
+                TimeSpan.FromSeconds(10), ct);
+            if (!r.Ok) return null;
+            var tag = r.Stdout.Trim();
+            return string.IsNullOrEmpty(tag) ? null : tag;
         }
         catch
         {

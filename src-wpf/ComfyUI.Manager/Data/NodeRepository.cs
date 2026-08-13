@@ -124,6 +124,22 @@ public sealed class NodeRepository : INodeRepository
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// 删一行 ScannedNode。不级联到其它表
+    /// (<c>node_versions</c> 是 catalog 的 LatestVersion,不是 per-env install)。
+    /// 调用方(如 <c>NodeOperations.UninstallAsync</c>)负责先抓行拿到 PackagePath,
+    /// 再删目录 + 调本方法。
+    /// 不存在不抛异常。
+    /// </summary>
+    public void Delete(string nodeId)
+    {
+        using var conn = _factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM scanned_nodes WHERE id = @id";
+        cmd.Parameters.AddWithValue("@id", nodeId);
+        cmd.ExecuteNonQuery();
+    }
+
     private static ScannedNode Read(SqliteDataReader reader)
     {
         var classMappingsJson = reader.GetString(7);
