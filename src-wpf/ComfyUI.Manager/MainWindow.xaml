@@ -7,7 +7,7 @@
         xmlns:models="clr-namespace:ComfyUI.Manager.Models"
         Title="ComfyUI 多环境管理系统" Height="700" Width="1100"
         Background="{DynamicResource BackgroundBrush}"
-        Icon="pack://siteoforigin:,,,/asset/icon.png">
+        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
     <!-- v0.6.11+ T4:Window.Icon + 侧栏 header Image 同款 pack://siteoforigin scheme。
          asset/** 是 csproj <None> + CopyToOutputDirectory(松散文件),不是编译进
          assembly 的 <Resource>,application: scheme 会抛 IOException 找不到资源。
@@ -79,7 +79,7 @@
                 Padding="12">
             <StackPanel>
                 <!-- v0.6.12+:删侧栏 header (24×24 icon + "ComfyUI 多环境管理系统" 标题)。
-                     asset/icon.png 是 ComfyUI 官方"4 个 logo 集合参考图",24×24 看着像被
+                     asset/comfyuiLogo.png 是 ComfyUI 官方 logo,简洁版,看着比
                      清除;TextBlock 标题跟 Window.Title + 顶部状态栏重复。Logo 仅保留
                      Window.Icon(任务栏 EXE icon)。 -->
                 <!-- v0.6.9 T7:替换 T3 加的 SearchBoxPlaceholder 为可用的 SpotlightSearchBox。

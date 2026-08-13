@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="选择节点" Height="600" Width="720"
         Background="{StaticResource BackgroundBrush}"
-        Icon="pack://siteoforigin:,,,/asset/icon.png">
+        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

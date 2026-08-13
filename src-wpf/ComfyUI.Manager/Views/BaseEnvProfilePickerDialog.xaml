@@ -6,7 +6,7 @@
         Height="520" Width="640"
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner"
-        Icon="pack://siteoforigin:,,,/asset/icon.png">
+        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
     <DockPanel Margin="16">
         <!-- 顶部说明 -->
         <Border DockPanel.Dock="Top" Padding="8" Margin="0,0,0,12"

@@ -11,7 +11,7 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
         <StackPanel>
             <!-- ============ Hero 区:标题 + 版本 + GitHub 数据条 ============ -->
-            <!-- v0.6.12+:删 hero 图标 — asset/icon.png 是 ComfyUI 官方"4 个 logo 集合
+            <!-- v0.6.12+:删 hero 图标 — asset/comfyuiLogo.png 是 ComfyUI 官方"4 个 logo 集合
                  参考图",缩到 96×52 几乎看不出是 logo(用户报"被清除/难看")。Logo
                  仅保留 Window.Icon(任务栏 EXE icon)。 -->
             <Border Margin="0,0,0,16" Padding="20"

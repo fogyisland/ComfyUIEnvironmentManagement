@@ -7,7 +7,7 @@
         ShowInTaskbar="False" ShowActivated="False"
         Topmost="True" AllowsTransparency="True"
         Background="Transparent"
-        Icon="pack://siteoforigin:,,,/asset/icon.png">
+        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
     <!-- T4 bake 出 icon.ico 后可把上面的 Icon 换成 .ico。注意 Window.Icon 跟
          Image.Source 行为不同 — 指向不存在的文件会在 XAML 解析期直接抛
          IOException(不是静默走 ImageFailed),所以必须指向真实存在的文件。 -->
