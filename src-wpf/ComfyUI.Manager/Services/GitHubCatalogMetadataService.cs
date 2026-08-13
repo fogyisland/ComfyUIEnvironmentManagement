@@ -127,6 +127,15 @@ public class GitHubCatalogMetadataService
         entry.Tags = TryGetStringArray(root, "topics");
         entry.LastCommit = TryGetString(root, "pushed_at");
 
+        // v0.6.14: 7 新字段从 /repos 提取(strict null-check,缺字段 → null/0)
+        entry.HtmlUrl = TryGetString(root, "html_url");
+        entry.Homepage = TryGetString(root, "homepage");
+        entry.Language = TryGetString(root, "language");
+        entry.ForksCount = TryGetInt(root, "forks_count");
+        entry.OpenIssuesCount = TryGetInt(root, "open_issues_count");
+        entry.SubscribersCount = TryGetInt(root, "subscribers_count");
+        entry.CreatedAt = TryGetString(root, "created_at");
+
         // OsCompat MVP: 3 平台全包
         entry.OsCompat = new[] { "windows", "linux", "macos" };
         // PythonCompat MVP: best-effort 空数组
@@ -144,6 +153,7 @@ public class GitHubCatalogMetadataService
         {
             entry.LatestChangelog = releasesTask.Result.Value.body;
             entry.Downloads = releasesTask.Result.Value.downloads;
+            entry.ReleaseTag = releasesTask.Result.Value.tag;  // v0.6.14
         }
 
         var fetchedAt = DateTime.UtcNow;
@@ -250,7 +260,7 @@ public class GitHubCatalogMetadataService
         catch { return null; }
     }
 
-    private async Task<(string body, int downloads)?> TryGetLatestReleaseAsync(string owner, string repo, CancellationToken ct)
+    private async Task<(string body, int downloads, string? tag)?> TryGetLatestReleaseAsync(string owner, string repo, CancellationToken ct)
     {
         var json = await GetJsonAsync($"https://api.github.com/repos/{owner}/{repo}/releases/latest", ct).ConfigureAwait(false);
         if (json is null) return null;
@@ -270,7 +280,10 @@ public class GitHubCatalogMetadataService
                     }
                 }
             }
-            return (body, downloads);
+            // v0.6.14: tag 跟 body / downloads 同 call 拿,零额外 HTTP
+            string? tag = doc.RootElement.TryGetProperty("tag_name", out var t) && t.ValueKind == JsonValueKind.String
+                ? t.GetString() : null;
+            return (body, downloads, tag);
         }
         catch { return null; }
     }
