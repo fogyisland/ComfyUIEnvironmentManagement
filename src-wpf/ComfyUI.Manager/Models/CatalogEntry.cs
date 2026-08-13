@@ -59,4 +59,22 @@ public class CatalogEntry
     public IReadOnlyList<string> OsCompat { get; set; } = Array.Empty<string>();
     [JsonPropertyName("metadata_fetched_at")]
     public string? MetadataFetchedAt { get; set; }  // ISO 8601 UTC
+
+    // v0.6.14: 8 个新 GitHub 字段(由 GitHubCatalogMetadataService 从 /repos + /releases 提取)
+    [JsonPropertyName("html_url")]
+    public string? HtmlUrl { get; set; }
+    [JsonPropertyName("homepage")]
+    public string? Homepage { get; set; }
+    [JsonPropertyName("language")]
+    public string? Language { get; set; }
+    [JsonPropertyName("forks_count")]
+    public int ForksCount { get; set; }
+    [JsonPropertyName("open_issues_count")]
+    public int OpenIssuesCount { get; set; }
+    [JsonPropertyName("release_tag")]
+    public string? ReleaseTag { get; set; }
+    [JsonPropertyName("subscribers_count")]
+    public int SubscribersCount { get; set; }
+    [JsonPropertyName("created_at")]
+    public string? CreatedAt { get; set; }  // ISO 8601 UTC from /repos.created_at
 }
