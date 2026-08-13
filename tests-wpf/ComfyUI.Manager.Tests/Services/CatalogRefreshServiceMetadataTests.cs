@@ -39,8 +39,8 @@ public class CatalogRefreshServiceMetadataTests : IDisposable
             },
         };
         public FakeFetcher() : base(new HttpClient(new Mock<HttpMessageHandler>().Object), 60) { }
-        public override Task<List<CatalogEntry>> FetchAsync(string url, CancellationToken ct = default)
-            => Task.FromResult(Entries);
+        public override Task<CatalogFetchResult> FetchAsync(string url, CancellationToken ct = default)
+            => Task.FromResult(new CatalogFetchResult(false, Entries, null, null));
     }
 
     /// <summary>

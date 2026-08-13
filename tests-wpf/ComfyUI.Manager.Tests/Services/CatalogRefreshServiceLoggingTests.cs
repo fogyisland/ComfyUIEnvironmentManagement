@@ -48,10 +48,10 @@ public class CatalogRefreshServiceLoggingTests : IDisposable
         public Exception? ThrowOnFetch { get; set; }
         public FakeCatalogFetcher()
             : base(new HttpClient(new Mock<HttpMessageHandler>().Object), 60) { }
-        public override Task<List<CatalogEntry>> FetchAsync(string url, CancellationToken ct = default)
+        public override Task<CatalogFetchResult> FetchAsync(string url, CancellationToken ct = default)
         {
             if (ThrowOnFetch is not null) throw ThrowOnFetch;
-            return Task.FromResult(EntriesToReturn);
+            return Task.FromResult(new CatalogFetchResult(false, EntriesToReturn, null, null));
         }
     }
 

@@ -164,7 +164,7 @@ public sealed class CatalogViewModelDownloadTests : IDisposable
                 : base(new System.Net.Http.HttpClient(
                     new Moq.Mock<System.Net.Http.HttpMessageHandler>().Object), 60)
             { }
-            public override Task<List<CatalogEntry>> FetchAsync(
+            public override Task<CatalogFetchResult> FetchAsync(
                 string url, System.Threading.CancellationToken ct = default)
                 => throw new NotImplementedException();
         }

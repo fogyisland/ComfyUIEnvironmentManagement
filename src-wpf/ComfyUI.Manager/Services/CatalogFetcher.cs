@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -33,13 +34,37 @@ public class CatalogFetcher
         _logger = logger;
     }
 
-    public virtual async Task<List<CatalogEntry>> FetchAsync(string url, CancellationToken ct = default)
+    public virtual async Task<CatalogFetchResult> FetchAsync(
+        string url,
+        string? etag,
+        string? lastModified,
+        CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        _logger?.Info("catalog-fetch", $"开始 fetch url={url}");
+        _logger?.Info("catalog-fetch", $"开始 fetch url={url} etag={etag != null}");
         try
         {
-            var json = await _http.GetStringAsync(url, ct);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(etag))
+                req.Headers.TryAddWithoutValidation("If-None-Match", etag);
+            if (!string.IsNullOrEmpty(lastModified))
+                req.Headers.TryAddWithoutValidation("If-Modified-Since", lastModified);
+
+            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+
+            // v0.6.14: HTTP cache — 304 short-circuit
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotModified)
+            {
+                var newEtag304 = TryGetHeader(resp, "ETag");
+                var newLastMod304 = TryGetHeader(resp, "Last-Modified");
+                _logger?.Info("catalog-fetch",
+                    $"304 Not Modified url={url} duration_ms={sw.ElapsedMilliseconds}");
+                return new CatalogFetchResult(
+                    Is304: true, Entries: null,
+                    NewEtag: newEtag304, NewLastModified: newLastMod304);
+            }
+
+            var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             var root = JsonSerializer.Deserialize<JsonElement>(json);
 
             var rawArray = ExtractEntriesArray(root);
@@ -83,14 +108,36 @@ public class CatalogFetcher
                 });
             }
 
-            _logger?.Info("catalog-fetch", $"完成 fetch count={entries.Count} duration_ms={sw.ElapsedMilliseconds} url={url}");
-            return entries;
+            var newEtag = TryGetHeader(resp, "ETag");
+            var newLastMod = TryGetHeader(resp, "Last-Modified");
+            _logger?.Info("catalog-fetch",
+                $"完成 fetch count={entries.Count} duration_ms={sw.ElapsedMilliseconds} url={url}");
+            return new CatalogFetchResult(
+                Is304: false, Entries: entries,
+                NewEtag: newEtag, NewLastModified: newLastMod);
         }
         catch (Exception ex)
         {
             _logger?.Error("catalog-fetch", $"fetch 失败 url={url}", ex);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 旧签名 wrapper:无 HTTP cache。保留向后兼容(老 caller/tests 用)。
+    /// </summary>
+    public virtual Task<CatalogFetchResult> FetchAsync(string url, CancellationToken ct = default)
+        => FetchAsync(url, etag: null, lastModified: null, ct);
+
+    private static string? TryGetHeader(HttpResponseMessage resp, string name)
+    {
+        // v0.6.14: 一些 header(如 Last-Modified)被 .NET 归类为 content header,实际
+        // 存在 resp.Content.Headers 而不是 resp.Headers。两侧都查。
+        if (resp.Headers.TryGetValues(name, out var vals))
+            return vals.FirstOrDefault();
+        if (resp.Content?.Headers.TryGetValues(name, out var cvals) == true)
+            return cvals.FirstOrDefault();
+        return null;
     }
 
     /// <summary>

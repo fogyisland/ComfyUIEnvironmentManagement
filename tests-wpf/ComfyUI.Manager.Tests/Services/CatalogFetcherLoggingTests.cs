@@ -70,7 +70,8 @@ public class CatalogFetcherLoggingTests : IDisposable
         using var logger = new AppLogger(_tempRoot);
         var fetcher = new CatalogFetcher(RespondingHttpClient(json), cacheTtlMinutes: 60, logger: logger);
 
-        var entries = await fetcher.FetchAsync(TestUrl);
+        var result = await fetcher.FetchAsync(TestUrl);
+        var entries = result.Entries!;
 
         Assert.Equal(2, entries.Count);
         var lines = logger.ReadLines();
@@ -132,7 +133,8 @@ public class CatalogFetcherLoggingTests : IDisposable
         var json = @"[{ ""id"": ""pkg"" }]";
         var fetcher = new CatalogFetcher(RespondingHttpClient(json), cacheTtlMinutes: 60);
 
-        var entries = await fetcher.FetchAsync(TestUrl);
+        var result = await fetcher.FetchAsync(TestUrl);
+        var entries = result.Entries!;
 
         Assert.Single(entries);
         Assert.Equal("pkg", entries[0].Package);

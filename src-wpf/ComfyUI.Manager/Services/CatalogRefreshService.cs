@@ -64,7 +64,12 @@ public class CatalogRefreshService
         int versionCount = 0;
         try
         {
-            var entries = await _fetcher.FetchAsync(src.Url, ct);
+            var fetchResult = await _fetcher.FetchAsync(src.Url, ct);
+            // v0.6.14: FetchAsync 返回 CatalogFetchResult,Entries 在 200 时是 IReadOnlyList。
+            // 后端 UpsertBatch/EnrichAsync 需要 IList<CatalogEntry>,toList 转一次。
+            var entries = fetchResult.Entries is null
+                ? new List<CatalogEntry>()
+                : fetchResult.Entries.ToList();
             var url = src.Url;
             var count = await Task.Run(() =>
             {

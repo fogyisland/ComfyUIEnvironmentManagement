@@ -40,7 +40,8 @@ public class CatalogFetcherTests
         ]";
         var fetcher = new CatalogFetcher(MockedHttpClient(json), cacheTtlMinutes: 60);
 
-        var entries = await fetcher.FetchAsync("https://example/registry.json");
+        var result = await fetcher.FetchAsync("https://example/registry.json");
+        var entries = result.Entries!;
 
         Assert.Equal(2, entries.Count);
         Assert.Equal("comfy-node-a", entries[0].Package);
@@ -55,7 +56,8 @@ public class CatalogFetcherTests
         var json = @"[{ ""name"": ""fallback-name"" }]";
         var fetcher = new CatalogFetcher(MockedHttpClient(json));
 
-        var entries = await fetcher.FetchAsync("https://example/registry.json");
+        var result = await fetcher.FetchAsync("https://example/registry.json");
+        var entries = result.Entries!;
 
         Assert.Single(entries);
         Assert.Equal("fallback-name", entries[0].Package);
@@ -71,7 +73,8 @@ public class CatalogFetcherTests
         ]";
         var fetcher = new CatalogFetcher(MockedHttpClient(json));
 
-        var entries = await fetcher.FetchAsync("https://example/registry.json");
+        var result = await fetcher.FetchAsync("https://example/registry.json");
+        var entries = result.Entries!;
 
         Assert.Equal(2, entries.Count);
         Assert.Equal("keep-me", entries[0].Package);
@@ -83,7 +86,8 @@ public class CatalogFetcherTests
     {
         var fetcher = new CatalogFetcher(MockedHttpClient("[]"));
 
-        var entries = await fetcher.FetchAsync("https://example/registry.json");
+        var result = await fetcher.FetchAsync("https://example/registry.json");
+        var entries = result.Entries!;
 
         Assert.Empty(entries);
     }
@@ -109,7 +113,8 @@ public class CatalogFetcherTests
         var json = @"[{ ""id"": ""pkg"" }]";
         var fetcher = new CatalogFetcher(MockedHttpClient(json), cacheTtlMinutes: 30);
 
-        var entries = await fetcher.FetchAsync("https://example/registry.json");
+        var result = await fetcher.FetchAsync("https://example/registry.json");
+        var entries = result.Entries!;
 
         Assert.Single(entries);
         // CachedAt + 30min ≈ ExpiresAt
@@ -135,7 +140,8 @@ public class CatalogFetcherTests
         }";
         var fetcher = new CatalogFetcher(MockedHttpClient(json), cacheTtlMinutes: 60);
 
-        var entries = await fetcher.FetchAsync("https://example/registry.json");
+        var result = await fetcher.FetchAsync("https://example/registry.json");
+        var entries = result.Entries!;
 
         Assert.Equal(2, entries.Count);
         Assert.Equal("ComfyUI-A", entries[0].Package);
@@ -153,7 +159,8 @@ public class CatalogFetcherTests
         ] }";
         var fetcher = new CatalogFetcher(MockedHttpClient(json));
 
-        var entries = await fetcher.FetchAsync("https://example/registry.json");
+        var result = await fetcher.FetchAsync("https://example/registry.json");
+        var entries = result.Entries!;
 
         Assert.Single(entries);
         Assert.Equal("by-title-only", entries[0].Package);

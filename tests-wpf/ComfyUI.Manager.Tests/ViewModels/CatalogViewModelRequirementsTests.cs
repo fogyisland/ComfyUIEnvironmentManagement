@@ -132,7 +132,7 @@ public class CatalogViewModelRequirementsTests : IDisposable
     private sealed class NullCatalogFetcher : CatalogFetcher
     {
         public NullCatalogFetcher() : base(new System.Net.Http.HttpClient(), 60) { }
-        public override Task<List<CatalogEntry>> FetchAsync(string url, CancellationToken ct = default)
+        public override Task<CatalogFetchResult> FetchAsync(string url, CancellationToken ct = default)
             => throw new NotImplementedException();
     }
 
