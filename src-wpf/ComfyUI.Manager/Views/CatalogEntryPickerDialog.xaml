@@ -35,7 +35,7 @@
                     <RadioButton GroupName="PickerFilter"
                                  Margin="0,0,8,0"
                                  Style="{StaticResource CatalogSegmentedRadioButton}"
-                                 Tag="{Binding Filter}"
+                                 Tag="{Binding}"
                                  Click="OnFilterChipClicked"
                                  IsChecked="{Binding DataContext.ActiveFilter,
                                              RelativeSource={RelativeSource AncestorType=Window},
