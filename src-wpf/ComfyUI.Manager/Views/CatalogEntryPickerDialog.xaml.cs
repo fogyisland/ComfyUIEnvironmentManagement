@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -29,13 +30,32 @@ public partial class CatalogEntryPickerDialog : Window
         Action?,
         CatalogEntry?>? ShowOverride { get; set; }
 
+    private bool _isClosingFromUser;
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        // v0.6.15 hotfix:WM_CLOSE 路径中(用户按 X / Alt+F4),Closing 事件 handler
+        // 会调 vm.RaiseClosed() → vm.Closed → ctor 的 Close() handler。第二次
+        // Close() 在 WM_CLOSE 中抛 InvalidOperationException。flag 让 ctor handler
+        // 在 closing 路径上短路,只让 CancelCommand 路径正常关 dialog。
+        _isClosingFromUser = true;
+        base.OnClosing(e);
+    }
+
     public CatalogEntryPickerDialog(CatalogEntryPickerViewModel vm)
     {
         InitializeComponent();
         DataContext = vm;
         // v0.6.14 T5:不再有 OkCommand / Cancelled — picker 自身管 install,关 dialog
         // 只通过 CancelCommand / X / Alt+F4 → RaiseClosed() 触发 Closed。
-        vm.Closed += () => { DialogResult = true; Close(); };
+        // v0.6.15 hotfix:X / Alt+F4 路径 OnClosing 已置 _isClosingFromUser=true →
+        // 本 handler 短路,避免重复 Close()。CancelCommand 路径正常设值 + Close()。
+        vm.Closed += () =>
+        {
+            if (_isClosingFromUser) return;
+            DialogResult = true;
+            Close();
+        };
     }
 
     /// <summary>
