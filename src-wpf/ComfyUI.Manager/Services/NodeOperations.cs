@@ -594,7 +594,11 @@ public class NodeOperations
         return env;
     }
 
-    private async Task<string?> TryReadHeadShaAsync(string workdir, CancellationToken ct)
+    /// <summary>
+    /// v0.6.15:改 internal 给 LocalNodeService.ListAsync 复用(读本地节点目录的 HEAD SHA,
+    /// 给 LocalNodeInfo.HeadSha)。不走 git 仓库 → 返 null 不抛。
+    /// </summary>
+    internal async Task<string?> TryReadHeadShaAsync(string workdir, CancellationToken ct)
     {
         try
         {

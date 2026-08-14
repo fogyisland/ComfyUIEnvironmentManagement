@@ -53,6 +53,52 @@ public sealed class NodeRepository : INodeRepository
         return list;
     }
 
+    /// <summary>
+    /// v0.6.15:列所有 Source="download" 的行(本地下载的 sentinel 行)。
+    /// 用于 LocalNodeService.ListAsync 扫 DB 端。
+    /// </summary>
+    public List<ScannedNode> ListDownloadedNodes()
+    {
+        using var conn = _factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, env_id, package, package_path, version, author,
+                   description, class_mappings, status, scan_meta,
+                   last_scanned_at, locked, source
+            FROM scanned_nodes
+            WHERE env_id = '' AND source = 'download'
+            ORDER BY package";
+        using var reader = cmd.ExecuteReader();
+        var list = new List<ScannedNode>();
+        while (reader.Read())
+        {
+            list.Add(Read(reader));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// v0.6.15:查本地节点 (nodeId) 装到了哪些 env —— 走 package = ? 不用 id = ?
+    /// (本地下载行 id 跟 env 装行 id 都 = nodeId,但 env 行 package 字段也存 nodeId)。
+    /// 返回 env_id 列表(已装 env 的 Id 集合)。
+    /// </summary>
+    public IReadOnlyList<string> GetInstalledEnvIdsByPackage(string nodeId)
+    {
+        using var conn = _factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT DISTINCT env_id FROM scanned_nodes
+            WHERE package = @pkg AND env_id != '' AND source = 'env'";
+        cmd.Parameters.AddWithValue("@pkg", nodeId);
+        using var reader = cmd.ExecuteReader();
+        var list = new List<string>();
+        while (reader.Read())
+        {
+            list.Add(reader.GetString(0));
+        }
+        return list;
+    }
+
     public ScannedNode? Get(string nodeId)
     {
         using var conn = _factory.Open();
@@ -137,6 +183,22 @@ public sealed class NodeRepository : INodeRepository
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM scanned_nodes WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", nodeId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// v0.6.15:按 (id, env_id, source) 三元组删除一行,只动匹配的行。
+    /// 用于 LocalNodeService.DeleteAsync(只删 EnvId="" + Source="download" 的本地下载行,
+    /// 不影响已装到 env 的 Source="env" 行)。不存在不抛。
+    /// </summary>
+    public void DeleteBySourceAndEnvId(string id, string envId, string source)
+    {
+        using var conn = _factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM scanned_nodes WHERE id = @id AND env_id = @env_id AND source = @source";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@env_id", envId);
+        cmd.Parameters.AddWithValue("@source", source);
         cmd.ExecuteNonQuery();
     }
 
