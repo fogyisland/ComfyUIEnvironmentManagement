@@ -36,6 +36,14 @@ public class LocalNodeService
         _logger = logger;
     }
 
+    /// <summary>v0.6.15:返回本地节点物理目录绝对路径(供 LocalNodeCopyInstaller 调)。
+    /// 未配置 LocalNodeDirectory 返 null。</summary>
+    public string? GetLocalNodePath(string nodeId)
+    {
+        if (string.IsNullOrWhiteSpace(_settings.LocalNodeDirectory)) return null;
+        return Path.Combine(_settings.LocalNodeDirectory, nodeId);
+    }
+
     public virtual async Task<IReadOnlyList<LocalNodeInfo>> ListAsync(CancellationToken ct)
     {
         var localDir = _settings.LocalNodeDirectory;
