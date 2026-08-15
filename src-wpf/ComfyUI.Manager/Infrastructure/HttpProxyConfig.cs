@@ -16,7 +16,7 @@ namespace ComfyUI.Manager.Infrastructure;
 /// - Enabled=false → handler.Proxy=null / UseProxy=false (不走 WinHTTP default system proxy)
 /// - Enabled=true 且 URL/Port 合法 → handler.Proxy = WebProxy(http://url:port) / psi.HTTP_PROXY 设
 /// - URL 不带 scheme → 默认 http://
-/// - Port 越界 (0, >65535) → silently noop (跟原 GitProxyConfig 行为一致)
+/// - Port 越界 (0, >65535) → 显式 Proxy=null/UseProxy=false (避免 WinHTTP default system proxy 走 R2 mitigation)
 /// </summary>
 public sealed class HttpProxyConfig
 {

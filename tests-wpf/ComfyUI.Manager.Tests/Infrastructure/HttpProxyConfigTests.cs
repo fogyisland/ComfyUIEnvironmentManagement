@@ -48,7 +48,7 @@ public class HttpProxyConfigTests
     }
 
     [Fact]
-    public void ApplyTo_HttpClientHandler_InvalidPort_NoOp()
+    public void ApplyTo_HttpClientHandler_InvalidPort_DisablesProxy()
     {
         var proxy = new HttpProxyConfig { Enabled = true, Url = "127.0.0.1", Port = 0 };
         var handler = new HttpClientHandler();

@@ -41,7 +41,18 @@ public class AppHttpProxyWiringTests
         Assert.Null(handler(http).Proxy);
     }
 
-    private static HttpClient InvokeBuildHttpClient(Settings _, HttpProxyConfig proxy)
+    [Fact]
+    public void BuildHttpClient_ProxyNull_HandlerHasNullProxy()
+    {
+        var settings = new Settings();
+
+        var http = InvokeBuildHttpClient(settings, null);
+
+        Assert.False(handler(http).UseProxy);
+        Assert.Null(handler(http).Proxy);
+    }
+
+    private static HttpClient InvokeBuildHttpClient(Settings _, HttpProxyConfig? proxy)
     {
         var method = typeof(App).GetMethod(
             "BuildHttpClient",
