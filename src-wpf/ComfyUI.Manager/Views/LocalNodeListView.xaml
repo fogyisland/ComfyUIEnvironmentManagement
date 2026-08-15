@@ -69,6 +69,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0">
                                 <Grid.ColumnDefinitions>
@@ -86,7 +87,15 @@
                                 <Run Text="HEAD: " />
                                 <Run Text="{Binding HeadShaDisplay, Mode=OneWay}" />
                             </TextBlock>
-                            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Grid.Row="2" Margin="0,2,0,0"
+                                       FontSize="11" Opacity="0.7"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Info.RepositoryUrl}"
+                                       Visibility="{Binding RepositoryUrlDisplay, Converter={StaticResource StringNotEmptyToVisibility}}">
+                                <Run Text="URL: " />
+                                <Run Text="{Binding RepositoryUrlDisplay, Mode=OneWay}" />
+                            </TextBlock>
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0">
                                 <Button Content="复制到 env"
                                         Command="{Binding DataContext.InstallCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                         CommandParameter="{Binding Info}"

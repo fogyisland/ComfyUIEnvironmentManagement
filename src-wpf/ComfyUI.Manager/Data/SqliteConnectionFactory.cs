@@ -161,6 +161,8 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "environments", "notes", "TEXT");
         // v0.6.11:scanned_nodes.source(老 db backfill 为 'env';新唯一索引支持 download 行)
         EnsureColumn(conn, "scanned_nodes", "source", "TEXT NOT NULL DEFAULT 'env'");
+        // v0.6.15.1 hotfix:节点 git URL(本地下载行才有,env 装行 NULL 即可)
+        EnsureColumn(conn, "scanned_nodes", "repository_url", "TEXT");
 
         // v0.6.11:支持 (env_id, package, source) 三元组唯一 — 让 download(env_id='', source='download')
         // 不与 env 装(env_id='env-1', source='env')同名包冲突,两个 download 同包也能独立存在。

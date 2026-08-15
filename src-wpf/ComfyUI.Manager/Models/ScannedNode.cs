@@ -38,4 +38,12 @@ public class ScannedNode
     /// </summary>
     [JsonPropertyName("source")]
     public string Source { get; set; } = "env";
+
+    /// <summary>
+    /// v0.6.15.1 hotfix:git 仓库 URL(<c>git clone</c> 用的完整 https/ssh 地址)。
+    /// 仅本地下载行 (<c>Source="download"</c>) 有意义;env 装行通常为空。
+    /// 老已下载的 node 没有此字段(<c>NULL</c>),UI 走 <c>git config remote.origin.url</c> fallback。
+    /// </summary>
+    [JsonPropertyName("repository_url")]
+    public string? RepositoryUrl { get; set; }
 }

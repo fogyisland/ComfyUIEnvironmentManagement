@@ -343,6 +343,7 @@ public class NodeOperations
         // v0.6.11:成功路径写 ScannedNode — EnvId=""(sentinel,下载到 local,非 env-specific)
         // + Source="download"。原 UNIQUE(env_id, package) 对 "" + "" 同 package 会冲突,
         // 但新唯一索引 (env_id, package, source) 让 download 行独立,覆盖式 upsert 同 id。
+        // v0.6.15.1 hotfix:同时存 repository_url,LocalNodeListView card 显示用。
         _nodeRepo.Upsert(new ScannedNode
         {
             Id = nodeId,
@@ -353,6 +354,7 @@ public class NodeOperations
             Status = "enabled",
             LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
             Source = "download",
+            RepositoryUrl = repoUrl,
         });
         _logger?.Info("node-download",
             $"dir='{localDir}' node='{nodeId}' 下载成功 version={(versionToRecord is null ? "?" : versionToRecord[..Math.Min(8, versionToRecord.Length)])}");
@@ -608,6 +610,29 @@ public class NodeOperations
                 TimeSpan.FromSeconds(10), ct);
             if (!r.Ok) return null;
             return r.Stdout.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.1 hotfix:读节点 remote origin URL(<c>git config --get remote.origin.url</c>)。
+    /// 非 git 目录 / 没设 origin / 命令失败 → 返 null,不抛。
+    /// 用于 LocalNodeService 给老已下载的 node (DB 无 repository_url) 兜底拿 URL。
+    /// </summary>
+    internal async Task<string?> TryReadRemoteUrlAsync(string workdir, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _git.RunAsync(
+                workdir,
+                new[] { "config", "--get", "remote.origin.url" },
+                TimeSpan.FromSeconds(10), ct);
+            if (!r.Ok) return null;
+            var url = r.Stdout.Trim();
+            return string.IsNullOrEmpty(url) ? null : url;
         }
         catch
         {

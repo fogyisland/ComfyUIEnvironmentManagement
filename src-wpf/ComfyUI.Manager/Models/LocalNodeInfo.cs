@@ -15,4 +15,5 @@ public sealed record LocalNodeInfo(
     bool HasPhysicalDir,
     bool IsInDb,
     IReadOnlyList<string> InstalledEnvIds,
-    IReadOnlyList<string> InstalledEnvNames);
+    IReadOnlyList<string> InstalledEnvNames,
+    string? RepositoryUrl = null);

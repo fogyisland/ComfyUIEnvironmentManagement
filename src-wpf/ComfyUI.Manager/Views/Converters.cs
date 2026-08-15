@@ -153,6 +153,26 @@ public sealed class InverseZeroCountToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// StringNotEmptyToVisibilityConverter:string → Visibility(null/空 → Collapsed,其它 → Visible)。
+/// v0.6.15.1 hotfix:LocalNodeListView URL 行 — 没 URL 时整个 TextBlock 隐藏,有 URL 时显示。
+/// 跟 NullToVisibilityConverter 不同:这个判 null + empty string。
+/// </summary>
+public sealed class StringNotEmptyToVisibilityConverter : IValueConverter
+{
+    public static readonly StringNotEmptyToVisibilityConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is string s && !string.IsNullOrEmpty(s) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
 /// BoolToEntryCountTextConverter:bool HasEntries + int Count → 字符串。
 /// values[0]=true + values[1]=N → "共 {N} 个节点";values[0]=false → "加载中…"。
 /// v0.6.11+ CatalogUI polish:替换裸 "HasEntries" 的 BoolToVisibility,显示具体计数。

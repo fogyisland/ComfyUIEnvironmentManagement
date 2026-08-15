@@ -64,6 +64,7 @@ public class LocalNodeService
         // 1) 扫物理子目录
         var physicalIds = new HashSet<string>(StringComparer.Ordinal);
         var physicalSha = new Dictionary<string, string>(StringComparer.Ordinal);
+        var physicalPath = new Dictionary<string, string>(StringComparer.Ordinal);
         try
         {
             foreach (var dir in Directory.EnumerateDirectories(localDir))
@@ -71,6 +72,7 @@ public class LocalNodeService
                 var name = Path.GetFileName(dir);
                 if (string.IsNullOrEmpty(name)) continue;
                 physicalIds.Add(name);
+                physicalPath[name] = dir;
                 // 读 HEAD SHA(非 git 仓库 → null,跳过)
                 var sha = await _nodeOps.TryReadHeadShaAsync(dir, ct);
                 if (!string.IsNullOrEmpty(sha))
@@ -87,6 +89,7 @@ public class LocalNodeService
         // 2) 扫 DB download 行(orphan DB row 也算)
         var dbIds = new HashSet<string>(StringComparer.Ordinal);
         var dbInstallDate = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        var dbRepoUrl = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var node in _nodeRepo.ListDownloadedNodes())
         {
             dbIds.Add(node.Package);  // node.Package = nodeId
@@ -94,6 +97,11 @@ public class LocalNodeService
                 System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
             {
                 dbInstallDate[node.Package] = dt;
+            }
+            // v0.6.15.1:DB 存了 URL 的(新下载的)直接拿,不必再 git config
+            if (!string.IsNullOrEmpty(node.RepositoryUrl))
+            {
+                dbRepoUrl[node.Package] = node.RepositoryUrl;
             }
         }
 
@@ -110,6 +118,13 @@ public class LocalNodeService
             var envNames = envIds
                 .Select(eid => envMap.TryGetValue(eid, out var n) ? n : eid)
                 .ToList();
+            // v0.6.15.1:URL 来源 — DB (新下载的) || git remote origin URL (老已下载但 DB 没存)
+            // || null (没物理目录也没 DB 的 orphan DB row 也行 — 但 DB row 总是有 URL,这里走第 1 条)
+            string? repoUrl = dbRepoUrl.TryGetValue(id, out var u) ? u : null;
+            if (repoUrl is null && physicalPath.TryGetValue(id, out var dir))
+            {
+                repoUrl = await _nodeOps.TryReadRemoteUrlAsync(dir, ct);
+            }
             result.Add(new LocalNodeInfo(
                 NodeId: id,
                 HeadSha: physicalSha.TryGetValue(id, out var s) ? s : null,
@@ -117,7 +132,8 @@ public class LocalNodeService
                 HasPhysicalDir: physicalIds.Contains(id),
                 IsInDb: dbIds.Contains(id),
                 InstalledEnvIds: envIds,
-                InstalledEnvNames: envNames));
+                InstalledEnvNames: envNames,
+                RepositoryUrl: repoUrl));
         }
 
         // 按 nodeId 排序(稳定显示)

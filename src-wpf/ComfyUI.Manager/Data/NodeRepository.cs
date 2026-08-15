@@ -41,7 +41,7 @@ public sealed class NodeRepository : INodeRepository
         cmd.CommandText = @"
             SELECT id, env_id, package, package_path, version, author,
                    description, class_mappings, status, scan_meta,
-                   last_scanned_at, locked, source
+                   last_scanned_at, locked, source, repository_url
             FROM scanned_nodes WHERE env_id = @env ORDER BY package";
         cmd.Parameters.AddWithValue("@env", envId);
         using var reader = cmd.ExecuteReader();
@@ -64,7 +64,7 @@ public sealed class NodeRepository : INodeRepository
         cmd.CommandText = @"
             SELECT id, env_id, package, package_path, version, author,
                    description, class_mappings, status, scan_meta,
-                   last_scanned_at, locked, source
+                   last_scanned_at, locked, source, repository_url
             FROM scanned_nodes
             WHERE env_id = '' AND source = 'download'
             ORDER BY package";
@@ -106,7 +106,7 @@ public sealed class NodeRepository : INodeRepository
         cmd.CommandText = @"
             SELECT id, env_id, package, package_path, version, author,
                    description, class_mappings, status, scan_meta,
-                   last_scanned_at, locked, source
+                   last_scanned_at, locked, source, repository_url
             FROM scanned_nodes WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", nodeId);
         using var reader = cmd.ExecuteReader();
@@ -121,11 +121,11 @@ public sealed class NodeRepository : INodeRepository
             INSERT INTO scanned_nodes
                 (id, env_id, package, package_path, version, author,
                  description, class_mappings, status, scan_meta,
-                 last_scanned_at, locked, source)
+                 last_scanned_at, locked, source, repository_url)
             VALUES
                 (@id, @env_id, @package, @package_path, @version, @author,
                  @description, @class_mappings, @status, @scan_meta,
-                 @last_scanned_at, @locked, @source)
+                 @last_scanned_at, @locked, @source, @repository_url)
             ON CONFLICT(id) DO UPDATE SET
                 package_path=excluded.package_path,
                 version=excluded.version,
@@ -136,7 +136,8 @@ public sealed class NodeRepository : INodeRepository
                 scan_meta=excluded.scan_meta,
                 last_scanned_at=excluded.last_scanned_at,
                 locked=excluded.locked,
-                source=excluded.source";
+                source=excluded.source,
+                repository_url=excluded.repository_url";
         Bind(cmd, node);
         cmd.ExecuteNonQuery();
     }
@@ -225,6 +226,8 @@ public sealed class NodeRepository : INodeRepository
             Locked = !reader.IsDBNull(11) && reader.GetInt32(11) != 0,
             // 12 = source。NOT NULL DEFAULT 'env',直接 GetString;极老行 NULL 容错(虽然 EnsureColumn 会 backfill)
             Source = reader.IsDBNull(12) ? "env" : reader.GetString(12),
+            // 13 = repository_url。新加列,TEXT NULL,老行 NULL。
+            RepositoryUrl = reader.IsDBNull(13) ? null : reader.GetString(13),
         };
     }
 
@@ -251,5 +254,7 @@ public sealed class NodeRepository : INodeRepository
         // source 用模型默认(默认 "env");空串/null 视作 "env",跟 Read 端对称
         cmd.Parameters.AddWithValue("@source",
             string.IsNullOrEmpty(node.Source) ? "env" : node.Source);
+        cmd.Parameters.AddWithValue("@repository_url",
+            (object?)node.RepositoryUrl ?? DBNull.Value);
     }
 }

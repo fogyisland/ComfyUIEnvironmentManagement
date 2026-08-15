@@ -27,6 +27,56 @@ public class LocalNodeListItem : ViewModelBase
     public string DisplayName => string.IsNullOrEmpty(Info.NodeId) ? "(unnamed)" : Info.NodeId;
     public string HeadShaDisplay => Info.HeadSha is { Length: >= 8 } ? Info.HeadSha[..8] : (Info.HeadSha ?? "—");
 
+    /// <summary>
+    /// v0.6.15.1 hotfix:repo URL 显示 — 从 git URL 抽出 <c>host/owner/repo</c> 形式短串
+    /// (github / gitlab / bitbucket)。支持 https / http / ssh / git@ 四种形式,
+    /// 其它形态保留原 URL。空串表示"没 URL"。
+    /// </summary>
+    public string RepositoryUrlDisplay
+    {
+        get
+        {
+            var url = Info.RepositoryUrl;
+            if (string.IsNullOrWhiteSpace(url)) return "";
+            var trimmed = url.Trim();
+            // 1. 去 .git 后缀
+            if (trimmed.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed[..^4];
+            }
+            // 2. 按 scheme 去前缀,把 host/owner/repo 段拿出来
+            if (trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed["https://".Length..];
+            }
+            else if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed["http://".Length..];
+            }
+            else if (trimmed.StartsWith("ssh://", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed["ssh://".Length..];
+                // ssh:// 可能还带 git@ 前缀
+                if (trimmed.StartsWith("git@", StringComparison.OrdinalIgnoreCase))
+                {
+                    trimmed = trimmed["git@".Length..];
+                }
+            }
+            else if (trimmed.StartsWith("git@", StringComparison.OrdinalIgnoreCase))
+            {
+                // git@host:owner/repo → host/owner/repo
+                trimmed = trimmed["git@".Length..];
+                var colonIdx = trimmed.IndexOf(':');
+                if (colonIdx >= 0)
+                {
+                    trimmed = trimmed[..colonIdx] + "/" + trimmed[(colonIdx + 1)..];
+                }
+            }
+            // 现在 trimmed 形如 "host/owner/repo" 或 "host/owner/repo/..."
+            return trimmed;
+        }
+    }
+
     public void UpdateBadge()
     {
         if (Info.InstalledEnvNames.Count == 0)
