@@ -52,7 +52,11 @@ public class AppHttpProxyWiringTests
 
     private static HttpClientHandler handler(HttpClient http)
     {
-        var f = typeof(HttpClient).GetField("_handler", BindingFlags.NonPublic | BindingFlags.Instance);
+        // .NET 8: HttpClient inherits _handler from HttpMessageInvoker (base class).
+        // 旧 .NET Framework / .NET 5 时代 _handler 是 HttpClient 自己的字段; .NET 8
+        // 迁到 base class。
+        var f = typeof(HttpClient).BaseType!.GetField("_handler", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(f);
         return (HttpClientHandler)f!.GetValue(http)!;
     }
 }

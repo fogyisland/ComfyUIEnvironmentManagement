@@ -600,39 +600,40 @@
             </DockPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                <TextBlock Text="git 代理" VerticalAlignment="Center"/>
+                <TextBlock Text="网络代理" VerticalAlignment="Center"/>
+                <TextBlock Text="驱动 Git 拉取 + HTTP catalog 拉取。手动配置, 重启后生效。" Margin="8,0,0,0"
+                           VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <CheckBox Content="启用代理(只作用于本应用的 git 调用)"
-                          IsChecked="{Binding GitProxyEnabled}"
+                <CheckBox Content="启用代理" IsChecked="{Binding HttpProxyEnabled}"
                           VerticalAlignment="Center"/>
                 <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource WarningBrush}"
                            ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[GitProxyEnabled], Converter={StaticResource BoolToVisibility}}"/>
+                           Visibility="{Binding Dirty[HttpProxyEnabled], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
-            <Grid Margin="0,2,0,0" IsEnabled="{Binding GitProxyEnabled}">
+            <Grid Margin="0,2,0,0" IsEnabled="{Binding HttpProxyEnabled}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="8" />
                     <ColumnDefinition Width="120" />
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0">
-                    <TextBox Text="{Binding GitProxyUrl, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox Text="{Binding HttpProxyUrl, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource MaterialTextBox}" />
                     <TextBlock Text="⚠" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"
                                Foreground="{DynamicResource WarningBrush}"
                                ToolTip="尚未保存"
-                               Visibility="{Binding Dirty[GitProxyUrl], Converter={StaticResource BoolToVisibility}}"/>
+                               Visibility="{Binding Dirty[HttpProxyUrl], Converter={StaticResource BoolToVisibility}}"/>
                 </Grid>
                 <Grid Grid.Column="2">
-                    <TextBox Text="{Binding GitProxyPort, UpdateSourceTrigger=PropertyChanged}"
+                    <TextBox Text="{Binding HttpProxyPort, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource MaterialTextBox}" />
                     <TextBlock Text="⚠" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"
                                Foreground="{DynamicResource WarningBrush}"
                                ToolTip="尚未保存"
-                               Visibility="{Binding Dirty[GitProxyPort], Converter={StaticResource BoolToVisibility}}"/>
+                               Visibility="{Binding Dirty[HttpProxyPort], Converter={StaticResource BoolToVisibility}}"/>
                 </Grid>
             </Grid>
 

@@ -17,7 +17,7 @@ namespace ComfyUI.Manager.ViewModels;
 public class SettingsViewModel : ViewModelBase, IDisposable
 {
     private readonly SettingsRepository _repo;
-    private readonly GitProxyConfig _proxy;
+    private readonly HttpProxyConfig _proxy;
     private readonly IPythonInterpreterValidator _validator;
     // v0.6.9 T2:接 IThemeService,ThemeMode setter 改即调 Apply 立即预览。
     // 可空:既有 12+ 测试 callers 不传 themeService 也能跑(Apply no-op)。
@@ -71,7 +71,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
 
     public SettingsViewModel(
         SettingsRepository repo,
-        GitProxyConfig proxy,
+        HttpProxyConfig proxy,
         IPythonInterpreterValidator validator,
         Settings? sharedSettings = null,
         IThemeService? themeService = null)
@@ -520,38 +520,38 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         get => _settings.GitExe;
         set { _settings.GitExe = value; MarkDirty(nameof(GitExe)); RaisePropertyChanged(); }
     }
-    public string GitProxyUrl
+    public string HttpProxyUrl
     {
-        // getter/setter 都双写:_settings(持久化) + _proxy(运行期 live)。
-        // 让 git 代理开关能即时生效,不用重启。
+        // getter/setter 都双写: _settings (持久化) + _proxy (运行期 live)。
+        // 让 HttpProxy 开关能即时生效, 不用重启。
         get => _proxy.Url;
         set
         {
             _proxy.Url = value;
-            _settings.GitProxyUrl = value;
-            MarkDirty(nameof(GitProxyUrl));
+            _settings.HttpProxyUrl = value;
+            MarkDirty(nameof(HttpProxyUrl));
             RaisePropertyChanged();
         }
     }
-    public int GitProxyPort
+    public int HttpProxyPort
     {
         get => _proxy.Port;
         set
         {
             _proxy.Port = value;
-            _settings.GitProxyPort = value;
-            MarkDirty(nameof(GitProxyPort));
+            _settings.HttpProxyPort = value;
+            MarkDirty(nameof(HttpProxyPort));
             RaisePropertyChanged();
         }
     }
-    public bool GitProxyEnabled
+    public bool HttpProxyEnabled
     {
         get => _proxy.Enabled;
         set
         {
             _proxy.Enabled = value;
-            _settings.GitProxyEnabled = value;
-            MarkDirty(nameof(GitProxyEnabled));
+            _settings.HttpProxyEnabled = value;
+            MarkDirty(nameof(HttpProxyEnabled));
             RaisePropertyChanged();
         }
     }
@@ -852,9 +852,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(LogDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
-        RaisePropertyChanged(nameof(GitProxyUrl));
-        RaisePropertyChanged(nameof(GitProxyPort));
-        RaisePropertyChanged(nameof(GitProxyEnabled));
+        RaisePropertyChanged(nameof(HttpProxyUrl));
+        RaisePropertyChanged(nameof(HttpProxyPort));
+        RaisePropertyChanged(nameof(HttpProxyEnabled));
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
         RaisePropertyChanged(nameof(FetchNodeVersionsOnRefresh));
