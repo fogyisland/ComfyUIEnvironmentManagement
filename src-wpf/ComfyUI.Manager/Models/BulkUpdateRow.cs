@@ -8,5 +8,6 @@ public record BulkUpdateRow(
     BulkUpdateTargetKind TargetKind,
     string Status,    // pending | running | succeeded | skipped | failed
     string? Reason,
-    [property: JsonPropertyName("latency_ms")] int LatencyMs
+    [property: JsonPropertyName("latency_ms")] int LatencyMs,
+    [property: JsonPropertyName("percent")] double Percent = 0
 );

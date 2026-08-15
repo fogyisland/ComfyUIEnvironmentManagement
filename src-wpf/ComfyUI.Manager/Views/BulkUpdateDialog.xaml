@@ -79,6 +79,7 @@
                 <DataGridTextColumn Header="Env" Binding="{Binding EnvId}" Width="120"/>
                 <DataGridTextColumn Header="Target" Binding="{Binding TargetKind}" Width="160"/>
                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                <DataGridTextColumn Header="Progress" Binding="{Binding Percent, StringFormat={}{0}%}" Width="80"/>
                 <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*"/>
                 <DataGridTextColumn Header="ms" Binding="{Binding LatencyMs}" Width="60"/>
             </DataGrid.Columns>

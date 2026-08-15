@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -230,7 +231,7 @@ public sealed class BulkUpdateOrchestrator
                 }
 
                 // 跑 git pull --ff-only
-                var (status, reason, stdout, stderr) = await RunGitPullAsync(targetDir, ct);
+                var (status, reason, stdout, stderr) = await RunGitPullAsync(envId, target, targetDir, ct);
                 sw.Stop();
 
                 EmitLog(logWriter, bulkId, envId, target,
@@ -326,9 +327,17 @@ public sealed class BulkUpdateOrchestrator
     /// <summary>
     /// 跑 `git -C &lt;dir&gt; pull --ff-only`,30s 超时。
     /// 返回 status: "succeeded" | "failed"; reason: null / "timeout" / stderr 头 / 异常信息。
+    ///
+    /// v0.6.15.5 T5:加 --progress 标志让 git 实时 emit 进度行;用
+    /// ErrorDataReceived 流式 capture(替代 ReadToEndAsync),每行 parse (\d+)%
+    /// 实时 emit Progress 事件,UI 端能看到实时 percent。
     /// </summary>
     private async Task<(string Status, string? Reason, string Stdout, string Stderr)>
-        RunGitPullAsync(string targetDir, CancellationToken ct)
+        RunGitPullAsync(
+            string envId,
+            BulkUpdateTargetKind targetKind,
+            string targetDir,
+            CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
@@ -345,6 +354,9 @@ public sealed class BulkUpdateOrchestrator
         psi.ArgumentList.Add(targetDir);
         psi.ArgumentList.Add("pull");
         psi.ArgumentList.Add("--ff-only");
+        // v0.6.15.5 T5:让 git emit 进度到 stderr(默认是关的;开着之后
+        // clone/fetch/pull 大仓库时会有 "Receiving objects:  45%" 这种行)。
+        psi.ArgumentList.Add("--progress");
 
         Process? process = null;
         try
@@ -361,10 +373,45 @@ public sealed class BulkUpdateOrchestrator
             return ("failed", "Process.Start 返回 null", "", "");
         }
 
-        // 异步收集 stdout / stderr;并自己处理超时(而不是依赖 WaitForExit
-        // 单调阻塞)。
-        var stdoutT = process.StandardOutput.ReadToEndAsync();
-        var stderrT = process.StandardError.ReadToEndAsync();
+        // v0.6.15.5 T5:流式 capture stderr ——
+        // - 收集到 stderrBuf(给返回值的 stderr 字段 + 后面 EmitLog 用)
+        // - 实时 parse (\d+)% → emit Progress(envId, targetKind, "running", null, 0, percent)
+        // - lock 保护 stderrBuf(回调在 ThreadPool 线程跑)
+        var stderrBuf = new StringBuilder();
+        var stderrLock = new object();
+        var lastPercent = 0;
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            lock (stderrLock)
+            {
+                stderrBuf.AppendLine(e.Data);
+                var m = System.Text.RegularExpressions.Regex.Match(e.Data, @"(\d+)%");
+                if (m.Success && int.TryParse(m.Groups[1].Value, out var p) && p >= 0 && p <= 100)
+                {
+                    // 只在 percent 真正上涨时 emit,避免同值刷屏
+                    if (p > lastPercent)
+                    {
+                        lastPercent = p;
+                        var pProgress = Progress;
+                        pProgress?.Invoke(new BulkUpdateRow(
+                            envId, targetKind, "running", null, 0, p));
+                    }
+                }
+            }
+        };
+        process.BeginErrorReadLine();
+
+        // stdout 在 pull 时基本是空行("Already up to date." / "Updating..." 等),
+        // 也流式 capture 跟 stderr 一致。
+        var stdoutBuf = new StringBuilder();
+        var stdoutLock = new object();
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            lock (stdoutLock) { stdoutBuf.AppendLine(e.Data); }
+        };
+        process.BeginOutputReadLine();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(PerCallTimeoutMs);
@@ -376,19 +423,22 @@ public sealed class BulkUpdateOrchestrator
         catch (OperationCanceledException)
         {
             TryKill(process);
-            // 等 reader 自然结束(进程已 kill,pipes 已关)。
-            try { await stdoutT; } catch { }
-            try { await stderrT; } catch { }
+            // 进程 kill 后 reader 自然结束
+            try { process.CancelErrorRead(); } catch { }
+            try { process.CancelOutputRead(); } catch { }
             string reason;
             if (ct.IsCancellationRequested) reason = "用户取消";
             else reason = "timeout";
             return ("failed", reason, "", "");
         }
 
+        // 等流式 reader 把 buffer 全部 flush 出来
+        try { process.WaitForExit(); } catch { }
+
         var stdout = "";
         var stderr = "";
-        try { stdout = await stdoutT; } catch { }
-        try { stderr = await stderrT; } catch { }
+        lock (stdoutLock) { stdout = stdoutBuf.ToString(); }
+        lock (stderrLock) { stderr = stderrBuf.ToString(); }
 
         if (process.ExitCode == 0)
         {
