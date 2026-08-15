@@ -149,7 +149,9 @@ public partial class App : Application
             settings.ComfyUiLocale,
             settings.DefaultModelsDirectory,
             linker: null,
-            logsDir: logsDir);  // v0.6.12: 末参 Settings.LogDirectory (Logs parent) or projectRoot fallback
+            logsDir: logsDir,  // v0.6.12: 末参 Settings.LogDirectory (Logs parent) or projectRoot fallback
+            startupErrorDetector: new NodeStartupErrorDetector(),  // v0.6.15.7: 5s grace 后扫描 stdout/stderr 找加载失败的 custom node
+            nodeRepo: nodeRepo);  // v0.6.15.7: 写 ScanMeta["load_error"] 让 env-detail 看到红 badge
 
         // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
         // 1) 空字段 → 默认子目录名(相对)

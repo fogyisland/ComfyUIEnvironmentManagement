@@ -33,6 +33,8 @@ public sealed class ProcessLauncher : IDisposable
     private readonly string _modelsDirectory;
     private readonly JunctionLinker _linker;
     private readonly string _logsDir;  // v0.6.12: Settings.LogDirectory (Logs parent) or projectRoot fallback
+    private readonly NodeStartupErrorDetector? _startupErrorDetector;  // v0.6.15.7: scan captured startup lines for failed node imports
+    private readonly NodeRepository? _nodeRepo;  // v0.6.15.7: write ScanMeta["load_error"] on detected failed nodes
     private readonly Dictionary<string, ProcessEntry> _running = new();
     private readonly object _runningLock = new();
     private bool _disposed;
@@ -47,7 +49,9 @@ public sealed class ProcessLauncher : IDisposable
         string comfyUiLocale = "",
         string modelsDirectory = "",
         JunctionLinker? linker = null,
-        string? logsDir = null)
+        string? logsDir = null,
+        NodeStartupErrorDetector? startupErrorDetector = null,
+        NodeRepository? nodeRepo = null)
     {
         _projectRoot = projectRoot;
         _dbFactory = dbFactory;
@@ -67,6 +71,10 @@ public sealed class ProcessLauncher : IDisposable
         // v0.6.12: Settings.LogDirectory (Logs 父目录) — null = 用 projectRoot。
         // AppLogger.OperationLogPath 会自己加 Logs 子目录。
         _logsDir = (logsDir ?? projectRoot).TrimEnd('\\', '/');
+        // v0.6.15.7: 启动错误检测。null = 老行为(不扫描)。必须两参都给才生效
+        // (detector 单飞无 repo → 报找不到节点;repo 单飞无 detector → 无事可做)。
+        _startupErrorDetector = startupErrorDetector;
+        _nodeRepo = nodeRepo;
     }
 
     public string ProjectRoot => _projectRoot;
@@ -269,6 +277,46 @@ public sealed class ProcessLauncher : IDisposable
             }
 
             stageProgress?.Report("stage:完成");
+
+            // v0.6.15.7:5s grace 让 ComfyUI 吐完 startup import errors,再扫描。
+            // 不阻塞 StartEnvAsync 返回 — 用户看到「完成」即可操作 UI;
+            // ScanMeta 写入异步在后台跑(几行 DB write,可接受)。
+            // 两参都给才生效:detector 单飞无 repo 写不进去,repo 单飞无 detector 无事可做。
+            if (_startupErrorDetector is not null && _nodeRepo is not null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                        List<string> snapshot;
+                        lock (entry.StartupLines)
+                        {
+                            snapshot = new List<string>(entry.StartupLines);
+                        }
+                        var errors = _startupErrorDetector.Parse(snapshot);
+                        if (errors.Count == 0) return;
+                        foreach (var err in errors)
+                        {
+                            // 用 env_id 跟 id 组合查(同一节点在多 env 都有 ScanMeta 副本)。
+                            // 这里 Get(err.PackageName) 是按 id 查 — node id 在不同 env 共享同一 id
+                            // (Source="env" 行 id = 节点目录名),不区分 env 写到任意一行足够让 UI 看到。
+                            var node = _nodeRepo.Get(err.PackageName);
+                            if (node is null) continue;
+                            node.ScanMeta ??= new Dictionary<string, string>();
+                            node.ScanMeta["load_error"] = err.ErrorMessage;
+                            try { _nodeRepo.Upsert(node); } catch { }
+                        }
+                        _logger?.Info("node-startup-fail",
+                            $"env='{env.Name}' 检测到 {errors.Count} 个加载失败节点:{string.Join(", ", errors.Select(e => e.PackageName))}");
+                    }
+                    catch (TaskCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        _logger?.Info("node-startup-fail", $"扫描 startup 失败(忽略): {ex.Message}");
+                    }
+                });
+            }
 
             // 成功路径:写 process_state + environments
             var now = DateTime.UtcNow;
@@ -503,6 +551,9 @@ public sealed class ProcessLauncher : IDisposable
                 {
                     logProgress?.Report(line);
                     if (IsReadyLine(line)) entry.ReadySignal.TrySetResult();
+                    // v0.6.15.7: capture for NodeStartupErrorDetector scan (5s grace 后读)。
+                    // 后台线程 reader + 主线程 grace snapshot — 必须 lock,List 非线程安全。
+                    lock (entry.StartupLines) entry.StartupLines.Add(line);
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
                     await writer.WriteLineAsync($"[{ts}] [pid {pid}] OUT: {line}");
                 }
@@ -534,6 +585,9 @@ public sealed class ProcessLauncher : IDisposable
                 {
                     logProgress?.Report(line);
                     if (IsReadyLine(line)) entry.ReadySignal.TrySetResult();
+                    // v0.6.15.7: capture for NodeStartupErrorDetector scan (5s grace 后读)。
+                    // 后台线程 reader + 主线程 grace snapshot — 必须 lock,List 非线程安全。
+                    lock (entry.StartupLines) entry.StartupLines.Add(line);
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
                     await writer.WriteLineAsync($"[{ts}] [pid {pid}] ERR: {line}");
                 }
@@ -781,13 +835,27 @@ public sealed class ProcessLauncher : IDisposable
         catch { }
     }
 
-    private sealed record ProcessEntry(Process Process, string LogFilePath)
+    private sealed class ProcessEntry
     {
+        public Process Process { get; }
+        public string LogFilePath { get; }
+        /// <summary>
+        /// v0.6.15.7: 启动期 stdout/stderr 行缓存,5s grace 后被 NodeStartupErrorDetector 扫描。
+        /// AttachStdoutReader / AttachStderrReader 在 <c>lock (StartupLines)</c> 下 Add,
+        /// grace 后 new List&lt;string&gt;(StartupLines) 拿快照。
+        /// </summary>
+        public List<string> StartupLines { get; } = new();
         /// <summary>
         /// v0.6.7.1: stdout/stderr reader 见到就绪行时 TrySetResult。
         /// </summary>
         public TaskCompletionSource ReadySignal { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ProcessEntry(Process process, string logFilePath)
+        {
+            Process = process;
+            LogFilePath = logFilePath;
+        }
     }
 
     /// <summary>
