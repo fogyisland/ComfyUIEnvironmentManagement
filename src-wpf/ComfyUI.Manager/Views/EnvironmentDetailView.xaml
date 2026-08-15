@@ -16,13 +16,57 @@
                 <DataGridTextColumn Header="作者" Binding="{Binding Author}" Width="*" />
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
                 <DataGridCheckBoxColumn Header="锁" Binding="{Binding Locked}" Width="40" />
-                <DataGridTemplateColumn Header="操作" Width="100">
+
+                <!-- v0.6.15.7:仓库 URL(下载来源的 git 地址;env 装入行通常为空) -->
+                <DataGridTextColumn Header="仓库 URL" Binding="{Binding RepositoryUrl}" Width="200" />
+
+                <!-- v0.6.15.7:加载时间。绑原始 ISO-8601 值 —— DataGrid 列没法直接绑到
+                     EnvironmentDetailViewModel.FormatRelative(static method),需要额外 converter 或
+                     row wrapper。折中方案已在 plan self-review 里 accept。 -->
+                <DataGridTextColumn Header="加载时间" Binding="{Binding LastScannedAt}" Width="100" />
+
+                <!-- v0.6.15.7:版本 tag(从 ScanMeta["installed_tag"])。key 不存在时 Dictionary
+                     indexer 抛 KeyNotFoundException,WPF 绑定静默失败 → 单元格留空,符合预期。 -->
+                <DataGridTextColumn Header="版本 tag" Binding="{Binding ScanMeta[installed_tag]}" Width="100" />
+
+                <!-- v0.6.15.7:加载错误(红色 badge "加载失败",tooltip 显示完整错误)。
+                     FallbackValue=Collapsed 必须有:ScanMeta 里没有 load_error 这个 key 时,
+                     Dictionary indexer 抛 KeyNotFoundException → 绑定失败 → converter 根本不会被调用,
+                     Visibility 会退回 DependencyProperty 默认值 Visible,导致所有行都亮红 badge。 -->
+                <DataGridTemplateColumn Header="加载错误" Width="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Content="切换"
-                                    Command="{Binding DataContext.ToggleCommand,
-                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding}" />
+                            <Border Background="#D32F2F" CornerRadius="4" Padding="4,2"
+                                    HorizontalAlignment="Left"
+                                    ToolTip="{Binding ScanMeta[load_error]}"
+                                    Visibility="{Binding ScanMeta[load_error],
+                                                 Converter={StaticResource NullToVisibility},
+                                                 FallbackValue=Collapsed}">
+                                <TextBlock Text="加载失败" Foreground="White" FontSize="11" />
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- v0.6.15.7:来源 (env = env 装入 / download = 纯本地下载) -->
+                <DataGridTextColumn Header="来源" Binding="{Binding Source}" Width="70" />
+
+                <!-- v0.6.15.7:操作列加删除按钮(DangerButton) -->
+                <DataGridTemplateColumn Header="操作" Width="160">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="切换"
+                                        Command="{Binding DataContext.ToggleCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="删除"
+                                        Style="{StaticResource DangerButton}"
+                                        Margin="4,0,0,0"
+                                        Command="{Binding DataContext.DeleteCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
