@@ -184,13 +184,8 @@ public partial class App : Application
             (exe, args, timeout, ct) => RunProcessForDiffAsync(exe, args, timeout, ct),
             logger);
         var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings, diffService, logger: logger);
-        // v0.6.15:本地节点 service + copy installer — 在 nodeOps 之后构造(依赖 nodeOps)。
-        // 复用同一份 envRepo / nodeRepo / logger。传给 MainViewModel → ShowLocalNodes
-        // 懒构造 LocalNodeListViewModel 时再用(避免 App 启动期同步拉 GitHub repo)。
-        var localNodeService = new LocalNodeService(
-            settings, nodeRepo, envRepo, nodeOps, logger: logger);
-        var localNodeCopyInstaller = new LocalNodeCopyInstaller(
-            envRepo, nodeRepo, nodeOps, logger: logger);
+        // v0.6.15:LocalNodeService + LocalNodeCopyInstaller 由 MainViewModel.ShowLocalNodes()
+        // 懒构造(避免 App 启动期同步拉 GitHub repo)。
         var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         // v0.6.13-B: GitHub API 要求 User-Agent header,否则 403。
         // 复用同一份 http(singleton,15s timeout)— Dashboard / Changelog / Version / Metadata 全共享。

@@ -89,11 +89,11 @@
                             <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
                                 <Button Content="复制到 env"
                                         Command="{Binding DataContext.InstallCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                        CommandParameter="{Binding}"
+                                        CommandParameter="{Binding Info}"
                                         MinWidth="100" Margin="0,0,8,0" />
                                 <Button Content="删除"
                                         Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                        CommandParameter="{Binding}"
+                                        CommandParameter="{Binding Info}"
                                         MinWidth="80" />
                             </StackPanel>
                         </Grid>
