@@ -21,6 +21,7 @@ public enum MainSection
     Dashboard,
     Environments,
     Catalog,
+    LocalNodes,  // v0.6.15
     Settings,
     BulkUpdate,
     SystemStatus
@@ -94,6 +95,11 @@ public class MainViewModel : ViewModelBase
     // CatalogViewModel.Selected 必须真的绑上,ShowCatalog 才能命中同一份 VM。
     private CatalogViewModel? _catalogViewModel;
     private CatalogView? _catalogView;
+    // v0.6.15:本地节点页 VM/View 缓存复用(同 Catalog/Settings 模式),
+    // 首次进入构造 LocalNodeListViewModel(走 LocalNodeService.ListAsync 拉本地),
+    // 后续进入复用同一份 VM,保留 busy 状态 + Items 内容。
+    private LocalNodeListViewModel? _localNodesViewModel;
+    private LocalNodeListView? _localNodesView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
@@ -205,6 +211,7 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowEnvironmentsCommand { get; }
     public RelayCommand ShowCatalogCommand { get; }
+    public RelayCommand ShowLocalNodesCommand { get; }   // v0.6.15
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
@@ -316,6 +323,8 @@ public class MainViewModel : ViewModelBase
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
+        // v0.6.15:本地节点页命令。ShowLocalNodes 懒构造 LocalNodeListViewModel。
+        ShowLocalNodesCommand = new RelayCommand(_ => ShowLocalNodes());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
         ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
@@ -417,6 +426,26 @@ public class MainViewModel : ViewModelBase
             _catalogView = new CatalogView { DataContext = _catalogViewModel };
         }
         CurrentView = _catalogView;
+    }
+
+    // v0.6.15:本地节点页 — 跟 ShowCatalog 同款懒构造模式。复用 _dbFactory + _nodeOps +
+    // _settings + ErrorBanner;envRepo/nodeRepo 每次 Show 时 new(无状态,无需缓存)。
+    private void ShowLocalNodes()
+    {
+        CurrentSection = MainSection.LocalNodes;
+        if (_localNodesViewModel is null)
+        {
+            var envRepo = new EnvironmentRepository(_dbFactory);
+            var nodeRepo = new NodeRepository(_dbFactory);
+            var localNodeSvc = new LocalNodeService(
+                _settings, nodeRepo, envRepo, _nodeOps, logger: _logger);
+            var installer = new LocalNodeCopyInstaller(
+                envRepo, nodeRepo, _nodeOps, logger: _logger);
+            _localNodesViewModel = new LocalNodeListViewModel(
+                localNodeSvc, installer, envRepo, ErrorBanner);
+            _localNodesView = new LocalNodeListView { DataContext = _localNodesViewModel };
+        }
+        CurrentView = _localNodesView;
     }
 
     private void ShowSettings()

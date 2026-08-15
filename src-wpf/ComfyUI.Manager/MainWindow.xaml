@@ -100,6 +100,11 @@
                              Command="{Binding ShowCatalogCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Catalog, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
+                <!-- v0.6.15:本地节点页 — 跟 Catalog 同位置(节点目录紧邻)。从 Settings.LocalNodeDirectory 拉本地节点列表,可装到任一 env。 -->
+                <RadioButton Content="本地节点" GroupName="SidebarNav"
+                             Command="{Binding ShowLocalNodesCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=LocalNodes, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
                 <RadioButton Content="设置" GroupName="SidebarNav"
                              Command="{Binding ShowSettingsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"
