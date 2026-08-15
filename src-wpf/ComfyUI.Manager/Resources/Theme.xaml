@@ -334,8 +334,23 @@
                 BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
                 CornerRadius="8">
             <StackPanel>
-                <TextBlock Text="{Binding Package}" FontWeight="Bold" FontSize="16"
-                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding Package}" FontWeight="Bold" FontSize="16"
+                               Foreground="{DynamicResource OnSurfaceBrush}"
+                               VerticalAlignment="Center" />
+                    <!-- v0.6.15: 已下载 badge — Source="download" sentinel 行存在时显示。 -->
+                    <Border Grid.Column="1" Padding="6,2" CornerRadius="3"
+                            Background="{DynamicResource SecondaryBrush}"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding IsInLocalNodeDb, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="已下载" FontSize="10"
+                                   Foreground="{DynamicResource OnPrimaryBrush}" />
+                    </Border>
+                </Grid>
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
                     <TextBlock Text="{Binding RawMetadata[author]}"
                                Foreground="{DynamicResource OutlineBrush}" />
@@ -352,6 +367,7 @@
                         Command="{Binding DataContext.DownloadCommand,
                                   RelativeSource={RelativeSource AncestorType=UserControl}}"
                         CommandParameter="{Binding}"
+                        IsEnabled="{Binding IsInLocalNodeDb, Converter={StaticResource InverseBool}}"
                         Style="{StaticResource MaterialButton}" />
             </StackPanel>
         </Border>

@@ -20,6 +20,7 @@ public class CatalogViewModel : ViewModelBase
     private readonly Settings _settings;
     private readonly SettingsRepository _settingsRepo;
     private readonly string _projectRoot;
+    private readonly NodeRepository? _nodeRepo;
 
     private List<CatalogEntry> _allEntries = new();
 
@@ -243,7 +244,8 @@ public class CatalogViewModel : ViewModelBase
         Settings settings,
         SettingsRepository settingsRepo,
         string projectRoot,
-        IRateLimitState? rateLimitState = null)
+        IRateLimitState? rateLimitState = null,
+        NodeRepository? nodeRepo = null)
     {
         _repo = repo;
         _versionRepo = versionRepo;
@@ -253,6 +255,7 @@ public class CatalogViewModel : ViewModelBase
         _settingsRepo = settingsRepo;
         _projectRoot = projectRoot;
         _rateLimitState = rateLimitState;
+        _nodeRepo = nodeRepo;
 
         RefreshCommand = new RelayCommand(_ => _ = RefreshAsync(), _ => !IsBusy);
         CancelRefreshCommand = new RelayCommand(_ => _refreshCts?.Cancel(), _ => IsBusy);
@@ -270,8 +273,38 @@ public class CatalogViewModel : ViewModelBase
     private void Search()
     {
         _allEntries = _repo.Search(_query, limit: 0);
+        PopulateIsInLocalNodeDb();
         CurrentPage = 1;
         ApplyPage();
+    }
+
+    /// <summary>
+    /// v0.6.15:把 <c>IsInLocalNodeDb</c> 写回每条 <see cref="CatalogEntry"/>。
+    /// XAML 绑 CatalogEntry.IsInLocalNodeDb 控制"下载"按钮 disabled + "已下载" badge。
+    /// 无 <see cref="NodeRepository"/> 时跳过(向后兼容老 ctor 路径)。
+    /// </summary>
+    private void PopulateIsInLocalNodeDb()
+    {
+        if (_nodeRepo is null) return;
+        var downloaded = _nodeRepo.ListDownloadedNodes()
+            .Select(n => n.Package)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var entry in _allEntries)
+        {
+            entry.IsInLocalNodeDb = downloaded.Contains(entry.Package);
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15:查 <paramref name="package"/> (nodeId) 是否已下载到本地节点目录
+    /// (看 <c>scanned_nodes</c> 中 <c>EnvId="" + Source="download"</c> 的 sentinel 行)。
+    /// 供 VM 端代码(测试、code-behind)直接调;XAML binding 走 <see cref="CatalogEntry.IsInLocalNodeDb"/>
+    /// (由 <see cref="PopulateIsInLocalNodeDb"/> 写回)。
+    /// </summary>
+    public bool IsInLocalNodeDbFor(string package)
+    {
+        if (_nodeRepo is null) return false;
+        return _nodeRepo.ListDownloadedNodes().Any(n => n.Package == package);
     }
 
     private void ApplyPage()

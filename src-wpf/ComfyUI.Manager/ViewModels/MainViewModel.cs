@@ -408,9 +408,12 @@ public class MainViewModel : ViewModelBase
         {
             var catRepo = new CatalogRepository(_catalogCacheStore);
             var versionRepo = new NodeVersionRepository(_catalogCacheStore);
+            // v0.6.15: 传 nodeRepo 让 CatalogViewModel 在 Search() 后 populate
+            // 每条 CatalogEntry.IsInLocalNodeDb → XAML "下载"按钮 disabled + "已下载" badge。
+            var catalogNodeRepo = new NodeRepository(_dbFactory);
             _catalogViewModel = new CatalogViewModel(
                 catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot,
-                rateLimitState: _rateLimitState);
+                rateLimitState: _rateLimitState, nodeRepo: catalogNodeRepo);
             _catalogView = new CatalogView { DataContext = _catalogViewModel };
         }
         CurrentView = _catalogView;

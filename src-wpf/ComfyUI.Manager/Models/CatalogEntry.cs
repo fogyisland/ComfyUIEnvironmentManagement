@@ -77,4 +77,10 @@ public class CatalogEntry
     public int SubscribersCount { get; set; }
     [JsonPropertyName("created_at")]
     public string? CreatedAt { get; set; }  // ISO 8601 UTC from /repos.created_at
+
+    // v0.6.15: 由 CatalogViewModel 在 Search() 后 populate,
+    // 指示此 catalog entry 对应 package 是否已下载到本地节点目录
+    // (scanned_nodes 中 EnvId="" + Source="download" 的 sentinel 行存在)。
+    // 不持久化到 catalog_cache 表 — 纯运行时派生属性,跟当前本地下载状态一致。
+    [JsonIgnore] public bool IsInLocalNodeDb { get; set; }
 }

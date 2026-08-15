@@ -291,12 +291,23 @@
                                        Foreground="{DynamicResource OnSurfaceBrush}" />
 
                             <!-- Group 7: 操作 -->
-                            <Button Content="{Binding DownloadButtonLabel}"
-                                    Margin="0,16,0,0" HorizontalAlignment="Left"
-                                    Padding="24,8"
-                                    Command="{Binding DownloadCommand}"
-                                    CommandParameter="{Binding Selected}"
-                                    Style="{StaticResource MaterialButton}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button Content="{Binding DownloadButtonLabel}"
+                                        HorizontalAlignment="Left"
+                                        Padding="24,8"
+                                        Command="{Binding DownloadCommand}"
+                                        CommandParameter="{Binding Selected}"
+                                        IsEnabled="{Binding Selected.IsInLocalNodeDb, Converter={StaticResource InverseBool}}"
+                                        Style="{StaticResource MaterialButton}" />
+                                <!-- v0.6.15: 已下载 badge — Selected entry 已下载时显示在按钮右侧。 -->
+                                <Border Margin="12,0,0,0" Padding="8,4" CornerRadius="3"
+                                        Background="{DynamicResource SecondaryBrush}"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding Selected.IsInLocalNodeDb, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock Text="已下载" FontSize="11"
+                                               Foreground="{DynamicResource OnPrimaryBrush}" />
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
