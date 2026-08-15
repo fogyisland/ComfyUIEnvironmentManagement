@@ -37,7 +37,7 @@ public class ComfyUIManagerInstaller
     public ComfyUIManagerInstaller(
         RequirementsFileInstaller reqFileInstaller,
         string gitExe = "git",
-        GitProxyConfig? proxy = null,
+        HttpProxyConfig? proxy = null,
         AppLogger? logger = null)
     {
         _reqFileInstaller = reqFileInstaller ?? throw new ArgumentNullException(nameof(reqFileInstaller));

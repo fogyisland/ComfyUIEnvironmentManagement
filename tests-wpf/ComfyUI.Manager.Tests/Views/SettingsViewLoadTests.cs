@@ -119,7 +119,7 @@ public class SettingsViewLoadTests
                 var vm = new SettingsViewModel(
                     new SettingsRepository(Path.Combine(Path.GetTempPath(),
                         $"settings-dirty-{Guid.NewGuid():N}.json")),
-                    GitProxyConfig.Disabled,
+                    HttpProxyConfig.Disabled,
                     new FakeValidator());
                 vm.DefaultModelsDirectory = "dirty";   // 标 dirty 一行
                 Assert.True(vm.HasUnsavedChanges);     // 验 dirty plumbing
@@ -160,7 +160,7 @@ public class SettingsViewLoadTests
                 var vm = new SettingsViewModel(
                     new SettingsRepository(Path.Combine(Path.GetTempPath(),
                         $"settings-logdir-{Guid.NewGuid():N}.json")),
-                    GitProxyConfig.Disabled,
+                    HttpProxyConfig.Disabled,
                     new FakeValidator());
                 vm.LogDirectory = @"D:\my-logs";  // 标 dirty 一行让 Dirty binding 也走一遍
                 Assert.True(vm.HasUnsavedChanges);
@@ -209,7 +209,7 @@ public class SettingsViewLoadTests
                 };
                 var repo = new SettingsRepository(Path.Combine(Path.GetTempPath(),
                     $"settings-token-{Guid.NewGuid():N}.json"));
-                var vm = new SettingsViewModel(repo, GitProxyConfig.Disabled,
+                var vm = new SettingsViewModel(repo, HttpProxyConfig.Disabled,
                     new FakeValidator(), sharedSettings: shared);
                 Assert.Equal("ghp_test_preexisting", vm.GitHubToken);
                 Assert.False(vm.Dirty["GitHubToken"]);  // 刚构造,没动过

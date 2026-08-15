@@ -256,7 +256,7 @@ public class MainWindowExitCleanupTests : IDisposable
                     BindingFlags.NonPublic | BindingFlags.Instance)!;
                 var svm = new SettingsViewModel(
                     new SettingsRepository(Path.Combine(_projectRoot, "settings-r2-test.json")),
-                    new GitProxyConfig(),
+                    new HttpProxyConfig(),
                     new PythonInterpreterValidator(),
                     new Settings());
                 svm.Dirty.Mark("R2-test-dirty");

@@ -15,17 +15,17 @@ namespace ComfyUI.Manager.Services;
 /// - timeout / cancellation 由 caller 通过 CancellationToken 传入(由 caller 决定上限)
 /// - 返回 GitResult(exitCode / stdout / stderr),不抛异常 —— caller 按 ExitCode 决定怎么走
 /// - 不动 PATH / 系统环境变量;git exe 路径由 caller 解析(portable / system git)
-/// - 代理:每次 RunAsync 读 live GitProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
+/// - 代理:每次 RunAsync 读 live HttpProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
 ///   写到 psi.EnvironmentVariables(per-process,不污染整个 WPF)
 /// </summary>
 public sealed class GitRunner
 {
     private readonly string _gitExe;
-    private readonly GitProxyConfig? _proxy;
+    private readonly HttpProxyConfig? _proxy;
 
     public string GitExe => _gitExe;
 
-    public GitRunner(string gitExe, GitProxyConfig? proxy = null)
+    public GitRunner(string gitExe, HttpProxyConfig? proxy = null)
     {
         if (string.IsNullOrWhiteSpace(gitExe))
         {

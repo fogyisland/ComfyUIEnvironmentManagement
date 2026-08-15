@@ -46,7 +46,7 @@ public sealed class MainViewModelUnsavedSettingsTests : IDisposable
     private MainViewModel NewMvm() => new MainViewModel(
         _factory,
         null!, null!, null!, null!, null!,
-        _settingsRepo, GitProxyConfig.Disabled, _settings,
+        _settingsRepo, HttpProxyConfig.Disabled, _settings,
         null!, null!, null!, null!, null!, null!,
         "", _rootDir,
         null!, null!, new UiPreferencesService(_rootDir))

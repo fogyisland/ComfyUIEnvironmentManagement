@@ -31,7 +31,7 @@ public sealed class SettingsViewModelDirtyTests : IDisposable
 
     private SettingsViewModel NewVm() => new SettingsViewModel(
         new SettingsRepository(_path),
-        GitProxyConfig.Disabled,
+        HttpProxyConfig.Disabled,
         new FakeValidator(isValid: true));
 
     [Fact]
@@ -151,7 +151,7 @@ public sealed class SettingsViewModelDirtyTests : IDisposable
         var themeService = new RecordingThemeService();
         var vm = new SettingsViewModel(
             new SettingsRepository(_path),
-            GitProxyConfig.Disabled,
+            HttpProxyConfig.Disabled,
             new FakeValidator(isValid: true),
             sharedSettings: null,
             themeService: themeService);

@@ -25,7 +25,7 @@ namespace ComfyUI.Manager.Services;
 /// - 取消:Caller 通过传入的 CancellationToken 或调用本类的 CancelAsync()
 ///   取消,已发出的 Progress 行保留 terminal 状态,未发出的不再发出。
 /// - 日志:每个 bulk run 一个 &lt;projectRoot&gt;/logs/bulk-update-&lt;bulkId&gt;.log。
-/// - 代理:每次 git 调用读 live GitProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
+/// - 代理:每次 git 调用读 live HttpProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
 ///   写到 psi.EnvironmentVariables(per-process,不污染整个 WPF)。
 /// </summary>
 public sealed class BulkUpdateOrchestrator
@@ -36,7 +36,7 @@ public sealed class BulkUpdateOrchestrator
     private readonly string _gitExe;
     private readonly EnvironmentRepository _envRepo;
     private readonly NodeRepository _nodeRepo;
-    private readonly GitProxyConfig? _proxy;
+    private readonly HttpProxyConfig? _proxy;
     private readonly AppLogger? _logger;
 
     private CancellationTokenSource? _runCts;
@@ -66,7 +66,7 @@ public sealed class BulkUpdateOrchestrator
         string gitExe,
         EnvironmentRepository envRepo,
         NodeRepository nodeRepo,
-        GitProxyConfig? proxy = null,
+        HttpProxyConfig? proxy = null,
         AppLogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(projectRoot))

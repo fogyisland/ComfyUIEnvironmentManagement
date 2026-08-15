@@ -175,8 +175,8 @@ public partial class App : Application
         var gitExe = !string.IsNullOrWhiteSpace(settings.GitExe)
             ? settings.GitExe
             : ResolveGitExe(projectRoot);
-        // 共享同一份 GitProxyConfig,SettingsViewModel 改它会立即影响下一次 git 调用。
-        var gitProxy = GitProxyConfig.From(settings);
+        // 共享同一份 HttpProxyConfig,SettingsViewModel 改它会立即影响下一次 git 调用 / HTTP 拉取。
+        var gitProxy = HttpProxyConfig.From(settings);
         var gitRunner = new GitRunner(gitExe, gitProxy);
         // v0.6.7.5: 节点安装前的 pip diff check — NodeInstallDiffService 跑 pip list JSON,
         // 由 NodeOperations.InstallAsync 在 clone 前调。先于 nodeOps 构造,因为 ctor 要拿。
@@ -186,7 +186,8 @@ public partial class App : Application
         var nodeOps = new NodeOperations(gitRunner, envRepo, nodeRepo, settings, diffService, logger: logger);
         // v0.6.15:LocalNodeService + LocalNodeCopyInstaller 由 MainViewModel.ShowLocalNodes()
         // 懒构造(避免 App 启动期同步拉 GitHub repo)。
-        var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        // v0.6.15.4: 网关代理走 HttpProxyConfig.Built HttpClient.BuildHttpClient test seam。
+        var http = BuildHttpClient(gitProxy);
         // v0.6.13-B: GitHub API 要求 User-Agent header,否则 403。
         // 复用同一份 http(singleton,15s timeout)— Dashboard / Changelog / Version / Metadata 全共享。
         http.DefaultRequestHeaders.UserAgent.ParseAdd("ComfyUI-Manager/0.6.13");
@@ -349,6 +350,28 @@ public partial class App : Application
         var catalog = new PyTorchVersionCatalog(http);
         var cache = new PyTorchVersionCatalogCache(appDataDir);
         return new PyTorchVersionDirectory(catalog, cache);
+    }
+
+    /// <summary>
+    /// v0.6.15.4: 构建带代理的 HttpClient。HttpProxyConfig.Enabled=true → WebProxy(http://url:port);
+    /// 否则显式 Proxy=null/UseProxy=false (不走 WinHTTP default system proxy, R2 mitigation)。
+    /// <c>internal</c> 而非 <c>private</c>:<c>AppHttpProxyWiringTests</c> 验证 (csproj 已声明
+    /// <c>InternalsVisibleTo("ComfyUI.Manager.Tests")</c>)。
+    /// </summary>
+    internal static HttpClient BuildHttpClient(HttpProxyConfig? proxy)
+    {
+        var handler = new HttpClientHandler();
+        if (proxy is not null)
+        {
+            proxy.ApplyTo(handler);
+        }
+        else
+        {
+            // Disabled 默认: 显式不走 system proxy
+            handler.Proxy = null;
+            handler.UseProxy = false;
+        }
+        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
     }
 
     /// <summary>

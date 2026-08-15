@@ -36,7 +36,7 @@ public class MainViewModel : ViewModelBase
     private readonly EnvCreatorService _envCreator;
     private readonly EnvDeleterService _envDeleter;
     private readonly SettingsRepository _settingsRepo;
-    private readonly GitProxyConfig _gitProxy;
+    private readonly HttpProxyConfig _gitProxy;
     private readonly Settings _settings;
     private readonly CatalogFetcher _catalogFetcher;
     private readonly CatalogRefreshService _catalogRefreshService;
@@ -247,7 +247,7 @@ public class MainViewModel : ViewModelBase
         EnvCreatorService envCreator,
         EnvDeleterService envDeleter,
         SettingsRepository settingsRepo,
-        GitProxyConfig gitProxy,
+        HttpProxyConfig gitProxy,
         Settings settings,
         CatalogFetcher catalogFetcher,
         CatalogRefreshService catalogRefreshService,

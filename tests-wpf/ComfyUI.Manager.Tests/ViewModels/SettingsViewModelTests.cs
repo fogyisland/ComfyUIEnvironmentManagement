@@ -37,7 +37,7 @@ public class SettingsViewModelTests : IDisposable
             CatalogCacheTtlMinutes = 120,
         });
 
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
 
         Assert.Equal("en_US", vm.Language);
         Assert.Equal("dark", vm.ThemeMode);
@@ -47,7 +47,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void LanguageSet_PersistsToFile()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         vm.Language = "en_US";
         vm.SaveCommand.Execute(null);
 
@@ -59,7 +59,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void ComfyUiStartupTimeoutSeconds_SetPersists()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         Assert.Equal(600, vm.ComfyUiStartupTimeoutSeconds);  // 默认
 
         vm.ComfyUiStartupTimeoutSeconds = 900;
@@ -74,7 +74,7 @@ public class SettingsViewModelTests : IDisposable
     public void Defaults_LoadsQuerySourcesAndDownloadSources_FromAppliedDefaults()
     {
         // 全新 settings.json → 走 SettingsDefaults 兜底,两个列表各 1 条 "comfyui manager"
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
 
         Assert.Single(vm.QuerySources);
         Assert.Equal("comfyui manager", vm.QuerySources[0].Name);
@@ -87,7 +87,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void ConfirmAddQuerySourceCommand_AppendsAndSetsActive()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         vm.NewQuerySourceName = "my-mirror";
         vm.NewQuerySourceUrl = "https://my-mirror/catalog.json";
 
@@ -105,7 +105,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void ConfirmAddQuerySourceCommand_EmptyFields_DoesNothing()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         vm.NewQuerySourceName = "";
         vm.NewQuerySourceUrl = "";
         vm.IsAddQuerySourceOpen = true;
@@ -119,7 +119,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void RemoveQuerySourceCommand_WhenActive_FallsBackToFirst()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         // 默认只有 1 条,先加一条自定义并切到它
         vm.NewQuerySourceName = "my-mirror";
         vm.NewQuerySourceUrl = "https://my-mirror/catalog.json";
@@ -135,7 +135,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void RemoveQuerySourceCommand_LastOne_LeavesListEmpty()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         vm.RemoveQuerySourceCommand.Execute(vm.QuerySources[0]);
 
         Assert.Empty(vm.QuerySources);
@@ -145,7 +145,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void SwitchActive_PersistsImmediately()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         vm.NewQuerySourceName = "alt";
         vm.NewQuerySourceUrl = "https://alt/catalog.json";
         vm.ConfirmAddQuerySourceCommand.Execute(null);
@@ -162,7 +162,7 @@ public class SettingsViewModelTests : IDisposable
     [Fact]
     public void ConfirmAddDownloadSourceCommand_AppendsAndSetsActive()
     {
-        var vm = new SettingsViewModel(new SettingsRepository(_path), GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
         vm.NewDownloadSourceName = "gh-proxy";
         vm.NewDownloadSourceUrl = "https://gh-proxy.com/{node}";
 
@@ -248,7 +248,7 @@ public class SettingsViewModelTests : IDisposable
             };
         }
         validator ??= new FakeValidator(isValid: true);
-        var vm = new SettingsViewModel(repo, GitProxyConfig.Disabled, validator, settings);
+        var vm = new SettingsViewModel(repo, HttpProxyConfig.Disabled, validator, settings);
         return (vm, repo, settings);
     }
 

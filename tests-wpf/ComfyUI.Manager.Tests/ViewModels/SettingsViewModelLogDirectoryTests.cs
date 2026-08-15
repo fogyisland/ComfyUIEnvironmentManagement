@@ -15,9 +15,9 @@ namespace ComfyUI.Manager.Tests.ViewModels;
 /// v0.6.12:SettingsViewModel.LogDirectory 绑定测试。setter 写回 Settings 内字段。
 /// <para>
 /// <see cref="SettingsViewModel"/> ctor 需要 <see cref="SettingsRepository"/> +
-/// <see cref="GitProxyConfig"/> + <see cref="IPythonInterpreterValidator"/>,所以测试
+/// <see cref="HttpProxyConfig"/> + <see cref="IPythonInterpreterValidator"/>,所以测试
 /// 走同款 temp .json repo(既有 <c>SettingsViewModelTests</c> 同 pattern) +
-/// <c>GitProxyConfig.Disabled</c> + <c>FakeValidator</c>。
+/// <c>HttpProxyConfig.Disabled</c> + <c>FakeValidator</c>。
 /// </para>
 /// <para>
 /// <see cref="SettingsViewModel"/> ctor 调 <see cref="SettingsDefaults.Apply"/>,
@@ -46,7 +46,7 @@ public class SettingsViewModelLogDirectoryTests : IDisposable
         // 跟既有 SettingsViewModelTests 同 pattern(VM ctor 走 _repo.Load())。
         var repo = new SettingsRepository(_path);
         repo.Save(settings);
-        return new SettingsViewModel(repo, GitProxyConfig.Disabled, new FakeValidator(isValid: true));
+        return new SettingsViewModel(repo, HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
     }
 
     [Fact]
