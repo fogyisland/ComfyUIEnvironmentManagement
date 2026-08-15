@@ -162,6 +162,7 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
             string envId, string nodeId, string repoUrl,
             string? targetTag = null,
             IReadOnlyList<PipRequirement>? catalogPipReqs = null,
+            IProgress<string>? progress = null,
             CancellationToken ct = default)
         {
             InstallCalls.Add((envId, nodeId, repoUrl, targetTag, catalogPipReqs));

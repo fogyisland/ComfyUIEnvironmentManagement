@@ -41,6 +41,21 @@ public class NodeOperations
     private readonly Func<NodeInstallDiffReport, Models.Environment, string, bool> _showDiffDialog;
     private readonly AppLogger? _logger;
 
+    /// <summary>
+    /// v0.6.15.5:把 <paramref name="inner"/> wrap 一层同步 append 到 <see cref="_logger"/>
+    /// 让 Logs/ 实时滚动,无需 UI 配合也能 staging 看到。inner == null → 返 null
+    /// (原 GitRunner.ReadToEndAsync() 路径,完全向后兼容)。
+    /// </summary>
+    private IProgress<string>? WrapProgress(IProgress<string>? inner, string operationTag)
+    {
+        if (inner is null) return null;
+        return new Progress<string>(line =>
+        {
+            _logger?.Info(operationTag, line);
+            inner.Report(line);
+        });
+    }
+
     public NodeOperations(
         GitRunner git,
         EnvironmentRepository envRepo,
@@ -89,6 +104,7 @@ public class NodeOperations
         string envId, string nodeId, string repoUrl,
         string? targetTag = null,
         IReadOnlyList<PipRequirement>? catalogPipReqs = null,
+        IProgress<string>? progress = null,           // v0.6.15.5
         CancellationToken ct = default)
     {
         _logger?.Info("node-install", $"env='{envId}' node='{nodeId}' 开始安装");
@@ -144,10 +160,12 @@ public class NodeOperations
         GitResult result;
         try
         {
+            var progressWrapped = WrapProgress(progress, "node-install");
             result = await _git.RunAsync(
                 env.CustomNodesPath,
-                new[] { "clone", "--", repoUrl, nodeId },
-                DefaultPerCallTimeout, ct);
+                new[] { "clone", "--progress", "--", repoUrl, nodeId },
+                DefaultPerCallTimeout, ct,
+                onStderrLine: progressWrapped);
         }
         catch (OperationCanceledException)
         {
@@ -173,10 +191,12 @@ public class NodeOperations
             GitResult checkoutResult;
             try
             {
+                var progressWrapped = WrapProgress(progress, "node-install");
                 checkoutResult = await _git.RunAsync(
                     targetDir,
                     new[] { "checkout", targetTag },
-                    DefaultPerCallTimeout, ct);
+                    DefaultPerCallTimeout, ct,
+                    onStderrLine: progressWrapped);
             }
             catch (OperationCanceledException)
             {
@@ -240,6 +260,7 @@ public class NodeOperations
     public virtual async Task<NodeOperationResult> DownloadAsync(
         string localDir, string nodeId, string repoUrl,
         string? targetTag = null,
+        IProgress<string>? progress = null,           // v0.6.15.5
         CancellationToken ct = default)
     {
         _logger?.Info("node-download", $"dir='{localDir}' node='{nodeId}' 开始下载");
@@ -280,10 +301,12 @@ public class NodeOperations
         GitResult result;
         try
         {
+            var progressWrapped = WrapProgress(progress, "node-download");
             result = await _git.RunAsync(
                 localDir,
-                new[] { "clone", "--", repoUrl, nodeId },
-                DefaultPerCallTimeout, ct);
+                new[] { "clone", "--progress", "--", repoUrl, nodeId },
+                DefaultPerCallTimeout, ct,
+                onStderrLine: progressWrapped);
         }
         catch (OperationCanceledException)
         {
@@ -309,10 +332,12 @@ public class NodeOperations
             GitResult checkoutResult;
             try
             {
+                var progressWrapped = WrapProgress(progress, "node-download");
                 checkoutResult = await _git.RunAsync(
                     targetDir,
                     new[] { "checkout", targetTag },
-                    DefaultPerCallTimeout, ct);
+                    DefaultPerCallTimeout, ct,
+                    onStderrLine: progressWrapped);
             }
             catch (OperationCanceledException)
             {
@@ -388,7 +413,9 @@ public class NodeOperations
     /// git pull --ff-only。失败时不影响 row(upgrade 不写库 —— 由 UI 决定要不要刷新)。
     /// </summary>
     public virtual async Task<NodeOperationResult> UpgradeAsync(
-        string envId, string nodeId, CancellationToken ct = default)
+        string envId, string nodeId,
+        IProgress<string>? progress = null,           // v0.6.15.5
+        CancellationToken ct = default)
     {
         _logger?.Info("node-upgrade", $"env='{envId}' node='{nodeId}' 开始升级");
         var node = _nodeRepo.Get(nodeId);
@@ -404,10 +431,12 @@ public class NodeOperations
         GitResult result;
         try
         {
+            var progressWrapped = WrapProgress(progress, "node-upgrade");
             result = await _git.RunAsync(
                 node.PackagePath,
-                new[] { "pull", "--ff-only" },
-                DefaultPerCallTimeout, ct);
+                new[] { "pull", "--ff-only", "--progress" },
+                DefaultPerCallTimeout, ct,
+                onStderrLine: progressWrapped);
         }
         catch (OperationCanceledException)
         {

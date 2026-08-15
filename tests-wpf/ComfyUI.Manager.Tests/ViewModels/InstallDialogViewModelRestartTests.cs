@@ -164,6 +164,7 @@ public class InstallDialogViewModelRestartTests : IDisposable
             string envId, string nodeId, string repoUrl,
             string? targetTag = null,
             IReadOnlyList<PipRequirement>? catalogPipReqs = null,
+            IProgress<string>? progress = null,
             CancellationToken ct = default)
         {
             if (ThrowOnInstall is not null) throw ThrowOnInstall;

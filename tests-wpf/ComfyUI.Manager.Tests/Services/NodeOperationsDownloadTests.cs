@@ -193,7 +193,7 @@ public sealed class NodeOperationsDownloadTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();  // 已取消的 token → GitRunner 抛 OperationCanceledException
 
-        var result = await ops.DownloadAsync(localDir, "node-x", remote, null, cts.Token);
+        var result = await ops.DownloadAsync(localDir, "node-x", remote, targetTag: null, ct: cts.Token);
 
         Assert.False(result.Success);
         Assert.Equal("用户取消", result.Reason);
@@ -318,7 +318,7 @@ public sealed class NodeOperationsDownloadTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();  // 已取消的 token → GitRunner 抛 OperationCanceledException
 
-        var result = await ops.DownloadAsync(localDir, "node-x", remote, null, cts.Token);
+        var result = await ops.DownloadAsync(localDir, "node-x", remote, targetTag: null, ct: cts.Token);
 
         Assert.False(result.Success);
         Assert.Equal("用户取消", result.Reason);

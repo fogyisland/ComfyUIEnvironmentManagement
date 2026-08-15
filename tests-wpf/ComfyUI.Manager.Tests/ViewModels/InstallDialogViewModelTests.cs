@@ -152,6 +152,7 @@ public class InstallDialogViewModelTests : IDisposable
             string envId, string nodeId, string repoUrl,
             string? targetTag = null,
             IReadOnlyList<PipRequirement>? catalogPipReqs = null,
+            IProgress<string>? progress = null,
             CancellationToken ct = default)
         {
             Called = true;

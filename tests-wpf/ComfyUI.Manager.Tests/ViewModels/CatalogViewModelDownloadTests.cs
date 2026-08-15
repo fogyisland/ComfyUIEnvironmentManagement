@@ -84,6 +84,7 @@ public sealed class CatalogViewModelDownloadTests : IDisposable
         public override Task<NodeOperationResult> DownloadAsync(
             string localDir, string nodeId, string repoUrl,
             string? targetTag = null,
+            IProgress<string>? progress = null,
             CancellationToken ct = default)
         {
             CallCount++;
