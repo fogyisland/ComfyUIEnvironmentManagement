@@ -59,9 +59,6 @@ public class Settings
     [JsonPropertyName("http_proxy_url")] public string HttpProxyUrl { get; set; } = "";
     [JsonPropertyName("http_proxy_port")] public int HttpProxyPort { get; set; }
     [JsonPropertyName("git_exe")] public string GitExe { get; set; } = "";
-    [JsonPropertyName("git_proxy_url")] public string GitProxyUrl { get; set; } = "";
-    [JsonPropertyName("git_proxy_port")] public int GitProxyPort { get; set; }
-    [JsonPropertyName("git_proxy_enabled")] public bool GitProxyEnabled { get; set; }
     // v0.6.7.1: ComfyUI 启动就绪等待上限(秒)。默认 600(10 分钟)—— 大模型/首次
     // 编译 kernel 时几分钟很正常,30s 硬编码会误判失败。
     [JsonPropertyName("comfyui_startup_timeout_seconds")]
@@ -147,9 +144,6 @@ public class Settings
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;
-        target.GitProxyUrl = source.GitProxyUrl;
-        target.GitProxyPort = source.GitProxyPort;
-        target.GitProxyEnabled = source.GitProxyEnabled;
         target.ComfyUiStartupTimeoutSeconds = source.ComfyUiStartupTimeoutSeconds;
         target.ComfyUiLocale = source.ComfyUiLocale;
         // —— Catalog 视图 ——
