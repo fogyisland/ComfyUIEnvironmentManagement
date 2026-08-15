@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
@@ -66,6 +68,12 @@ public class InstallDialogViewModel : ViewModelBase
         PreselectedEnvId = preselectedEnvId;
         PreselectedTag = preselectedTag;
         OnInstallSuccess = onInstallSuccess;
+        // v0.6.15.5 T3: ProgressLog 绑 ReadOnlyObservableCollection 让 XAML 安全只读
+        // (T4 才加 ProgressBar + ScrollViewer)。
+        ProgressLog = new ReadOnlyObservableCollection<string>(_progressLog);
+        // v0.6.15.5 T3: CancelCommand 仅在 Busy 时可执行 (跟 InstallCommand 同样的 gate
+        // 防止 race:启动前用户不能点取消;InstallAsync 完成后自动恢复不可点)。
+        CancelCommand = new RelayCommand(_ => _cts.Cancel(), _ => Busy);
         InstallCommand = new RelayCommand(
             async _ => await InstallAsync(),
             _ => SelectedEnv is not null && !Busy);
@@ -77,10 +85,38 @@ public class InstallDialogViewModel : ViewModelBase
     public Environment? SelectedEnv { get => _selectedEnv; set => SetField(ref _selectedEnv, value); }
 
     private bool _busy;
-    public bool Busy { get => _busy; set { if (SetField(ref _busy, value)) InstallCommand.RaiseCanExecuteChanged(); } }
+    public bool Busy
+    {
+        get => _busy;
+        set
+        {
+            if (SetField(ref _busy, value))
+            {
+                InstallCommand.RaiseCanExecuteChanged();
+                // v0.6.15.5 T3: CancelCommand 也依赖 Busy (CanExecute),Busy 翻转时通知 UI
+                CancelCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
 
     private string? _progress;
     public string? Progress { get => _progress; set => SetField(ref _progress, value); }
+
+    // v0.6.15.5 T3: git 进度反馈 UI 字段
+    // - ProgressPercent:用 git 输出"Receiving objects:  45%"等行里的整数百分比正则解析。
+    //   无百分比时保持 0;完成时设 100。
+    // - ProgressLog:全量 stderr line(已经包含"Receiving objects: X%"行),
+    //   暴露为 ReadOnlyObservableCollection 给 XAML (T4) 绑 ScrollViewer。
+    // - CancelCommand:RelayCommand 仅在 Busy 时可点,内部调 _cts.Cancel() 触发
+    //   安装流程 cancel;UI 显示"用户取消"。
+    private double _progressPercent;
+    public double ProgressPercent { get => _progressPercent; set => SetField(ref _progressPercent, value); }
+
+    private readonly ObservableCollection<string> _progressLog = new();
+    public ReadOnlyObservableCollection<string> ProgressLog { get; }
+
+    private readonly CancellationTokenSource _cts = new();
+    public RelayCommand CancelCommand { get; }
 
     private void LoadEnvs()
     {
@@ -116,6 +152,27 @@ public class InstallDialogViewModel : ViewModelBase
 
         Busy = true;
         Progress = "Cloning...";
+        // v0.6.15.5 T3: 重置进度面板(再点同一条目重新装也要从 0 开始,不残留上次)
+        ProgressPercent = 0;
+        _progressLog.Clear();
+        // v0.6.15.5 T3: 用 Progress<string> lambda 接 GitRunner stderr line
+        // (T1 流的 IProgress<string> → T2 在 InstallAsync 透传)。Marshal 到构造时捕获的
+        // SynchronizationContext,自动回到 UI 线程改 Progress/ProgressLog/ProgressPercent。
+        var progress = new Progress<string>(line =>
+        {
+            Progress = line;
+            _progressLog.Add(line);
+            // git 输出形如 "Receiving objects:  45%" / "Resolving deltas: 100%"
+            // 抓首个整数百分比,无百分比保持 0。
+            var m = Regex.Match(line, @"(\d+)%");
+            if (m.Success && double.TryParse(m.Groups[1].Value, out var p))
+            {
+                ProgressPercent = p;
+            }
+        });
+        // v0.6.15.5 T3: 防止用户意外 hang(例如 git 网络半死不活)— 10 分钟上限,
+        // CancelCommand 也调同一个 _cts,任一触发都进 OperationCanceledException 分支。
+        _cts.CancelAfter(TimeSpan.FromMinutes(10));
         try
         {
             // 用 nodeId = 包名作为目录名(ComfyUI-Manager 约定)。
@@ -123,14 +180,19 @@ public class InstallDialogViewModel : ViewModelBase
             // 跑 pip list diff,如有 Downgrade/Conflict 弹 modal 让用户确认是否继续。
             // 既有非 catalog 节点安装入口不传 catalogPipReqs → 走原路径不跑 diff。
             // v0.6.11 T3: 传 PreselectedTag(若 caller 显式给了),让 git checkout 钉到指定版本。
+            // v0.6.15.5 T3: 传 progress + _cts.Token 让 git 输出实时反馈到 ProgressLog/ProgressPercent
+            // 并支持 CancelCommand 触发取消。
             var result = await _ops.InstallAsync(
                 envId, Entry.Package, repoUrl,
                 targetTag: PreselectedTag,
                 catalogPipReqs: Entry.PipRequirements,
-                ct: default);
+                progress: progress,
+                ct: _cts.Token);
             if (result.Success)
             {
                 Progress = $"OK, version={result.Version}";
+                // ProgressPercent 仅在 regex 匹配时更新;若 git 输出全程无百分比
+                // (例如非 clone 错误情况)保持 0,避免"成功=100%"的假象。
                 // v0.6.11+ SDD D1: 触发自动重启回调(fire-and-forget)。
                 // - 不 await(G7):dialog 立即关,真正的 stop+start 在 background 跑,
                 //   env-start 进度面板在 env-list tab 显示
@@ -148,6 +210,11 @@ public class InstallDialogViewModel : ViewModelBase
             {
                 Progress = $"失败:{result.Reason}";
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // v0.6.15.5 T3: CancelCommand 触发或 10 分钟安全超时都进这里。
+            Progress = "用户取消";
         }
         catch (Exception ex)
         {
