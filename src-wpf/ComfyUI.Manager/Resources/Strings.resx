@@ -372,6 +372,21 @@
   <data name="About_OpenDonateButton" xml:space="preserve">
     <value>Show Donate QR</value>
   </data>
+  <data name="About_CoursesHeader" xml:space="preserve">
+    <value>Courses</value>
+  </data>
+  <data name="About_Course_51CTO" xml:space="preserve">
+    <value>51CTO</value>
+  </data>
+  <data name="About_Course_ShenYeCG" xml:space="preserve">
+    <value>ShenYeCG</value>
+  </data>
+  <data name="About_Course_Yihuu" xml:space="preserve">
+    <value>yihuu</value>
+  </data>
+  <data name="About_Course_Udemy" xml:space="preserve">
+    <value>udemy</value>
+  </data>
   <data name="Donate_Title" xml:space="preserve">
     <value>Donate</value>
   </data>

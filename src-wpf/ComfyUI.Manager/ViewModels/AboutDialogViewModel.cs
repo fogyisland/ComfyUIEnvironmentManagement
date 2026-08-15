@@ -49,6 +49,11 @@ public sealed class AboutDialogViewModel : ViewModelBase
         RepositoryUrl = RepositoryUrlValue;
         IssuesUrl = IssuesUrlValue;
         OpenDonateQrButtonText = GetString("About_OpenDonateButton");
+        CoursesHeader = GetString("About_CoursesHeader");
+        Course51CTO = GetString("About_Course_51CTO");
+        CourseShenYeCG = GetString("About_Course_ShenYeCG");
+        CourseYihuu = GetString("About_Course_Yihuu");
+        CourseUdemy = GetString("About_Course_Udemy");
         OpenDonateQrCommand = new RelayCommand(_ => OpenDonateQr());
         CloseCommand = new RelayCommand(_ => Close());
     }
@@ -60,6 +65,11 @@ public sealed class AboutDialogViewModel : ViewModelBase
     public string RepositoryUrl { get; }
     public string IssuesUrl { get; }
     public string OpenDonateQrButtonText { get; }
+    public string CoursesHeader { get; }
+    public string Course51CTO { get; }
+    public string CourseShenYeCG { get; }
+    public string CourseYihuu { get; }
+    public string CourseUdemy { get; }
     public RelayCommand OpenDonateQrCommand { get; }
     public RelayCommand CloseCommand { get; }
 

@@ -180,6 +180,21 @@
   <data name="About_OpenDonateButton" xml:space="preserve">
     <value>查看赞助二维码</value>
   </data>
+  <data name="About_CoursesHeader" xml:space="preserve">
+    <value>课程链接</value>
+  </data>
+  <data name="About_Course_51CTO" xml:space="preserve">
+    <value>51CTO</value>
+  </data>
+  <data name="About_Course_ShenYeCG" xml:space="preserve">
+    <value>深夜CG</value>
+  </data>
+  <data name="About_Course_Yihuu" xml:space="preserve">
+    <value>壹虎</value>
+  </data>
+  <data name="About_Course_Udemy" xml:space="preserve">
+    <value>Udemy</value>
+  </data>
   <data name="Donate_Title" xml:space="preserve">
     <value>赞助作者</value>
   </data>
