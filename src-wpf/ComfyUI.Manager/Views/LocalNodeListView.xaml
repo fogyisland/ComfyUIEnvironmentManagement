@@ -17,6 +17,7 @@
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -31,6 +32,53 @@
             <Button Grid.Column="1" Content="刷新" Command="{Binding RefreshCommand}"
                     MinWidth="80" />
         </Grid>
+
+        <!-- v0.6.15.6:装节点依赖的 inline 状态面板。NodeRequirementsStatus=null 时整个 Border
+             Collapsed(ZeroCountToVisibility 是 false 路径);非 null 时显示 StatusText +
+             Logs + 取消按钮 + 关闭按钮。 -->
+        <Border Grid.Row="1" Margin="0,0,0,12" Padding="12" CornerRadius="6"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                Visibility="{Binding NodeRequirementsStatus, Converter={StaticResource NullToVisibility}}"
+                DataContext="{Binding NodeRequirementsStatus}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold">
+                        <Run Text="装节点依赖:" />
+                        <Run Text="{Binding Title, Mode=OneWay}" />
+                        <Run Text=" — " />
+                        <Run Text="{Binding StatusText, Mode=OneWay}" />
+                    </TextBlock>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="取消" Command="{Binding CancelCommand}"
+                                MinWidth="60" Margin="0,0,8,0" />
+                        <Button Content="关闭" Click="OnCloseNodeRequirementsClicked"
+                                MinWidth="60" />
+                    </StackPanel>
+                </Grid>
+                <ScrollViewer x:Name="LogScrollViewer" Grid.Row="1" MaxHeight="300" Margin="0,8,0,0"
+                              VerticalScrollBarVisibility="Visible"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding LogLines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                                           TextWrapping="NoWrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
 
         <!-- Empty state -->
         <Border Grid.Row="1" x:Name="EmptyState"

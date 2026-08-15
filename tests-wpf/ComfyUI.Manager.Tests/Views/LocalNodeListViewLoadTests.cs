@@ -54,10 +54,11 @@ public class LocalNodeListViewLoadTests : IDisposable
             new NodeInstallDiffService((_, _, _, _) => Task.FromResult(new ProcessResult(true, 0, "[]", ""))));
         var svc = new LocalNodeService(settings, nodeRepo, envRepo, nodeOps, logger: null);
         var installer = new LocalNodeCopyInstaller(envRepo, nodeRepo, nodeOps, logger: null);
+        var reqInstaller = new RequirementsInstaller();
 
         StaFact.RunOnSTA(() =>
         {
-            var vm = new LocalNodeListViewModel(svc, installer, envRepo, new ErrorBannerViewModel());
+            var vm = new LocalNodeListViewModel(svc, installer, envRepo, nodeRepo, reqInstaller, new ErrorBannerViewModel());
             var view = new LocalNodeListView { DataContext = vm };
             Assert.NotNull(view);
         });
