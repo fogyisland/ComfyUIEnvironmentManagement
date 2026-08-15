@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Infrastructure;
@@ -17,8 +18,11 @@ namespace ComfyUI.Manager.Services;
 /// - 不动 PATH / 系统环境变量;git exe 路径由 caller 解析(portable / system git)
 /// - 代理:每次 RunAsync 读 live HttpProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
 ///   写到 psi.EnvironmentVariables(per-process,不污染整个 WPF)
+///
+/// v0.6.15.5: 加 IProgress<string>? onStderrLine 实时 emit 进度行(Receiving objects 等);
+/// 非 sealed 让 FakeGitRunner 在测试里 override。
 /// </summary>
-public sealed class GitRunner
+public class GitRunner
 {
     private readonly string _gitExe;
     private readonly HttpProxyConfig? _proxy;
@@ -42,12 +46,19 @@ public sealed class GitRunner
     /// - GitResult { ExitCode, Stdout, Stderr }
     /// - 取消 / 超时:抛出 OperationCanceledException(原 ct 或 caller 提供的 timeout)
     /// - Process.Start 失败:抛出 InvalidOperationException
+    ///
+    /// v0.6.15.5:
+    /// - onStderrLine == null: 走原 ReadToEndAsync() 路径,完全向后兼容
+    /// - onStderrLine != null: OutputDataReceived 流式 emit,只 emit 进度相关行
+    ///   (Receiving objects: / Resolving deltas: / remote: / Cloning into),
+    ///   仍 capture 全 stderr 到 GitResult.Stderr
     /// </summary>
-    public async Task<GitResult> RunAsync(
+    public virtual async Task<GitResult> RunAsync(
         string workdir,
         IEnumerable<string> args,
         TimeSpan? timeout = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IProgress<string>? onStderrLine = null)
     {
         if (string.IsNullOrWhiteSpace(workdir))
         {
@@ -86,8 +97,25 @@ public sealed class GitRunner
             throw new InvalidOperationException("Process.Start 返回 null");
         }
 
-        var stdoutT = process.StandardOutput.ReadToEndAsync();
-        var stderrT = process.StandardError.ReadToEndAsync();
+        // v0.6.15.5: streaming 模式 vs capture 模式
+        var capturedStderr = new StringBuilder();
+        var stderrT = onStderrLine is null
+            ? process.StandardError.ReadToEndAsync()
+            : (Task)Task.CompletedTask;
+
+        if (onStderrLine is not null)
+        {
+            process.ErrorDataReceived += (s, e) =>
+            {
+                if (e.Data is null) return;
+                capturedStderr.AppendLine(e.Data);  // 仍 capture 给 GitResult.Stderr
+                if (ShouldReportProgress(e.Data))
+                {
+                    onStderrLine.Report(e.Data);
+                }
+            };
+            process.BeginErrorReadLine();
+        }
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (timeout is { } t) linkedCts.CancelAfter(t);
@@ -99,16 +127,32 @@ public sealed class GitRunner
         catch (OperationCanceledException)
         {
             TryKill(process);
-            try { await stdoutT; } catch { }
-            try { await stderrT; } catch { }
+            if (onStderrLine is not null) { try { process.CancelErrorRead(); } catch { } }
             throw;
         }
 
+        // streaming 模式: flush stderr reader
+        if (onStderrLine is not null)
+        {
+            try { process.WaitForExit(); } catch { } // flush BeginErrorReadLine buffer
+        }
+
         var stdout = "";
-        var stderr = "";
-        try { stdout = await stdoutT; } catch { }
-        try { stderr = await stderrT; } catch { }
+        try { stdout = await process.StandardOutput.ReadToEndAsync(); } catch { }
+
+        var stderr = onStderrLine is null
+            ? await ((Task<string>)stderrT)
+            : capturedStderr.ToString();
         return new GitResult(process.ExitCode, stdout, stderr);
+    }
+
+    // v0.6.15.5: 只 emit 进度相关行,过滤 git 自己的 noise(stderr "warning:" / "hint:" 等)
+    private static bool ShouldReportProgress(string line)
+    {
+        return line.StartsWith("Receiving objects:")
+            || line.StartsWith("Resolving deltas:")
+            || line.StartsWith("remote:")
+            || line.StartsWith("Cloning into");
     }
 
     private static void TryKill(Process p)
