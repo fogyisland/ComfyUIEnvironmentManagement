@@ -207,6 +207,8 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Grid.Row="0" Grid.Column="0" Text="作者:"
                                            FontSize="12" Margin="0,6,16,6"
@@ -226,6 +228,31 @@
                                 <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedLastUpdate}"
                                            FontSize="12" Margin="0,6"
                                            Foreground="{DynamicResource OutlineBrush}" />
+                                <!-- v0.6.15.2 hotfix:详情面板显式展示 latest version(VM 定义了但 XAML 漏绑)。
+                                     VM 在 entry.LatestVersion 为空时返 "未知",binding 直接走。 -->
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="最新版本:"
+                                           FontSize="12" Margin="0,6,16,6"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedLatestVersion}"
+                                           FontSize="12" Margin="0,6" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <!-- v0.6.15.2 hotfix:仓库 URL(id / repository / url / files[0] / reference 5 路 fallback)。
+                                     有 URL 时显示可点击 hyperlink,无 URL 时整行隐藏。 -->
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="仓库:"
+                                           FontSize="12" Margin="0,6,16,6"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <TextBlock Grid.Row="4" Grid.Column="1"
+                                           FontSize="12" Margin="0,6"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource OutlineBrush}"
+                                           ToolTip="{Binding SelectedRepositoryUrl}"
+                                           Visibility="{Binding SelectedRepositoryUrl, Converter={StaticResource StringNotEmptyToVisibility}}">
+                                    <Hyperlink NavigateUri="{Binding SelectedRepositoryUrl}"
+                                               RequestNavigate="OnRepoLinkClick"
+                                               Foreground="{DynamicResource PrimaryBrush}">
+                                        <Run Text="{Binding SelectedRepositoryUrl, Mode=OneWay}" />
+                                    </Hyperlink>
+                                </TextBlock>
                             </Grid>
 
                             <!-- Divider -->

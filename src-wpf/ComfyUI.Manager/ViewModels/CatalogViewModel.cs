@@ -83,6 +83,7 @@ public class CatalogViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(SelectedReference));
                 RaisePropertyChanged(nameof(SelectedReferenceUrl));
                 RaisePropertyChanged(nameof(SelectedLatestVersion));
+                RaisePropertyChanged(nameof(SelectedRepositoryUrl));
                 RaisePropertyChanged(nameof(SelectedInstallType));
                 RaisePropertyChanged(nameof(SelectedDescription));
                 RaisePropertyChanged(nameof(SelectedAuthor));
@@ -139,6 +140,12 @@ public class CatalogViewModel : ViewModelBase
         => _selected?.PipRequirements ?? Array.Empty<PipRequirement>();
     public bool HasPipRequirements => SelectedPipRequirements.Count > 0;
     public string? SelectedLatestVersion => string.IsNullOrEmpty(_selected?.LatestVersion) ? "未知" : _selected!.LatestVersion;
+
+    /// <summary>
+    /// v0.6.15.2 hotfix:从 raw_metadata 抽出实际仓库 URL(优先 id / repository / url / files[0] / reference),
+    /// 详情面板显示 + 兜底给 <see cref="DownloadAsync"/>。空串表示"无仓库 URL"(下载会用模板兜底)。
+    /// </summary>
+    public string SelectedRepositoryUrl => _selected is null ? "" : (ExtractRepoUrl(_selected) ?? "");
 
     private VersionInfo? _selectedVersion;
     public VersionInfo? SelectedVersion
@@ -454,13 +461,94 @@ public class CatalogViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// v0.6.15.2 hotfix:多 fallback 抽 repo URL。上游 ltdrdata custom-node-list.json
+    /// 的字段差异很大:多数 entry 没有 <c>repository</c> / <c>url</c>,而是
+    /// <c>files[]</c>(第一个就是 GitHub URL)或 <c>reference</c>(GitHub URL)或
+    /// <c>id</c>(形如 <c>owner/repo</c>)。优先级:
+    /// <list type="number">
+    ///   <item>显式 <c>repository</c> 字段(权威)</item>
+    ///   <item>显式 <c>url</c> 字段</item>
+    ///   <item><c>files</c> 数组首元素(ltdrdata 主流)</item>
+    ///   <item><c>reference</c> 字段(若已是 github.com URL)</item>
+    ///   <item><c>id</c> 字段(<c>owner/repo</c> 形式补 <c>https://github.com/</c>)</item>
+    /// </list>
+    /// 返回 null 表示 catalog 条目无任何仓库信息,下载走模板兜底。
+    /// </summary>
     private static string? ExtractRepoUrl(CatalogEntry entry)
     {
         if (entry.RawMetadata is null) return null;
+
         if (entry.RawMetadata.TryGetValue("repository", out var r) && r is string rs
             && !string.IsNullOrWhiteSpace(rs)) return rs;
+
         if (entry.RawMetadata.TryGetValue("url", out var u) && u is string us
             && !string.IsNullOrWhiteSpace(us)) return us;
+
+        if (entry.RawMetadata.TryGetValue("files", out var fVal))
+        {
+            var first = FirstStringElement(fVal);
+            if (!string.IsNullOrWhiteSpace(first)) return first;
+        }
+
+        if (entry.RawMetadata.TryGetValue("reference", out var refr) && refr is string refs
+            && !string.IsNullOrWhiteSpace(refs) && refs.Contains("github.com/", StringComparison.OrdinalIgnoreCase))
+        {
+            return refs;
+        }
+
+        if (entry.RawMetadata.TryGetValue("id", out var id) && id is string ids
+            && !string.IsNullOrWhiteSpace(ids))
+        {
+            // owner/repo 形式(owner/repo 含 1 个 / 且不是 URL)→ 补全成 github URL
+            if (ids.Contains('/') && !ids.Contains("://"))
+            {
+                return $"https://github.com/{ids}";
+            }
+            return ids;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 从 <see cref="CatalogEntry.RawMetadata"/> 的 <c>files</c> 字段抽第一个 string 元素。
+    /// 字段值可能是:
+    /// - <see cref="List{T}"/> of <see cref="object"/> —— ParseRawMetadata 的内存构造路径
+    /// - <see cref="System.Text.Json.JsonElement"/>(Array kind) —— SQLite 往返路径(JsonSerializer.Deserialize&lt;Dictionary&lt;string,object?&gt;&gt; 反序列化数组成 JsonElement)
+    /// - 单个 <see cref="System.Text.Json.JsonElement"/>(String kind) —— 边界情况
+    /// </summary>
+    private static string? FirstStringElement(object? fVal)
+    {
+        if (fVal is null) return null;
+        if (fVal is System.Text.Json.JsonElement je)
+        {
+            if (je.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in je.EnumerateArray())
+                {
+                    if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                        return item.GetString();
+                }
+            }
+            else if (je.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return je.GetString();
+            }
+            return null;
+        }
+        if (fVal is IEnumerable<object?> list)
+        {
+            foreach (var item in list)
+            {
+                if (item is string s && !string.IsNullOrWhiteSpace(s)) return s;
+                if (item is System.Text.Json.JsonElement innerJe
+                    && innerJe.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    return innerJe.GetString();
+                }
+            }
+        }
         return null;
     }
 }
