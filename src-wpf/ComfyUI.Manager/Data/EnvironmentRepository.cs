@@ -24,6 +24,8 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
     {
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
+        // v0.6.15.3: 过滤 id="" sentinel(SqliteConnectionFactory 插入的 FK 占位行,
+        // 防止 scanned_nodes.env_id="" FK 失败,但不算真环境)。
         cmd.CommandText = @"
             SELECT id, name, root_path, comfyui_layout, comfyui_source,
                    venv_path, python_executable, custom_nodes_path,
@@ -31,6 +33,7 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
                    status, base_python_path, python_version, pid,
                    bed_profile_id, bed_status, bed_failed_reason, notes
             FROM environments
+            WHERE id <> ''
             ORDER BY name";
         using var reader = cmd.ExecuteReader();
         var list = new List<Environment>();
@@ -43,6 +46,8 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
 
     public Environment? Get(string envId)
     {
+        // v0.6.15.3: id="" sentinel 不是真环境,Get("") 返回 null。
+        if (string.IsNullOrEmpty(envId)) return null;
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"

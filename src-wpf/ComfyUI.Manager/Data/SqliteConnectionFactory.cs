@@ -174,6 +174,22 @@ public sealed class SqliteConnectionFactory
                 "ON scanned_nodes(env_id, package, source)";
             idx.ExecuteNonQuery();
         }
+
+        // v0.6.15.3 hotfix: scanned_nodes.env_id 上有 FK 到 environments.id(老 migration 加的,
+        // 当前 source 的 CREATE TABLE 没体现 → 新 DB 没 FK,老 DB 有)。DownloadAsync 写
+        // EnvId="" 作 local-download sentinel,但 environments 表若没 id="" 行 → FK 失败,
+        // app 崩(SQLite Error 19)。这里 INSERT OR IGNORE 一行 sentinel 让 FK 通过。
+        // 不影响 env 装路径(env_id 是真值本来就匹配),也不被 EnvironmentListView 显示
+        // (ListAsync 等不查 id='')。name='(local download)' 唯一不冲突。
+        using (var sentinel = conn.CreateCommand())
+        {
+            sentinel.CommandText = @"
+                INSERT OR IGNORE INTO environments
+                    (id, name, root_path, comfyui_layout, base_python_path, python_version)
+                VALUES
+                    ('', '(local download)', '', 'standalone', '', '')";
+            sentinel.ExecuteNonQuery();
+        }
     }
 
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)
