@@ -55,6 +55,9 @@ public class Settings
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
+    [JsonPropertyName("http_proxy_enabled")] public bool HttpProxyEnabled { get; set; }
+    [JsonPropertyName("http_proxy_url")] public string HttpProxyUrl { get; set; } = "";
+    [JsonPropertyName("http_proxy_port")] public int HttpProxyPort { get; set; }
     [JsonPropertyName("git_exe")] public string GitExe { get; set; } = "";
     [JsonPropertyName("git_proxy_url")] public string GitProxyUrl { get; set; } = "";
     [JsonPropertyName("git_proxy_port")] public int GitProxyPort { get; set; }
