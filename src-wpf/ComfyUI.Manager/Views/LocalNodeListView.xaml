@@ -6,7 +6,7 @@
     <UserControl.Resources>
         <Style x:Key="LocalNodeCardStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource OutlineBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Padding" Value="12" />
@@ -35,14 +35,14 @@
         <!-- Empty state -->
         <Border Grid.Row="1" x:Name="EmptyState"
                 Background="{DynamicResource SurfaceBrush}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
                 CornerRadius="6" Padding="32"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
                 Visibility="{Binding Items.Count, Converter={StaticResource ZeroCountToVisibility}}">
             <StackPanel HorizontalAlignment="Center">
                 <TextBlock Text="本地节点目录为空" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,8" />
                 <TextBlock HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="400"
-                           TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}">
+                           TextAlignment="Center" Foreground="{DynamicResource OnSurfaceVariantBrush}">
                     <Run Text="从节点目录下载节点后会出现在这里;或" />
                     <Run Text="先在 Settings 配置本地节点目录路径" />
                 </TextBlock>
