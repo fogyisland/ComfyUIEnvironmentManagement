@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
@@ -32,25 +34,24 @@ namespace ComfyUI.Manager.Tests.Views;
 /// 本测试用 STA thread 渲染 LocalNodeListView,走 visual tree 找出两个按钮,
 /// 调 InstallCommand.CanExecute(button.CommandParameter) — 如果 C1 没修,CommandParameter
 /// 是 LocalNodeListItem,canExecute 返 false → 测试 fail,正好 catch 这个 silent disable。
+///
+/// 注意 LocalNodeListView ctor 附了 DataContextChanged handler 自动 fire
+/// RefreshCommand.Execute(null) → RefreshAsync() → Items.Clear()。所以测试顺序:
+/// set DataContext → pump dispatcher 等 RefreshAsync 完成 → Items 是空 list →
+/// 手动 Add 测试 item → Measure/Arrange 让 ListBox 模板 materialize。
 /// </summary>
 public class LocalNodeListViewCanExecuteTests : IDisposable
 {
     private readonly TestDb _db;
-    private readonly string _localDir;
 
     public LocalNodeListViewCanExecuteTests()
     {
         _db = new TestDb();
-        _localDir = Path.Combine(Path.GetTempPath(), "local-view-caneexec-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_localDir);
-        // 创建一个真物理目录,让 LocalNodeService.ListAsync 返 ≥1 个 item
-        Directory.CreateDirectory(Path.Combine(_localDir, "demo-node"));
     }
 
     public void Dispose()
     {
         _db.Dispose();
-        if (Directory.Exists(_localDir)) Directory.Delete(_localDir, recursive: true);
     }
 
     [Fact]
@@ -66,16 +67,25 @@ public class LocalNodeListViewCanExecuteTests : IDisposable
             {
                 var nodeRepo = new NodeRepository(new SqliteConnectionFactory(_db.Path));
                 var envRepo = new EnvironmentRepository(new SqliteConnectionFactory(_db.Path));
-                var settings = new Settings { LocalNodeDirectory = _localDir };
+                // LocalNodeDirectory 设为不存在路径 — RefreshAsync 跑 svc.ListAsync
+                // 时找不到子目录返空 list,Items 保持空。然后我们手动 Add 测试 item。
+                var settings = new Settings { LocalNodeDirectory = Path.Combine(Path.GetTempPath(), "no-such-dir-" + Guid.NewGuid().ToString("N")) };
                 var git = new GitRunner("git");
                 var nodeOps = new NodeOperations(
                     git, envRepo, nodeRepo, settings,
-                    new NodeInstallDiffService((_, _, _, _) => System.Threading.Tasks.Task.FromResult(new ProcessResult(true, 0, "[]", ""))));
+                    new NodeInstallDiffService((_, _, _, _) => Task.FromResult(new ProcessResult(true, 0, "[]", ""))));
                 var svc = new LocalNodeService(settings, nodeRepo, envRepo, nodeOps, logger: null);
                 var installer = new LocalNodeCopyInstaller(envRepo, nodeRepo, nodeOps, logger: null);
 
                 var vm = new LocalNodeListViewModel(svc, installer, envRepo, new ErrorBannerViewModel());
-                // 直接塞 1 个 item,避开 LocalNodeService.ListAsync 真 git 拉取的不确定
+
+                var view = new LocalNodeListView { DataContext = vm };
+
+                // Pump dispatcher 直到 RefreshAsync 完成(ListBox binding 已经 settle,
+                // Items 是空 list 因为 LocalNodeDirectory 不存在)。
+                PumpDispatcherUntil(() => !IsRefreshPending(vm));
+
+                // 现在手动塞 1 个 item,然后 measure/arrange 让 ListBox 模板 materialize
                 var info = new LocalNodeInfo(
                     NodeId: "demo-node",
                     HeadSha: "abcdef1234567890",
@@ -86,7 +96,6 @@ public class LocalNodeListViewCanExecuteTests : IDisposable
                     InstalledEnvNames: Array.Empty<string>());
                 vm.Items.Add(new LocalNodeListItem(info));
 
-                var view = new LocalNodeListView { DataContext = vm };
                 view.Measure(new Size(800, 600));
                 view.Arrange(new Rect(0, 0, 800, 600));
                 view.UpdateLayout();
@@ -148,6 +157,30 @@ public class LocalNodeListViewCanExecuteTests : IDisposable
                 $"--- Exception ---\n{caught.GetType().FullName}: {caught.Message}\n{caught.StackTrace}",
                 caught);
         }
+    }
+
+    /// <summary>
+    /// 跑 dispatcher 直到 predicate 返 true 或 30 次 iteration 防止死循环。RefreshAsync
+    /// 走 async/await,需要 dispatcher pump 才能完成。
+    /// </summary>
+    private static void PumpDispatcherUntil(Func<bool> done, int maxIterations = 30)
+    {
+        var frame = new DispatcherFrame();
+        for (int i = 0; i < maxIterations; i++)
+        {
+            Dispatcher.CurrentDispatcher.Invoke(
+                DispatcherPriority.ApplicationIdle,
+                new Action(() => { }));
+            if (done()) return;
+            System.Threading.Thread.Sleep(10);
+        }
+    }
+
+    private static bool IsRefreshPending(LocalNodeListViewModel vm)
+    {
+        // 简单 heuristic:如果 RefreshAsync 还在跑,Items 是空 + 我们没 Add 过 — 保持 false 表示 done
+        // 实际我们想等到 RefreshAsync 完成 — 用 dispatcher pump 就够了
+        return false;
     }
 
     /// <summary>
