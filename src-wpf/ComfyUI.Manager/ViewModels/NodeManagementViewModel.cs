@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -13,6 +15,11 @@ namespace ComfyUI.Manager.ViewModels;
 /// v0.6.15.8:per-env 节点管理 VM。构造时自动 rescan,Nodes 填充已装节点。
 /// ScanCommand 重扫,InstallCommand 开 CatalogEntryPicker,DeleteCommand 删行。
 /// CloseCommand fire CloseRequested event(EnvListVM 接 → NodeManagement = null 隐 panel)。
+///
+/// v0.6.15.9:把原 UpgradeNodesViewModel 的 outdated 计算 + UpgradeCommand 迁到这里。
+/// 每个 ScannedNode.ScanMeta["installed_tag"] 跟 catalog.LatestVersion 比对,不一致 → IsOutdated=true,
+/// 行内显示"升级"按钮(DataTrigger via BoolToVisibility)。删独立的 UpgradeNodesViewModel /
+/// UpgradeNodesView / UpgradeNodes bottom-popup 面板 / env-list 行内"升级节点"按钮。
 ///
 /// R1 fix: ctor 加 EnvironmentRepository / CatalogRepository / NodeVersionRepository
 /// 三个参数(从 5 参 → 8 参),让生产路径能传真值给 CatalogEntryPickerDialog.Show,
@@ -43,6 +50,8 @@ public class NodeManagementViewModel : ViewModelBase
     public RelayCommand DeleteCommand { get; }
     public RelayCommand CloseCommand { get; }
     public RelayCommand ToggleCommand { get; }
+    /// <summary>v0.6.15.9:行内升级按钮(过时才 enabled,DataTrigger via IsOutdated)。</summary>
+    public RelayCommand UpgradeCommand { get; }
 
     public string EnvName { get; }
     public Func<string, string, string, bool>? ConfirmDialogOverride { get; set; }
@@ -63,9 +72,14 @@ public class NodeManagementViewModel : ViewModelBase
                 ScanCommand.RaiseCanExecuteChanged();
                 InstallCommand.RaiseCanExecuteChanged();
                 DeleteCommand.RaiseCanExecuteChanged();
+                UpgradeCommand.RaiseCanExecuteChanged();
             }
         }
     }
+
+    /// <summary>v0.6.15.9:catalog Package → LatestVersion。ScanAsync 末尾 refresh,
+    /// UpgradeAsync 后 rebuild。空 catalog / 节点 package 不在 catalog → 节点 IsOutdated=false。</summary>
+    private Dictionary<string, string> _latestByPackage = new();
 
     public NodeManagementViewModel(
         NodeRepository repo, NodeOperations nodeOps,
@@ -98,6 +112,9 @@ public class NodeManagementViewModel : ViewModelBase
             p => p is ScannedNode && !Busy);
         CloseCommand = new RelayCommand(_ => CloseRequested?.Invoke());
         ToggleCommand = new RelayCommand(_ => { /* TODO 占位 */ }, _ => false);
+        UpgradeCommand = new RelayCommand(
+            async p => await UpgradeAsync(p as ScannedNode),
+            p => p is ScannedNode n && IsOutdated(n) && !Busy);
         _ = ScanAsync();
     }
 
@@ -113,19 +130,85 @@ public class NodeManagementViewModel : ViewModelBase
             // mutation). Use captured SyncContext.Post so tests stay sync
             // (xUnit has no SyncContext → Post is skipped, mutations are direct).
             var snapshot = _nodeRepo.ListByEnv(_envId);
+            // v0.6.15.9:refresh catalog latest version cache 后给每行填 IsOutdated,
+            // 让行内"升级"按钮 visibility 跟上数据状态。空 catalog / node 不在 catalog →
+            // IsOutdated=false(不主动报"过时",避免误判)。
+            RefreshLatestByPackage();
+            foreach (var n in snapshot)
+            {
+                n.IsOutdated = IsOutdated(n);
+            }
             if (_uiContext is not null)
             {
                 _uiContext.Post(_ =>
                 {
                     Nodes.Clear();
                     foreach (var n in snapshot) Nodes.Add(n);
+                    UpgradeCommand.RaiseCanExecuteChanged();
                 }, null);
             }
             else
             {
                 Nodes.Clear();
                 foreach (var n in snapshot) Nodes.Add(n);
+                UpgradeCommand.RaiseCanExecuteChanged();
             }
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    /// <summary>v0.6.15.9:扫一遍 catalog,GroupBy(Package) 拿 LatestVersion,
+    /// 空 LatestVersion 跳过。失败(catalog 抛异常)→ 留空 dict,所有 IsOutdated=false。</summary>
+    private void RefreshLatestByPackage()
+    {
+        try
+        {
+            _latestByPackage = _catalogRepo.Search("", 5000)
+                .Where(e => !string.IsNullOrEmpty(e.LatestVersion))
+                .GroupBy(e => e.Package, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First().LatestVersion!, StringComparer.Ordinal);
+        }
+        catch
+        {
+            _latestByPackage = new();
+        }
+    }
+
+    /// <summary>v0.6.15.9:行内升级的过时判定。三个前提缺一不可:
+    /// (a) <c>ScanMeta["installed_tag"]</c> 非空(老节点没装 tag 时不报过时),
+    /// (b) catalog 有这个 package 且 LatestVersion 非空,
+    /// (c) tag != latest。任一不满足 → false。</summary>
+    private bool IsOutdated(ScannedNode node)
+    {
+        if (node.ScanMeta is null) return false;
+        if (!node.ScanMeta.TryGetValue("installed_tag", out var tag)
+            || string.IsNullOrEmpty(tag)) return false;
+        if (!_latestByPackage.TryGetValue(node.Package, out var latest)
+            || string.IsNullOrEmpty(latest)) return false;
+        return !string.Equals(tag, latest, StringComparison.Ordinal);
+    }
+
+    /// <summary>v0.6.15.9:行内 UpgradeCommand handler。调
+    /// <c>NodeOperations.UpgradeAsync(envId, nodeId, null, ct)</c>,成功后 ScanAsync
+    /// rebuild(节点的 installed_tag 现在跟 latest 一致 → IsOutdated=false → 行内按钮消失)。
+    /// 失败 → ErrorBanner(同 DeleteAsync 模式)。</summary>
+    public async Task UpgradeAsync(ScannedNode? node)
+    {
+        if (node is null) return;
+        Busy = true;
+        try
+        {
+            var r = await _nodeOps.UpgradeAsync(_envId, node.Id, progress: null, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (!r.Success)
+            {
+                _errorBanner.Add("node-mgmt-upgrade", $"升级 {node.Package} 失败:{r.Reason}", ErrorSeverity.Error);
+                return;
+            }
+            await ScanAsync().ConfigureAwait(false);
         }
         finally
         {

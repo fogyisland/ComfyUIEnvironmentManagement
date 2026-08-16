@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -167,5 +168,147 @@ public class NodeManagementViewModelTests : IDisposable
         vm.CloseRequested += () => fired = true;
         vm.CloseCommand.Execute(null);
         Assert.True(fired);
+    }
+
+    /// <summary>v0.6.15.9:scan 后给每行填 IsOutdated — installed_tag != catalog.LatestVersion → true,
+    /// 其他情况 → false(包含 installed_tag 缺失 / catalog 没这个 package)。</summary>
+    [Fact]
+    public void Scan_PopulatesIsOutdated_BasedOnCatalog()
+    {
+        _catalogRepo.Upsert(new CatalogEntry { Id = "cat-outdated", Package = "outdated-pkg", SourceUrl = "https://example.com/outdated", CachedAt = "2026-08-16T00:00:00", ExpiresAt = "2099-12-31T00:00:00" });
+        _catalogRepo.Upsert(new CatalogEntry { Id = "cat-current", Package = "current-pkg", SourceUrl = "https://example.com/current", CachedAt = "2026-08-16T00:00:00", ExpiresAt = "2099-12-31T00:00:00" });
+        // CatalogRepository.Upsert 不写 latest_version 列 — 走 GitHubVersionService 的
+        // UpdateLatestVersions 单独写入。test seed 必须显式调一次模拟。
+        _catalogRepo.UpdateLatestVersions(new[] {
+            ("https://example.com/outdated", "outdated-pkg", "v1.2"),
+            ("https://example.com/current", "current-pkg", "v1.0"),
+        });
+        _nodeOps.NodeRepo = _nodeRepo;
+        _nodeOps.ScanResult = new List<ScannedNode>
+        {
+            new() { Id = "o1", EnvId = _envId, Package = "outdated-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.0" } },
+            new() { Id = "c1", EnvId = _envId, Package = "current-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.0" } },
+            new() { Id = "u1", EnvId = _envId, Package = "untagged-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string>() },
+            new() { Id = "x1", EnvId = _envId, Package = "uncatalogued-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v0.1" } },
+        };
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        SpinWait.SpinUntil(() => vm.Nodes.Count == 4, TimeSpan.FromSeconds(2));
+
+        Assert.True(vm.Nodes.Single(n => n.Id == "o1").IsOutdated);
+        Assert.False(vm.Nodes.Single(n => n.Id == "c1").IsOutdated);
+        Assert.False(vm.Nodes.Single(n => n.Id == "u1").IsOutdated);
+        Assert.False(vm.Nodes.Single(n => n.Id == "x1").IsOutdated);
+    }
+
+    /// <summary>v0.6.15.9:行内 UpgradeCommand 对 IsOutdated=true 的 node CanExecute=true 且
+    /// 调 <c>NodeOps.UpgradeAsync</c>;成功后 ScanAsync rebuild,IsOutdated 转 false(若新 tag 匹配)。</summary>
+    [Fact]
+    public async Task UpgradeCommand_OutdatedNode_CallsNodeOpsUpgrade_ThenRescans()
+    {
+        _catalogRepo.Upsert(new CatalogEntry { Id = "cat-up", Package = "outdated-pkg", SourceUrl = "https://example.com/outdated", CachedAt = "2026-08-16T00:00:00", ExpiresAt = "2099-12-31T00:00:00" });
+        _catalogRepo.UpdateLatestVersions(new[] {
+            ("https://example.com/outdated", "outdated-pkg", "v1.2"),
+        });
+        _nodeOps.NodeRepo = _nodeRepo;
+        _nodeOps.UpgradeResult = NodeOperationResult.Ok("v1.2");
+        // 第二次 ScanResult 模拟升级后节点的 installed_tag 跟最新一致。
+        var afterUpgrade = new List<ScannedNode>
+        {
+            new() { Id = "o1", EnvId = _envId, Package = "outdated-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.2" } },
+        };
+        _nodeOps.ScanResult = new List<ScannedNode>
+        {
+            new() { Id = "o1", EnvId = _envId, Package = "outdated-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.0" } },
+        };
+        // After first scan returns, swap ScanResult to simulate upgrade
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
+        // Outdated should be true at this point
+        Assert.True(vm.Nodes[0].IsOutdated);
+        Assert.True(vm.UpgradeCommand.CanExecute(vm.Nodes[0]));
+
+        // Replace ScanResult so subsequent rescans (triggered by UpgradeAsync) get the upgraded state
+        _nodeOps.ScanResult = afterUpgrade;
+
+        await vm.UpgradeAsync(vm.Nodes[0]);
+        SpinWait.SpinUntil(() => vm.Nodes.Count == 1 && !vm.Nodes[0].IsOutdated, TimeSpan.FromSeconds(2));
+
+        Assert.True(_nodeOps.UpgradeCalled);
+        Assert.False(vm.Nodes[0].IsOutdated);
+        Assert.False(vm.UpgradeCommand.CanExecute(vm.Nodes[0]));
+    }
+
+    /// <summary>v0.6.15.9:installed_tag == catalog.LatestVersion 的 node 行内 UpgradeCommand
+    /// CanExecute=false(按钮 disabled,不显示)。</summary>
+    [Fact]
+    public void UpgradeCommand_CurrentNode_CanExecuteFalse()
+    {
+        _catalogRepo.Upsert(new CatalogEntry { Id = "cat-curr", Package = "current-pkg", SourceUrl = "https://example.com/current", CachedAt = "2026-08-16T00:00:00", ExpiresAt = "2099-12-31T00:00:00" });
+        _catalogRepo.UpdateLatestVersions(new[] {
+            ("https://example.com/current", "current-pkg", "v1.2"),
+        });
+        _nodeOps.NodeRepo = _nodeRepo;
+        _nodeOps.ScanResult = new List<ScannedNode>
+        {
+            new() { Id = "c1", EnvId = _envId, Package = "current-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.2" } },
+        };
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
+
+        Assert.False(vm.Nodes[0].IsOutdated);
+        Assert.False(vm.UpgradeCommand.CanExecute(vm.Nodes[0]));
+    }
+
+    /// <summary>v0.6.15.9:catalog 没这个 package → IsOutdated=false,行内按钮 disabled。
+    /// 即便 installed_tag 看起来"老",我们不主动报过时(避免误判,跟 UpgradeNodesViewModel 既有逻辑一致)。</summary>
+    [Fact]
+    public void UpgradeCommand_UncataloguedNode_CanExecuteFalse()
+    {
+        _nodeOps.NodeRepo = _nodeRepo;
+        _nodeOps.ScanResult = new List<ScannedNode>
+        {
+            new() { Id = "x1", EnvId = _envId, Package = "unknown-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v0.1" } },
+        };
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
+
+        Assert.False(vm.Nodes[0].IsOutdated);
+        Assert.False(vm.UpgradeCommand.CanExecute(vm.Nodes[0]));
+    }
+
+    /// <summary>v0.6.15.9:NodeOps.UpgradeAsync 返 Fail → ErrorBanner 加错误,节点保留(不删 IsOutdated)。
+    /// 下次重试还显示升级按钮。</summary>
+    [Fact]
+    public async Task UpgradeCommand_FailedResult_LeavesNodeInList_AddsErrorBanner()
+    {
+        _catalogRepo.Upsert(new CatalogEntry { Id = "cat-fail", Package = "outdated-pkg", SourceUrl = "https://example.com/outdated", CachedAt = "2026-08-16T00:00:00", ExpiresAt = "2099-12-31T00:00:00" });
+        _catalogRepo.UpdateLatestVersions(new[] {
+            ("https://example.com/outdated", "outdated-pkg", "v1.2"),
+        });
+        _nodeOps.NodeRepo = _nodeRepo;
+        _nodeOps.ScanResult = new List<ScannedNode>
+        {
+            new() { Id = "o1", EnvId = _envId, Package = "outdated-pkg", Source = "env",
+                    ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.0" } },
+        };
+        _nodeOps.UpgradeResult = NodeOperationResult.Fail("git pull 失败");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
+
+        await vm.UpgradeAsync(vm.Nodes[0]);
+        SpinWait.SpinUntil(() => _errorBanner.HasErrors, TimeSpan.FromSeconds(2));
+
+        Assert.True(_errorBanner.HasErrors);
+        Assert.Single(vm.Nodes);
+        Assert.True(vm.Nodes[0].IsOutdated);
+        Assert.True(vm.UpgradeCommand.CanExecute(vm.Nodes[0]));
     }
 }

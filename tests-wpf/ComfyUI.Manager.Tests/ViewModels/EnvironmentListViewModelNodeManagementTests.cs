@@ -171,17 +171,6 @@ public class EnvironmentListViewModelNodeManagementTests : IDisposable
     }
 
     [Fact]
-    public void OpenUpgradeNodes_NewEnv_CreatesVM_ShowsPanel()
-    {
-        var env = GetEnv("env-a");
-        _vm.OpenUpgradeNodesCommand.Execute(env);
-
-        Assert.NotNull(_vm.UpgradeNodes);
-        Assert.True(_vm.IsUpgradeNodesVisible);
-        Assert.Equal("env-A", _vm.UpgradeNodes!.EnvName);
-    }
-
-    [Fact]
     public void OpenNodeManagement_BusyEnv_GatedByCanExecute()
     {
         var env = GetEnv("env-a");

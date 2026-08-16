@@ -30,11 +30,23 @@
                 </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="来源" Binding="{Binding Source}" Width="70" />
-            <DataGridTemplateColumn Header="操作" Width="160">
+            <DataGridTemplateColumn Header="操作" Width="180">
                 <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal">
-                            <Button Content="删除"
+                            <!-- v0.6.15.9:行内升级按钮(过时才显示,IsOutdated 由
+                                 NodeManagementViewModel.ScanAsync 末尾基于
+                                 ScanMeta[installed_tag] vs catalog.LatestVersion
+                                 计算)。替代原独立的 UpgradeNodesViewModel + 面板。 -->
+                            <Button Content="升级" Margin="2,0,0,0" MinWidth="0"
+                                    Style="{StaticResource MaterialButton}"
+                                    Visibility="{Binding IsOutdated,
+                                                 Converter={StaticResource BoolToVisibility},
+                                                 FallbackValue=Collapsed}"
+                                    Command="{Binding DataContext.UpgradeCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}" />
+                            <Button Content="删除" Margin="2,0,0,0"
                                     Style="{StaticResource DangerButton}"
                                     Command="{Binding DataContext.DeleteCommand,
                                               RelativeSource={RelativeSource AncestorType=UserControl}}"

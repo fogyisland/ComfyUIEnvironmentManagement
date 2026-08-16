@@ -211,32 +211,8 @@
                 </StackPanel>
             </Border>
 
-            <!-- v0.6.15.8:升级节点 inline panel(同 pattern,无顶右按钮) -->
-            <Border Margin="0,6,0,0" Padding="12"
-                    Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                    CornerRadius="6"
-                    Visibility="{Binding IsUpgradeNodesVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
-                <StackPanel DataContext="{Binding UpgradeNodes}">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="✕"
-                                Click="OnUpgradeNodesCloseClicked"
-                                Style="{StaticResource GearIconButtonStyle}"
-                                Foreground="{DynamicResource OnSurfaceBrush}" />
-                        <TextBlock VerticalAlignment="Center">
-                            <Run Text="{Binding EnvName, Mode=OneWay}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource OnSurfaceBrush}" />
-                            <Run Text=" 需要升级的节点" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource OnSurfaceBrush}" />
-                        </TextBlock>
-                    </DockPanel>
-                    <ContentControl Content="{Binding}" Margin="0,8,0,0" MinHeight="200">
-                        <ContentControl.Resources>
-                            <DataTemplate DataType="{x:Type vm:UpgradeNodesViewModel}">
-                                <v:UpgradeNodesView />
-                            </DataTemplate>
-                        </ContentControl.Resources>
-                    </ContentControl>
-                </StackPanel>
-            </Border>
+            <!-- v0.6.15.9:升级节点 inline panel 已删除 — 升级迁入节点管理面板行内(过时才显示),
+                 面板通过 NodeManagementView DataGrid 的 IsOutdated DataTrigger 控制。 -->
         </StackPanel>
 
         <!-- 中间:env card 列表 -->
@@ -447,17 +423,15 @@
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
-                                    <!-- v0.6.15.8 T6:节点管理(原"安装节点"改名)+ 升级节点(新) -->
+                                    <!-- v0.6.15.8 T6 + v0.6.15.9:节点管理(原"安装节点"改名)。
+                                         升级节点 删除独立按钮 — 升级迁入节点管理面板行内(过时才显示)。 -->
                                     <Button Grid.Row="1" Grid.Column="2" Content="节点管理" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.OpenNodeManagementCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <Button Grid.Row="1" Grid.Column="3" Content="升级节点" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.OpenUpgradeNodesCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}" />
+                                    <!-- v0.6.15.9:升级按钮位置 Col 3 预留空 cell,保持 2×6 网格形状 -->
+                                    <Border Grid.Row="1" Grid.Column="3" Margin="2" />
                                     <Button Grid.Row="1" Grid.Column="4" Content="组件报告" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ReportComponentsCommand,

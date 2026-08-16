@@ -46,4 +46,19 @@ public class ScannedNode
     /// </summary>
     [JsonPropertyName("repository_url")]
     public string? RepositoryUrl { get; set; }
+
+    /// <summary>
+    /// v0.6.15.9:transient per-row 升级 可见性 flag。NodeManagementViewModel 在 ScanAsync
+    /// 末尾根据 <c>ScanMeta["installed_tag"]</c> 跟 catalog LatestVersion 比对后 set。
+    /// <para>
+    /// 不持久化到 DB:<see cref="NodeRepository.Upsert"/> 走显式 Bind() 参数(不是全对象
+    /// JSON 序列化),所以无 [JsonPropertyName] 不会被 round-trip 写回 SQLite。
+    /// </para>
+    /// <para>
+    /// 不在构造函数初始化(默认 <c>false</c>)— 第一次读取(从 DB ListByEnv 出来的 row)
+    /// 不会有该值,直到 VM 完成首次 ScanAsync 才填。
+    /// </para>
+    /// </summary>
+    [JsonIgnore]
+    public bool IsOutdated { get; set; }
 }
