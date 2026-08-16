@@ -384,6 +384,24 @@ public class EnvironmentListViewModel : ViewModelBase
         Load();
     }
 
+    // v0.6.15.7 T7:env-detail right-side panel VM(懒构造 + Selected 变化时刷新)。
+    // 重建策略:Selected envId 变 → 重建 EnvironmentDetailViewModel。EnvId 跟踪用
+    // 单独的 _environmentDetailEnvId 字段(EnvironmentDetailViewModel 未暴露 EnvId 属性)。
+    private EnvironmentDetailViewModel? _environmentDetail;
+    private string? _environmentDetailEnvId;
+    public EnvironmentDetailViewModel? EnvironmentDetail
+    {
+        get => _environmentDetail;
+        private set
+        {
+            if (SetField(ref _environmentDetail, value))
+            {
+                RaisePropertyChanged(nameof(HasEnvironmentDetail));
+            }
+        }
+    }
+    public bool HasEnvironmentDetail => _environmentDetail is not null;
+
     private Environment? _selected;
     public Environment? Selected
     {
@@ -391,8 +409,42 @@ public class EnvironmentListViewModel : ViewModelBase
         set
         {
             if (SetField(ref _selected, value))
+            {
                 RaisePropertyChanged(nameof(StartTooltip));
+                SelectedChangedHandler();
+            }
         }
+    }
+
+    /// <summary>
+    /// v0.6.15.7 T7:选 env 变 → 重建 detail VM(envId 不同就重建;envId 相同不动)。
+    /// 同一个 env 再点 = Selected 虽值同但 setter 也会进 → 走 envId 短路避免重建。
+    /// </summary>
+    private void SelectedChangedHandler()
+    {
+        var env = Selected;
+        if (env is null)
+        {
+            _environmentDetailEnvId = null;
+            EnvironmentDetail = null;
+            return;
+        }
+        if (_environmentDetailEnvId == env.Id) return;
+        _environmentDetailEnvId = env.Id;
+        // 构造新 detail VM。ctor 签名:
+        // (NodeRepository, ErrorBannerViewModel, Func<string,string,CT,Task<NodeOperationResult>>, string envId)
+        // nodeRepo + errorBanner + deleteFunc 在 EnvListVM ctor 已就位,直接传。
+        if (_nodeRepo is null)
+        {
+            // 测试 ctor 没注入 NodeRepository → 保持 _environmentDetail = null
+            EnvironmentDetail = null;
+            return;
+        }
+        EnvironmentDetail = new EnvironmentDetailViewModel(
+            _nodeRepo,
+            _errorBanner ?? new ErrorBannerViewModel(),
+            (envId, nodeId, ct) => _nodeOps.UninstallAsync(envId, nodeId, ct),
+            env.Id);
     }
 
     /// <summary>

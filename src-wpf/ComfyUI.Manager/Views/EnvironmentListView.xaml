@@ -1,6 +1,8 @@
 <UserControl x:Class="ComfyUI.Manager.Views.EnvironmentListView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:ComfyUI.Manager.Views"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels">
     <DockPanel>
         <!-- 顶部:section 标题 + 工具栏 (Grid 3 列:标题 | spacer | 操作) -->
         <Grid DockPanel.Dock="Top" Margin="12,12,12,8">
@@ -177,33 +179,40 @@
             </Border>
         </StackPanel>
 
-        <!-- 中间:env card 列表 -->
+        <!-- 中间:env card 列表(master-detail:left = env-list,right = env-detail panel) -->
         <Grid Margin="12,0,12,12">
-            <!-- 空状态 -->
-            <Border Visibility="{Binding Environments.Count, Converter={StaticResource ZeroCountToVisibility}}"
-                    Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                    CornerRadius="8" Padding="32"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel HorizontalAlignment="Center">
-                    <TextBlock Text="📦" FontSize="48" HorizontalAlignment="Center"
-                               Foreground="{DynamicResource OutlineBrush}" />
-                    <TextBlock Text="还没有任何环境" FontSize="16" Margin="0,8,0,4"
-                               HorizontalAlignment="Center"
-                               Foreground="{DynamicResource OnSurfaceBrush}" />
-                    <TextBlock Text="点右上角「+ 新建环境」开始"
-                               FontSize="12" HorizontalAlignment="Center"
-                               Foreground="{DynamicResource OutlineBrush}" />
-                </StackPanel>
-            </Border>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="600" />
+            </Grid.ColumnDefinitions>
+            <!-- left: env-list (existing content wrapped in Grid.Column=0) -->
+            <Grid Grid.Column="0">
+                <!-- 空状态 -->
+                <Border Visibility="{Binding Environments.Count, Converter={StaticResource ZeroCountToVisibility}}"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="32"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="📦" FontSize="48" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource OutlineBrush}" />
+                        <TextBlock Text="还没有任何环境" FontSize="16" Margin="0,8,0,4"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource OnSurfaceBrush}" />
+                        <TextBlock Text="点右上角「+ 新建环境」开始"
+                                   FontSize="12" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource OutlineBrush}" />
+                    </StackPanel>
+                </Border>
 
-            <!-- env 卡片列表 -->
-            <ListBox ItemsSource="{Binding Environments}"
-                     SelectedItem="{Binding Selected}"
-                     Background="Transparent" BorderThickness="0"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     HorizontalContentAlignment="Stretch"
-                     Visibility="{Binding Environments.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
+                <!-- env 卡片列表 -->
+                <ListBox ItemsSource="{Binding Environments}"
+                         SelectedItem="{Binding Selected}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch"
+                         Visibility="{Binding Environments.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Background" Value="Transparent" />
@@ -404,6 +413,26 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+            </Grid>
+            <!-- GridSplitter (Column=1) -->
+            <GridSplitter Grid.Column="1" Width="6"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="Transparent"
+                          Visibility="{Binding HasEnvironmentDetail, Converter={StaticResource BoolToVisibility}}"/>
+            <!-- right: env-detail panel -->
+            <Border Grid.Column="2"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6" Padding="0"
+                    Visibility="{Binding HasEnvironmentDetail, Converter={StaticResource BoolToVisibility}}">
+                <ContentControl Content="{Binding EnvironmentDetail}">
+                    <ContentControl.Resources>
+                        <DataTemplate DataType="{x:Type vm:EnvironmentDetailViewModel}">
+                            <v:EnvironmentDetailView />
+                        </DataTemplate>
+                    </ContentControl.Resources>
+                </ContentControl>
+            </Border>
         </Grid>
     </DockPanel>
 </UserControl>
