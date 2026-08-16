@@ -302,7 +302,18 @@ public sealed class ProcessLauncher : IDisposable
                             // 这里 Get(err.PackageName) 是按 id 查 — node id 在不同 env 共享同一 id
                             // (Source="env" 行 id = 节点目录名),不区分 env 写到任意一行足够让 UI 看到。
                             var node = _nodeRepo.Get(err.PackageName);
-                            if (node is null) continue;
+                            // v0.6.15.7 T9:package name ≠ node id 时 fallback(import error
+                            // 报的是 package name,不是 dir name);若无 env scope(legacy 路径)则跳过。
+                            if (node is null && env is not null)
+                            {
+                                node = _nodeRepo.GetByPackageName(env.Id, err.PackageName);
+                            }
+                            if (node is null)
+                            {
+                                _logger?.Info("node-startup-fail-skip",
+                                    $"package '{err.PackageName}' 不在 env '{env?.Id ?? "?"}' 的节点表里,跳过");
+                                continue;
+                            }
                             node.ScanMeta ??= new Dictionary<string, string>();
                             node.ScanMeta["load_error"] = err.ErrorMessage;
                             try { _nodeRepo.Upsert(node); } catch { }

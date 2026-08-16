@@ -3,6 +3,7 @@ using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Tests.Fakes;
 using Xunit;
 
 namespace ComfyUI.Manager.Tests.Infrastructure;
@@ -17,6 +18,12 @@ namespace ComfyUI.Manager.Tests.Infrastructure;
 /// 2. 空输入 → 空 list
 /// 3. 同 PackageName 多次出现 → dedup by first occurrence(ProcessLauncher 拿
 ///    StartupLines snapshot 喂 detector 时会去重)
+///
+/// v0.6.15.7 T9:验证 Get → null 的场景 GetByPackageName fallback 能命中真实行。
+/// import error 报的是 package name(directory 内的 __init__.py 元数据),跟 env 装行 id
+/// (dir name,跟 package 一致时才行)不一定对得上 — 实际项目里 package 名跟 dir 名常不等
+/// (例如 "comfyui-impact-pack" vs "ComfyUI-Impact-Pack")。fallback 测试聚焦
+/// 「行确实存在,GetByPackageName 能找」,ProcessLauncher 集成由 wiring 单测覆盖。
 /// </summary>
 public class ProcessLauncherStartupErrorDetectionTests
 {
@@ -55,5 +62,39 @@ public class ProcessLauncherStartupErrorDetectionTests
         Assert.Single(errors);
         Assert.Equal("pkg-x", errors[0].PackageName);
         Assert.Contains("Failed to import module", errors[0].ErrorMessage);  // first wins
+    }
+
+    [Fact]
+    public void NodeRepository_FallbackByPackageName_FindsRowAfterIdLookupFails()
+    {
+        // v0.6.15.7 T9:模拟 import error 命中场景
+        //   行:Id="ImpactPack", Package="comfyui-impact-pack"(dir name ≠ package name)
+        //   detector 报 PackageName="comfyui-impact-pack"
+        //   _nodeRepo.Get("comfyui-impact-pack") → null(id 不匹配)
+        //   _nodeRepo.GetByPackageName(envId, "comfyui-impact-pack") → 行(走 fallback)
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        envRepo.Upsert(new ComfyUI.Manager.Models.Environment
+        {
+            Id = "env-x",
+            Name = "env-x",
+            RootPath = "/x/env-x",
+            ComfyuiLayout = "standalone",
+        });
+        var repo = new NodeRepository(db.Factory);
+        repo.Upsert(new ScannedNode
+        {
+            Id = "ImpactPack",
+            EnvId = "env-x",
+            Package = "comfyui-impact-pack",
+            PackagePath = "/x/env-x/cust-nodes/ComfyUI-Impact-Pack",
+            Source = "env",
+        });
+
+        Assert.Null(repo.Get("comfyui-impact-pack"));                   // id lookup fails
+        var byPackage = repo.GetByPackageName("env-x", "comfyui-impact-pack");
+        Assert.NotNull(byPackage);
+        Assert.Equal("ImpactPack", byPackage!.Id);
+        Assert.Equal("comfyui-impact-pack", byPackage.Package);
     }
 }

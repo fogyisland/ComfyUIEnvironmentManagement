@@ -113,6 +113,27 @@ public sealed class NodeRepository : INodeRepository
         return reader.Read() ? Read(reader) : null;
     }
 
+    /// <summary>
+    /// v0.6.15.7 T9:ProcessLauncher 启动失败检测 fallback — 已知 nodeId 找不到时,
+    /// 用 package name 找(import error 报的是 package name,不是 dir name)。
+    /// 返回第一个 Package 字段精确匹配的行,无 → null。envId 为空 → null(不搜 sentinel)。
+    /// </summary>
+    public ScannedNode? GetByPackageName(string envId, string packageName)
+    {
+        if (string.IsNullOrEmpty(envId) || string.IsNullOrEmpty(packageName)) return null;
+        using var conn = _factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, env_id, package, package_path, version, author,
+                   description, class_mappings, status, scan_meta,
+                   last_scanned_at, locked, source, repository_url
+            FROM scanned_nodes WHERE env_id = @env AND package = @pkg LIMIT 1";
+        cmd.Parameters.AddWithValue("@env", envId);
+        cmd.Parameters.AddWithValue("@pkg", packageName);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read() ? Read(reader) : null;
+    }
+
     public void Upsert(ScannedNode node)
     {
         using var conn = _factory.Open();
