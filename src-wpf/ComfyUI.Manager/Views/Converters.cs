@@ -205,3 +205,34 @@ public sealed class BoolToEntryCountTextConverter : IMultiValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>
+/// RelativeTimeConverter:string (ISO-8601) → string (相对时间 "刚刚"/"N 分钟前"/etc)。
+/// 用于 DataGrid 列直接绑 LastScannedAt — DataGrid 没法绑到 static method,
+/// 需要 IValueConverter。null/空/解析失败 → "未知"。
+/// 阈值:&lt;60s=刚刚, &lt;60min=N 分钟前, &lt;24h=N 小时前, &lt;30d=N 天前, else=yyyy-MM-dd。
+/// v0.6.15.7 T8:env-detail 加载时间列显示「相对时间」而非裸 ISO-8601。
+/// </summary>
+public sealed class RelativeTimeConverter : IValueConverter
+{
+    public static readonly RelativeTimeConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not string s || string.IsNullOrEmpty(s)) return "未知";
+        if (!DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt))
+            return "未知";
+        var delta = DateTime.UtcNow - dt;
+        if (delta.TotalSeconds < 0) return "刚刚";
+        if (delta.TotalSeconds < 60) return "刚刚";
+        if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes} 分钟前";
+        if (delta.TotalHours < 24) return $"{(int)delta.TotalHours} 小时前";
+        if (delta.TotalDays < 30) return $"{(int)delta.TotalDays} 天前";
+        return dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}

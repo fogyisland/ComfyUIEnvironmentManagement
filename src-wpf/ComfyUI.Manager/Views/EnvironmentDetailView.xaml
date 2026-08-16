@@ -20,10 +20,10 @@
                 <!-- v0.6.15.7:仓库 URL(下载来源的 git 地址;env 装入行通常为空) -->
                 <DataGridTextColumn Header="仓库 URL" Binding="{Binding RepositoryUrl}" Width="200" />
 
-                <!-- v0.6.15.7:加载时间。绑原始 ISO-8601 值 —— DataGrid 列没法直接绑到
-                     EnvironmentDetailViewModel.FormatRelative(static method),需要额外 converter 或
-                     row wrapper。折中方案已在 plan self-review 里 accept。 -->
-                <DataGridTextColumn Header="加载时间" Binding="{Binding LastScannedAt}" Width="100" />
+                <!-- v0.6.15.7 T8:加载时间绑定走 RelativeTimeConverter(刚刚/N 分钟前/.../yyyy-MM-dd)。
+                     替换 v0.6.15.7 初版的裸 ISO-8601 binding,UX 更友好。 -->
+                <DataGridTextColumn Header="加载时间" Width="100"
+                                    Binding="{Binding LastScannedAt, Converter={StaticResource RelativeTime}}" />
 
                 <!-- v0.6.15.7:版本 tag(从 ScanMeta["installed_tag"])。key 不存在时 Dictionary
                      indexer 抛 KeyNotFoundException,WPF 绑定静默失败 → 单元格留空,符合预期。 -->
