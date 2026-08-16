@@ -213,4 +213,92 @@ public sealed class NodeRepositoryDownloadEnvIdTests : IDisposable
         Assert.Null(envRepo.Get(""));  // Get("") 也返回 null
         Assert.NotNull(envRepo.Get("env-real"));
     }
+
+    /// <summary>
+    /// v0.6.15.9 bug fix:node 先 sentinel env_id='' download 进来,后来 env-scan
+    /// 用同 id 跟真 env_id 调 Upsert,UPDATE clause 必须把 env_id 改过来。原版漏写
+    /// env_id=excluded.env_id 导致行永远留在 env_id='',ListByEnv(realEnvId) 查不到
+    /// → 节点管理面板显示"扫描不完整"(用户的 0246/1button 实际有目录却查不到)。
+    /// </summary>
+    [Fact]
+    public void Upsert_SameIdDifferentEnvId_UpdatesEnvId()
+    {
+        // 用 TestDb 完整 schema(TestDb fixture 的 environment 行可以填 root_path / layout 全)
+        using var db = new ComfyUI.Manager.Tests.Fakes.TestDb();
+        var repo = new NodeRepository(db.Factory);
+
+        // Step 1: catalog-local-download 走 sentinel env_id=''
+        repo.Upsert(new ScannedNode
+        {
+            Id = "pkg-moved",
+            EnvId = "",
+            Package = "pkg-moved",
+            PackagePath = "/local/pkg-moved",
+            Source = "download",
+            RepositoryUrl = "https://github.com/owner/repo",
+        });
+        Assert.Equal("", repo.Get("pkg-moved")!.EnvId);
+
+        // Step 2: env-scan 重新 upsert 同 id,env_id 改成真值
+        new EnvironmentRepository(db.Factory).Upsert(new ComfyUI.Manager.Models.Environment
+        {
+            Id = "env-real",
+            Name = "real",
+            RootPath = "/x",
+            ComfyuiLayout = "standalone",
+        });
+        repo.Upsert(new ScannedNode
+        {
+            Id = "pkg-moved",
+            EnvId = "env-real",
+            Package = "pkg-moved",
+            PackagePath = "/x/custom_nodes/pkg-moved",
+            Source = "env",
+        });
+
+        // 关键断言:env_id 真的改成 env-real
+        var loaded = repo.Get("pkg-moved");
+        Assert.NotNull(loaded);
+        Assert.Equal("env-real", loaded!.EnvId);
+        Assert.Equal("env", loaded.Source);  // source 也跟改
+        Assert.Equal("/x/custom_nodes/pkg-moved", loaded.PackagePath);
+    }
+
+    /// <summary>
+    /// 同 bug 的端到端验证:sentinel 行被 env-scan upsert 后,ListByEnv(realEnvId) 必须返回它。
+    /// 原 bug 表现:用户 env-d651ab01 的 custom_nodes/0246 跟 1button 已在 DB(env_id=''),
+    /// 跑 rescan → 面板里只有 ComfyUI-Light-N-Color(env_id 是真值因为是主流程装的)。
+    /// </summary>
+    [Fact]
+    public void ListByEnv_AfterScanUpsert_ReturnsRowsThatWereDownloadedSentinel()
+    {
+        using var db = new ComfyUI.Manager.Tests.Fakes.TestDb();
+        var repo = new NodeRepository(db.Factory);
+
+        // 3 个 catalog-download sentinel 行(env_id='')
+        repo.Upsert(new ScannedNode { Id = "0246", EnvId = "", Package = "0246", PackagePath = "/local/0246", Source = "download" });
+        repo.Upsert(new ScannedNode { Id = "1button", EnvId = "", Package = "1button", PackagePath = "/local/1button", Source = "download" });
+        repo.Upsert(new ScannedNode { Id = "other", EnvId = "", Package = "other", PackagePath = "/local/other", Source = "download" });
+
+        new EnvironmentRepository(db.Factory).Upsert(new ComfyUI.Manager.Models.Environment
+        {
+            Id = "env-real", Name = "real", RootPath = "/x", ComfyuiLayout = "standalone",
+        });
+
+        // rescan 仿真:2 个 node 改成真 env_id(像实际存在的目录),1 个保留 sentinel
+        // (实际不存在目录所以 rescan 不调 Upsert)
+        repo.Upsert(new ScannedNode { Id = "0246", EnvId = "env-real", Package = "0246", PackagePath = "/x/0246", Source = "env" });
+        repo.Upsert(new ScannedNode { Id = "1button", EnvId = "env-real", Package = "1button", PackagePath = "/x/1button", Source = "env" });
+
+        // ListByEnv 必须能查到这两个
+        var inEnv = repo.ListByEnv("env-real");
+        Assert.Equal(2, inEnv.Count);
+        Assert.Contains(inEnv, n => n.Id == "0246");
+        Assert.Contains(inEnv, n => n.Id == "1button");
+
+        // 老的 sentinel "other" 仍 env_id=''(没 rescan 到所以没改)
+        var stillSentinel = repo.Get("other");
+        Assert.NotNull(stillSentinel);
+        Assert.Equal("", stillSentinel!.EnvId);
+    }
 }

@@ -148,6 +148,8 @@ public sealed class NodeRepository : INodeRepository
                  @description, @class_mappings, @status, @scan_meta,
                  @last_scanned_at, @locked, @source, @repository_url)
             ON CONFLICT(id) DO UPDATE SET
+                env_id=excluded.env_id,
+                package=excluded.package,
                 package_path=excluded.package_path,
                 version=excluded.version,
                 author=excluded.author,
