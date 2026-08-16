@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using ComfyUI.Manager.Infrastructure;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -12,6 +13,10 @@ public record ErrorBannerEntry(
 public class ErrorBannerViewModel : ViewModelBase
 {
     public ObservableCollection<ErrorBannerEntry> Entries { get; } = new();
+
+    /// <summary>v0.6.15.8:测试用 — 是否有 Error/Critical 级别条目。</summary>
+    public bool HasErrors => Entries.Any(e =>
+        e.Severity == ErrorSeverity.Error || e.Severity == ErrorSeverity.Critical);
 
     public void Add(string code, string message, ErrorSeverity severity)
     {
