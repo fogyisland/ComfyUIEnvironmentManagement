@@ -10,6 +10,8 @@
     <converters:SectionEqualityToBoolConverter x:Key="SectionEquality" />
     <converters:EnumEqualsConverter x:Key="EnumEqualsConverter" />
     <converters:PickerFilterEqualsConverter x:Key="PickerFilterEqualsConverter" />
+    <!-- v0.6.15.10:bool → "trueText|falseText",node-mgmt row details 用 "存在|无"。 -->
+    <converters:BoolToTextConverter x:Key="BoolToText" />
     <views:BoolToBrushConverter x:Key="BoolToBrush" />
     <views:NullToVisibilityConverter x:Key="NullToVisibility" />
     <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />

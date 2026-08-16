@@ -221,13 +221,35 @@ public class NodeOperations
         // 取 HEAD sha 作为 version
         var headSha = await TryReadHeadShaAsync(targetDir, ct);
 
-        // 顺手记 installed_tag(若有),picker 拿来显示"v1.2.3"而不是 raw sha
+        // v0.6.15.10:跟 RescanAsync 同款 meta 充实 — install 完也写所有字段,
+        // 用户首次 install 后立刻能看 row details 不需要再 scan。
         var installedTag = await TryReadInstalledTagAsync(targetDir, ct);
-        var scanMeta = new Dictionary<string, string>();
-        if (!string.IsNullOrEmpty(installedTag))
+        var branch = await TryReadBranchAsync(targetDir, ct);
+        var head = await TryReadHeadCommitAsync(targetDir, ct);
+        var isDirty = await TryReadIsDirtyAsync(targetDir, ct);
+        var behind = await TryReadBehindCountAsync(targetDir, ct);
+        var dirSize = ComputeDirectorySize(targetDir);
+        var fileCount = ComputeFileCount(targetDir);
+        var pyFileCount = ComputePythonFileCount(targetDir);
+        var hasReqs = File.Exists(Path.Combine(targetDir, "requirements.txt"));
+        var hasPyproject = File.Exists(Path.Combine(targetDir, "pyproject.toml"));
+        var hasInit = File.Exists(Path.Combine(targetDir, "__init__.py"));
+        var scanMeta = new Dictionary<string, string>
         {
-            scanMeta["installed_tag"] = installedTag;
-        }
+            ["installed_tag"] = installedTag ?? "",
+            ["branch"] = branch ?? "",
+            ["last_commit_date"] = head?.Date ?? "",
+            ["last_commit_author"] = head?.Author ?? "",
+            ["last_commit_short"] = head?.ShortMessage ?? "",
+            ["is_dirty"] = isDirty ? "true" : "false",
+            ["behind_count"] = behind?.ToString() ?? "",
+            ["disk_size"] = dirSize.ToString(),
+            ["file_count"] = fileCount.ToString(),
+            ["python_files"] = pyFileCount.ToString(),
+            ["has_requirements"] = hasReqs ? "1" : "0",
+            ["has_pyproject"] = hasPyproject ? "1" : "0",
+            ["has_init"] = hasInit ? "1" : "0",
+        };
 
         _nodeRepo.Upsert(new ScannedNode
         {
@@ -458,13 +480,27 @@ public class NodeOperations
         {
             node.Version = headSha;
             node.LastScannedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-            // 顺手刷 installed_tag(升级后可能落在 tag 上)
+            // v0.6.15.10:跟 RescanAsync / InstallAsync 同款 meta 充实 — 升级完也写全字段。
+            node.ScanMeta ??= new Dictionary<string, string>();
             var installedTag = await TryReadInstalledTagAsync(node.PackagePath, ct);
-            if (!string.IsNullOrEmpty(installedTag))
-            {
-                node.ScanMeta ??= new Dictionary<string, string>();
-                node.ScanMeta["installed_tag"] = installedTag;
-            }
+            node.ScanMeta["installed_tag"] = installedTag ?? "";
+            var branch = await TryReadBranchAsync(node.PackagePath, ct);
+            node.ScanMeta["branch"] = branch ?? "";
+            var head = await TryReadHeadCommitAsync(node.PackagePath, ct);
+            node.ScanMeta["last_commit_date"] = head?.Date ?? "";
+            node.ScanMeta["last_commit_author"] = head?.Author ?? "";
+            node.ScanMeta["last_commit_short"] = head?.ShortMessage ?? "";
+            var isDirty = await TryReadIsDirtyAsync(node.PackagePath, ct);
+            node.ScanMeta["is_dirty"] = isDirty ? "true" : "false";
+            var behind = await TryReadBehindCountAsync(node.PackagePath, ct);
+            node.ScanMeta["behind_count"] = behind?.ToString() ?? "";
+            node.ScanMeta["disk_size"] = ComputeDirectorySize(node.PackagePath).ToString();
+            node.ScanMeta["file_count"] = ComputeFileCount(node.PackagePath).ToString();
+            node.ScanMeta["python_files"] = ComputePythonFileCount(node.PackagePath).ToString();
+            var dir = node.PackagePath;
+            node.ScanMeta["has_requirements"] = File.Exists(Path.Combine(dir, "requirements.txt")) ? "1" : "0";
+            node.ScanMeta["has_pyproject"] = File.Exists(Path.Combine(dir, "pyproject.toml")) ? "1" : "0";
+            node.ScanMeta["has_init"] = File.Exists(Path.Combine(dir, "__init__.py")) ? "1" : "0";
             try { _nodeRepo.Upsert(node); } catch { }
         }
         _logger?.Info("node-upgrade", $"env='{envId}' node='{nodeId}' 升级成功");
@@ -645,8 +681,19 @@ public class NodeOperations
             ct.ThrowIfCancellationRequested();
             var nodeId = Path.GetFileName(dir);
             var package = TryReadPackageName(dir) ?? nodeId;
+            // v0.6.15.10:scan 时一并发 6 个 git 命令 + 3 个文件统计(并行可读但保持顺序便于 debug)
             var sha = await TryReadHeadShaAsync(dir, ct).ConfigureAwait(false);
             var tag = await TryReadInstalledTagAsync(dir, ct).ConfigureAwait(false);
+            var branch = await TryReadBranchAsync(dir, ct).ConfigureAwait(false);
+            var head = await TryReadHeadCommitAsync(dir, ct).ConfigureAwait(false);
+            var isDirty = await TryReadIsDirtyAsync(dir, ct).ConfigureAwait(false);
+            var behind = await TryReadBehindCountAsync(dir, ct).ConfigureAwait(false);
+            var dirSize = ComputeDirectorySize(dir);
+            var fileCount = ComputeFileCount(dir);
+            var pyFileCount = ComputePythonFileCount(dir);
+            var hasReqs = File.Exists(Path.Combine(dir, "requirements.txt"));
+            var hasPyproject = File.Exists(Path.Combine(dir, "pyproject.toml"));
+            var hasInit = File.Exists(Path.Combine(dir, "__init__.py"));
             var node = new ScannedNode
             {
                 Id = nodeId,
@@ -658,6 +705,20 @@ public class NodeOperations
                 ScanMeta = new Dictionary<string, string>
                 {
                     ["installed_tag"] = tag ?? "",
+                    // v0.6.15.10:git 维度(空 = 未知,UI 不显示)
+                    ["branch"] = branch ?? "",
+                    ["last_commit_date"] = head?.Date ?? "",
+                    ["last_commit_author"] = head?.Author ?? "",
+                    ["last_commit_short"] = head?.ShortMessage ?? "",
+                    ["is_dirty"] = isDirty ? "true" : "false",
+                    ["behind_count"] = behind?.ToString() ?? "",
+                    // v0.6.15.10:文件系统维度(总拿)
+                    ["disk_size"] = dirSize.ToString(),
+                    ["file_count"] = fileCount.ToString(),
+                    ["python_files"] = pyFileCount.ToString(),
+                    ["has_requirements"] = hasReqs ? "1" : "0",
+                    ["has_pyproject"] = hasPyproject ? "1" : "0",
+                    ["has_init"] = hasInit ? "1" : "0",
                 },
             };
             _nodeRepo.Upsert(node);
@@ -778,6 +839,153 @@ public class NodeOperations
             if (first.Length > 0) return first;
         }
         return null;
+    }
+
+    // ──────────────── v0.6.15.10:节点 meta 充实(git / 文件系统) ────────────────
+
+    /// <summary>
+    /// v0.6.15.10:读节点当前所在分支(<c>git branch --show-current</c>)。
+    /// 非 git 目录 / detached HEAD / 命令失败 → 返 null 不抛。
+    /// </summary>
+    internal async Task<string?> TryReadBranchAsync(string workdir, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _git.RunAsync(
+                workdir,
+                new[] { "branch", "--show-current" },
+                TimeSpan.FromSeconds(10), ct);
+            if (!r.Ok) return null;
+            var branch = r.Stdout.Trim();
+            return string.IsNullOrEmpty(branch) ? null : branch;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.10:读 HEAD commit 三元组(ISO8601 date | author | subject 第一行)。
+    /// <c>git log -1 --format=%cI|%an|%s</c> 一次拿到 3 个字段,省 3 次 git 调用。
+    /// 失败 → 返 null;调用方按 null 走 "git 维度未知" 路径(留空不显示)。
+    /// </summary>
+    internal async Task<(string Date, string Author, string ShortMessage)?>
+        TryReadHeadCommitAsync(string workdir, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _git.RunAsync(
+                workdir,
+                new[] { "log", "-1", "--format=%cI|%an|%s" },
+                TimeSpan.FromSeconds(10), ct);
+            if (!r.Ok) return null;
+            var raw = r.Stdout.Trim();
+            if (string.IsNullOrEmpty(raw)) return null;
+            var parts = raw.Split('|', 3);
+            if (parts.Length < 3) return null;
+            return (parts[0], parts[1], parts[2]);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.10:工作区是否 dirty(<c>git status --porcelain</c> 非空)。
+    /// 非 git 目录 / 命令失败 → 返 false(默认 "干净",跟大多数 clone 后状态一致)。
+    /// </summary>
+    internal async Task<bool> TryReadIsDirtyAsync(string workdir, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _git.RunAsync(
+                workdir,
+                new[] { "status", "--porcelain" },
+                TimeSpan.FromSeconds(10), ct);
+            if (!r.Ok) return false;
+            return !string.IsNullOrWhiteSpace(r.Stdout);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.10:落后 upstream tracking 分支几个 commit(<c>git rev-list --count HEAD..@{u}</c>)。
+    /// 没设 upstream(@{u} 解析失败)/命令失败 → 返 null(留空不显示)。
+    /// </summary>
+    internal async Task<int?> TryReadBehindCountAsync(string workdir, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _git.RunAsync(
+                workdir,
+                new[] { "rev-list", "--count", "HEAD..@{u}" },
+                TimeSpan.FromSeconds(10), ct);
+            if (!r.Ok) return null;
+            var trimmed = r.Stdout.Trim();
+            if (string.IsNullOrEmpty(trimmed)) return null;
+            return int.TryParse(trimmed, out var n) ? n : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.10:目录总字节数(recursive file size sum)。
+    /// 异常 → 返 0 不抛(权限拒绝 / 符号链接循环等不阻塞扫描)。
+    /// </summary>
+    internal static long ComputeDirectorySize(string dir)
+    {
+        try
+        {
+            long total = 0;
+            foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                try { total += new FileInfo(f).Length; }
+                catch { /* 单文件失败不阻塞 */ }
+            }
+            return total;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.10:目录文件总数(recursive)。异常 → 返 0 不抛。
+    /// </summary>
+    internal static int ComputeFileCount(string dir)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Count();
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.10:<c>.py</c> 文件数(recursive)。异常 → 返 0 不抛。
+    /// </summary>
+    internal static int ComputePythonFileCount(string dir)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(dir, "*.py", SearchOption.AllDirectories).Count();
+        }
+        catch
+        {
+            return 0;
+        }
     }
 }
 

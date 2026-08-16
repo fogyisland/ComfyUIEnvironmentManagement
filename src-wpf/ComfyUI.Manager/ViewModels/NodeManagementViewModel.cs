@@ -69,11 +69,38 @@ public class NodeManagementViewModel : ViewModelBase
         {
             if (SetField(ref _busy, value))
             {
+                // v0.6.15.9.2 hotfix:Busy setter 在 ScanAsync / UpgradeAsync / DeleteAsync
+                // 末尾被调,这些方法都 ConfigureAwait(false) → setter 跑在线程池。
+                // RaiseCanExecuteChanged → WPF CommandBinding → UpdateCanExecute → 读
+                // Button.Command → 抛 InvalidOperationException("调用线程无法访问此对象")。
+                // 跟 collection mutation 同款修法:captured DispatcherSynchronizationContext
+                // .Post 回去;测试无 SyncContext → Post 跳过 → 同步直调(行为不变)。
+                RaiseCanExecuteChangedOnUi();
+            }
+        }
+    }
+
+    /// <summary>Busy 改了之后通知 4 个命令 UI 重算 CanExecute。
+    /// 生产路径(DispatcherSynchronizationContext 在 ctor 捕获)→ Post 回 UI 线程;
+    /// 测试路径(无 SyncContext)→ 同步直调,跟原来行为一致。</summary>
+    private void RaiseCanExecuteChangedOnUi()
+    {
+        if (_uiContext is not null)
+        {
+            _uiContext.Post(_ =>
+            {
                 ScanCommand.RaiseCanExecuteChanged();
                 InstallCommand.RaiseCanExecuteChanged();
                 DeleteCommand.RaiseCanExecuteChanged();
                 UpgradeCommand.RaiseCanExecuteChanged();
-            }
+            }, null);
+        }
+        else
+        {
+            ScanCommand.RaiseCanExecuteChanged();
+            InstallCommand.RaiseCanExecuteChanged();
+            DeleteCommand.RaiseCanExecuteChanged();
+            UpgradeCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -105,8 +132,12 @@ public class NodeManagementViewModel : ViewModelBase
         // custom test Post to defer mutations asynchronously.
         var ctx = SynchronizationContext.Current;
         _uiContext = ctx is System.Windows.Threading.DispatcherSynchronizationContext ? ctx : null;
-        ScanCommand = new RelayCommand(async _ => await ScanAsync(), _ => !Busy);
-        InstallCommand = new RelayCommand(_ => OpenInstallPicker(), _ => !Busy);
+        // v0.6.15.9 P0:scan/install 永远可点 — 用户首扫完想再点 scan 把漏的自定义节点
+        // 放出来(原 !Busy gate 锁住,实测按钮一直灰,ScanCommand.CanExecute 一返回
+        // false WPF 就 disable)。并发 scan 由 ConfigureAwait(false) + 各扫独立
+        // snapshot 替换保证 last-writer-wins 不冲突 ObservableCollection。
+        ScanCommand = new RelayCommand(async _ => await ScanAsync());
+        InstallCommand = new RelayCommand(_ => OpenInstallPicker());
         DeleteCommand = new RelayCommand(
             async p => await DeleteAsync(p as ScannedNode),
             p => p is ScannedNode && !Busy);
@@ -120,6 +151,15 @@ public class NodeManagementViewModel : ViewModelBase
 
     private async Task ScanAsync()
     {
+        // v0.6.15.9 P0:scan/install 永远可点 — ScanCommand 无 !Busy gate(按钮一直
+        // enabled)。用户连续点击 → 多次 RescanAsync 并发跑;Nodes collection 的
+        // 重置由各次 rescan 各自的 snapshot 替换(last writer wins)。配置 false
+        // continuation 不依赖 UI thread,所以并发 scan 之间不会互相 inflate
+        // ObservableCollection 抛 cross-thread。
+        //
+        // 不在 ScanAsync 内部 `if (Busy) return` — upgrade-triggered rescan
+        // (UpgradeAsync 内部 await ScanAsync) 走同一方法,Busy=true 时会被短路,
+        // 升完不刷新。
         Busy = true;
         try
         {

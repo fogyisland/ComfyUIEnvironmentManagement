@@ -1,20 +1,70 @@
 <UserControl x:Class="ComfyUI.Manager.Views.NodeManagementView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <DataGrid ItemsSource="{Binding Nodes}"
+    <!-- v0.6.15.10:行 details 展开状态绑 ScannedNode.RowDetailsVisible(瞬时属性,DB 不持久化)。
+         Chevron 列点 button 改这个 flag,DataGrid 自动按 visibility 展开/收起 row details。
+         RowDetailsTemplate 里 2-col key-value 网格展示所有 scan meta(git 维度 + 文件系统维度)。 -->
+    <DataGrid x:Name="NodeGrid"
+              ItemsSource="{Binding Nodes}"
               SelectedItem="{Binding SelectedNode}"
               AutoGenerateColumns="False" IsReadOnly="True"
-              MinHeight="300">
+              MinHeight="300"
+              LoadingRow="OnLoadingRow"
+              UnloadingRow="OnUnloadingRow">
+        <!-- v0.6.15.10:每行 RowDetailsVisibility 跟着 ScannedNode.RowDetailsVisible(transient)翻。
+             RowDetailsVisibility 不是 DependencyProperty,Style.Setter 绑不上,改走 code-behind
+             OnLoadingRow 订阅 ScannedNode.PropertyChanged 手动翻 RowDetailsVisibility enum。 -->
         <DataGrid.Columns>
+            <!-- v0.6.15.10:chevron 列 — 每行可展开/收起 row details 的入口。 -->
+            <DataGridTemplateColumn Header="" Width="32">
+                <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                        <ToggleButton IsChecked="{Binding RowDetailsVisible, Mode=TwoWay}"
+                                      Cursor="Hand"
+                                      ToolTip="展开/收起详细信息"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Width="20" Height="20"
+                                      Padding="0"
+                                      Background="Transparent"
+                                      BorderThickness="0">
+                            <TextBlock Text="▸" FontSize="12"
+                                       HorizontalAlignment="Center"
+                                       RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="RenderTransform">
+                                            <Setter.Value>
+                                                <RotateTransform Angle="0" />
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RowDetailsVisible}" Value="True">
+                                                <Setter Property="RenderTransform">
+                                                    <Setter.Value>
+                                                        <RotateTransform Angle="90" />
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </ToggleButton>
+                    </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
             <DataGridTextColumn Header="包名" Binding="{Binding Package}" Width="*" />
-            <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="100" />
+            <!-- v0.6.15.9.2:用 DisplayVersion (tag 优先 / SHA 前 7 位 fallback) 替 SHA,
+                 用户看到的版本更有意义。删独立的「版本 tag」列(tag 已经在 IsOutdated
+                 跟 DisplayVersion 计算里用,UI 跟版本列重复)。 -->
+            <DataGridTextColumn Header="版本" Binding="{Binding DisplayVersion}" Width="120" />
             <DataGridTextColumn Header="作者" Binding="{Binding Author}" Width="*" />
             <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
             <DataGridCheckBoxColumn Header="锁" Binding="{Binding Locked}" Width="40" />
             <DataGridTextColumn Header="仓库 URL" Binding="{Binding RepositoryUrl}" Width="200" />
             <DataGridTextColumn Header="加载时间" Width="100"
                                 Binding="{Binding LastScannedAt, Converter={StaticResource RelativeTime}}" />
-            <DataGridTextColumn Header="版本 tag" Binding="{Binding ScanMeta[installed_tag]}" Width="100" />
             <DataGridTemplateColumn Header="加载错误" Width="100">
                 <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
@@ -56,5 +106,119 @@
                 </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
         </DataGrid.Columns>
+
+        <!-- v0.6.15.10:row details 模板 — 用户点 chevron 展开,显示所有 scan meta 的 key-value 网格。
+             3 个分区:git 维度(分支/提交/dirty/落后)、文件系统维度(大小/文件数/py 数)、
+             ComfyUI 加载维度(requirements/pyproject/__init__)。空值显示 "—",不显 binding error。 -->
+        <DataGrid.RowDetailsTemplate>
+            <DataTemplate>
+                <Border Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource OutlineBrush}"
+                        BorderThickness="1,0,1,1"
+                        Padding="14,8,14,12" Margin="0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 分区 1:Git 维度 -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Git 信息"
+                                   FontSize="12" FontWeight="Bold" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource OnSurfaceBrush}" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" FontSize="11" Margin="0,2">
+                            <Run Text="分支:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding Branch, TargetNullValue='—', FallbackValue='—'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="0" FontSize="11" Margin="0,2">
+                            <Run Text="最后提交:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding LastCommitDate, TargetNullValue='—', FallbackValue='—'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="0" FontSize="11" Margin="0,2"
+                                   TextTrimming="CharacterEllipsis">
+                            <Run Text="提交作者:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding LastCommitAuthor, TargetNullValue='—', FallbackValue='—'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="4" Grid.Column="0" FontSize="11" Margin="0,2"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding LastCommitShort}">
+                            <Run Text="提交说明:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding LastCommitShort, TargetNullValue='—', FallbackValue='—'}" />
+                        </TextBlock>
+
+                        <!-- dirty badge + behind count -->
+                        <Border Grid.Row="0" Grid.Column="0" HorizontalAlignment="Right" Margin="0,-2,0,0"
+                                Background="#FF9800" CornerRadius="3" Padding="6,1"
+                                Visibility="{Binding IsDirty, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                            <TextBlock Text="工作区有未提交修改" Foreground="White" FontSize="10" />
+                        </Border>
+
+                        <!-- 分区 2:落后 upstream -->
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,2">
+                            <TextBlock Text="落后 upstream:" FontSize="11"
+                                       Foreground="{DynamicResource OutlineBrush}" />
+                            <TextBlock Text="{Binding BehindCountDisplay, TargetNullValue='—', FallbackValue='—'}"
+                                       FontSize="11" Margin="4,0,0,0"
+                                       Foreground="{DynamicResource OnSurfaceBrush}" />
+                            <TextBlock Text=" 个 commit" FontSize="11"
+                                       Foreground="{DynamicResource OutlineBrush}" />
+                        </StackPanel>
+
+                        <!-- 分区 2:文件系统维度 -->
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="文件信息"
+                                   FontSize="12" FontWeight="Bold" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource OnSurfaceBrush}" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" FontSize="11" Margin="0,2"
+                                   Visibility="Collapsed">
+                            <Run Text="占位" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="1" FontSize="11" Margin="0,2">
+                            <Run Text="磁盘大小:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding DiskSizeDisplay, TargetNullValue='—', FallbackValue='—'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="1" FontSize="11" Margin="0,2">
+                            <Run Text="文件总数:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding FileCountDisplay, TargetNullValue='—', FallbackValue='—'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="4" Grid.Column="1" FontSize="11" Margin="0,2">
+                            <Run Text="Python 文件:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding PythonFileCountDisplay, TargetNullValue='—', FallbackValue='—'}" />
+                        </TextBlock>
+
+                        <!-- 分区 3:ComfyUI 加载维度 -->
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="ComfyUI 加载"
+                                   FontSize="12" FontWeight="Bold" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource OnSurfaceBrush}" />
+                        <TextBlock Grid.Row="1" Grid.Column="2" FontSize="11" Margin="0,2">
+                            <Run Text="requirements.txt:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding HasRequirements, Mode=OneWay, Converter={StaticResource BoolToText}, ConverterParameter='存在|无'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="2" Grid.Column="2" FontSize="11" Margin="0,2">
+                            <Run Text="pyproject.toml:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding HasPyproject, Mode=OneWay, Converter={StaticResource BoolToText}, ConverterParameter='存在|无'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="3" Grid.Column="2" FontSize="11" Margin="0,2">
+                            <Run Text="__init__.py:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding HasInit, Mode=OneWay, Converter={StaticResource BoolToText}, ConverterParameter='存在|无'}" />
+                        </TextBlock>
+                        <TextBlock Grid.Row="4" Grid.Column="2" FontSize="11" Margin="0,2"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding PackagePath}">
+                            <Run Text="本地路径:" Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text="{Binding PackagePath, Mode=OneWay}" />
+                        </TextBlock>
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </DataGrid.RowDetailsTemplate>
     </DataGrid>
 </UserControl>
