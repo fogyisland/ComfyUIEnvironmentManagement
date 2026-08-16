@@ -6,13 +6,15 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Services;
 
 /// <summary>
 /// v0.6.11+ dashboard/splash polish:GitHub Releases API 全 list fetch + 24h cache。
-/// Cache 走 ctor 的 cacheFilePath(默认 %APPDATA%/ComfyUI-Manager/release_cache.json)。
+/// v0.6.16:Cache 走 <see cref="LocalDataPaths"/>(默认 &lt;projectRoot&gt;/.manager/release_cache.json;
+/// 旧 %APPDATA%/ComfyUI-Manager/release_cache.json 由 LocalDataMigrationService 一次性迁过来)。
 /// 网络失败:返 last cached(可空),<see cref="LastSyncUtc"/> 只在成功 sync / cache hit 时才有值。
 /// cache 文件损坏(非法 JSON)会抛 <see cref="JsonException"/> — 上层应视为可诊断的配置错误。
 /// </summary>
@@ -30,6 +32,24 @@ public sealed class GitHubReleaseService
     private readonly string _cacheFilePath;
     private readonly TimeSpan _cacheTtl;
 
+    /// <summary>
+    /// 生产 DI 入口 —— 接受 <see cref="LocalDataPaths"/> 提供 cache 路径。
+    /// </summary>
+    public GitHubReleaseService(
+        HttpClient http,
+        LocalDataPaths paths,
+        AppLogger? logger = null,
+        TimeSpan? cacheTtl = null)
+    {
+        _http = http;
+        _logger = logger;
+        _cacheFilePath = paths.ReleaseCacheFile;
+        _cacheTtl = cacheTtl ?? TimeSpan.FromHours(24);
+    }
+
+    /// <summary>
+    /// 测试 seam —— 显式传入 cache 路径。生产代码走 LocalDataPaths ctor。
+    /// </summary>
     public GitHubReleaseService(
         HttpClient http,
         AppLogger? logger = null,
@@ -38,9 +58,7 @@ public sealed class GitHubReleaseService
     {
         _http = http;
         _logger = logger;
-        _cacheFilePath = string.IsNullOrEmpty(cacheFilePath)
-            ? DefaultCachePath()
-            : cacheFilePath;
+        _cacheFilePath = cacheFilePath;
         _cacheTtl = cacheTtl ?? TimeSpan.FromHours(24);
     }
 
@@ -94,9 +112,6 @@ public sealed class GitHubReleaseService
     }
 
     // ---- cache helpers ----
-    private static string DefaultCachePath() => Path.Combine(
-        System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-        "ComfyUI-Manager", "release_cache.json");
 
     private CacheEnvelope? TryReadCache()
     {

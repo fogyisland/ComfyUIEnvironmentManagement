@@ -12,7 +12,7 @@ using ComfyUI.Manager.Models;
 namespace ComfyUI.Manager.Data;
 
 /// <summary>
-/// BaseEnvProfileLoader:从 &lt;appDataDir&gt;/base_env_profiles.json 读取 profile 列表。
+/// v0.6.16: 从 &lt;localDataDir&gt;/base_env_profiles.json 读取 profile 列表。
 /// 文件缺失 / 解析失败 / 空内容 → 走 <see cref="GetLiveDefaultsAsync"/>
 /// (运行时拉取 PyTorch stable 版本生成 6 个默认 profile);拉取失败再回退
 /// <see cref="GetHardcodedDefaults"/>(v0.6.5 硬编码 5 个)。
@@ -27,37 +27,37 @@ public class BaseEnvProfileLoader
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly string _appDataDir;
+    private readonly string _localDataDir;
     private readonly string? _cacheDir;
     private readonly HttpClient? _http;
 
     /// <summary>
     /// </summary>
-    /// <param name="appDataDir">存放 base_env_profiles.json 的目录。</param>
+    /// <param name="localDataDir">存放 base_env_profiles.json 的目录(v0.6.16: &lt;projectRoot&gt;/.manager/)。</param>
     /// <param name="cacheDir">PyTorch 版本缓存目录;null → 不拉 live,只走 hardcoded。</param>
     /// <param name="http">共享 HttpClient;null → 不拉 live,只走 hardcoded。</param>
     public BaseEnvProfileLoader(
-        string appDataDir,
+        string localDataDir,
         string? cacheDir = null,
         HttpClient? http = null)
     {
-        if (string.IsNullOrWhiteSpace(appDataDir))
+        if (string.IsNullOrWhiteSpace(localDataDir))
         {
-            throw new ArgumentException("appDataDir must be non-empty", nameof(appDataDir));
+            throw new ArgumentException("localDataDir must be non-empty", nameof(localDataDir));
         }
-        _appDataDir = appDataDir;
+        _localDataDir = localDataDir;
         _cacheDir = cacheDir;
         _http = http;
     }
 
     /// <summary>
-    /// 从 <c>&lt;appDataDir&gt;/base_env_profiles.json</c> 加载 profiles。
+    /// 从 <c>&lt;localDataDir&gt;/base_env_profiles.json</c> 加载 profiles。
     /// 文件缺失 / 解析失败 / 空字符串 → 走 <see cref="GetLiveDefaultsAsync"/>。
     /// 有效空数组 "[]" 视为用户明确选择空列表,直接返回(不回退)。
     /// </summary>
     public virtual async Task<IReadOnlyList<BaseEnvProfile>> LoadAsync(CancellationToken ct = default)
     {
-        var path = Path.Combine(_appDataDir, FileName);
+        var path = Path.Combine(_localDataDir, FileName);
         if (File.Exists(path))
         {
             var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
@@ -478,7 +478,8 @@ public class BaseEnvProfileLoader
     /// <item>不修改 <c>TorchVersion</c> / <c>CudaVersion</c> / <c>Channel</c>
     ///   / <c>Packages</c>,所以 <see cref="BaseEnvProfile.BuildPipArgs"/>
     ///   不会受影响 — pip install 命令还是 pin 实际 torch 版本。</item>
-    /// <item>user override JSON 文件(<c>base_env_profiles.json</c>)由
+    /// <item>user override JSON 文件(<c>base_env_profiles.json</c>,位于
+    ///   <c>&lt;projectRoot&gt;/.manager/</c>)由
     ///   <see cref="LoadAsync"/> 直接反序列化,不经此方法 — 用户在 JSON 里
     ///   明知 2.1 不可用还写,UI 应忠实显示用户选择,不强行加后缀。</item>
     /// </list>

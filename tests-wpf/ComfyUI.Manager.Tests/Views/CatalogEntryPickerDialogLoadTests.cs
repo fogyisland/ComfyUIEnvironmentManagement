@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
@@ -26,9 +27,11 @@ public class CatalogEntryPickerDialogLoadTests
     {
         // 构造 VM 不需要 db 数据,BuildItems() 内部空 catalog / 空 scanned_nodes 即可。
         var catalogRepo = new CatalogRepository(new CatalogCacheStore());
-        var nodeRepo = new NodeRepository(new SqliteConnectionFactory());
+        var nodeRepo = new NodeRepository(new SqliteConnectionFactory(
+            Path.Combine(Path.GetTempPath(), $"picker-{Guid.NewGuid():N}.db")));
         var versionRepo = new NodeVersionRepository(new CatalogCacheStore());
-        var envRepo = new EnvironmentRepository(new SqliteConnectionFactory());
+        var envRepo = new EnvironmentRepository(new SqliteConnectionFactory(
+            Path.Combine(Path.GetTempPath(), $"picker-{Guid.NewGuid():N}.db")));
         var ops = new TestOnlyOps(envRepo, nodeRepo);
         return new CatalogEntryPickerViewModel(
             catalogRepo, nodeRepo, ops, versionRepo, envId: "env-test", logger: null);

@@ -20,6 +20,9 @@ Thumbs.db
 # Local config
 .env
 
+# v0.6.16: persistent app data (settings, state.db, caches)
+.manager/
+
 # Claude local
 .claude/
 

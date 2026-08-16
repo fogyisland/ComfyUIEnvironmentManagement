@@ -1,12 +1,15 @@
 using System;
 using System.IO;
 using Microsoft.Data.Sqlite;
+using ComfyUI.Manager.Infrastructure;
 
 namespace ComfyUI.Manager.Data;
 
 /// <summary>
 /// SqliteConnectionFactory:用户数据表 db (environments / scanned_nodes /
-/// process_state / version_history / nodes 等)。位于 %APPDATA%/ComfyUI-Manager/state.db。
+/// process_state / version_history / nodes 等)。路径由 <see cref="LocalDataPaths"/>
+/// 提供(默认 &lt;projectRoot&gt;/.manager/state.db;旧版 %APPDATA%/ComfyUI-Manager/state.db
+/// 由 <see cref="LocalDataMigrationService"/> 一次性迁过来)。
 ///
 /// 升级兼容:首次 v0.6.4 启动时,如果旧的 catalog.db 存在且 state.db 不存在,
 /// 自动 File.Move(catalog.db → state.db),把旧 db 里残留的 user 表带过去。
@@ -18,13 +21,16 @@ public sealed class SqliteConnectionFactory
 
     public string DbPath => _dbPath;
 
-    public SqliteConnectionFactory()
+    /// <summary>
+    /// 生产 DI 入口 —— 接受 <see cref="LocalDataPaths"/> 提供 db 路径。
+    /// </summary>
+    public SqliteConnectionFactory(LocalDataPaths paths)
     {
-        _dbPath = ResolveDbPath();
+        _dbPath = ResolveDbPath(paths.StateDbFile);
     }
 
     /// <summary>
-    /// Constructor used by tests to inject an explicit db path.
+    /// 测试 seam —— 显式传入 db 路径。生产代码走 LocalDataPaths ctor。
     /// </summary>
     public SqliteConnectionFactory(string dbPath)
     {
@@ -36,7 +42,7 @@ public sealed class SqliteConnectionFactory
     /// and <c>state.db</c> is not, renames it. Caller should not rename the
     /// file out from under running SQLite connections.
     /// </summary>
-    private static string ResolveDbPath()
+    private static string ResolveDbPath(string newPath)
     {
         var overridePath = Environment.GetEnvironmentVariable("COMFY_MGR_DB_PATH");
         if (!string.IsNullOrWhiteSpace(overridePath))
@@ -44,13 +50,10 @@ public sealed class SqliteConnectionFactory
             return overridePath;
         }
 
-        var appData = Environment.GetFolderPath(
-            Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "ComfyUI-Manager");
-        Directory.CreateDirectory(dir);
+        var dir = Path.GetDirectoryName(newPath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-        var newPath = Path.Combine(dir, "state.db");
-        var legacyPath = Path.Combine(dir, "catalog.db");
+        var legacyPath = Path.Combine(dir ?? "", "catalog.db");
         if (!File.Exists(newPath) && File.Exists(legacyPath))
         {
             // 一次性升级迁移:旧 catalog.db 含混合表,移到 state.db

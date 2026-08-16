@@ -16,9 +16,9 @@ public sealed class PyTorchVersionCache
     public static readonly TimeSpan Ttl = TimeSpan.FromHours(1);
     public const string FileName = "pytorch_versions_cache.json";
 
-    public PyTorchVersionCache(string appDataDir)
+    public PyTorchVersionCache(string localDataDir)
     {
-        FilePath = Path.Combine(appDataDir, FileName);
+        FilePath = Path.Combine(localDataDir, FileName);
     }
 
     public string FilePath { get; }

@@ -107,7 +107,8 @@ public class CatalogViewModelProgressTests : IDisposable
         var verRepo = new NodeVersionRepository(cacheStore);
         var nodeOps = MakeNodeOps();
         var fake = new FakeCatalogRefreshService();
-        var settingsRepo = new SettingsRepository();
+        var settingsRepo = new SettingsRepository(
+            Path.Combine(Path.GetTempPath(), $"settings-cvm-{Guid.NewGuid():N}.json"));
         var state = new RateLimitState();
         var vm = new CatalogViewModel(
             catRepo, verRepo, nodeOps, fake, new Settings(), settingsRepo,

@@ -88,7 +88,7 @@ public sealed class PyTorchVersionDirectoryTests : IDisposable
         /// the preset list verbatim.
         /// </summary>
         public FakeCache(IReadOnlyList<PyTorchVersion>? preset, string scratchDir)
-            : base(appDataDir: scratchDir)
+            : base(localDataDir: scratchDir)
         {
             _preset = preset;
         }

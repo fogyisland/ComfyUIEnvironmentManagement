@@ -4,13 +4,17 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Infrastructure;
 
 namespace ComfyUI.Manager.Services;
 
 /// <summary>
 /// v0.6.13-B: GitHubCatalogMetadataService 的本地 24h TTL cache。
-/// 文件:&lt;%APPDATA%/ComfyUI-Manager/catalog_metadata_cache.json&gt;,v1 schema:
-/// <code>{ "version": 1, "entries": { "owner/repo": CachedMetadata, ... } }</code>
+/// v0.6.16: 文件路径由 <see cref="LocalDataPaths"/> 提供
+/// (默认 &lt;projectRoot&gt;/.manager/catalog_metadata_cache.json;
+/// 旧 %APPDATA%/ComfyUI-Manager/catalog_metadata_cache.json 由 LocalDataMigrationService
+/// 一次性迁过来)。
+/// v1 schema: <code>{ "version": 1, "entries": { "owner/repo": CachedMetadata, ... } }</code>
 /// Atomic write via temp + rename。
 /// </summary>
 public sealed class MetadataCache
@@ -23,16 +27,21 @@ public sealed class MetadataCache
 
     public string FilePath { get; }
 
-    public MetadataCache() : this(DefaultPath()) { }
+    /// <summary>
+    /// 生产 DI 入口 —— 接受 <see cref="LocalDataPaths"/> 提供 cache 路径。
+    /// </summary>
+    public MetadataCache(LocalDataPaths paths)
+    {
+        FilePath = paths.CatalogMetadataCacheFile
+            ?? throw new ArgumentNullException(nameof(paths));
+    }
+
+    /// <summary>
+    /// 测试 seam —— 显式传入 cache 路径。生产代码走 LocalDataPaths ctor。
+    /// </summary>
     public MetadataCache(string filePath)
     {
         FilePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
-    }
-
-    public static string DefaultPath()
-    {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "ComfyUI-Manager", "catalog_metadata_cache.json");
     }
 
     /// <summary>

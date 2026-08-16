@@ -33,9 +33,9 @@ public class PyTorchVersionCatalogCache
 
     public const string FileName = "pytorch_catalog_cache.json";
 
-    public PyTorchVersionCatalogCache(string appDataDir)
+    public PyTorchVersionCatalogCache(string localDataDir)
     {
-        FilePath = Path.Combine(appDataDir, FileName);
+        FilePath = Path.Combine(localDataDir, FileName);
     }
 
     public string FilePath { get; }

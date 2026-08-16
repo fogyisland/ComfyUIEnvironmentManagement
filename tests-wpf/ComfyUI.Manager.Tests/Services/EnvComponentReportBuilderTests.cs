@@ -343,7 +343,7 @@ public sealed class EnvComponentReportBuilderTests : IDisposable
     {
         private readonly IReadOnlyList<BaseEnvProfile> _profiles;
         public FakeProfileLoader(IReadOnlyList<BaseEnvProfile> profiles)
-            : base(appDataDir: Path.Combine(Path.GetTempPath(), "fake-appdata-" + Guid.NewGuid().ToString("N")))
+            : base(localDataDir: Path.Combine(Path.GetTempPath(), "fake-appdata-" + Guid.NewGuid().ToString("N")))
         {
             _profiles = profiles;
         }

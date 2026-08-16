@@ -85,18 +85,30 @@ public partial class App : Application
         // venv 检查只在 EnvCreatorService 创建 env 时做(那时 python.exe
         // 路径用户已指定),启动时拦着太烦。
 
-        var dbFactory = new SqliteConnectionFactory();
-        var envRepo = new EnvironmentRepository(dbFactory);
-
-        // v0.6.11+ dashboard/splash polish:Stage 2 LoadDatabase 完成。
-        _splashVm?.ReportStageProgress(Stage.LoadDatabase, 100);
+        // v0.6.16: 所有持久化数据从 %APPDATA%/ComfyUI-Manager/ 搬到 <projectRoot>/.manager/。
+        // LocalDataPaths 构造时自动 .CreateDirectory(.manager) — 即使迁移失败,
+        // 新路径也能保证存在。
+        var localPaths = new LocalDataPaths(projectRoot);
 
         // v0.6.7.1 + v0.6.12: 在 logger / launcher 构造前先 Load settings —
         // logger 读 LogDirectory(决定 Logs 父目录),launcher 读 startupTimeoutSeconds / locale / models。
         // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
         // 不会改 ComfyUiStartupTimeoutSeconds,所以顺序安全。
-        var settingsRepo = new SettingsRepository();
+        // v0.6.16: 走 LocalDataPaths 注入,settings.json 现在落 <projectRoot>/.manager/。
+        var settingsRepo = new SettingsRepository(localPaths);
         var settings = settingsRepo.Load();
+
+        // v0.6.16: 一次性迁移 %APPDATA%/ComfyUI-Manager/ → <projectRoot>/.manager/。
+        // 必须先于 SqliteConnectionFactory 构造 —— factory 第一次 Open() 就读 state.db,
+        // 必须保证 .manager/ 里有旧文件被复制过来。
+        new LocalDataMigrationService(localPaths, logger: null).RunIfNeeded();
+
+        // v0.6.16: db path 也走 LocalDataPaths 注入 —— state.db 落 <projectRoot>/.manager/。
+        var dbFactory = new SqliteConnectionFactory(localPaths);
+        var envRepo = new EnvironmentRepository(dbFactory);
+
+        // v0.6.11+ dashboard/splash polish:Stage 2 LoadDatabase 完成。
+        _splashVm?.ReportStageProgress(Stage.LoadDatabase, 100);
 
         // v0.6.12:Settings.LogDirectory 注入 — 计算 Logs 父目录(parent of Logs/)。
         // 非空 + 绝对 → 直接用;非空 + 相对 → 相对 projectRoot 解析;空 → 回退 projectRoot。
@@ -199,9 +211,9 @@ public partial class App : Application
         var githubVersionService = new GitHubVersionService(http);
         var nodeVersionRepo = new NodeVersionRepository(catalogCacheStore);
         // v0.6.13-B: GitHub metadata 抓取 service(2-round polling) +
-        // MetadataCache(24h TTL, %APPDATA%/ComfyUI-Manager/catalog_metadata_cache.json)。
+        // v0.6.16: MetadataCache(24h TTL, <projectRoot>/.manager/catalog_metadata_cache.json)。
         // 复用共享 http + CatalogRefreshService 内部 settings.FetchCatalogMetadata 开关 gate。
-        var metadataCache = new MetadataCache();
+        var metadataCache = new MetadataCache(localPaths);
         var metadataService = new GitHubCatalogMetadataService(http, metadataCache, settings, logger);
         // v0.6.14: HTTP conditional-request 缓存(ETag / Last-Modified per source URL)。
         // 跟 catalog_cache 同一个 DB 文件 —— 表由 CatalogCacheStore.Open() 建(T3)。
@@ -253,12 +265,9 @@ public partial class App : Application
         // 跟其他 service 共用同一份 _logger,ConfirmShutdown 默认弹 MessageBox。
         _envExitCleanup = new EnvExitCleanupService(envRepo, _launcher, logger);
         // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
-        // cache 目录 = %APPDATA%/ComfyUI-Manager(PyTorchVersionCache 直接在此存
+        // v0.6.16: cache 目录 = <projectRoot>/.manager (PyTorchVersionCache 直接在此存
         // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。
-        var appDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ComfyUI-Manager");
-        var profileLoader = new BaseEnvProfileLoader(projectRoot, appDataDir, http);
+        var profileLoader = new BaseEnvProfileLoader(projectRoot, localPaths.Directory, http);
         // v0.6.5.x: 系统状态 tab 数据收集器(进入 tab 时拉一次 OS/CPU/Mem/Disk/GPU/CUDA)
         var systemInfoCollector = new SystemInfoCollector(logger);
         // v0.6.5.21: UI 偏好持久化(<projectRoot>/config/ui-preferences.json)— Menu 的
@@ -272,12 +281,13 @@ public partial class App : Application
         // v0.6.9 T5:Dashboard 数据聚合 service(接 T4,4 个并行 task:
         // envRepo.ListAll / nodeRepo.CountAllAsync / AppLogger 最近 5 行 / GitHub latest release)。
         // 复用共享 http(15s 超时)+ envRepo/nodeRepo/logger(跟其他 service 同生命周期)。
-        // v0.6.11+ T3:再挂 GitHubReleaseService(releases 全 list + 24h cache,cache 落
-        // %APPDATA%/ComfyUI-Manager)+ ChangelogParser(读 AppContext.BaseDirectory/CHANGELOG.md,
+        // v0.6.11+ T3:再挂 GitHubReleaseService(releases 全 list + 24h cache,
+        // cache 走 LocalDataPaths 落 <projectRoot>/.manager/release_cache.json)
+        // + ChangelogParser(读 AppContext.BaseDirectory/CHANGELOG.md,
         // 解析不出内容时回退 HardcodedFallback)。两者失败都只降级不阻断 dashboard。
         var dashboardService = new DashboardService(
             envRepo, nodeRepo, logger, http,
-            new GitHubReleaseService(http, logger),
+            new GitHubReleaseService(http, localPaths, logger),
             new ChangelogParser());
         // v0.6.9 T7:全局搜索 service(跨 4 kind 索引:env / node / settings section / command)。
         // 复用 envRepo + nodeRepo;首次 OpenSpotlight 时 BuildAsync,后续键入仅走内存(G7)。
@@ -286,7 +296,7 @@ public partial class App : Application
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
-            profileLoader, BuildPyTorchVersionDirectory(appDataDir, http), appDataDir, projectRoot,
+            profileLoader, BuildPyTorchVersionDirectory(localPaths.Directory, http), localPaths.Directory, projectRoot,
             requirementsInstaller, systemInfoCollector, uiPreferencesService,
             _baseEnvUninstaller, _requirementsUninstaller,
             themeService, dashboardService, globalSearchService,
@@ -340,17 +350,18 @@ public partial class App : Application
 
     /// <summary>
     /// 组装 <see cref="PyTorchVersionDirectory"/>:catalog 拉 PyPI + pytorch.org,
-    /// cache 走 <paramref name="appDataDir"/> 永久落盘。
+    /// cache 走 <paramref name="localDataDir"/> 永久落盘。
+    /// v0.6.16: localDataDir = &lt;projectRoot&gt;/.manager/。
     /// </summary>
     /// <remarks>
     /// <c>internal</c> 而非 <c>private</c>:<c>AppWiringTests</c> 需要在不启动
     /// WPF / 不发真实网络请求的前提下验证组装链路(csproj 已声明
     /// <c>InternalsVisibleTo("ComfyUI.Manager.Tests")</c>)。
     /// </remarks>
-    internal static PyTorchVersionDirectory BuildPyTorchVersionDirectory(string appDataDir, HttpClient http)
+    internal static PyTorchVersionDirectory BuildPyTorchVersionDirectory(string localDataDir, HttpClient http)
     {
         var catalog = new PyTorchVersionCatalog(http);
-        var cache = new PyTorchVersionCatalogCache(appDataDir);
+        var cache = new PyTorchVersionCatalogCache(localDataDir);
         return new PyTorchVersionDirectory(catalog, cache);
     }
 

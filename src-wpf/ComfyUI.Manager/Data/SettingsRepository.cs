@@ -1,16 +1,16 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using SysEnv = System.Environment;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Data;
 
 /// <summary>
-/// SettingsRepository:reads/writes the JSON settings file at
-/// %APPDATA%\ComfyUI-Manager\settings.json. Binds to the same
-/// <see cref="Settings"/> model the WPF UI uses, so the load/save path and
-/// the view-model bindings share one shape.
+/// v0.6.16: 读取/写入 settings.json。路径由 <see cref="LocalDataPaths"/> 提供
+/// (默认 &lt;projectRoot&gt;/.manager/settings.json;旧版 %APPDATA%/ComfyUI-Manager/settings.json
+/// 由 <see cref="LocalDataMigrationService"/> 一次性迁过来)。
+/// 绑定 <see cref="Settings"/> model,WPF UI / load / save 共享同一 shape。
 /// </summary>
 public class SettingsRepository
 {
@@ -22,23 +22,23 @@ public class SettingsRepository
 
     private readonly string _settingsPath;
 
-    public SettingsRepository() : this(DefaultSettingsPath())
+    /// <summary>
+    /// 生产 DI 入口 —— 接受 <see cref="LocalDataPaths"/> 提供路径。
+    /// </summary>
+    public SettingsRepository(LocalDataPaths paths)
     {
+        _settingsPath = paths.SettingsFile;
     }
 
+    /// <summary>
+    /// 测试 seam —— 显式传入路径。生产代码走 LocalDataPaths ctor。
+    /// </summary>
     public SettingsRepository(string settingsPath)
     {
         _settingsPath = settingsPath;
     }
 
     public string SettingsPath => _settingsPath;
-
-    private static string DefaultSettingsPath()
-    {
-        var appData = SysEnv.GetFolderPath(
-            SysEnv.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "ComfyUI-Manager", "settings.json");
-    }
 
     public virtual Settings Load()
     {
