@@ -107,10 +107,49 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <!-- v0.6.15.11:Row 4 新增 — 紧凑 stat strip (license / stars / downloads / lang / py compat / os icons / deprecated) -->
+                                <RowDefinition Height="Auto" />
+                                <!-- v0.6.15.11:Row 5 新增 — chevron 展开的 row details 面板 (3 分区) -->
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
-                            <!-- Row 0: Package + Status badge -->
+                            <!-- Row 0: Package + Status badge + chevron toggle
+                                 v0.6.15.11:在 Package 之前加 chevron ToggleButton,绑 IsExpanded TwoWay,
+                                 跟 v0.6.15.10 节点管理面板的 chevron 列同款 — ▸ 旋转 90° 变 ▾。 -->
                             <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                                <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                              Cursor="Hand"
+                                              ToolTip="展开/收起详细信息"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Width="20" Height="20"
+                                              Padding="0"
+                                              Margin="0,0,6,0"
+                                              Background="Transparent"
+                                              BorderThickness="0">
+                                    <TextBlock Text="▸" FontSize="12"
+                                               HorizontalAlignment="Center"
+                                               RenderTransformOrigin="0.5,0.5">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="RenderTransform">
+                                                    <Setter.Value>
+                                                        <RotateTransform Angle="0" />
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                        <Setter Property="RenderTransform">
+                                                            <Setter.Value>
+                                                                <RotateTransform Angle="90" />
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </ToggleButton>
                                 <!-- v0.6.15.9.2:Package 字号 16 → 14,降低视觉权重让 description/版本信息更突出 -->
                                 <TextBlock Text="{Binding Entry.Package}"
                                            FontSize="14" FontWeight="Bold"
@@ -133,6 +172,15 @@
                                     </Border.Style>
                                     <TextBlock Text="{Binding StatusBadge}" FontSize="11"
                                                Foreground="{DynamicResource OnPrimaryBrush}" />
+                                </Border>
+                                <!-- v0.6.15.11:deprecated badge — Entry.Deprecated=true 时红色 DEPRECATED chip -->
+                                <Border Margin="6,0,0,0" Padding="6,2" CornerRadius="3"
+                                        Background="#D32F2F"
+                                        VerticalAlignment="Center"
+                                        ToolTip="此 catalog 节点作者已标记为不推荐使用"
+                                        Visibility="{Binding Entry.Deprecated, Mode=OneWay, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                                    <TextBlock Text="DEPRECATED" FontSize="10" FontWeight="Bold"
+                                               Foreground="White" />
                                 </Border>
                             </StackPanel>
 
@@ -302,6 +350,178 @@
                                                TextTrimming="CharacterEllipsis" MaxWidth="100" />
                                 </StackPanel>
                             </Grid>
+
+                            <!-- Row 4: v0.6.15.11 紧凑 stat strip
+                                 永远显示(空内容 strip 高度 0,不影响布局)。水平排列小 chip:
+                                 license / language / stars / downloads / python compat / OS icons。
+                                 单个 chip 内部用 NullToVisibility 或 DataTrigger 切 Visible/Collapsed。
+                                 Entry.Deprecated 在 Row 0 已单独显示 DEPRECATED 红 chip,这里不重复。 -->
+                            <ItemsControl Grid.Row="4" Grid.Column="0" Margin="0,6,0,0"
+                                          ItemsSource="{Binding StatChips}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,6,0" Padding="5,1" CornerRadius="3"
+                                                Background="{DynamicResource OutlineBrush}"
+                                                VerticalAlignment="Center"
+                                                ToolTip="{Binding Tooltip}">
+                                            <TextBlock Text="{Binding Display}"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource OnPrimaryBrush}" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Row 5: v0.6.15.11 chevron 展开 — row details 面板
+                                 跟 v0.6.15.10 节点管理面板同款 3 分区布局:
+                                 GitHub 项目元数据 / 安装兼容性 / 已装 vs 最新比对。
+                                 Visibility 绑 IsExpanded → chevron toggle 切显隐。
+                                 列 0+1 ColumnSpan=2 让 details 横跨整个 card 宽度。 -->
+                            <Border Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
+                                    Margin="0,8,0,0"
+                                    Background="{DynamicResource OutlineBrush}"
+                                    CornerRadius="4"
+                                    Padding="12,8"
+                                    Visibility="{Binding IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <!-- 分区 1:GitHub 项目元数据 -->
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="GitHub 元数据"
+                                               FontSize="12" FontWeight="Bold" Margin="0,0,0,6"
+                                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding LicenseDisplay, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="License:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding LicenseDisplay, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding LanguageDisplay, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="Language:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding LanguageDisplay, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding StarsDisplay, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="Stars:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding StarsDisplay, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="4" Grid.Column="0" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding Entry.ForksCount, Mode=OneWay, Converter={StaticResource ZeroCountToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="Forks:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding Entry.ForksCount, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="5" Grid.Column="0" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding Entry.OpenIssuesCount, Mode=OneWay, Converter={StaticResource ZeroCountToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="Open Issues:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding Entry.OpenIssuesCount, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="6" Grid.Column="0" FontSize="11" Margin="0,2"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding TagsDisplay}"
+                                               Visibility="{Binding TagsDisplay, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="Tags:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding TagsDisplay, Mode=OneWay}" />
+                                    </TextBlock>
+
+                                    <!-- 分区 2:安装兼容性 -->
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="兼容性"
+                                               FontSize="12" FontWeight="Bold" Margin="0,0,0,6"
+                                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding PythonCompatDisplay, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="Python:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding PythonCompatDisplay, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding OsCompatIcons, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="OS:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding OsCompatIcons, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="3" Grid.Column="1" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding Entry.InstallType, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="安装方式:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding Entry.InstallType, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <ItemsControl Grid.Row="4" Grid.Column="1" Grid.RowSpan="3" Grid.ColumnSpan="1"
+                                                  Margin="0,2"
+                                                  ItemsSource="{Binding PipRequirementsDisplay}"
+                                                  Visibility="{Binding PipRequirementsDisplay, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,1,4,1" Padding="5,1" CornerRadius="3"
+                                                        Background="{DynamicResource SurfaceBrush}"
+                                                        BorderBrush="{DynamicResource OutlineBrush}"
+                                                        BorderThickness="1">
+                                                    <TextBlock FontSize="10"
+                                                               Foreground="{DynamicResource OnSurfaceBrush}">
+                                                        <Run Text="{Binding Name, Mode=OneWay}" />
+                                                        <Run Text="{Binding Specifier, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- 分区 3:已装 vs 最新比对 -->
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="已装 vs 最新"
+                                               FontSize="12" FontWeight="Bold" Margin="0,0,0,6"
+                                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="2" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding InstalledTag, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="已装 tag:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding InstalledTag, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="2" Grid.Column="2" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding InstalledSha, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="已装 SHA:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding InstalledSha, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="3" Grid.Column="2" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding Entry.LatestVersion, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="Latest:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding Entry.LatestVersion, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="4" Grid.Column="2" FontSize="11" Margin="0,2"
+                                               FontWeight="Bold"
+                                               Foreground="{DynamicResource ErrorVariantBrush}"
+                                               Visibility="{Binding IsOutdated, Mode=OneWay, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="⚠ 已过时,可升级" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="5" Grid.Column="2" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding Entry.LastUpdate, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="catalog 更新:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding Entry.LastUpdate, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="6" Grid.Column="2" FontSize="11" Margin="0,2"
+                                               Visibility="{Binding Entry.MetadataFetchedAt, Mode=OneWay, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+                                        <Run Text="GitHub 数据:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding Entry.MetadataFetchedAt, Mode=OneWay}" />
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
                         </Grid>
                     </Border>
                 </DataTemplate>
