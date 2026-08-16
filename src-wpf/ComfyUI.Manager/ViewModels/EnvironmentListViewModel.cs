@@ -118,6 +118,45 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     public ObservableCollection<Environment> Environments { get; } = new();
+
+    // v0.6.15.8 T5:per-env VM cache — 切换 env 不重建,保留 selected row / scroll /
+    // 弹窗状态。Cache hit 不会触发 ScanAsync/LoadAsync(那些走 ctor 一次性初始化)。
+    private readonly Dictionary<string, NodeManagementViewModel> _nodeMgmtCache = new();
+    private readonly Dictionary<string, UpgradeNodesViewModel> _upgradeCache = new();
+    private NodeManagementViewModel? _nodeManagement;
+    private UpgradeNodesViewModel? _upgradeNodes;
+
+    /// <summary>
+    /// v0.6.15.8 T5:当前显示的 NodeManagement VM。null → 面板隐藏;
+    /// non-null → 面板可见(<see cref="IsNodeManagementVisible"/>)。Setter 触发
+    /// IsNodeManagementVisible 通知让 XAML 切换面板 Visibility。
+    /// </summary>
+    public NodeManagementViewModel? NodeManagement
+    {
+        get => _nodeManagement;
+        private set
+        {
+            if (SetField(ref _nodeManagement, value))
+                RaisePropertyChanged(nameof(IsNodeManagementVisible));
+        }
+    }
+    public bool IsNodeManagementVisible => _nodeManagement is not null;
+
+    /// <summary>
+    /// v0.6.15.8 T5:当前显示的 UpgradeNodes VM。null → 面板隐藏;
+    /// non-null → 面板可见(<see cref="IsUpgradeNodesVisible"/>)。
+    /// </summary>
+    public UpgradeNodesViewModel? UpgradeNodes
+    {
+        get => _upgradeNodes;
+        private set
+        {
+            if (SetField(ref _upgradeNodes, value))
+                RaisePropertyChanged(nameof(IsUpgradeNodesVisible));
+        }
+    }
+    public bool IsUpgradeNodesVisible => _upgradeNodes is not null;
+
     public RelayCommand RefreshCommand { get; }
     public RelayCommand StartCommand { get; }
     public RelayCommand StopCommand { get; }
@@ -148,6 +187,30 @@ public class EnvironmentListViewModel : ViewModelBase
     /// v0.6.11+ T1:env-list 行 toggle "安装基础环境/卸载基础环境" 命令 — 根据
     /// IsBaseEnvInstalled 切换 Install (走 picker dialog) / Uninstall。
     /// </summary>
+    /// <summary>
+    /// v0.6.15.8 T5:env-list 行 "管理节点" 按钮 — 弹 NodeManagement 底部面板
+    /// (per-env cached VM,关闭后切回仍保留状态)。
+    /// </summary>
+    public RelayCommand OpenNodeManagementCommand { get; }
+
+    /// <summary>
+    /// v0.6.15.8 T5:env-list 行 "升级节点" 按钮 — 弹 UpgradeNodes 底部面板
+    /// (per-env cached VM,关闭后切回仍保留状态)。
+    /// </summary>
+    public RelayCommand OpenUpgradeNodesCommand { get; }
+
+    /// <summary>
+    /// v0.6.15.8 T5:NodeManagement 面板 ✕ 按钮 — 清空当前显示(VM 留在 cache 里
+    /// 备 re-open 用)。
+    /// </summary>
+    public RelayCommand CloseNodeManagementCommand { get; }
+
+    /// <summary>
+    /// v0.6.15.8 T5:UpgradeNodes 面板 ✕ 按钮 — 清空当前显示(VM 留在 cache 里
+    /// 备 re-open 用)。
+    /// </summary>
+    public RelayCommand CloseUpgradeNodesCommand { get; }
+
     public RelayCommand ToggleBaseEnvCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
@@ -381,26 +444,36 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (IsEnvBusy(env)) return false;
                 return true;
             });
+        // v0.6.15.8 T5:NodeManagement + UpgradeNodes 面板 open/close 命令。
+        // CanExecute 镜像其他长操作命令(看 env 非 null + !IsEnvBusy)。
+        // Close 命令始终可执行(允许用户在面板可见时手动关)。
+        OpenNodeManagementCommand = new RelayCommand(
+            p => OpenNodeManagement(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (IsEnvBusy(env)) return false;
+                return true;
+            });
+        OpenUpgradeNodesCommand = new RelayCommand(
+            p => OpenUpgradeNodes(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (IsEnvBusy(env)) return false;
+                return true;
+            });
+        CloseNodeManagementCommand = new RelayCommand(_ => NodeManagement = null);
+        CloseUpgradeNodesCommand = new RelayCommand(_ => UpgradeNodes = null);
         Load();
     }
 
-    // v0.6.15.7 T7:env-detail right-side panel VM(懒构造 + Selected 变化时刷新)。
-    // 重建策略:Selected envId 变 → 重建 EnvironmentDetailViewModel。EnvId 跟踪用
-    // 单独的 _environmentDetailEnvId 字段(EnvironmentDetailViewModel 未暴露 EnvId 属性)。
-    private EnvironmentDetailViewModel? _environmentDetail;
-    private string? _environmentDetailEnvId;
-    public EnvironmentDetailViewModel? EnvironmentDetail
-    {
-        get => _environmentDetail;
-        private set
-        {
-            if (SetField(ref _environmentDetail, value))
-            {
-                RaisePropertyChanged(nameof(HasEnvironmentDetail));
-            }
-        }
-    }
-    public bool HasEnvironmentDetail => _environmentDetail is not null;
+    // v0.6.15.7 T7 dead code removed in v0.6.15.8 T5:env-detail right-side panel
+    // 整体被 XAML 改 bottom-popup 替代(详见 EnvironmentListView XAML 重构 T6)。
+    // _environmentDetail / _environmentDetailEnvId / EnvironmentDetail /
+    // HasEnvironmentDetail / SelectedChangedHandler 全部删除。
 
     private Environment? _selected;
     public Environment? Selected
@@ -411,40 +484,8 @@ public class EnvironmentListViewModel : ViewModelBase
             if (SetField(ref _selected, value))
             {
                 RaisePropertyChanged(nameof(StartTooltip));
-                SelectedChangedHandler();
             }
         }
-    }
-
-    /// <summary>
-    /// v0.6.15.7 T7:选 env 变 → 重建 detail VM(envId 不同就重建;envId 相同不动)。
-    /// 同一个 env 再点 = Selected 虽值同但 setter 也会进 → 走 envId 短路避免重建。
-    /// </summary>
-    private void SelectedChangedHandler()
-    {
-        var env = Selected;
-        if (env is null)
-        {
-            _environmentDetailEnvId = null;
-            EnvironmentDetail = null;
-            return;
-        }
-        if (_environmentDetailEnvId == env.Id) return;
-        _environmentDetailEnvId = env.Id;
-        // 构造新 detail VM。ctor 签名:
-        // (NodeRepository, ErrorBannerViewModel, Func<string,string,CT,Task<NodeOperationResult>>, string envId)
-        // nodeRepo + errorBanner + deleteFunc 在 EnvListVM ctor 已就位,直接传。
-        if (_nodeRepo is null)
-        {
-            // 测试 ctor 没注入 NodeRepository → 保持 _environmentDetail = null
-            EnvironmentDetail = null;
-            return;
-        }
-        EnvironmentDetail = new EnvironmentDetailViewModel(
-            _nodeRepo,
-            _errorBanner ?? new ErrorBannerViewModel(),
-            (envId, nodeId, ct) => _nodeOps.UninstallAsync(envId, nodeId, ct),
-            env.Id);
     }
 
     /// <summary>
@@ -1295,6 +1336,59 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// v0.6.15.8 T5:env-list 行 "管理节点" 按钮 — 弹/切 NodeManagement 底部面板。
+    /// Per-env cache:同 env 再开 = 复用之前 VM(保留 selected row / scroll / 弹窗状态);
+    /// 切 env = 走 cache miss → 构造新 VM,旧 env VM 留在 cache 不释放(再次切回还是同一个)。
+    /// CloseRequested 事件由 panel 的 ✕ 按钮触发,把当前显示清空,VM 仍在 cache 里备 re-open。
+    /// </summary>
+    private void OpenNodeManagement(Environment? env)
+    {
+        if (env is null) return;
+        if (_nodeRepo is null) return;  // 测试 ctor 没注入 → 无 nodes 可管
+        if (!_nodeMgmtCache.TryGetValue(env.Id, out var vm))
+        {
+            // T2 R1:ctor 加 envRepo + catalogRepo + versionRepo 三个参数(从 T5
+            // 前移到 T2),让生产路径能传真值给 CatalogEntryPickerDialog.Show,
+            // 不再传 null! 占位。
+            vm = new NodeManagementViewModel(
+                _nodeRepo, _nodeOps, _errorBanner,
+                _repo, _catalogRepo!, _versionRepo!,
+                env.Id, env.Name);
+            // CloseRequested 是 VM 触发的"自身关闭"信号,在这里把当前显示清空
+            // (VM 留在 cache,re-open 时复用)。注意:不能 `NodeManagement = null`
+            // 触发 vm 解绑后 Reentry — 直接赋值即可。
+            vm.CloseRequested += () => NodeManagement = null;
+            _nodeMgmtCache[env.Id] = vm;
+        }
+        NodeManagement = vm;
+    }
+
+    /// <summary>
+    /// v0.6.15.8 T5:env-list 行 "升级节点" 按钮 — 弹/切 UpgradeNodes 底部面板。
+    /// Per-env cache 同 <see cref="OpenNodeManagement"/>(同 env 再开复用,切 env 不重建)。
+    /// catalogSearch delegate 走 _catalogRepo.Search(query, limit);_catalogRepo 或
+    /// _versionRepo 缺 → fallback 返空(测试 ctor 不注入时仍能构造 VM,只是升级列表恒空)。
+    /// </summary>
+    private void OpenUpgradeNodes(Environment? env)
+    {
+        if (env is null) return;
+        if (_nodeRepo is null) return;
+        if (!_upgradeCache.TryGetValue(env.Id, out var vm))
+        {
+            // T3 R1:Func delegate 模式(catalog 走 closure,不引入新 interface)。
+            Func<string, int, IEnumerable<CatalogEntry>> catalogSearch =
+                _catalogRepo is not null
+                    ? (q, n) => _catalogRepo.Search(q, n)
+                    : (_, _) => Enumerable.Empty<CatalogEntry>();
+            vm = new UpgradeNodesViewModel(
+                _nodeRepo, _nodeOps, catalogSearch, env.Id, env.Name);
+            vm.CloseRequested += () => UpgradeNodes = null;
+            _upgradeCache[env.Id] = vm;
+        }
+        UpgradeNodes = vm;
+    }
+
+    /// <summary>
     /// OpenInstallNodePicker:从 env 行点"安装节点" → 弹 CatalogEntryPickerDialog,
     /// picker 自己管安装(行内 InstallCommand,不再弹 InstallDialog)。
     ///
@@ -1475,5 +1569,9 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.11+ T1:toggle 命令也要 refresh,否则 busy 切换后按钮不会自动 enable/disable
         ToggleRequirementsCommand.RaiseCanExecuteChanged();
         ToggleBaseEnvCommand.RaiseCanExecuteChanged();
+        // v0.6.15.8 T5:NodeManagement / UpgradeNodes open 命令的 CanExecute 同样
+        // 依赖 IsEnvBusy(env),busy 状态变化要 refresh 让按钮 enable/disable。
+        OpenNodeManagementCommand.RaiseCanExecuteChanged();
+        OpenUpgradeNodesCommand.RaiseCanExecuteChanged();
     }
 }
