@@ -68,9 +68,13 @@ public class UpgradeNodesViewModel : ViewModelBase
         // between parallel xUnit tests.
         var ctx = SynchronizationContext.Current;
         _uiContext = ctx is System.Windows.Threading.DispatcherSynchronizationContext ? ctx : null;
+        // v0.6.15.8 T4 fix: XAML CommandParameter="{Binding}" in DataGridTemplateColumn
+        // resolves to the row item (UpgradeCandidate), not its .Node. So param
+        // must be UpgradeCandidate not ScannedNode, or CanExecute is always false
+        // and the Upgrade button is dead in production.
         UpgradeCommand = new RelayCommand(
-            async p => await UpgradeAsync(p as ScannedNode),
-            p => p is ScannedNode && !Busy);
+            async p => await UpgradeAsync(p as UpgradeCandidate),
+            p => p is UpgradeCandidate && !Busy);
         CloseCommand = new RelayCommand(_ => CloseRequested?.Invoke());
         _ = LoadAsync();
     }
@@ -118,15 +122,15 @@ public class UpgradeNodesViewModel : ViewModelBase
         }
     }
 
-    private async Task UpgradeAsync(ScannedNode? node)
+    private async Task UpgradeAsync(UpgradeCandidate? candidate)
     {
-        if (node is null) return;
+        if (candidate is null) return;
         Busy = true;
         try
         {
             // Real NodeOperations.UpgradeAsync takes (envId, nodeId, progress, ct).
-            // node.Id is the ScannedNode row id (DB primary key), NOT Package.
-            await _nodeOps.UpgradeAsync(_envId, node.Id, progress: null, CancellationToken.None).ConfigureAwait(false);
+            // candidate.Node.Id is the ScannedNode row id (DB primary key), NOT Package.
+            await _nodeOps.UpgradeAsync(_envId, candidate.Node.Id, progress: null, CancellationToken.None).ConfigureAwait(false);
             // Reload filter: node's installed_tag may now match latest, so it
             // drops out of OutdatedNodes.
             await LoadAsync().ConfigureAwait(false);

@@ -1,0 +1,48 @@
+<UserControl x:Class="ComfyUI.Manager.Views.NodeManagementView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DataGrid ItemsSource="{Binding Nodes}"
+              SelectedItem="{Binding SelectedNode}"
+              AutoGenerateColumns="False" IsReadOnly="True"
+              MinHeight="300">
+        <DataGrid.Columns>
+            <DataGridTextColumn Header="包名" Binding="{Binding Package}" Width="*" />
+            <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="100" />
+            <DataGridTextColumn Header="作者" Binding="{Binding Author}" Width="*" />
+            <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="80" />
+            <DataGridCheckBoxColumn Header="锁" Binding="{Binding Locked}" Width="40" />
+            <DataGridTextColumn Header="仓库 URL" Binding="{Binding RepositoryUrl}" Width="200" />
+            <DataGridTextColumn Header="加载时间" Width="100"
+                                Binding="{Binding LastScannedAt, Converter={StaticResource RelativeTime}}" />
+            <DataGridTextColumn Header="版本 tag" Binding="{Binding ScanMeta[installed_tag]}" Width="100" />
+            <DataGridTemplateColumn Header="加载错误" Width="100">
+                <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                        <Border Background="#D32F2F" CornerRadius="4" Padding="4,2"
+                                HorizontalAlignment="Left"
+                                ToolTip="{Binding ScanMeta[load_error]}"
+                                Visibility="{Binding ScanMeta[load_error],
+                                             Converter={StaticResource NullToVisibility},
+                                             FallbackValue=Collapsed}">
+                            <TextBlock Text="加载失败" Foreground="White" FontSize="11" />
+                        </Border>
+                    </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="来源" Binding="{Binding Source}" Width="70" />
+            <DataGridTemplateColumn Header="操作" Width="160">
+                <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="删除"
+                                    Style="{StaticResource DangerButton}"
+                                    Command="{Binding DataContext.DeleteCommand,
+                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+        </DataGrid.Columns>
+    </DataGrid>
+</UserControl>

@@ -84,7 +84,7 @@ public class UpgradeNodesViewModelTests : IDisposable
         _nodeOps.ScanResult = _nodeRepo.ListByEnv(_envId);
         _nodeOps.RescanCalled = false;
 
-        vm.UpgradeCommand.Execute(vm.OutdatedNodes[0].Node);
+        vm.UpgradeCommand.Execute(vm.OutdatedNodes[0]);
         SpinWait.SpinUntil(() => !vm.Busy && vm.OutdatedNodes.Count == 0, TimeSpan.FromSeconds(3));
 
         Assert.Empty(vm.OutdatedNodes);
@@ -104,7 +104,7 @@ public class UpgradeNodesViewModelTests : IDisposable
         var vm = CreateVm();
         SpinWait.SpinUntil(() => !vm.Busy && vm.OutdatedNodes.Count == 1, TimeSpan.FromSeconds(2));
 
-        vm.UpgradeCommand.Execute(vm.OutdatedNodes[0].Node);
+        vm.UpgradeCommand.Execute(vm.OutdatedNodes[0]);
         SpinWait.SpinUntil(() => !vm.Busy, TimeSpan.FromSeconds(2));
 
         Assert.Single(vm.OutdatedNodes);

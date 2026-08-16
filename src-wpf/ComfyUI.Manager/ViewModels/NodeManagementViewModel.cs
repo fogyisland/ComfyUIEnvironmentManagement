@@ -30,6 +30,14 @@ public class NodeManagementViewModel : ViewModelBase
     private readonly SynchronizationContext? _uiContext;
 
     public ObservableCollection<ScannedNode> Nodes { get; } = new();
+
+    private ScannedNode? _selectedNode;
+    public ScannedNode? SelectedNode
+    {
+        get => _selectedNode;
+        set => SetField(ref _selectedNode, value);
+    }
+
     public RelayCommand ScanCommand { get; }
     public RelayCommand InstallCommand { get; }
     public RelayCommand DeleteCommand { get; }
