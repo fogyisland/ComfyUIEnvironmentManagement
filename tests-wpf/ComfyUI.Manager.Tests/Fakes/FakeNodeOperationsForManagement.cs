@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,9 @@ public class FakeNodeOperationsForManagement : NodeOperations
     public NodeOperationResult UninstallResult { get; set; } = NodeOperationResult.Ok("v0");
     public bool UninstallCalled { get; private set; }
 
+    public NodeOperationResult UpgradeResult { get; set; } = NodeOperationResult.Ok("v0");
+    public bool UpgradeCalled { get; private set; }
+
     public FakeNodeOperationsForManagement() : base(
         new FakeGitRunner(),
         new EnvironmentRepository(new TestDb().Factory),
@@ -60,5 +64,13 @@ public class FakeNodeOperationsForManagement : NodeOperations
     {
         UninstallCalled = true;
         return Task.FromResult(UninstallResult);
+    }
+
+    public override Task<NodeOperationResult> UpgradeAsync(
+        string envId, string nodeId,
+        IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        UpgradeCalled = true;
+        return Task.FromResult(UpgradeResult);
     }
 }
