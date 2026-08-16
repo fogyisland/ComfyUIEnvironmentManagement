@@ -13,13 +13,21 @@ namespace ComfyUI.Manager.ViewModels;
 /// v0.6.15.8:per-env 节点管理 VM。构造时自动 rescan,Nodes 填充已装节点。
 /// ScanCommand 重扫,InstallCommand 开 CatalogEntryPicker,DeleteCommand 删行。
 /// CloseCommand fire CloseRequested event(EnvListVM 接 → NodeManagement = null 隐 panel)。
+///
+/// R1 fix: ctor 加 EnvironmentRepository / CatalogRepository / NodeVersionRepository
+/// 三个参数(从 5 参 → 8 参),让生产路径能传真值给 CatalogEntryPickerDialog.Show,
+/// 不再传 null! 占位。Ruling 3 计划的"T5 plumb"前移到 T2。
 /// </summary>
 public class NodeManagementViewModel : ViewModelBase
 {
     private readonly NodeRepository _nodeRepo;
     private readonly NodeOperations _nodeOps;
     private readonly ErrorBannerViewModel _errorBanner;
+    private readonly EnvironmentRepository _envRepo;
+    private readonly CatalogRepository _catalogRepo;
+    private readonly NodeVersionRepository _versionRepo;
     private readonly string _envId;
+    private readonly SynchronizationContext? _uiContext;
 
     public ObservableCollection<ScannedNode> Nodes { get; } = new();
     public RelayCommand ScanCommand { get; }
@@ -53,13 +61,28 @@ public class NodeManagementViewModel : ViewModelBase
 
     public NodeManagementViewModel(
         NodeRepository repo, NodeOperations nodeOps,
-        ErrorBannerViewModel errorBanner, string envId, string envName)
+        ErrorBannerViewModel errorBanner,
+        EnvironmentRepository envRepo,
+        CatalogRepository catalogRepo,
+        NodeVersionRepository versionRepo,
+        string envId, string envName)
     {
         _nodeRepo = repo;
         _nodeOps = nodeOps;
         _errorBanner = errorBanner;
+        _envRepo = envRepo;
+        _catalogRepo = catalogRepo;
+        _versionRepo = versionRepo;
         _envId = envId;
         EnvName = envName;
+        // Capture UI SynchronizationContext so collection mutations in ScanAsync /
+        // DeleteAsync marshal back to the dispatcher in production. Filter to
+        // DispatcherSynchronizationContext only (WPF UI thread): other test
+        // SyncContexts (e.g. TestSynchronizationContext in EnvStartStatus / Catalog
+        // Refresh tests) leak between xUnit parallel tests, and we don't want a
+        // custom test Post to defer mutations asynchronously.
+        var ctx = SynchronizationContext.Current;
+        _uiContext = ctx is System.Windows.Threading.DispatcherSynchronizationContext ? ctx : null;
         ScanCommand = new RelayCommand(async _ => await ScanAsync(), _ => !Busy);
         InstallCommand = new RelayCommand(_ => OpenInstallPicker(), _ => !Busy);
         DeleteCommand = new RelayCommand(
@@ -76,13 +99,25 @@ public class NodeManagementViewModel : ViewModelBase
         try
         {
             await _nodeOps.RescanAsync(_envId).ConfigureAwait(false);
-            // 直接 mutate ObservableCollection — ConfigureAwait(false) 让 continuation
-            // 跑在 thread pool,而 ObservableCollection 在 .NET 8 + 多线程 Binding
-            // 场景下会抛,但 SpinWait 测试需要 sync 行为。生产路径配套会在调用时
-            // 已经在 UI thread;tests 没 Binding 没 dispatcher pump,同步 mutate
-            // 是最直接的方案。
-            Nodes.Clear();
-            foreach (var n in _nodeRepo.ListByEnv(_envId)) Nodes.Add(n);
+            // R1 fix Important 3: Continuation runs on thread pool after
+            // ConfigureAwait(false). ObservableCollection mutation must marshal
+            // back to UI thread in production (WPF binding throws on cross-thread
+            // mutation). Use captured SyncContext.Post so tests stay sync
+            // (xUnit has no SyncContext → Post is skipped, mutations are direct).
+            var snapshot = _nodeRepo.ListByEnv(_envId);
+            if (_uiContext is not null)
+            {
+                _uiContext.Post(_ =>
+                {
+                    Nodes.Clear();
+                    foreach (var n in snapshot) Nodes.Add(n);
+                }, null);
+            }
+            else
+            {
+                Nodes.Clear();
+                foreach (var n in snapshot) Nodes.Add(n);
+            }
         }
         finally
         {
@@ -96,24 +131,26 @@ public class NodeManagementViewModel : ViewModelBase
         if (OpenInstallPickerOverride is not null)
         {
             installed = OpenInstallPickerOverride();
+            // Override path: no onClosed callback, so rely on installed==true to
+            // trigger the rescan.
+            if (installed == true) _ = ScanAsync();
         }
         else
         {
-            // Production: fire-and-forget call to CatalogEntryPickerDialog.Show
-            // (the dialog owns install + close, then VM rescans)
-            installed = true;
+            // Production: dialog owns install + close; onClosed is the SOLE rescan
+            // trigger (R1 fix Critical 2 — was previously double-fired by onClosed
+            // AND the installed==true check below).
             CatalogEntryPickerDialog.Show(
-                envRepo: null!,  // picker no longer needs env repo — it builds from catalog+nodeRepo
+                envRepo: _envRepo,
                 nodeOps: _nodeOps,
-                catalogRepo: null!,
+                catalogRepo: _catalogRepo,
                 nodeRepo: _nodeRepo,
-                versionRepo: null!,
+                versionRepo: _versionRepo,
                 logger: null,
                 envId: _envId,
                 onInstallSuccess: null,
                 onClosed: () => _ = ScanAsync());
         }
-        if (installed == true) _ = ScanAsync();
     }
 
     public async Task DeleteAsync(ScannedNode? node)
@@ -133,8 +170,15 @@ public class NodeManagementViewModel : ViewModelBase
                 _errorBanner.Add("env-detail-delete", $"删除失败:{r.Reason}", ErrorSeverity.Error);
                 return;
             }
-            // 跟 ScanAsync 同款:同步 mutate ObservableCollection。
-            Nodes.Remove(node);
+            // R1 fix Important 3: same sync-context pattern as ScanAsync.
+            if (_uiContext is not null)
+            {
+                _uiContext.Post(_ => Nodes.Remove(node), null);
+            }
+            else
+            {
+                Nodes.Remove(node);
+            }
         }
         finally
         {

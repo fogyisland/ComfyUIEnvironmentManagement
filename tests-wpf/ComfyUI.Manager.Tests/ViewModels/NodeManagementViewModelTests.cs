@@ -18,6 +18,9 @@ public class NodeManagementViewModelTests : IDisposable
     private readonly NodeRepository _nodeRepo;
     private readonly FakeNodeOperationsForManagement _nodeOps;
     private readonly ErrorBannerViewModel _errorBanner;
+    private readonly EnvironmentRepository _envRepo;
+    private readonly CatalogRepository _catalogRepo;
+    private readonly NodeVersionRepository _versionRepo;
     private readonly string _envId = "env-1";
 
     public NodeManagementViewModelTests()
@@ -25,6 +28,13 @@ public class NodeManagementViewModelTests : IDisposable
         _nodeRepo = new NodeRepository(_db.Factory);
         _nodeOps = new FakeNodeOperationsForManagement();
         _errorBanner = new ErrorBannerViewModel();
+        // R1 fix: VM ctor now takes real EnvironmentRepository / CatalogRepository /
+        // NodeVersionRepository. Tests don't exercise the picker dialog directly
+        // (uses OpenInstallPickerOverride), but VM ctor must accept non-null values
+        // so production paths won't pass null! to CatalogEntryPickerDialog.Show.
+        _envRepo = new EnvironmentRepository(_db.Factory);
+        _catalogRepo = new CatalogRepository(new CatalogCacheStore(_db.Path));
+        _versionRepo = new NodeVersionRepository(new CatalogCacheStore(_db.Path));
     }
 
     // NOTE: brief's tests use plain `FakeNodeOperations` but there's already an
@@ -43,7 +53,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "n2", EnvId = _envId, Package = "pkg-b", Source = "env" },
         };
         _nodeOps.NodeRepo = _nodeRepo;
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
         // Pump message loop briefly so fire-and-forget ScanAsync completes
         SpinWait.SpinUntil(() => vm.Nodes.Count == 2, TimeSpan.FromSeconds(2));
         Assert.Equal(2, vm.Nodes.Count);
@@ -59,7 +69,7 @@ public class NodeManagementViewModelTests : IDisposable
         {
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         _nodeOps.ScanResult = new List<ScannedNode>
@@ -77,7 +87,7 @@ public class NodeManagementViewModelTests : IDisposable
     {
         _nodeOps.NodeRepo = _nodeRepo;
         _nodeOps.ScanResult = new List<ScannedNode>();
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => !vm.Busy, TimeSpan.FromSeconds(2));
 
         var called = false;
@@ -101,7 +111,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
         _nodeOps.UninstallResult = NodeOperationResult.Ok("v1.0");
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         vm.ConfirmDialogOverride = (_, _, _) => true;
@@ -118,7 +128,7 @@ public class NodeManagementViewModelTests : IDisposable
         {
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         vm.ConfirmDialogOverride = (_, _, _) => false;
@@ -136,7 +146,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
         _nodeOps.UninstallResult = NodeOperationResult.Fail("目录锁住");
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         vm.ConfirmDialogOverride = (_, _, _) => true;
@@ -150,7 +160,7 @@ public class NodeManagementViewModelTests : IDisposable
     {
         _nodeOps.NodeRepo = _nodeRepo;
         _nodeOps.ScanResult = new List<ScannedNode>();
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => !vm.Busy, TimeSpan.FromSeconds(2));
 
         var fired = false;
