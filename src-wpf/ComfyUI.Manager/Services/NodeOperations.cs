@@ -616,6 +616,82 @@ public class NodeOperations
         _nodeRepo.SetStatus(nodeId, "disabled");
     }
 
+    /// <summary>
+    /// v0.6.15.8:扫描 env 的 custom_nodes 目录,upsert ScannedNode,返 list。
+    /// 复用 EnvComponentReportBuilder 同样的扫描策略(每个子目录 = 一个节点),
+    /// 但只更新 ScannedNode 表,不渲染 HTML。空目录 / 不存在 → 返空 list + WARN log。
+    /// </summary>
+    public virtual async Task<IReadOnlyList<ScannedNode>> RescanAsync(
+        string envId, CancellationToken ct = default)
+    {
+        _logger?.Info("node-rescan", $"env='{envId}' 开始扫描 custom_nodes");
+        var env = _envRepo.Get(envId);
+        if (env is null)
+        {
+            _logger?.Warn("node-rescan", $"env='{envId}' 不存在,跳过");
+            return Array.Empty<ScannedNode>();
+        }
+
+        var customNodesPath = env.CustomNodesPath;
+        if (string.IsNullOrEmpty(customNodesPath) || !Directory.Exists(customNodesPath))
+        {
+            _logger?.Warn("node-rescan", $"env='{envId}' CustomNodesPath='{customNodesPath}' 不存在或为空");
+            return Array.Empty<ScannedNode>();
+        }
+
+        var scanned = new List<ScannedNode>();
+        foreach (var dir in Directory.EnumerateDirectories(customNodesPath))
+        {
+            ct.ThrowIfCancellationRequested();
+            var nodeId = Path.GetFileName(dir);
+            var package = TryReadPackageName(dir) ?? nodeId;
+            var sha = await TryReadHeadShaAsync(dir, ct).ConfigureAwait(false);
+            var tag = await TryReadInstalledTagAsync(dir, ct).ConfigureAwait(false);
+            var node = new ScannedNode
+            {
+                Id = nodeId,
+                EnvId = envId,
+                Package = package,
+                PackagePath = dir,
+                Version = sha ?? "",
+                Source = "env",
+                ScanMeta = new Dictionary<string, string>
+                {
+                    ["installed_tag"] = tag ?? "",
+                },
+            };
+            _nodeRepo.Upsert(node);
+            scanned.Add(node);
+        }
+        _logger?.Info("node-rescan", $"env='{envId}' 扫描完成,共 {scanned.Count} 个节点");
+        return scanned;
+    }
+
+    private static string? TryReadPackageName(string dir)
+    {
+        // 优先 __init__.py 顶部 'Name: x'(PEP 621 风格)
+        var init = Path.Combine(dir, "__init__.py");
+        if (File.Exists(init))
+        {
+            foreach (var line in File.ReadAllLines(init))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(line, @"^\s*Name\s*[:=]\s*([A-Za-z0-9_\-\.]+)");
+                if (m.Success) return m.Groups[1].Value;
+            }
+        }
+        // fallback: pyproject.toml [project] name
+        var pyp = Path.Combine(dir, "pyproject.toml");
+        if (File.Exists(pyp))
+        {
+            foreach (var line in File.ReadAllLines(pyp))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(line, @"^\s*name\s*=\s*""?([A-Za-z0-9_\-\.]+)");
+                if (m.Success) return m.Groups[1].Value;
+            }
+        }
+        return null;
+    }
+
     // -------- helpers --------
 
     private Environment RequireEnv(string envId)
