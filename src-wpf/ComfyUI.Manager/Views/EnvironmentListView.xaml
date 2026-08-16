@@ -177,42 +177,95 @@
                                Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
                 </StackPanel>
             </Border>
+
+            <!-- v0.6.15.8:节点管理 inline panel(同 SurfaceBrush/OutlineBrush/Border pattern) -->
+            <Border Margin="0,6,0,0" Padding="12"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="{Binding IsNodeManagementVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                <StackPanel DataContext="{Binding NodeManagement}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="扫描" Command="{Binding ScanCommand}"
+                                    Style="{StaticResource MaterialButton}" />
+                            <Button Content="安装节点" Command="{Binding InstallCommand}"
+                                    Style="{StaticResource MaterialButton}" Margin="6,0,0,0" />
+                            <Button Content="✕" Margin="6,0,0,0"
+                                    Click="OnNodeManagementCloseClicked"
+                                    Style="{StaticResource GearIconButtonStyle}"
+                                    Foreground="{DynamicResource OnSurfaceBrush}" />
+                        </StackPanel>
+                        <TextBlock VerticalAlignment="Center">
+                            <Run Text="{Binding EnvName, Mode=OneWay}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource OnSurfaceBrush}" />
+                            <Run Text=" 的节点管理" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource OnSurfaceBrush}" />
+                        </TextBlock>
+                    </DockPanel>
+                    <ContentControl Content="{Binding}" Margin="0,8,0,0" MinHeight="300">
+                        <ContentControl.Resources>
+                            <DataTemplate DataType="{x:Type vm:NodeManagementViewModel}">
+                                <v:NodeManagementView />
+                            </DataTemplate>
+                        </ContentControl.Resources>
+                    </ContentControl>
+                </StackPanel>
+            </Border>
+
+            <!-- v0.6.15.8:升级节点 inline panel(同 pattern,无顶右按钮) -->
+            <Border Margin="0,6,0,0" Padding="12"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="{Binding IsUpgradeNodesVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                <StackPanel DataContext="{Binding UpgradeNodes}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="✕"
+                                Click="OnUpgradeNodesCloseClicked"
+                                Style="{StaticResource GearIconButtonStyle}"
+                                Foreground="{DynamicResource OnSurfaceBrush}" />
+                        <TextBlock VerticalAlignment="Center">
+                            <Run Text="{Binding EnvName, Mode=OneWay}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource OnSurfaceBrush}" />
+                            <Run Text=" 需要升级的节点" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource OnSurfaceBrush}" />
+                        </TextBlock>
+                    </DockPanel>
+                    <ContentControl Content="{Binding}" Margin="0,8,0,0" MinHeight="200">
+                        <ContentControl.Resources>
+                            <DataTemplate DataType="{x:Type vm:UpgradeNodesViewModel}">
+                                <v:UpgradeNodesView />
+                            </DataTemplate>
+                        </ContentControl.Resources>
+                    </ContentControl>
+                </StackPanel>
+            </Border>
         </StackPanel>
 
-        <!-- 中间:env card 列表(master-detail:left = env-list,right = env-detail panel) -->
+        <!-- 中间:env card 列表 -->
         <Grid Margin="12,0,12,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="600" />
-            </Grid.ColumnDefinitions>
-            <!-- left: env-list (existing content wrapped in Grid.Column=0) -->
-            <Grid Grid.Column="0">
-                <!-- 空状态 -->
-                <Border Visibility="{Binding Environments.Count, Converter={StaticResource ZeroCountToVisibility}}"
-                        Background="{DynamicResource SurfaceBrush}"
-                        BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                        CornerRadius="8" Padding="32"
-                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="📦" FontSize="48" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource OutlineBrush}" />
-                        <TextBlock Text="还没有任何环境" FontSize="16" Margin="0,8,0,4"
-                                   HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource OnSurfaceBrush}" />
-                        <TextBlock Text="点右上角「+ 新建环境」开始"
-                                   FontSize="12" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource OutlineBrush}" />
-                    </StackPanel>
-                </Border>
+            <!-- 空状态 -->
+            <Border Visibility="{Binding Environments.Count, Converter={StaticResource ZeroCountToVisibility}}"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="32"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="📦" FontSize="48" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource OutlineBrush}" />
+                    <TextBlock Text="还没有任何环境" FontSize="16" Margin="0,8,0,4"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                    <TextBlock Text="点右上角「+ 新建环境」开始"
+                               FontSize="12" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource OutlineBrush}" />
+                </StackPanel>
+            </Border>
 
-                <!-- env 卡片列表 -->
-                <ListBox ItemsSource="{Binding Environments}"
-                         SelectedItem="{Binding Selected}"
-                         Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         HorizontalContentAlignment="Stretch"
-                         Visibility="{Binding Environments.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
+            <!-- env 卡片列表 -->
+            <ListBox ItemsSource="{Binding Environments}"
+                     SelectedItem="{Binding Selected}"
+                     Background="Transparent" BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     HorizontalContentAlignment="Stretch"
+                     Visibility="{Binding Environments.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Background" Value="Transparent" />
@@ -328,13 +381,14 @@
                                     <Run Text="{Binding BedProfileId, Mode=OneWay, TargetNullValue='未部署'}" />
                                 </TextBlock>
 
-                                <!-- Row 2: Actions — 2 行 × 5 列 Grid -->
+                                <!-- Row 2: Actions — 2 行 × 6 列 Grid -->
                                 <Grid Grid.Row="2">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
@@ -372,13 +426,15 @@
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
-                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — 同 col 0-3 pattern,共用 5 列 Grid。 -->
+                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — 同 col 0-3 pattern,共用 6 列 Grid。 -->
                                     <Button Grid.Row="0" Grid.Column="4" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleComfyUiManagerCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="git clone ltdrdata/ComfyUI-Manager 到 custom_nodes 并装 requirements.txt;已装则 rm -rf 整个目录" />
+                                    <!-- v0.6.15.8 T6:第 6 列预留空 cell(后续填),保留 grid 形状 -->
+                                    <Border Grid.Row="0" Grid.Column="5" Margin="2" />
                                     <!-- Row 1: 调试/删除链路 -->
                                     <Button Grid.Row="1" Grid.Column="0" Content="查看日志" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
@@ -391,18 +447,24 @@
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
-                                    <Button Grid.Row="1" Grid.Column="2" Content="安装节点" Margin="2" MinWidth="0"
+                                    <!-- v0.6.15.8 T6:节点管理(原"安装节点"改名)+ 升级节点(新) -->
+                                    <Button Grid.Row="1" Grid.Column="2" Content="节点管理" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.InstallNodeCommand,
+                                            Command="{Binding DataContext.OpenNodeManagementCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <Button Grid.Row="1" Grid.Column="3" Content="组件报告" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="1" Grid.Column="3" Content="升级节点" Margin="2" MinWidth="0"
+                                            Style="{StaticResource MaterialButton}"
+                                            Command="{Binding DataContext.OpenUpgradeNodesCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                    <Button Grid.Row="1" Grid.Column="4" Content="组件报告" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ReportComponentsCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
-                                    <Button Grid.Row="1" Grid.Column="4" Content="删除" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="1" Grid.Column="5" Content="删除" Margin="2" MinWidth="0"
                                             Style="{StaticResource DangerButton}"
                                             Command="{Binding DataContext.DeleteCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -413,26 +475,6 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            </Grid>
-            <!-- GridSplitter (Column=1) -->
-            <GridSplitter Grid.Column="1" Width="6"
-                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                          Background="Transparent"
-                          Visibility="{Binding HasEnvironmentDetail, Converter={StaticResource BoolToVisibility}}"/>
-            <!-- right: env-detail panel -->
-            <Border Grid.Column="2"
-                    Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                    CornerRadius="6" Padding="0"
-                    Visibility="{Binding HasEnvironmentDetail, Converter={StaticResource BoolToVisibility}}">
-                <ContentControl Content="{Binding EnvironmentDetail}">
-                    <ContentControl.Resources>
-                        <DataTemplate DataType="{x:Type vm:EnvironmentDetailViewModel}">
-                            <v:EnvironmentDetailView />
-                        </DataTemplate>
-                    </ContentControl.Resources>
-                </ContentControl>
-            </Border>
         </Grid>
     </DockPanel>
 </UserControl>
