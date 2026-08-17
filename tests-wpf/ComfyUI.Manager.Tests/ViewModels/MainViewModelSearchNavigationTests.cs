@@ -40,7 +40,7 @@ public sealed class MainViewModelSearchNavigationTests : IDisposable
         var vm = new MainViewModel(
             _db.Factory,
             null!, null!, null!, null!, null!, null!, null!,
-            new Settings(), null!, null!, null!, null!, null!,
+            new Settings(), null!, null!, null!, null!, null!, null!,
             null!, "", _projectRoot, null!, null!, new UiPreferencesService(_projectRoot),
             baseEnvUninstaller: null, requirementsUninstaller: null,
             themeService: null, dashboardService: dashboardService,
@@ -141,9 +141,10 @@ public sealed class MainViewModelSearchNavigationTests : IDisposable
         {
             var vm = NewVm();
             // ExecuteCommand 走 reflection 调 OpenBulkUpdateCommand — 在测试 env 没真实
-            // BulkUpdateOrchestrator + dialog factory 会抛 NRE;同前面的 node/settings 测试
-            // 一样 swallow 内部异常,只验证反射查找成功 + section 已切(OpenBulkUpdate 同步
-            // CurrentSection = MainSection.BulkUpdate 在 dialog 构造之前)。
+            // BulkUpdateOrchestrator → OpenBulkUpdate 内 new BulkUpdateViewModel 抛 NRE;
+            // 同前面的 node/settings 测试一样 swallow 内部异常,只验证反射查找成功 +
+            // section 已切(OpenBulkUpdate 同步 CurrentSection = MainSection.BulkUpdate 在
+            // VM 构造之前)。
             var target = SearchTarget.ForCommand("OpenBulkUpdate", "批量更新");
             try
             {
@@ -151,7 +152,7 @@ public sealed class MainViewModelSearchNavigationTests : IDisposable
             }
             catch
             {
-                // BulkUpdateDialogViewModel ctor 缺依赖 → NRE,忽略。
+                // BulkUpdateViewModel ctor 缺依赖 → NRE,忽略。
             }
             Assert.Equal(MainSection.BulkUpdate, vm.CurrentSection);
         });

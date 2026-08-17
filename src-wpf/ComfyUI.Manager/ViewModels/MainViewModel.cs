@@ -40,6 +40,7 @@ public class MainViewModel : ViewModelBase
     private readonly Settings _settings;
     private readonly CatalogFetcher _catalogFetcher;
     private readonly CatalogRefreshService _catalogRefreshService;
+    private readonly GitHubVersionService _githubVersionService;
     private readonly CatalogCacheStore _catalogCacheStore;
     private readonly BaseEnvInstaller _baseEnvInstaller;
     private readonly BaseEnvProfileLoader _profileLoader;
@@ -100,6 +101,12 @@ public class MainViewModel : ViewModelBase
     // 后续进入复用同一份 VM,保留 busy 状态 + Items 内容。
     private LocalNodeListViewModel? _localNodesViewModel;
     private LocalNodeListView? _localNodesView;
+    // v0.6.18:批量更新 inline VM/View 缓存(替代原 BulkUpdateDialog 弹窗模式)。
+    // 同 ShowCatalog / ShowLocalNodes 懒构造模式:首次进入构造 VM+View,
+    // 后续进入复用同一份,保留 IsBusy + Rows + Summary。切走 section 时
+    // 若 IsBusy,VM.CancelRun() 兜底取消,避免 Task.Run 漏掉。
+    private BulkUpdateViewModel? _bulkUpdateViewModel;
+    private BulkUpdateView? _bulkUpdateView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
@@ -146,6 +153,12 @@ public class MainViewModel : ViewModelBase
     internal Func<SettingsViewModel, object?>? SettingsViewFactory { get; set; }
 
     /// <summary>
+    /// v0.6.18:构造 <see cref="BulkUpdateView"/> 的工厂 hook。默认 new 真实 View;
+    /// 测试可注入 stub 返回,绕开 WPF STA 初始化。
+    /// </summary>
+    internal Func<BulkUpdateViewModel, object?>? BulkUpdateViewFactory { get; set; }
+
+    /// <summary>
     /// 测试用:获取当前缓存的"环境"页 VM(若有)。用于断言 ShowEnvironments
     /// 复用同一实例。
     /// </summary>
@@ -156,6 +169,17 @@ public class MainViewModel : ViewModelBase
     /// 仍是同一份(否则 XAML ContentControl 重新解析会丢绑定的状态)。
     /// </summary>
     internal object? CurrentEnvironmentsView => _environmentsView;
+
+    /// <summary>
+    /// v0.6.16:触发 catalog 刷新(含 GitHub metadata enrichment 如果
+    /// <c>settings.FetchCatalogMetadata=true</c>)。
+    /// <para>
+    /// <c>--auto-refresh-catalog</c> CLI flag 用 — 启动后后台跑,不阻塞 UI。
+    /// 跟 <c>RestartEnvAsync</c> 一样 fire-and-forget,异常由
+    /// CatalogRefreshService 内部处理。
+    /// </para>
+    /// </summary>
+    public Task RefreshCatalogAsync() => _catalogRefreshService.RefreshAsync();
 
     /// <summary>
     /// v0.6.11+ SDD D1: InstallDialog 装成功回调,触发 env 重启(Stop if running
@@ -252,6 +276,7 @@ public class MainViewModel : ViewModelBase
         CatalogFetcher catalogFetcher,
         CatalogRefreshService catalogRefreshService,
         CatalogCacheStore catalogCacheStore,
+        GitHubVersionService githubVersionService,
         BaseEnvInstaller baseEnvInstaller,
         BaseEnvProfileLoader profileLoader,
         PyTorchVersionDirectory pytorchVersionDirectory,
@@ -289,6 +314,7 @@ public class MainViewModel : ViewModelBase
         _catalogFetcher = catalogFetcher;
         _catalogRefreshService = catalogRefreshService;
         _catalogCacheStore = catalogCacheStore;
+        _githubVersionService = githubVersionService;
         _baseEnvInstaller = baseEnvInstaller;
         _profileLoader = profileLoader;
         _pytorchVersionDirectory = pytorchVersionDirectory;
@@ -422,7 +448,8 @@ public class MainViewModel : ViewModelBase
             var catalogNodeRepo = new NodeRepository(_dbFactory);
             _catalogViewModel = new CatalogViewModel(
                 catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot,
-                rateLimitState: _rateLimitState, nodeRepo: catalogNodeRepo);
+                rateLimitState: _rateLimitState, nodeRepo: catalogNodeRepo,
+                versionService: _githubVersionService);
             _catalogView = new CatalogView { DataContext = _catalogViewModel };
         }
         CurrentView = _catalogView;
@@ -442,7 +469,7 @@ public class MainViewModel : ViewModelBase
             var installer = new LocalNodeCopyInstaller(
                 envRepo, nodeRepo, _nodeOps, logger: _logger);
             _localNodesViewModel = new LocalNodeListViewModel(
-                localNodeSvc, installer, envRepo, ErrorBanner);
+                localNodeSvc, installer, envRepo, nodeRepo, _requirementsInstaller, ErrorBanner);
             _localNodesView = new LocalNodeListView { DataContext = _localNodesViewModel };
         }
         CurrentView = _localNodesView;
@@ -472,16 +499,31 @@ public class MainViewModel : ViewModelBase
     private void OpenBulkUpdate()
     {
         CurrentSection = MainSection.BulkUpdate;
-        var envRepo = new EnvironmentRepository(_dbFactory);
-
-        // v0.6.11 T8:BulkUpdate 不再按节点维度,而是按 env × {ComfyUI, ComfyUI-Manager}
-        // 跑 git pull。EnvRow 只挂 env 选择,不再填 Nodes。
-        var vm = new BulkUpdateDialogViewModel(_orchestrator);
-        var envRows = envRepo.ListAll()
-            .Select(env => new EnvRow(env.Id, env.Name))
-            .ToList();
-        vm.LoadEnvs(envRows);
-        BulkUpdateDialog.Show(vm);
+        if (_bulkUpdateViewModel is null)
+        {
+            // v0.6.18:inline 模式(替代原 BulkUpdateDialog 弹窗)。VM 在 lazy 路径上构造一次,
+            // 后续进入复用同一份,保留 IsBusy + Rows + Summary。EnvRows 每次进入刷新一次
+            // —— 用户可能新建 / 删除 env,缓存的 list 不会自动跟。
+            var envRepo = new EnvironmentRepository(_dbFactory);
+            _bulkUpdateViewModel = new BulkUpdateViewModel(_orchestrator);
+            var envRows = envRepo.ListAll()
+                .Select(env => new EnvRow(env.Id, env.Name))
+                .ToList();
+            _bulkUpdateViewModel.LoadEnvs(envRows);
+            _bulkUpdateView = BulkUpdateViewFactory is null
+                ? new BulkUpdateView { DataContext = _bulkUpdateViewModel }
+                : BulkUpdateViewFactory(_bulkUpdateViewModel) as BulkUpdateView;
+        }
+        else
+        {
+            // 复用 VM 时刷新 env 列表 —— 用户在 env 页新建 / 删除后回到这里应该看到最新。
+            var envRepo = new EnvironmentRepository(_dbFactory);
+            var envRows = envRepo.ListAll()
+                .Select(env => new EnvRow(env.Id, env.Name))
+                .ToList();
+            _bulkUpdateViewModel.LoadEnvs(envRows);
+        }
+        CurrentView = _bulkUpdateView;
     }
 
     private void ShowSystemStatus()
@@ -684,6 +726,9 @@ public class MainViewModel : ViewModelBase
 
     /// <summary>测试用:获取当前缓存的 Settings VM(若有)。</summary>
     internal SettingsViewModel? CurrentSettingsViewModel => _settingsViewModel;
+
+    /// <summary>测试用:获取当前缓存的 BulkUpdate VM(若有),验证 OpenBulkUpdate 复用同一实例。</summary>
+    internal BulkUpdateViewModel? CurrentBulkUpdateViewModel => _bulkUpdateViewModel;
 
     private void OpenSpotlight()
     {
