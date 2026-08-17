@@ -126,6 +126,47 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         Assert.Equal("env-2", vm.EnvRows[1].EnvId);
     }
 
+    [Fact]
+    public void OpenBulkUpdateCommand_PopulatesAvailableNodesFromScan()
+    {
+        // v0.6.18.1:OpenBulkUpdate 必须把 env 的 scanned_nodes 拉成 AvailableNodes。
+        // ComfyUI-Manager 行被过滤掉(走 env-level ComfyUiManager 槽位)。
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "Env One");
+        SeedNode(db, "ComfyUI-Manager", "env-1", "comfyui-manager", "/tmp/1/custom_nodes/ComfyUI-Manager");
+        SeedNode(db, "real-node", "env-1", "real-pkg", "/tmp/1/custom_nodes/real-node");
+        var main = NewMainVm(db);
+        main.BulkUpdateViewFactory = vm => new StubBulkUpdateView(vm);
+
+        main.OpenBulkUpdateCommand.Execute(null);
+        var vm = main.CurrentBulkUpdateViewModel;
+        Assert.NotNull(vm);
+
+        Assert.Single(vm!.AvailableNodes);
+        Assert.Equal("real-node", vm.AvailableNodes[0].Id);
+    }
+
+    [Fact]
+    public void OpenBulkUpdateCommand_RefreshesAvailableNodesOnReentry()
+    {
+        // v0.6.18.1 G3+:用户安装新节点后切回 bulk update,AvailableNodes 必须包含新节点。
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "Env One");
+        SeedNode(db, "node-1", "env-1", "pkg-1", "/tmp/1/custom_nodes/node-1");
+        var main = NewMainVm(db);
+        main.BulkUpdateViewFactory = vm => new StubBulkUpdateView(vm);
+
+        main.OpenBulkUpdateCommand.Execute(null);
+        var vm = main.CurrentBulkUpdateViewModel;
+        Assert.NotNull(vm);
+        Assert.Single(vm!.AvailableNodes);
+
+        SeedNode(db, "node-2", "env-1", "pkg-2", "/tmp/1/custom_nodes/node-2");
+        main.OpenBulkUpdateCommand.Execute(null);
+
+        Assert.Equal(2, vm.AvailableNodes.Count);   // 复用 VM 但 AvailableNodes 已重算
+    }
+
     private static void SeedEnv(TestDb db, string id, string name)
     {
         using var conn = db.Factory.Open();
@@ -136,6 +177,20 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         cmd.Parameters.AddWithValue("@id", id);
         cmd.Parameters.AddWithValue("@name", name);
         cmd.Parameters.AddWithValue("@root", $"/tmp/{id}");
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void SeedNode(TestDb db, string id, string envId, string pkg, string path)
+    {
+        using var conn = db.Factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO scanned_nodes (id, env_id, package, package_path, status, source)
+            VALUES (@id, @env, @pkg, @path, 'enabled', 'env');";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@env", envId);
+        cmd.Parameters.AddWithValue("@pkg", pkg);
+        cmd.Parameters.AddWithValue("@path", path);
         cmd.ExecuteNonQuery();
     }
 

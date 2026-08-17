@@ -504,12 +504,16 @@ public class MainViewModel : ViewModelBase
             // v0.6.18:inline 模式(替代原 BulkUpdateDialog 弹窗)。VM 在 lazy 路径上构造一次,
             // 后续进入复用同一份,保留 IsBusy + Rows + Summary。EnvRows 每次进入刷新一次
             // —— 用户可能新建 / 删除 env,缓存的 list 不会自动跟。
+            // v0.6.18.1:VM 现在也拉每个 env 的 scanned_nodes 填 AvailableNodes,
+            // 所以 ctor 需要 NodeRepository;两次进入(Lazy / Reuse)都新建一份 NodeRepository,
+            // 因为它本身只是 thin wrapper over SqliteConnectionFactory,无状态。
             var envRepo = new EnvironmentRepository(_dbFactory);
-            _bulkUpdateViewModel = new BulkUpdateViewModel(_orchestrator);
+            var nodeRepo = new NodeRepository(_dbFactory);
+            _bulkUpdateViewModel = new BulkUpdateViewModel(_orchestrator, nodeRepo);
             var envRows = envRepo.ListAll()
                 .Select(env => new EnvRow(env.Id, env.Name))
                 .ToList();
-            _bulkUpdateViewModel.LoadEnvs(envRows);
+            _bulkUpdateViewModel.LoadEnvs(envRows, nodeRepo);
             _bulkUpdateView = BulkUpdateViewFactory is null
                 ? new BulkUpdateView { DataContext = _bulkUpdateViewModel }
                 : BulkUpdateViewFactory(_bulkUpdateViewModel) as BulkUpdateView;
@@ -517,11 +521,13 @@ public class MainViewModel : ViewModelBase
         else
         {
             // 复用 VM 时刷新 env 列表 —— 用户在 env 页新建 / 删除后回到这里应该看到最新。
+            // AvailableNodes 也会自动重算(env 选中状态变化触发)。
             var envRepo = new EnvironmentRepository(_dbFactory);
+            var nodeRepo = new NodeRepository(_dbFactory);
             var envRows = envRepo.ListAll()
                 .Select(env => new EnvRow(env.Id, env.Name))
                 .ToList();
-            _bulkUpdateViewModel.LoadEnvs(envRows);
+            _bulkUpdateViewModel.LoadEnvs(envRows, nodeRepo);
         }
         CurrentView = _bulkUpdateView;
     }

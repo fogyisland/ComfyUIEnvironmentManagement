@@ -136,6 +136,23 @@ public sealed class BulkUpdateOrchestratorTests
         });
     }
 
+    /// <summary>
+    /// v0.6.18.1:seed 一个 scanned_nodes 行,默认 PackagePath 已经存在(working
+    /// 仓库)。调用方负责建仓库 + 设 PackagePath。
+    /// </summary>
+    private static void SeedNode(NodeRepository nodeRepo, string nodeId, string envId, string packagePath)
+    {
+        nodeRepo.Upsert(new ScannedNode
+        {
+            Id = nodeId,
+            EnvId = envId,
+            Package = nodeId,
+            PackagePath = packagePath,
+            Status = "enabled",
+            Source = "env",
+        });
+    }
+
     [Fact]
     public async Task StartAsync_PullsComfyUiSource_OnSuccess()
     {
@@ -164,8 +181,7 @@ public sealed class BulkUpdateOrchestratorTests
         orch.Completed += s => completed = s;
 
         var summary = await orch.StartAsync(
-            new[] { "env-1" },
-            new[] { BulkUpdateTargetKind.ComfyUi },
+            new[] { ("env-1", BulkUpdateTargetKind.ComfyUi, (string?)null) },
             CancellationToken.None);
 
         Assert.NotNull(completed);
@@ -179,7 +195,8 @@ public sealed class BulkUpdateOrchestratorTests
         Assert.Contains(progress, r =>
             r.Status == "succeeded"
             && r.EnvId == "env-1"
-            && r.TargetKind == BulkUpdateTargetKind.ComfyUi);
+            && r.TargetKind == BulkUpdateTargetKind.ComfyUi
+            && r.NodeId == null);
         // log 文件存在
         Assert.True(Directory.EnumerateFiles(logsRoot, "bulk-update-*.log").Any());
     }
@@ -219,8 +236,7 @@ public sealed class BulkUpdateOrchestratorTests
         orch.Progress += r => progress.Add(r);
 
         var summary = await orch.StartAsync(
-            new[] { "env-1" },
-            new[] { BulkUpdateTargetKind.ComfyUiManager },
+            new[] { ("env-1", BulkUpdateTargetKind.ComfyUiManager, (string?)null) },
             CancellationToken.None);
 
         Assert.Equal(1, summary.Total);
@@ -230,7 +246,8 @@ public sealed class BulkUpdateOrchestratorTests
         Assert.Contains(progress, r =>
             r.Status == "succeeded"
             && r.EnvId == "env-1"
-            && r.TargetKind == BulkUpdateTargetKind.ComfyUiManager);
+            && r.TargetKind == BulkUpdateTargetKind.ComfyUiManager
+            && r.NodeId == null);
     }
 
     [Fact]
@@ -254,8 +271,10 @@ public sealed class BulkUpdateOrchestratorTests
         orch.Progress += r => progress.Add(r);
 
         var summary = await orch.StartAsync(
-            new[] { "env-no-source" },
-            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            new[] {
+                ("env-no-source", BulkUpdateTargetKind.ComfyUi, (string?)null),
+                ("env-no-source", BulkUpdateTargetKind.ComfyUiManager, (string?)null),
+            },
             CancellationToken.None);
 
         Assert.Equal(2, summary.Total);
@@ -305,8 +324,10 @@ public sealed class BulkUpdateOrchestratorTests
         orch.Progress += r => progress.Add(r);
 
         var summary = await orch.StartAsync(
-            new[] { "env-1" },
-            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            new[] {
+                ("env-1", BulkUpdateTargetKind.ComfyUi, (string?)null),
+                ("env-1", BulkUpdateTargetKind.ComfyUiManager, (string?)null),
+            },
             CancellationToken.None);
 
         // ComfyUi succeeded;ComfyUiManager skipped (目录不存在)。
@@ -345,8 +366,10 @@ public sealed class BulkUpdateOrchestratorTests
         orch.Progress += r => progress.Add(r);
 
         var summary = await orch.StartAsync(
-            new[] { "ghost" },
-            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            new[] {
+                ("ghost", BulkUpdateTargetKind.ComfyUi, (string?)null),
+                ("ghost", BulkUpdateTargetKind.ComfyUiManager, (string?)null),
+            },
             CancellationToken.None);
 
         Assert.Equal(2, summary.Total);
@@ -384,8 +407,10 @@ public sealed class BulkUpdateOrchestratorTests
         cts.Cancel(); // 取消在 start 之前
 
         var summary = await orch.StartAsync(
-            new[] { "env-1" },
-            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            new[] {
+                ("env-1", BulkUpdateTargetKind.ComfyUi, (string?)null),
+                ("env-1", BulkUpdateTargetKind.ComfyUiManager, (string?)null),
+            },
             cts.Token);
 
         Assert.True(completedFired, "Completed 必须触发");
@@ -440,8 +465,12 @@ public sealed class BulkUpdateOrchestratorTests
 
         // 在背景启动 orchestrator,等见到第一个 running 就 cancel。
         var runTask = orch.StartAsync(
-            new[] { "env-1", "env-2" },
-            new[] { BulkUpdateTargetKind.ComfyUi, BulkUpdateTargetKind.ComfyUiManager },
+            new[] {
+                ("env-1", BulkUpdateTargetKind.ComfyUi, (string?)null),
+                ("env-1", BulkUpdateTargetKind.ComfyUiManager, (string?)null),
+                ("env-2", BulkUpdateTargetKind.ComfyUi, (string?)null),
+                ("env-2", BulkUpdateTargetKind.ComfyUiManager, (string?)null),
+            },
             cts.Token);
 
         // 轮询等到 at least 1 个 running emit(慢 git 让我们有时间)。
@@ -496,8 +525,7 @@ public sealed class BulkUpdateOrchestratorTests
 
         // orchestrator 内部 30s 超时,所以这个测试本身耗时 ≤ 31s。
         var summary = await orch.StartAsync(
-            new[] { "env-1" },
-            new[] { BulkUpdateTargetKind.ComfyUi },
+            new[] { ("env-1", BulkUpdateTargetKind.ComfyUi, (string?)null) },
             CancellationToken.None);
 
         Assert.Equal(1, summary.Total);
@@ -507,5 +535,155 @@ public sealed class BulkUpdateOrchestratorTests
         Assert.NotNull(failed);
         Assert.Equal("timeout", failed!.Reason);
         Assert.Equal(BulkUpdateTargetKind.ComfyUi, failed.TargetKind);
+    }
+
+    // ===================== v0.6.18.1 Node target =====================
+
+    [Fact]
+    public async Task StartAsync_PullsNode_OnSuccess()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-node-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        // node 的 PackagePath 直接是 working 仓库 —— orchestrator 在
+        // node.PackagePath 上跑 git pull。
+        var (_, nodeWorkdir) = InitRepoPair(tempRoot);
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        SeedEnv(envRepo, "env-1", null!, tempRoot); // ComfyuiSource = null —— 无关 env-level
+        SeedNode(nodeRepo, "my-node", "env-1", nodeWorkdir);
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var progress = new List<BulkUpdateRow>();
+        orch.Progress += r => progress.Add(r);
+
+        var summary = await orch.StartAsync(
+            new[] { ("env-1", BulkUpdateTargetKind.Node, (string?)"my-node") },
+            CancellationToken.None);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(1, summary.Succeeded);
+        Assert.Equal(0, summary.Skipped);
+        Assert.Equal(0, summary.Failed);
+        Assert.Contains(progress, r =>
+            r.Status == "succeeded"
+            && r.EnvId == "env-1"
+            && r.TargetKind == BulkUpdateTargetKind.Node
+            && r.NodeId == "my-node");
+    }
+
+    [Fact]
+    public async Task StartAsync_NodeDirMissing_EmitsSkipped()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-node-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        SeedEnv(envRepo, "env-1", null!, tempRoot);
+        // PackagePath 指向不存在的目录
+        SeedNode(nodeRepo, "missing-node", "env-1",
+            Path.Combine(tempRoot, "nope-not-here"));
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var progress = new List<BulkUpdateRow>();
+        orch.Progress += r => progress.Add(r);
+
+        var summary = await orch.StartAsync(
+            new[] { ("env-1", BulkUpdateTargetKind.Node, (string?)"missing-node") },
+            CancellationToken.None);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(0, summary.Succeeded);
+        Assert.Equal(1, summary.Skipped);
+        Assert.Equal(0, summary.Failed);
+        Assert.Contains(progress, r =>
+            r.Status == "skipped"
+            && r.Reason == "节点目录不存在"
+            && r.TargetKind == BulkUpdateTargetKind.Node
+            && r.NodeId == "missing-node");
+    }
+
+    [Fact]
+    public async Task StartAsync_NodeNotInRepo_EmitsSkipped()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-node-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        SeedEnv(envRepo, "env-1", null!, tempRoot);
+        // 不 seed 任何 node —— NodeRepository.Get("ghost-node") 返 null
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var progress = new List<BulkUpdateRow>();
+        orch.Progress += r => progress.Add(r);
+
+        var summary = await orch.StartAsync(
+            new[] { ("env-1", BulkUpdateTargetKind.Node, (string?)"ghost-node") },
+            CancellationToken.None);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(1, summary.Skipped);
+        Assert.Equal(0, summary.Succeeded);
+        Assert.Equal(0, summary.Failed);
+        Assert.Contains(progress, r =>
+            r.Status == "skipped"
+            && r.Reason == "节点未注册"
+            && r.NodeId == "ghost-node");
+    }
+
+    [Fact]
+    public async Task StartAsync_NodeMissingNodeId_EmitsSkipped()
+    {
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-node-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        SeedEnv(envRepo, "env-1", null!, tempRoot);
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var progress = new List<BulkUpdateRow>();
+        orch.Progress += r => progress.Add(r);
+
+        // Node target 但 NodeId = null → "缺少 nodeId"
+        var summary = await orch.StartAsync(
+            new[] { ("env-1", BulkUpdateTargetKind.Node, (string?)null) },
+            CancellationToken.None);
+
+        Assert.Equal(1, summary.Total);
+        Assert.Equal(1, summary.Skipped);
+        Assert.Equal(0, summary.Succeeded);
+        Assert.Equal(0, summary.Failed);
+        Assert.Contains(progress, r =>
+            r.Status == "skipped"
+            && r.Reason == "缺少 nodeId"
+            && r.NodeId == null);
     }
 }
