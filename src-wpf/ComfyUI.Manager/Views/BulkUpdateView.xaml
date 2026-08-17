@@ -154,7 +154,7 @@
             </StackPanel>
         </Border>
 
-        <!-- 底部:summary inline 面板 + ErrorMessage -->
+        <!-- 底部:summary inline 面板 + ErrorMessage + v0.6.18.4 Console 面板 -->
         <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,12">
             <Border Padding="12"
                     Background="{DynamicResource SurfaceBrush}"
@@ -178,6 +178,52 @@
             <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource ErrorBrush}"
                        Margin="0,4,0,0" FontWeight="Bold"
                        Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
+            <!-- v0.6.18.4:Console 面板 — 显示当前在跑 job 的 git pull stdout/stderr
+                 实时输出,镜像 EnvironmentListView StartStatus 面板风格
+                 (SurfaceBrush/OutlineBrush/Border/CornerRadius 6 + Consolas monospace)。
+                 IsBusy=true 自动可见,run 完保留日志直到用户点 ✕ 关闭。
+                 Auto-scroll:新行追加时 ScrollToEnd 让用户总看最新输出。 -->
+            <Border Margin="0,8,0,0" Padding="0"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="{Binding IsConsoleVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <DockPanel Grid.Row="0" Margin="12,8,8,4">
+                        <Button DockPanel.Dock="Right" Content="✕"
+                                Style="{StaticResource GearIconButtonStyle}"
+                                Foreground="{DynamicResource OnSurfaceBrush}"
+                                Click="OnConsoleCloseClicked"
+                                ToolTip="关闭 Console(下次 Start 时自动重新打开)" />
+                        <TextBlock VerticalAlignment="Center" FontWeight="Bold" FontSize="13"
+                                   Foreground="{DynamicResource OnSurfaceBrush}">
+                            <Run Text="Console" />
+                            <Run Text="  " />
+                            <Run Text="{Binding ConsoleLog.Count, Mode=OneWay}" FontSize="11"
+                                 Foreground="{DynamicResource OutlineBrush}" />
+                            <Run Text=" 行" FontSize="11" Foreground="{DynamicResource OutlineBrush}" />
+                        </TextBlock>
+                    </DockPanel>
+                    <ScrollViewer x:Name="ConsoleScrollViewer" Grid.Row="1"
+                                  Height="160" Margin="8,0,8,8"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ConsoleLog}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                                               TextWrapping="NoWrap"
+                                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
         </StackPanel>
 
         <!-- 中间:3 列(env 卡片 / items / progress),镜像 EnvironmentListView Grid + Border 风格 -->

@@ -304,4 +304,52 @@ public class BulkUpdateViewModelTests
         var failed = new EnvRow("e3", "E3", "failed");
         Assert.Equal("failed", failed.Status);
     }
+
+    // ----- v0.6.18.4:ConsoleLog + IsConsoleVisible -----
+
+    [Fact]
+    public void ConsoleLog_InitiallyEmptyAndHidden()
+    {
+        // 初始无 log,IsBusy=false → Console 面板隐藏
+        using var db = new TestDb();
+        var vm = NewVmWithFixture(db);
+        Assert.Empty(vm.ConsoleLog);
+        Assert.False(vm.IsConsoleVisible);
+    }
+
+    [Fact]
+    public void IsBusy_True_MakesConsoleVisible()
+    {
+        // IsBusy=true → IsConsoleVisible 自动 true(就算 log 还空)
+        using var db = new TestDb();
+        var vm = NewVmWithFixture(db);
+        vm.IsBusy = true;
+        Assert.True(vm.IsConsoleVisible);
+    }
+
+    [Fact]
+    public void IsBusy_False_KeepsConsoleVisibleWhenLogHasLines()
+    {
+        // run 完,IsBusy=false,但 log 还有行 → 面板保留可见(用户看完成报告)
+        using var db = new TestDb();
+        var vm = NewVmWithFixture(db);
+        vm.IsBusy = true;
+        vm.ConsoleLog.Add("[env-1 · 基础环境] 开始:git pull");
+        vm.IsBusy = false;
+        Assert.True(vm.IsConsoleVisible);
+    }
+
+    [Fact]
+    public void ClearConsoleLog_HidesConsole()
+    {
+        // 用户点 ✕ → ClearConsoleLog → IsConsoleVisible=false(即使 IsBusy 也保留)
+        using var db = new TestDb();
+        var vm = NewVmWithFixture(db);
+        vm.IsBusy = true;
+        vm.ConsoleLog.Add("line");
+        Assert.True(vm.IsConsoleVisible);
+        vm.ClearConsoleLog();
+        Assert.False(vm.IsConsoleVisible);
+        Assert.Empty(vm.ConsoleLog);
+    }
 }

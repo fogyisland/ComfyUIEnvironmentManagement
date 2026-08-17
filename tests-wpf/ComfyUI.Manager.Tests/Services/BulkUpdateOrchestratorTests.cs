@@ -201,6 +201,68 @@ public sealed class BulkUpdateOrchestratorTests
         Assert.True(Directory.EnumerateFiles(logsRoot, "bulk-update-*.log").Any());
     }
 
+    // ----- v0.6.18.4:Console log progress -----
+
+    [Fact]
+    public async Task StartAsync_WithLogProgress_EmitsPrefixedLines()
+    {
+        // v0.6.18.4:log progress 拿到 [envId · itemName] 前缀的行,每条 stdout/stderr
+        // 同步追加;terminal 行带 "END status=…" 标记让用户能 grep 关键事件。
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        var (_, working) = InitRepoPair(tempRoot);
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        SeedEnv(envRepo, "env-1", working);
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var lines = new List<string>();
+        var progress = new Progress<string>(line => lines.Add(line));
+
+        var summary = await orch.StartAsync(
+            new[] { ("env-1", BulkUpdateTargetKind.ComfyUi, (string?)null) },
+            CancellationToken.None, progress);
+
+        Assert.Equal(1, summary.Succeeded);
+        // 至少要看到开始 + END terminal 行
+        Assert.Contains(lines, l => l.Contains("[env-1 · 基础环境]") && l.Contains("开始:"));
+        Assert.Contains(lines, l =>
+            l.Contains("[env-1 · 基础环境]") && l.Contains("END status=succeeded"));
+    }
+
+    [Fact]
+    public async Task StartAsync_WithoutLogProgress_StillSucceeds()
+    {
+        // log=null 时 orchestrator 跟以前一样不 crash,只是不发 console 行。
+        if (string.IsNullOrEmpty(FindGit())) return;
+
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        var (_, working) = InitRepoPair(tempRoot);
+
+        using var db = new TestDb();
+        var envRepo = new EnvironmentRepository(db.Factory);
+        var nodeRepo = new NodeRepository(db.Factory);
+        SeedEnv(envRepo, "env-1", working);
+
+        var orch = new BulkUpdateOrchestrator(
+            tempRoot, "git", envRepo, nodeRepo);
+
+        var summary = await orch.StartAsync(
+            new[] { ("env-1", BulkUpdateTargetKind.ComfyUi, (string?)null) },
+            CancellationToken.None, log: null);
+
+        Assert.Equal(1, summary.Succeeded);
+    }
+
     [Fact]
     public async Task StartAsync_PullsComfyUiManager_OnSuccess()
     {

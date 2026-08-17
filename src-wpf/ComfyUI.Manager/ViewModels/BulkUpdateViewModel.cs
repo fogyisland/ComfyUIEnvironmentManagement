@@ -43,6 +43,9 @@ public class BulkUpdateViewModel : ViewModelBase
 
     private string? _errorMessage;
     private bool _isBusy;
+    // v0.6.18.4:用户主动点 ✕ 关闭 Console 时置 true,Start() 时复位 false。
+    // IsConsoleVisible = !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0)
+    private bool _userHiddenConsole;
 
     /// <summary>左列:env 选择列表(checkbox 驱动)。</summary>
     public ObservableCollection<EnvRow> EnvRows { get; } = new();
@@ -80,6 +83,8 @@ public class BulkUpdateViewModel : ViewModelBase
             if (_isBusy == value) return;
             _isBusy = value;
             RaisePropertyChanged();
+            // v0.6.18.4:IsConsoleVisible 依赖 IsBusy(IsBusy=true → 必可见)。
+            RaisePropertyChanged(nameof(IsConsoleVisible));
             StartCommand.RaiseCanExecuteChanged();
             CancelCommand.RaiseCanExecuteChanged();
         }
@@ -102,6 +107,8 @@ public class BulkUpdateViewModel : ViewModelBase
         _orchestrator.Cancelled += OnCancelled;
 
         EnvRows.CollectionChanged += OnEnvRowsChanged;
+        // v0.6.18.4:Console 行追加 / 清空时通知 IsConsoleVisible。
+        ConsoleLog.CollectionChanged += OnConsoleLogChanged;
     }
 
     /// <summary>
@@ -265,6 +272,46 @@ public class BulkUpdateViewModel : ViewModelBase
     public bool HasRunningSelectedEnv =>
         EnvRows.Any(e => e.Selected && string.Equals(e.Status, "running", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// v0.6.18.4:Console 行流(每个 job 的 git pull stdout/stderr,带 [envId · itemName]
+    /// 前缀)。绑 View 底部 Console 面板 ScrollViewer,镜像 EnvStartStatusViewModel
+    /// LogLines 模式。Start() 时 Clear;orchestrator 进度通过 <see cref="IProgress{T}"/>
+    /// 异步追加,Progress<string> 在构造时捕获 UI SynchronizationContext(同
+    /// <see cref="EnvStartStatusViewModel"/> 修过的 STA-死锁 fix 模式)。
+    /// </summary>
+    public ObservableCollection<string> ConsoleLog { get; } = new();
+
+    /// <summary>
+    /// v0.6.18.4:Console 面板可见性 — busy 时自动可见,run 结束后保留日志直到用户点 ✕。
+    /// 绑 View Border Visibility。用户点 ✕ 后(<see cref="_userHiddenConsole"/>=true)
+    /// 即使 IsBusy=true 也不显示(用户明确意图优先);<see cref="Start"/> 时复位。
+    /// </summary>
+    [JsonIgnore]
+    public bool IsConsoleVisible =>
+        !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0);
+
+    private void OnConsoleLogChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // Console 面板可见性跟 log 数联动(IsBusy=false 时也保留,直到用户点 ✕)。
+        // 加行 / 清空都触发 PropertyChanged 让 View 重新绑定 Visibility。
+        if (e.Action == NotifyCollectionChangedAction.Reset || e.NewItems is { Count: > 0 })
+        {
+            RaisePropertyChanged(nameof(IsConsoleVisible));
+        }
+    }
+
+    /// <summary>
+    /// v0.6.18.4:点 Console 面板 ✕ 关闭按钮时调用,清空日志并隐藏面板。
+    /// 即使 IsBusy=true 也会隐藏(用户明确意图);下次 Start() 时复位
+    /// <see cref="_userHiddenConsole"/> 重新显示。
+    /// </summary>
+    public void ClearConsoleLog()
+    {
+        ConsoleLog.Clear();
+        _userHiddenConsole = true;
+        RaisePropertyChanged(nameof(IsConsoleVisible));
+    }
+
     private void Start()
     {
         var jobs = BuildJobs();
@@ -278,6 +325,10 @@ public class BulkUpdateViewModel : ViewModelBase
             Rows.Add(new BulkUpdateRow(envId, target, "pending", null, 0, 0, nodeId));
         }
 
+        // v0.6.18.4:清空 Console —— 每次新 run 重新累计;复位用户上次的 ✕ 隐藏。
+        ConsoleLog.Clear();
+        _userHiddenConsole = false;
+
         try { _runCts.Dispose(); } catch { }
         _runCts = new CancellationTokenSource();
 
@@ -286,7 +337,21 @@ public class BulkUpdateViewModel : ViewModelBase
         Summary = null;
         RaisePropertyChanged(nameof(Summary));
 
-        _ = _orchestrator.StartAsync(jobs, _runCts.Token)
+        // v0.6.18.4:IProgress<string> 走 Progress<T> 构造(捕获当前 SynchronizationContext,
+        // 自动 marshal 回 UI 线程)。同 EnvStartStatusViewModel 修过的 STA 死锁 fix
+        // 模式 — 不要在 ViewModel 显式 Dispatcher.Invoke。
+        var consoleProgress = new Progress<string>(line =>
+        {
+            ConsoleLog.Add(line);
+            // IsConsoleVisible 只在 log 数 0→>0 时变 true(IsBusy=true 时已 true);
+            // ObservableCollection.Add 不自动 raise PropertyChanged,手动通知。
+            if (ConsoleLog.Count == 1)
+            {
+                RaisePropertyChanged(nameof(IsConsoleVisible));
+            }
+        });
+
+        _ = _orchestrator.StartAsync(jobs, _runCts.Token, consoleProgress)
             .ContinueWith(t => DispatcherHelper.RunOnUiAsync(() => OnRunFinished(t)));
     }
 

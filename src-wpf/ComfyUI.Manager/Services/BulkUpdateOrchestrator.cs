@@ -112,10 +112,16 @@ public sealed class BulkUpdateOrchestrator
     /// - env-level target(<c>ComfyUi</c> / <c>ComfyUiManager</c>)和 node-level
     ///   target(<c>Node</c>)可以在同一个 job 列表里混排,orchestrator 串行处理,
     ///   共享 Progress / Completed / Cancelled 事件接口。
+    ///
+    /// v0.6.18.4:<paramref name="log"/> 可选 — 每个 job 的 git pull stdout/stderr
+    /// 实时通过 <c>log.Report("[envId · itemName] line")</c> 派发,VM 用这个串推
+    /// Console 面板 ObservableCollection(同 <see cref="EnvStartStatusViewModel"/>
+    /// 的 IProgress&lt;string&gt; 模式)。为 null 时 orchestrator 不发 console 行。
     /// </summary>
     public Task<BulkUpdateSummary> StartAsync(
         IReadOnlyList<(string EnvId, BulkUpdateTargetKind TargetKind, string? NodeId)> jobs,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IProgress<string>? log = null)
     {
         if (jobs is null) throw new ArgumentNullException(nameof(jobs));
 
@@ -132,15 +138,22 @@ public sealed class BulkUpdateOrchestrator
         }
 
         // 用 Task.Run 包装异步 method body,把整个 run 丢到后台。
-        return Task.Run(() => RunAsync(bulkId, jobs, linked.Token, linked));
+        return Task.Run(() => RunAsync(bulkId, jobs, linked.Token, linked, log));
     }
 
     private async Task<BulkUpdateSummary> RunAsync(
         string bulkId,
         IReadOnlyList<(string EnvId, BulkUpdateTargetKind TargetKind, string? NodeId)> jobs,
         CancellationToken ct,
-        CancellationTokenSource linkedCts)
+        CancellationTokenSource linkedCts,
+        IProgress<string>? log)
     {
+        // v0.6.18.4:所有 console 行都加 [envId · itemName] 前缀方便用户在面板里
+        // 区分多 job 混排输出;itemName 跟 <see cref="BulkUpdateRow.ItemName"/>
+        // 走同样规则(Node → nodeId,env-level → EnvId + 后缀)。
+        string Label(string envId, BulkUpdateTargetKind t, string? nodeId) =>
+            $"[{envId} · {(t == BulkUpdateTargetKind.Node ? (nodeId ?? "?") : t == BulkUpdateTargetKind.ComfyUi ? "基础环境" : "ComfyUI-Manager")}]";
+
         _logger?.Info("bulk-update", $"开始 bulkId={bulkId[..8]} jobs={jobs.Count}");
 
         var logPath = Path.Combine(_projectRoot, "logs", $"bulk-update-{bulkId}.log");
@@ -225,6 +238,10 @@ public sealed class BulkUpdateOrchestrator
             var pStart = Progress;
             pStart?.Invoke(runningRow);
 
+            // v0.6.18.4:每个 job 开始时 emit 一条 console 行,显示当前在跑的命令
+            // (用户能在面板里看到 "激活虚拟环境 → cd dir → git pull" 的入口)。
+            log?.Report($"{Label(envId, target, nodeId)} 开始:git pull --ff-only --progress");
+
             // target 目录不存在 → skip,reason 按 target 类型不同:
             // - ComfyUi → "目录不存在"(ComfyUI 源都不在)
             // - ComfyUiManager → "ComfyUI-Manager 未安装"(只 manager 子目录缺失)
@@ -243,6 +260,7 @@ public sealed class BulkUpdateOrchestrator
                 ReplaceLast(rows, runningRow, skippedRow);
                 EmitLog(logWriter, bulkId, envId, target, nodeId,
                     $"END status=skipped reason={skipReason} ms={sw.ElapsedMilliseconds}");
+                log?.Report($"{Label(envId, target, nodeId)} 跳过:{skipReason}");
                 var pSkip = Progress;
                 pSkip?.Invoke(skippedRow);
                 skipped++;
@@ -255,14 +273,21 @@ public sealed class BulkUpdateOrchestrator
 
             EmitLog(logWriter, bulkId, envId, target, nodeId,
                 $"END status={status} reason={reason ?? "-"} ms={sw.ElapsedMilliseconds}");
+            // v0.6.18.4:把 stdout/stderr 流式 emit 到 console(同 label 前缀),让用户
+            // 看到 git pull 真实输出("Already up to date." / "Updating abc..def" /
+            // "Receiving objects: 67%" 等),而不只是 terminal status。
             foreach (var line in EnumerateLines(stdout))
             {
                 EmitLog(logWriter, bulkId, envId, target, nodeId, $"OUT: {line}");
+                log?.Report($"{Label(envId, target, nodeId)} {line}");
             }
             foreach (var line in EnumerateLines(stderr))
             {
                 EmitLog(logWriter, bulkId, envId, target, nodeId, $"ERR: {line}");
+                log?.Report($"{Label(envId, target, nodeId)} {line}");
             }
+            // 终端行让用户一眼看到结果(成功/失败原因)
+            log?.Report($"{Label(envId, target, nodeId)} END status={status}{(reason is null ? "" : " reason=" + reason)} ms={sw.ElapsedMilliseconds}");
 
             var terminalRow = new BulkUpdateRow(
                 envId, target, status, reason, (int)sw.ElapsedMilliseconds, 0, nodeId);
