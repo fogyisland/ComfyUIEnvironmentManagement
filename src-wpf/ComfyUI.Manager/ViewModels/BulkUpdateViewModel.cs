@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Data;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
@@ -15,27 +14,25 @@ using ComfyUI.Manager.Services;
 namespace ComfyUI.Manager.ViewModels;
 
 /// <summary>
-/// v0.6.18.1 批量更新 inline VM — env+node 双层。
+/// v0.6.18.2 批量更新 inline VM — 扁平 checklist,所有 updateable items(env-level
+/// + node-level)合并到一个 <see cref="UpdateItems"/> 列表,用户像勾选普通节点
+/// (e.g. One Button Prompt)一样勾选。
 ///
-/// 三类 target:
-/// 1. <see cref="BulkUpdateTargetKind.ComfyUi"/> — env.ComfyuiSource(基础环境,默认全跑)
-/// 2. <see cref="BulkUpdateTargetKind.ComfyUiManager"/> — env 下的 ComfyUI-Manager 子目录(默认全跑)
-/// 3. <see cref="BulkUpdateTargetKind.Node"/> — custom_nodes/* 各节点(<see cref="AvailableNodes"/>
-///    里 Selected=true 的那些,用户可取消勾选)
-///
-/// 顶层 UI 镜像:
-/// - 左列 = env checkbox 列表(<see cref="EnvRows"/>,默认全选)
-/// - 中列 = 选中 envs 合并后的节点 checkbox 列表(<see cref="AvailableNodes"/>,默认全选)
-/// - 右列 = TabControl 状态(基础环境 / ComfyUI / 自定义节点 三 tab 共用 <see cref="Rows"/>)
+/// 之前 v0.6.18.1 的 3 类 target 概念保留(env-level 自动 + node-level 按勾),
+/// 但 UI 上不再做 env/node 列拆分 —— 左边列 env 列表(选中 env 才贡献 items),
+/// 中间列扁平 <see cref="UpdateItems"/>(含 env-level items + node-level items),
+/// 右边列单一 DataGrid 显示全部进度(无 tab 拆分)。
 ///
 /// 启动方式:
 /// 1. <see cref="OpenBulkUpdateCommand"/> 触发(由 MainViewModel 缓存调用) →
 ///    <see cref="MainViewModel.OpenBulkUpdate"/> 调
 ///    <see cref="LoadEnvs(System.Collections.Generic.IEnumerable{EnvRow}, NodeRepository)"/>
-///    传 env + nodeRepo;VM 拉每个 env 的 scanned_nodes,过滤掉 ComfyUI-Manager
-///    行(ComfyUI-Manager 是 env-level target,不进 node list)。
-/// 2. 用户点"开始" → <see cref="Start"/> 组装 jobs(env-level auto + 选中的 node-level)
-///    → 调 <see cref="BulkUpdateOrchestrator.StartAsync"/>。
+///    传 env + nodeRepo。
+/// 2. VM 拉每个选中 env 的 scanned_nodes,合并去重,过滤 ComfyUI-Manager,
+///    跟 env-level items(每个 env 2 条:基础环境 + ComfyUI-Manager)合并成扁平
+///    <see cref="UpdateItems"/>。
+/// 3. 用户点"开始" → <see cref="Start"/> 调 <see cref="BuildJobs"/>
+///    收集选中 env 的 env-level jobs + 勾选 node-level jobs → orchestrator。
 /// </summary>
 public class BulkUpdateViewModel : ViewModelBase
 {
@@ -49,24 +46,20 @@ public class BulkUpdateViewModel : ViewModelBase
     /// <summary>左列:env 选择列表(checkbox 驱动)。</summary>
     public ObservableCollection<EnvRow> EnvRows { get; } = new();
 
-    /// <summary>中列:选中 envs 合并后的节点列表(checkbox 驱动,默认全选)。</summary>
-    public ObservableCollection<NodeRow> AvailableNodes { get; } = new();
+    /// <summary>
+    /// v0.6.18.2 中列:扁平 checklist — env-level items(每个 env 2 条:
+    /// 基础环境 + ComfyUI-Manager) + node-level items(每个 installed node 1 条),
+    /// 全部 checkbox 驱动,默认 Selected=true。
+    /// </summary>
+    public ObservableCollection<UpdateItem> UpdateItems { get; } = new();
 
-    /// <summary>右列:进度(共用一份,TabControl 按 TargetKind filter 渲染)。</summary>
+    /// <summary>右列:全部进度(扁平,无 TabControl filter)。</summary>
     public ObservableCollection<BulkUpdateRow> Rows { get; } = new();
-
-    /// <summary>v0.6.18.1:三个 filter view,对应 TabControl 的 3 个 tab。
-    /// 用 <see cref="CollectionViewSource.GetDefaultView"/> 共享 <see cref="Rows"/> 集合,
-    /// 加 <see cref="ICollectionView.Filter"/> 回调按 <see cref="BulkUpdateTargetKind"/>
-    /// 分类。Rows 添加 / 替换时自动刷新。</summary>
-    public ICollectionView BaseEnvRowsView { get; }
-    public ICollectionView ComfyUiManagerRowsView { get; }
-    public ICollectionView NodeRowsView { get; }
 
     public RelayCommand StartCommand { get; }
     public RelayCommand CancelCommand { get; }
     public RelayCommand ToggleSelectAllEnvCommand { get; }
-    public RelayCommand ToggleSelectAllNodesCommand { get; }
+    public RelayCommand ToggleSelectAllItemsCommand { get; }
 
     public string? ErrorMessage
     {
@@ -101,32 +94,21 @@ public class BulkUpdateViewModel : ViewModelBase
             _ => Cancel(),
             _ => IsBusy);
         ToggleSelectAllEnvCommand = new RelayCommand(_ => ToggleSelectAllEnvs());
-        ToggleSelectAllNodesCommand = new RelayCommand(_ => ToggleSelectAllNodes());
+        ToggleSelectAllItemsCommand = new RelayCommand(_ => ToggleSelectAllItems());
 
         _orchestrator.Progress += OnProgress;
         _orchestrator.Completed += OnCompleted;
         _orchestrator.Cancelled += OnCancelled;
 
         EnvRows.CollectionChanged += OnEnvRowsChanged;
-
-        // 三个 filter view 共享 Rows 集合 —— TabControl 渲染时分门别类。
-        BaseEnvRowsView = CollectionViewSource.GetDefaultView(Rows);
-        BaseEnvRowsView.Filter = r => ((BulkUpdateRow)r).TargetKind == BulkUpdateTargetKind.ComfyUi;
-
-        ComfyUiManagerRowsView = CollectionViewSource.GetDefaultView(Rows);
-        ComfyUiManagerRowsView.Filter = r => ((BulkUpdateRow)r).TargetKind == BulkUpdateTargetKind.ComfyUiManager;
-
-        NodeRowsView = CollectionViewSource.GetDefaultView(Rows);
-        NodeRowsView.Filter = r => ((BulkUpdateRow)r).TargetKind == BulkUpdateTargetKind.Node;
     }
 
     /// <summary>
-    /// 加载 env 列表,同时记下 nodeRepo 以便 <see cref="RebuildAvailableNodes"/> 查节点。
-    /// 每个 env 默认勾上;现有 <see cref="AvailableNodes"/> 会被重算。
+    /// 加载 env 列表。nodeRepo 用于查每个 env 的 scanned_nodes;VM 不持有 param 引用,
+    /// 既有的 _nodeRepo 永远是查询源。
     /// </summary>
     public void LoadEnvs(IEnumerable<EnvRow> envs, NodeRepository nodeRepo)
     {
-        // 取消旧 env 上的 PropertyChanged hook(避免泄漏)
         foreach (var e in EnvRows) e.PropertyChanged -= OnEnvRowChanged;
 
         EnvRows.Clear();
@@ -136,18 +118,11 @@ public class BulkUpdateViewModel : ViewModelBase
             EnvRows.Add(e);
         }
 
-        // VM 在 ctor 已注入 _nodeRepo,这里不再校验 —— 调用方
-        // (MainViewModel.OpenBulkUpdate)两次进入会 new 两次 NodeRepository
-        // (无状态 wrapper,等价);传入的 param 形参保留为 API 约定:
-        // 测试 seam 可以传 mock repo,不需要通过 VM ctor 注入。
-        // 既有的 _nodeRepo 永远是 RebuildAvailableNodes 的源,不会动。
-
-        RebuildAvailableNodes();
+        RebuildUpdateItems();
     }
 
     private void OnEnvRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        // 给新加的 env 接 PropertyChanged,旧的已经在 LoadEnvs 里摘了
         if (e.NewItems is not null)
         {
             foreach (EnvRow row in e.NewItems)
@@ -162,7 +137,7 @@ public class BulkUpdateViewModel : ViewModelBase
                 row.PropertyChanged -= OnEnvRowChanged;
             }
         }
-        RebuildAvailableNodes();
+        RebuildUpdateItems();
         StartCommand.RaiseCanExecuteChanged();
     }
 
@@ -170,24 +145,41 @@ public class BulkUpdateViewModel : ViewModelBase
     {
         if (e.PropertyName == nameof(EnvRow.Selected))
         {
-            RebuildAvailableNodes();
+            RebuildUpdateItems();
             StartCommand.RaiseCanExecuteChanged();
         }
     }
 
     /// <summary>
-    /// 重算 <see cref="AvailableNodes"/> —— 选中 envs 的所有 scanned_nodes
-    /// 合并去重(同一 node 装在多个 env 里出现多条时只保留一条,Checked 状态取 OR),
-    /// 并排除 ComfyUI-Manager(那是 env-level target,不该出现在 node 列表里)。
-    /// 默认 Selected=true。
+    /// v0.6.18.2 重算 <see cref="UpdateItems"/>:每个选中 env 贡献 2 条 env-level
+    /// (基础环境 + ComfyUI-Manager),加上该 env 的所有 installed node(去重 +
+    /// 过滤 ComfyUI-Manager)。未选中 env 不贡献任何 item。
     /// </summary>
-    private void RebuildAvailableNodes()
+    private void RebuildUpdateItems()
     {
-        AvailableNodes.Clear();
-        var seen = new Dictionary<string, NodeRow>(StringComparer.Ordinal);
+        foreach (var item in UpdateItems) item.PropertyChanged -= OnUpdateItemChanged;
+
+        UpdateItems.Clear();
+        var seenNodes = new Dictionary<string, UpdateItem>(StringComparer.Ordinal);
 
         foreach (var env in EnvRows.Where(e => e.Selected))
         {
+            // env-level items:每个 env 两条,默认勾上
+            UpdateItems.Add(new UpdateItem(
+                envId: env.EnvId,
+                displayName: $"{env.DisplayName} · 基础环境",
+                target: BulkUpdateTargetKind.ComfyUi,
+                nodeId: null,
+                installedEnvId: env.EnvId));
+
+            UpdateItems.Add(new UpdateItem(
+                envId: env.EnvId,
+                displayName: $"{env.DisplayName} · ComfyUI-Manager",
+                target: BulkUpdateTargetKind.ComfyUiManager,
+                nodeId: null,
+                installedEnvId: env.EnvId));
+
+            // node-level items:每个 installed node 一条,跨 env 合并去重
             foreach (var n in _nodeRepo.ListByEnv(env.EnvId))
             {
                 // ComfyUI-Manager 是 env-level target,node 列表里跳过
@@ -196,33 +188,31 @@ public class BulkUpdateViewModel : ViewModelBase
                 {
                     continue;
                 }
-                if (seen.TryGetValue(n.Id, out var existing))
+                if (seenNodes.TryGetValue(n.Id, out var existing))
                 {
-                    // 同一 node 跨多 env 装了多份,DisplayName 标记 (多 env)
                     if (!existing.DisplayName.Contains("…"))
                     {
                         existing.DisplayName = existing.DisplayName + "…";
                     }
                     continue;
                 }
-                seen[n.Id] = new NodeRow(n.Id, n.Package ?? n.Id, env.EnvId)
-                {
-                    Selected = true,
-                };
+                seenNodes[n.Id] = new UpdateItem(
+                    envId: env.EnvId,
+                    displayName: n.Package ?? n.Id,
+                    target: BulkUpdateTargetKind.Node,
+                    nodeId: n.Id,
+                    installedEnvId: env.EnvId);
             }
         }
 
-        foreach (var nr in seen.Values)
-        {
-            nr.PropertyChanged += OnNodeRowChanged;
-            AvailableNodes.Add(nr);
-        }
+        foreach (var nodeItem in seenNodes.Values) UpdateItems.Add(nodeItem);
+        foreach (var item in UpdateItems) item.PropertyChanged += OnUpdateItemChanged;
         StartCommand.RaiseCanExecuteChanged();
     }
 
-    private void OnNodeRowChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnUpdateItemChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(NodeRow.Selected))
+        if (e.PropertyName == nameof(UpdateItem.Selected))
         {
             StartCommand.RaiseCanExecuteChanged();
         }
@@ -234,29 +224,28 @@ public class BulkUpdateViewModel : ViewModelBase
         foreach (var e in EnvRows) e.Selected = !allSelected;
     }
 
-    private void ToggleSelectAllNodes()
+    private void ToggleSelectAllItems()
     {
-        var allSelected = AvailableNodes.Count > 0 && AvailableNodes.All(n => n.Selected);
-        foreach (var n in AvailableNodes) n.Selected = !allSelected;
+        var allSelected = UpdateItems.Count > 0 && UpdateItems.All(n => n.Selected);
+        foreach (var n in UpdateItems) n.Selected = !allSelected;
     }
 
     private bool CanStart() =>
         !IsBusy
-        && EnvRows.Any(e => e.Selected);
+        && EnvRows.Any(e => e.Selected)
+        && UpdateItems.Any(i => i.Selected);
 
-    // env-level target 永远跑(node-level 可由用户取消勾选)
+    /// <summary>
+    /// 从勾选的 <see cref="UpdateItems"/> 生成 jobs。env-level items 跟
+    /// node-level items 现在统一在 <see cref="UpdateItems"/> 里,直接映射即可。
+    /// </summary>
     private IReadOnlyList<(string EnvId, BulkUpdateTargetKind TargetKind, string? NodeId)>
         BuildJobs()
     {
         var jobs = new List<(string, BulkUpdateTargetKind, string?)>();
-        foreach (var env in EnvRows.Where(e => e.Selected))
+        foreach (var item in UpdateItems.Where(i => i.Selected))
         {
-            jobs.Add((env.EnvId, BulkUpdateTargetKind.ComfyUi, null));
-            jobs.Add((env.EnvId, BulkUpdateTargetKind.ComfyUiManager, null));
-        }
-        foreach (var node in AvailableNodes.Where(n => n.Selected))
-        {
-            jobs.Add((node.InstalledEnvId, BulkUpdateTargetKind.Node, node.Id));
+            jobs.Add((item.EnvId, item.Target, item.NodeId));
         }
         return jobs;
     }
@@ -269,17 +258,14 @@ public class BulkUpdateViewModel : ViewModelBase
         var jobs = BuildJobs();
         if (jobs.Count == 0) return;
 
-        // 预填 Rows —— 每个 job 一条 "pending"。Orchestrator 的 Progress
-        // 事件从背景任务发,我们用 EnvId + TargetKind + NodeId 三元组直接
-        // 查找更新对应 row,无需每次都遍历查找(虽然 OnProgress 内部遍历,
-        // 但 dataset 通常很小)。
+        // 预填 Rows —— 每个 job 一条 "pending"。Orchestrator 的 Progress 事件
+        // 从背景任务发,我们用 EnvId + TargetKind + NodeId 三元组直接查找更新。
         Rows.Clear();
         foreach (var (envId, target, nodeId) in jobs)
         {
             Rows.Add(new BulkUpdateRow(envId, target, "pending", null, 0, 0, nodeId));
         }
 
-        // 旧 CTS 释放 —— 上一轮如果意外没释放,以这里为权威源。
         try { _runCts.Dispose(); } catch { }
         _runCts = new CancellationTokenSource();
 
@@ -315,7 +301,6 @@ public class BulkUpdateViewModel : ViewModelBase
     {
         DispatcherHelper.RunOnUiAsync(() =>
         {
-            // 找到现有的 pending / running 行,直接替换 —— EnvId + TargetKind + NodeId 三元组定位。
             for (int i = 0; i < Rows.Count; i++)
             {
                 var existing = Rows[i];
@@ -328,7 +313,6 @@ public class BulkUpdateViewModel : ViewModelBase
                     return;
                 }
             }
-            // 兜底:没找到就 append(不应该发生 —— 我们 Start 时已预填)
             Rows.Add(row);
         });
     }
@@ -353,8 +337,6 @@ public class BulkUpdateViewModel : ViewModelBase
 
     private void OnRunFinished(Task<BulkUpdateSummary> task)
     {
-        // Orchestrator 的 Completed 事件已经把 Summary 设好。
-        // 这里只处理异常 + 最终收尾(IsBusy 在 OnCompleted 里已设 false,这里冗余也无害)。
         if (task.IsFaulted)
         {
             var msg = task.Exception?.GetBaseException().Message
@@ -383,28 +365,40 @@ public class EnvRow : ViewModelBase
 }
 
 /// <summary>
-/// v0.6.18.1:批量更新节点列表一行。
-/// - <see cref="Id"/> = ScannedNode.Id(可作 git pull 目录定位)
-/// - <see cref="InstalledEnvId"/> = 该节点装在哪个 env 里(同一 node 跨 env
-///   时 <see cref="ComfyUI.Manager.ViewModels.BulkUpdateViewModel.RebuildAvailableNodes"/>
-///   会合并成一行,InstalledEnvId 留第一个 env)
-/// - <see cref="DisplayName"/> = 包名;跨多 env 时 DisplayName 后缀 "…"
+/// v0.6.18.2:批量更新扁平 checklist 一行 —— env-level(基础环境 / ComfyUI-Manager)
+/// 跟 node-level(节点)统一表达。
+///
+/// - <see cref="EnvId"/> = 该 item 所属 env
+/// - <see cref="DisplayName"/> = 显示文本(env-level 加 " · 基础环境" 后缀,
+///   跨 env 同 node 时加 "…" 后缀)
+/// - <see cref="Target"/> = <see cref="BulkUpdateTargetKind"/>,跟 orchestrator jobs 对应
+/// - <see cref="NodeId"/> = 仅 Node target 时填,其它 target 为 null
+/// - <see cref="InstalledEnvId"/> = 节点装在哪个 env(env-level 时 = EnvId)
 /// </summary>
-public class NodeRow : ViewModelBase
+public class UpdateItem : ViewModelBase
 {
     private bool _selected = true;
-    public string Id { get; }
+    public string EnvId { get; }
     public string DisplayName { get; set; }
+    public BulkUpdateTargetKind Target { get; }
+    public string? NodeId { get; }
     public string InstalledEnvId { get; }
     public bool Selected
     {
         get => _selected;
         set { _selected = value; RaisePropertyChanged(); }
     }
-    public NodeRow(string id, string displayName, string installedEnvId)
+    public UpdateItem(
+        string envId,
+        string displayName,
+        BulkUpdateTargetKind target,
+        string? nodeId,
+        string installedEnvId)
     {
-        Id = id;
+        EnvId = envId;
         DisplayName = displayName;
+        Target = target;
+        NodeId = nodeId;
         InstalledEnvId = installedEnvId;
     }
 }

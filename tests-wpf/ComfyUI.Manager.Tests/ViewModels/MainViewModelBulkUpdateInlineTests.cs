@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -127,9 +128,9 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
     }
 
     [Fact]
-    public void OpenBulkUpdateCommand_PopulatesAvailableNodesFromScan()
+    public void OpenBulkUpdateCommand_PopulatesUpdateItemsFromScan()
     {
-        // v0.6.18.1:OpenBulkUpdate 必须把 env 的 scanned_nodes 拉成 AvailableNodes。
+        // v0.6.18.2:OpenBulkUpdate 必须把 env 的 scanned_nodes 拉进扁平 UpdateItems。
         // ComfyUI-Manager 行被过滤掉(走 env-level ComfyUiManager 槽位)。
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env One");
@@ -142,14 +143,17 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         var vm = main.CurrentBulkUpdateViewModel;
         Assert.NotNull(vm);
 
-        Assert.Single(vm!.AvailableNodes);
-        Assert.Equal("real-node", vm.AvailableNodes[0].Id);
+        Assert.Single(vm!.UpdateItems.Where(i => i.Target == BulkUpdateTargetKind.Node));
+        var realNode = vm.UpdateItems.First(i => i.Target == BulkUpdateTargetKind.Node);
+        Assert.Equal("real-node", realNode.NodeId);
+        // 2 env-level + 1 node-level = 3 条
+        Assert.Equal(3, vm.UpdateItems.Count);
     }
 
     [Fact]
-    public void OpenBulkUpdateCommand_RefreshesAvailableNodesOnReentry()
+    public void OpenBulkUpdateCommand_RefreshesUpdateItemsOnReentry()
     {
-        // v0.6.18.1 G3+:用户安装新节点后切回 bulk update,AvailableNodes 必须包含新节点。
+        // v0.6.18.2:用户安装新节点后切回 bulk update,UpdateItems 必须包含新节点。
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env One");
         SeedNode(db, "node-1", "env-1", "pkg-1", "/tmp/1/custom_nodes/node-1");
@@ -159,12 +163,14 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         main.OpenBulkUpdateCommand.Execute(null);
         var vm = main.CurrentBulkUpdateViewModel;
         Assert.NotNull(vm);
-        Assert.Single(vm!.AvailableNodes);
+        Assert.Single(vm!.UpdateItems.Where(i => i.Target == BulkUpdateTargetKind.Node));
 
         SeedNode(db, "node-2", "env-1", "pkg-2", "/tmp/1/custom_nodes/node-2");
         main.OpenBulkUpdateCommand.Execute(null);
 
-        Assert.Equal(2, vm.AvailableNodes.Count);   // 复用 VM 但 AvailableNodes 已重算
+        // 2 env-level + 2 node-level = 4 条
+        Assert.Equal(2, vm.UpdateItems.Count(i => i.Target == BulkUpdateTargetKind.Node));
+        Assert.Equal(4, vm.UpdateItems.Count);
     }
 
     private static void SeedEnv(TestDb db, string id, string name)

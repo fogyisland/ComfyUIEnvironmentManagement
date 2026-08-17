@@ -4,9 +4,10 @@
              xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
              xmlns:model="clr-namespace:ComfyUI.Manager.Models">
     <!--
-    v0.6.18.1 inline 批量更新 — env + node 双层。
+    v0.6.18.2 inline 批量更新 — 扁平 checklist。
     镜像 EnvironmentListView 的三层 DockPanel 布局(Top 工具栏 + Bottom 状态面板 +
-    Middle 主区),Middle 现在是 3 列(env / node / TabControl),不再是 2 列。
+    Middle 主区),Middle 现在是 3 列(env / items / progress),不再是 2 列 +
+    TabControl。
 
     DataContext 由 MainViewModel.OpenBulkUpdate 在 SetView 时绑成 BulkUpdateViewModel。
     -->
@@ -40,13 +41,12 @@
                           VerticalAlignment="Center" />
             </Border>
         </DataTemplate>
-        <DataTemplate x:Key="NodeCardTemplate" DataType="{x:Type vm:NodeRow}">
+        <DataTemplate x:Key="UpdateItemCardTemplate" DataType="{x:Type vm:UpdateItem}">
             <Border Padding="8,6"
                     Background="{DynamicResource BackgroundBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
                     CornerRadius="4">
-                <CheckBox IsChecked="{Binding Selected}"
-                          VerticalAlignment="Center">
+                <CheckBox IsChecked="{Binding Selected}" VerticalAlignment="Center">
                     <TextBlock>
                         <Run Text="{Binding DisplayName, Mode=OneWay}" />
                         <Run Text=" (" />
@@ -74,13 +74,13 @@
                            Margin="0,2,0,0">
                     <Run Text="环境:" />
                     <Run Text="{Binding EnvRows.Count, Mode=OneWay}" />
-                    <Run Text=" · 节点:" />
-                    <Run Text="{Binding AvailableNodes.Count, Mode=OneWay}" />
-                    <Run Text=" · env-level 全跑,node-level 按勾选" />
+                    <Run Text=" · 更新项:" />
+                    <Run Text="{Binding UpdateItems.Count, Mode=OneWay}" />
+                    <Run Text=" · 默认全跑,按勾选" />
                 </TextBlock>
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Content="全选/反选 节点" Command="{Binding ToggleSelectAllNodesCommand}"
+                <Button Content="全选/反选 更新项" Command="{Binding ToggleSelectAllItemsCommand}"
                         Style="{StaticResource MaterialButton}" Margin="0,0,6,0" />
                 <Button Content="全选/反选 环境" Command="{Binding ToggleSelectAllEnvCommand}"
                         Style="{StaticResource MaterialButton}" Margin="0,0,6,0" />
@@ -117,11 +117,11 @@
                        Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
         </StackPanel>
 
-        <!-- 中间:3 列(env / node / TabControl 状态) -->
+        <!-- 中间:3 列(env / items / progress) -->
         <Grid Margin="12,0,12,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240" />
-                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="200" />
+                <ColumnDefinition Width="280" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -152,16 +152,16 @@
                 </Grid>
             </Border>
 
-            <!-- 中:节点 checkbox 列表(选中 envs 合并) -->
+            <!-- 中:扁平 UpdateItem checklist(env-level + node-level 混排) -->
             <Border Grid.Column="1" Margin="0,0,8,0"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
                     CornerRadius="6">
                 <Grid>
-                    <Border Visibility="{Binding AvailableNodes.Count, Converter={StaticResource ZeroCountToVisibility}}"
+                    <Border Visibility="{Binding UpdateItems.Count, Converter={StaticResource ZeroCountToVisibility}}"
                             HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="选中环境后才有节点" FontSize="13"
+                            <TextBlock Text="选中环境后才有更新项" FontSize="13"
                                        HorizontalAlignment="Center"
                                        Foreground="{DynamicResource OnSurfaceBrush}" />
                             <TextBlock Text="勾选左侧环境,这里自动列出"
@@ -171,108 +171,45 @@
                         </StackPanel>
                     </Border>
 
-                    <ListBox x:Name="NodeListBox" ItemsSource="{Binding AvailableNodes}"
-                             ItemTemplate="{StaticResource NodeCardTemplate}"
+                    <ListBox x:Name="UpdateItemListBox" ItemsSource="{Binding UpdateItems}"
+                             ItemTemplate="{StaticResource UpdateItemCardTemplate}"
                              ItemContainerStyle="{StaticResource CardListBoxItemStyle}"
                              Style="{StaticResource CardListBoxStyle}"
-                             Visibility="{Binding AvailableNodes.Count, Converter={StaticResource InverseZeroCountToVisibility}}" />
+                             Visibility="{Binding UpdateItems.Count, Converter={StaticResource InverseZeroCountToVisibility}}" />
                 </Grid>
             </Border>
 
-            <!-- 右:TabControl 状态(基础环境 / ComfyUI / 自定义节点) -->
+            <!-- 右:全局进度 DataGrid(env-level + node-level 统一显示) -->
             <Border Grid.Column="2"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
                     CornerRadius="6">
-                <TabControl Background="Transparent" BorderThickness="0">
-                    <!-- 基础环境 -->
-                    <TabItem Header="基础环境">
-                        <Grid>
-                            <Border Visibility="{Binding Rows.Count, Converter={StaticResource ZeroCountToVisibility}}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
-                                <TextBlock Text="勾选左侧环境 → 点「开始」"
-                                           FontSize="13"
-                                           Foreground="{DynamicResource OnSurfaceBrush}" />
-                            </Border>
-                            <DataGrid ItemsSource="{Binding BaseEnvRowsView}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True"
-                                      EnableRowVirtualization="True"
-                                      Background="Transparent"
-                                      BorderThickness="0"
-                                      Visibility="{Binding Rows.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Env" Binding="{Binding EnvId}" Width="*" />
-                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
-                                    <DataGridTextColumn Header="Progress"
-                                                        Binding="{Binding Percent, StringFormat={}{0}%}"
-                                                        Width="80" />
-                                    <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*" />
-                                    <DataGridTextColumn Header="ms" Binding="{Binding LatencyMs}" Width="60" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </TabItem>
-
-                    <!-- ComfyUI(ComfyUI-Manager) -->
-                    <TabItem Header="ComfyUI">
-                        <Grid>
-                            <Border Visibility="{Binding Rows.Count, Converter={StaticResource ZeroCountToVisibility}}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
-                                <TextBlock Text="勾选左侧环境 → 点「开始」"
-                                           FontSize="13"
-                                           Foreground="{DynamicResource OnSurfaceBrush}" />
-                            </Border>
-                            <DataGrid ItemsSource="{Binding ComfyUiManagerRowsView}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True"
-                                      EnableRowVirtualization="True"
-                                      Background="Transparent"
-                                      BorderThickness="0"
-                                      Visibility="{Binding Rows.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Env" Binding="{Binding EnvId}" Width="*" />
-                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
-                                    <DataGridTextColumn Header="Progress"
-                                                        Binding="{Binding Percent, StringFormat={}{0}%}"
-                                                        Width="80" />
-                                    <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*" />
-                                    <DataGridTextColumn Header="ms" Binding="{Binding LatencyMs}" Width="60" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </TabItem>
-
-                    <!-- 自定义节点 -->
-                    <TabItem Header="自定义节点">
-                        <Grid>
-                            <Border Visibility="{Binding NodeRowsView, Converter={StaticResource ZeroCountToVisibility}}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
-                                <TextBlock Text="勾选中列节点 + 点「开始」"
-                                           FontSize="13"
-                                           Foreground="{DynamicResource OnSurfaceBrush}" />
-                            </Border>
-                            <DataGrid ItemsSource="{Binding NodeRowsView}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True"
-                                      EnableRowVirtualization="True"
-                                      Background="Transparent"
-                                      BorderThickness="0"
-                                      Visibility="{Binding NodeRowsView, Converter={StaticResource InverseZeroCountToVisibility}}">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Node" Binding="{Binding NodeId}" Width="*" />
-                                    <DataGridTextColumn Header="Env" Binding="{Binding EnvId}" Width="*" />
-                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
-                                    <DataGridTextColumn Header="Progress"
-                                                        Binding="{Binding Percent, StringFormat={}{0}%}"
-                                                        Width="80" />
-                                    <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*" />
-                                    <DataGridTextColumn Header="ms" Binding="{Binding LatencyMs}" Width="60" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </TabItem>
-                </TabControl>
+                <Grid>
+                    <Border Visibility="{Binding Rows.Count, Converter={StaticResource ZeroCountToVisibility}}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
+                        <TextBlock Text="勾选中列更新项 → 点「开始」"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource OnSurfaceBrush}" />
+                    </Border>
+                    <DataGrid x:Name="RowsGrid"
+                              ItemsSource="{Binding Rows}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              EnableRowVirtualization="True"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Visibility="{Binding Rows.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="220" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                            <DataGridTextColumn Header="Progress"
+                                                Binding="{Binding Percent, StringFormat={}{0}%}"
+                                                Width="80" />
+                            <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*" />
+                            <DataGridTextColumn Header="ms" Binding="{Binding LatencyMs}" Width="60" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
             </Border>
         </Grid>
     </DockPanel>

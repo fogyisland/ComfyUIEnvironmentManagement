@@ -9,13 +9,12 @@ using Xunit;
 namespace ComfyUI.Manager.Tests.ViewModels;
 
 /// <summary>
-/// v0.6.18.1:<see cref="BulkUpdateViewModel"/> 现在管 env-level + node-level 双层
-/// 状态(env-level target 自动跑,node-level 按 <see cref="NodeRow.Selected"/>
-/// 决定)。
+/// v0.6.18.2:<see cref="BulkUpdateViewModel"/> 现在管扁平 <see cref="UpdateItem"/>
+/// checklist —— env-level(基础环境 + ComfyUI-Manager)跟 node-level(节点)统一
+/// 表达,UI 单一列表,不再有 3 tab。
 ///
-/// 删除了 v0.6.18 的 <c>UpdateComfyUi</c> / <c>UpdateComfyUiManager</c> /
-/// <c>SelectedTargetKinds</c> 测试 —— 这些 API 已经从 UI 移除(target checkbox
-/// 删了,改为 3 列 + TabControl 的"默认全跑 env-level,只勾选 node"语义)。
+/// 删除了 v0.6.18.1 的 <see cref="BulkUpdateViewModel.AvailableNodes"/> /
+/// 3 ICollectionView(被扁平的 UpdateItems 替代)。
 /// </summary>
 public class BulkUpdateViewModelTests
 {
@@ -27,7 +26,7 @@ public class BulkUpdateViewModelTests
             System.IO.Path.GetTempPath(), "git", envRepo, nodeRepo);
 
         var vm = new BulkUpdateViewModel(orch, nodeRepo);
-        // v0.6.18.1:EnvRow.Selected 默认 true,无需手动设
+        // v0.6.18.2:EnvRow.Selected 默认 true
         vm.LoadEnvs(new[] { new EnvRow("env-1", "Env 1") }, nodeRepo);
         return vm;
     }
@@ -68,36 +67,47 @@ public class BulkUpdateViewModelTests
     }
 
     [Fact]
-    public void AvailableNodes_EmptyWhenEnvHasNoNodes()
+    public void UpdateItems_DefaultHasTwoEnvLevelItemsPerEnv()
     {
-        // env 没装任何 node → 中列 AvailableNodes 应该空
+        // 每个选中的 env 都贡献 2 条 env-level item(基础环境 + ComfyUI-Manager)
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env 1");
         var vm = NewVmWithFixture(db);
-        Assert.Empty(vm.AvailableNodes);
+        Assert.Equal(2, vm.UpdateItems.Count);
+        Assert.Contains(vm.UpdateItems, i =>
+            i.Target == BulkUpdateTargetKind.ComfyUi
+            && i.DisplayName == "Env 1 · 基础环境"
+            && i.NodeId == null);
+        Assert.Contains(vm.UpdateItems, i =>
+            i.Target == BulkUpdateTargetKind.ComfyUiManager
+            && i.DisplayName == "Env 1 · ComfyUI-Manager"
+            && i.NodeId == null);
     }
 
     [Fact]
-    public void AvailableNodes_PopulatedFromEnv()
+    public void UpdateItems_AppendsNodeItemsAfterEnvLevel()
     {
+        // env-level + node-level 混合顺序 —— env-level 在前,node-level 在后
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env 1");
         SeedNode(db, "my-node-a", "env-1", "pkg-a", "/tmp/env-1/custom_nodes/my-node-a");
         SeedNode(db, "my-node-b", "env-1", "pkg-b", "/tmp/env-1/custom_nodes/my-node-b");
         var vm = NewVmWithFixture(db);
 
-        Assert.Equal(2, vm.AvailableNodes.Count);
-        Assert.Contains(vm.AvailableNodes, n => n.Id == "my-node-a");
-        Assert.Contains(vm.AvailableNodes, n => n.Id == "my-node-b");
-        // 默认勾上
-        Assert.All(vm.AvailableNodes, n => Assert.True(n.Selected));
+        Assert.Equal(4, vm.UpdateItems.Count);
+        // 前 2 条 env-level
+        Assert.Equal(BulkUpdateTargetKind.ComfyUi, vm.UpdateItems[0].Target);
+        Assert.Equal(BulkUpdateTargetKind.ComfyUiManager, vm.UpdateItems[1].Target);
+        // 后 2 条 node-level
+        Assert.Equal(BulkUpdateTargetKind.Node, vm.UpdateItems[2].Target);
+        Assert.Equal(BulkUpdateTargetKind.Node, vm.UpdateItems[3].Target);
+        Assert.All(vm.UpdateItems, i => Assert.True(i.Selected));
     }
 
     [Fact]
-    public void AvailableNodes_FiltersOutComfyUiManager()
+    public void UpdateItems_FiltersOutComfyUiManager()
     {
-        // v0.6.18.1:ComfyUI-Manager 是 env-level target(走 ComfyUiManager 槽位),
-        // 不应该出现在 node checkbox 列表里(避免重复显示)。
+        // ComfyUI-Manager 是 env-level target,node 列表里跳过(避免重复显示)
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env 1");
         SeedNode(db, "ComfyUI-Manager", "env-1", "comfyui-manager",
@@ -106,14 +116,15 @@ public class BulkUpdateViewModelTests
             "/tmp/env-1/custom_nodes/real-node");
         var vm = NewVmWithFixture(db);
 
-        Assert.Single(vm.AvailableNodes);
-        Assert.Equal("real-node", vm.AvailableNodes[0].Id);
+        // env-level 2 条 + node-level 1 条(real-node) = 3 条
+        Assert.Equal(3, vm.UpdateItems.Count);
+        Assert.Single(vm.UpdateItems.Where(i => i.Target == BulkUpdateTargetKind.Node));
     }
 
     [Fact]
-    public void AvailableNodes_EnvUncheckedHidesItsNodes()
+    public void UpdateItems_EnvUncheckedRemovesItsItems()
     {
-        // EnvRow.Selected = false → 它的节点不计入 AvailableNodes
+        // 取消勾 env → 该 env 的 env-level + node-level items 全部从 UpdateItems 移除
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env 1");
         SeedEnv(db, "env-2", "Env 2");
@@ -121,35 +132,43 @@ public class BulkUpdateViewModelTests
         SeedNode(db, "node-on-2", "env-2", "pkg-2", "/tmp/2/node-on-2");
         var vm = NewVmWithFixture(db);
 
-        // NewVmWithFixture 默认选 env-1 → 只有 node-on-1
-        Assert.Single(vm.AvailableNodes);
-        Assert.Equal("node-on-1", vm.AvailableNodes[0].Id);
+        // NewVmWithFixture 默认只 env-1 → env-1 有 2 env-level + 1 node = 3 条
+        Assert.Equal(3, vm.UpdateItems.Count);
 
-        // 取消勾 env-1 → 没有节点(因为 env-2 没在 EnvRows 里)
+        // 取消勾 env-1 → 没有 UpdateItems(env-2 没在 EnvRows 里)
         vm.EnvRows[0].Selected = false;
-        Assert.Empty(vm.AvailableNodes);
+        Assert.Empty(vm.UpdateItems);
     }
 
     [Fact]
-    public void AvailableNodes_NodeUnchecked_DisablesStartForNode()
+    public void UpdateItems_NodeUnchecked_LeavesStartEnabled()
     {
-        // 取消勾 node 不影响 StartCommand.CanExecute(env-level target 还是跑),
-        // 但 BuildJobs 会少一个 job —— 这里验 AvailableNodes.Selected 双向绑定。
+        // 取消勾某个 item(无论 env-level 还是 node-level)→ StartCommand 仍可执行
+        // (只要至少有一个 item 勾上 + 至少有一个 env 勾上)。
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "Env 1");
+        var vm = NewVmWithFixture(db);
+
+        vm.UpdateItems[0].Selected = false;   // 取消基础环境
+        Assert.True(vm.StartCommand.CanExecute(null));   // 还有 ComfyUI-Manager + 0 node
+    }
+
+    [Fact]
+    public void UpdateItems_AllUnchecked_DisablesStart()
+    {
+        // 所有 item 都取消勾 → StartCommand disable
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env 1");
         SeedNode(db, "n1", "env-1", "p1", "/tmp/1/n1");
         var vm = NewVmWithFixture(db);
 
-        vm.AvailableNodes[0].Selected = false;
-        Assert.False(vm.AvailableNodes[0].Selected);
-        Assert.True(vm.StartCommand.CanExecute(null));   // env-level 仍可跑
+        foreach (var item in vm.UpdateItems) item.Selected = false;
+        Assert.False(vm.StartCommand.CanExecute(null));
     }
 
     [Fact]
     public void StartCommand_EnabledWhenEnvSelected()
     {
-        // v0.6.18.1:StartCommand 现在只看 EnvRows.Any(selected) —— env-level
-        // target 自动跑(node-level 可由用户取消勾选)。不再依赖任何 target checkbox。
         using var db = new TestDb();
         var vm = NewVmWithFixture(db);
         Assert.True(vm.StartCommand.CanExecute(null));
@@ -175,7 +194,7 @@ public class BulkUpdateViewModelTests
     }
 
     [Fact]
-    public void ToggleSelectAllNodes_FlipsNodeSelection()
+    public void ToggleSelectAllItems_FlipsSelection()
     {
         using var db = new TestDb();
         SeedEnv(db, "env-1", "Env 1");
@@ -183,11 +202,11 @@ public class BulkUpdateViewModelTests
         SeedNode(db, "n2", "env-1", "p2", "/tmp/1/n2");
         var vm = NewVmWithFixture(db);
 
-        Assert.All(vm.AvailableNodes, n => Assert.True(n.Selected));
-        vm.ToggleSelectAllNodesCommand.Execute(null);
-        Assert.All(vm.AvailableNodes, n => Assert.False(n.Selected));
-        vm.ToggleSelectAllNodesCommand.Execute(null);
-        Assert.All(vm.AvailableNodes, n => Assert.True(n.Selected));
+        Assert.All(vm.UpdateItems, i => Assert.True(i.Selected));
+        vm.ToggleSelectAllItemsCommand.Execute(null);
+        Assert.All(vm.UpdateItems, i => Assert.False(i.Selected));
+        vm.ToggleSelectAllItemsCommand.Execute(null);
+        Assert.All(vm.UpdateItems, i => Assert.True(i.Selected));
     }
 
     [Fact]
@@ -202,7 +221,7 @@ public class BulkUpdateViewModelTests
     public void Summary_InitiallyNull_NeverThrows()
     {
         var vm = NewVmWithFixture(new TestDb());
-        Assert.Null(vm.Summary);   // inline 模式下 summary 没 run 过为 null
+        Assert.Null(vm.Summary);
     }
 
     [Fact]
@@ -212,8 +231,6 @@ public class BulkUpdateViewModelTests
         SeedEnv(db, "env-a", "Env A");
         SeedEnv(db, "env-b", "Env B");
         var vm = NewVmWithFixture(db);
-        // 重载
-        var envRepo = new EnvironmentRepository(db.Factory);
         var nodeRepo = new NodeRepository(db.Factory);
         vm.LoadEnvs(new[]
         {
@@ -222,23 +239,21 @@ public class BulkUpdateViewModelTests
         }, nodeRepo);
         Assert.Equal(2, vm.EnvRows.Count);
         Assert.Equal("env-a", vm.EnvRows[0].EnvId);
+        // 2 env × 2 env-level = 4 条
+        Assert.Equal(4, vm.UpdateItems.Count);
     }
 
     [Fact]
-    public void Rows_CollectionView_FilterByTargetKind()
+    public void UpdateItemRow_ItemName_ComputedFromTarget()
     {
-        // 验 3 个 ICollectionView 按 TargetKind 正确分流。
-        using var db = new TestDb();
-        SeedEnv(db, "env-1", "Env 1");
-        SeedNode(db, "n1", "env-1", "p1", "/tmp/1/n1");
-        var vm = NewVmWithFixture(db);
+        // BulkUpdateRow.ItemName 计算属性:Node → NodeId,ComfyUi → "Env · 基础环境"
+        var nodeRow = new BulkUpdateRow("env-x", BulkUpdateTargetKind.Node, "pending", null, 0, 0, "my-pkg");
+        Assert.Equal("my-pkg", nodeRow.ItemName);
 
-        vm.Rows.Add(new BulkUpdateRow("env-1", BulkUpdateTargetKind.ComfyUi, "pending", null, 0, 0, null));
-        vm.Rows.Add(new BulkUpdateRow("env-1", BulkUpdateTargetKind.ComfyUiManager, "pending", null, 0, 0, null));
-        vm.Rows.Add(new BulkUpdateRow("env-1", BulkUpdateTargetKind.Node, "pending", null, 0, 0, "n1"));
+        var baseEnvRow = new BulkUpdateRow("env-x", BulkUpdateTargetKind.ComfyUi, "pending", null, 0, 0, null);
+        Assert.Equal("env-x · 基础环境", baseEnvRow.ItemName);
 
-        Assert.Single(vm.BaseEnvRowsView.Cast<BulkUpdateRow>().ToList());
-        Assert.Single(vm.ComfyUiManagerRowsView.Cast<BulkUpdateRow>().ToList());
-        Assert.Single(vm.NodeRowsView.Cast<BulkUpdateRow>().ToList());
+        var managerRow = new BulkUpdateRow("env-x", BulkUpdateTargetKind.ComfyUiManager, "pending", null, 0, 0, null);
+        Assert.Equal("env-x · ComfyUI-Manager", managerRow.ItemName);
     }
 }
