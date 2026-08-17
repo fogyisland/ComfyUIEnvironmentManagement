@@ -133,6 +133,84 @@ public sealed class AppLoggerTests : IDisposable
         Assert.Equal(0, deleted);
     }
 
+    // ===== v0.6.17.3: logs/env/{envName}/{date}.log 子目录布局覆盖 =====
+
+    [Fact]
+    public void CleanupOlderThan_DeletesOldFilesInEnvSubdirs()
+    {
+        // 布局: <root>/logs/env/{envName}/{yyyy-MM-dd}.log
+        // 老的 logs/env/{envName}/ 子目录里有过期日志文件 — 应被删,且子目录删空后自动回收
+        var envLogs = Path.Combine(_tempRoot, "logs", "env", "firstEnv");
+        Directory.CreateDirectory(envLogs);
+        var today = $"{DateTime.Now:yyyy-MM-dd}.log";
+        var tenDaysAgo = $"{DateTime.Now.AddDays(-10):yyyy-MM-dd}.log";
+        var fortyDaysAgo = $"{DateTime.Now.AddDays(-40):yyyy-MM-dd}.log";
+        File.WriteAllText(Path.Combine(envLogs, today), "today");
+        File.WriteAllText(Path.Combine(envLogs, tenDaysAgo), "ten");
+        File.WriteAllText(Path.Combine(envLogs, fortyDaysAgo), "forty");
+
+        int deleted = AppLogger.CleanupOlderThan(_tempRoot, 30);
+
+        Assert.Equal(1, deleted);
+        Assert.True(File.Exists(Path.Combine(envLogs, today)));
+        Assert.True(File.Exists(Path.Combine(envLogs, tenDaysAgo)));
+        Assert.False(File.Exists(Path.Combine(envLogs, fortyDaysAgo)),
+            "过期文件应被删");
+    }
+
+    [Fact]
+    public void CleanupOlderThan_AllExpiredInSubdir_RemovesEmptyDirectory()
+    {
+        // 子目录里文件全部过期 → 删完后子目录应一并清掉(File Explorer 干净)。
+        var envLogs = Path.Combine(_tempRoot, "logs", "env", "staleEnv");
+        Directory.CreateDirectory(envLogs);
+        var fortyDaysAgo = $"{DateTime.Now.AddDays(-40):yyyy-MM-dd}.log";
+        File.WriteAllText(Path.Combine(envLogs, fortyDaysAgo), "old");
+
+        AppLogger.CleanupOlderThan(_tempRoot, 30);
+
+        Assert.False(Directory.Exists(envLogs),
+            "empty 子目录应自动回收");
+    }
+
+    [Fact]
+    public void CleanupOlderThan_MultipleEnvs_DeletesEachIndependently()
+    {
+        // 多个 env 子目录都过期 — 每个目录单独判断。
+        var envA = Path.Combine(_tempRoot, "logs", "env", "envA");
+        var envB = Path.Combine(_tempRoot, "logs", "env", "envB");
+        Directory.CreateDirectory(envA);
+        Directory.CreateDirectory(envB);
+        var old = $"{DateTime.Now.AddDays(-40):yyyy-MM-dd}.log";
+        File.WriteAllText(Path.Combine(envA, old), "a");
+        File.WriteAllText(Path.Combine(envB, old), "b");
+
+        int deleted = AppLogger.CleanupOlderThan(_tempRoot, 30);
+
+        Assert.Equal(2, deleted);
+        Assert.False(File.Exists(Path.Combine(envA, old)));
+        Assert.False(File.Exists(Path.Combine(envB, old)));
+    }
+
+    [Fact]
+    public void CleanupOlderThan_MixedLayout_DeletesBothFlatAndSubdir()
+    {
+        // 老 flat Logs/*.log 跟新 subdir logs/env/*/*.log 同时存在 — 都应清理。
+        var flatDir = Path.Combine(_tempRoot, "Logs");
+        Directory.CreateDirectory(flatDir);
+        var envLogs = Path.Combine(_tempRoot, "logs", "env", "firstEnv");
+        Directory.CreateDirectory(envLogs);
+        var old = $"{DateTime.Now.AddDays(-40):yyyy-MM-dd}.log";
+        File.WriteAllText(Path.Combine(flatDir, old), "flat");
+        File.WriteAllText(Path.Combine(envLogs, old), "subdir");
+
+        int deleted = AppLogger.CleanupOlderThan(_tempRoot, 30);
+
+        Assert.Equal(2, deleted);
+        Assert.False(File.Exists(Path.Combine(flatDir, old)));
+        Assert.False(File.Exists(Path.Combine(envLogs, old)));
+    }
+
     [Fact]
     public async Task ConcurrentWrites_NoCorruptionOrLoss()
     {

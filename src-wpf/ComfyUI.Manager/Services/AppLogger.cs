@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace ComfyUI.Manager.Services;
@@ -145,40 +146,82 @@ public sealed class AppLogger : IDisposable
     }
 
     /// <summary>
-    /// 启动时清理:删 &gt;days 天的 *.log 文件。文件名 = yyyy-MM-dd.log。
+    /// 启动时清理:删 &gt;days 天的 *.log 文件。两个位置:
+    /// 1) <c>{projectRoot}/Logs/*.log</c> — 老 AppLogger 平面布局(自 v0.6.5.13)
+    /// 2) <c>{projectRoot}/logs/env/{*}/{*.log}</c> — 新 per-env 子目录布局(v0.6.17.3+)
+    ///    子目录命名 = 净化后的 envName,只有日期格式 yyyy-MM-dd.log 被识别 + 删除。
+    ///
     /// 文件锁住 / 解析不了日期 / 不存在的都跳过。
     /// </summary>
     public static int CleanupOlderThan(string projectRoot, int days)
     {
         if (string.IsNullOrWhiteSpace(projectRoot) || days < 0) return 0;
-        var logDir = Path.Combine(projectRoot, "Logs");
-        if (!Directory.Exists(logDir)) return 0;
         var cutoff = DateTime.Now.Date.AddDays(-days);
         int deleted = 0;
-        foreach (var file in Directory.EnumerateFiles(logDir, "*.log"))
+
+        // 1) 老平面布局 — {projectRoot}/Logs/*.log
+        var flatDir = Path.Combine(projectRoot, "Logs");
+        if (Directory.Exists(flatDir))
         {
-            try
+            foreach (var file in Directory.EnumerateFiles(flatDir, "*.log"))
             {
-                var name = Path.GetFileNameWithoutExtension(file);
-                if (DateTime.TryParseExact(name, "yyyy-MM-dd",
-                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-                    && date.Date < cutoff)
-                {
-                    File.Delete(file);
-                    deleted++;
-                }
+                if (TryDeleteOldLog(file, cutoff)) deleted++;
             }
-            catch
+        }
+
+        // 2) 新子目录布局 — {projectRoot}/logs/env/*/*.log
+        var envLogsRoot = Path.Combine(projectRoot, "logs", "env");
+        if (Directory.Exists(envLogsRoot))
+        {
+            foreach (var envDir in Directory.EnumerateDirectories(envLogsRoot))
             {
-                // 文件锁住 / IO 错误 → 跳过
+                foreach (var file in Directory.EnumerateFiles(envDir, "*.log"))
+                {
+                    if (TryDeleteOldLog(file, cutoff)) deleted++;
+                }
+                // env 子目录如果删完后空了,顺手清掉空目录(File Explorer 看起来干净)
+                try
+                {
+                    if (Directory.Exists(envDir) && !Directory.EnumerateFileSystemEntries(envDir).Any())
+                    {
+                        Directory.Delete(envDir);
+                    }
+                }
+                catch { }
             }
         }
         return deleted;
     }
 
+    private static bool TryDeleteOldLog(string file, DateTime cutoff)
+    {
+        try
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            if (DateTime.TryParseExact(name, "yyyy-MM-dd",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                && date.Date < cutoff)
+            {
+                File.Delete(file);
+                return true;
+            }
+        }
+        catch
+        {
+            // 文件锁住 / IO 错误 → 跳过
+        }
+        return false;
+    }
+
     /// <summary>
-    /// v0.6.12:per-env operation log 文件路径。envName 净化非法字符 + 截断 100 字符 +
-    /// 空 fallback "unknown"。baseDir 是 Logs 的父目录(默认 = 调用方 AppLogger 的 _projectRoot);
+    /// v0.6.17.3:per-env 日志文件路径改成 <c>{baseDir}/logs/env/{sanitized envName}/{yyyy-MM-dd}.log</c>
+    /// 子目录布局 — 用户原话"日志目录更改为 logs\env\环境名称\当前日期.log"。
+    ///
+    /// 旧(v0.6.12 ~ v0.6.17.2):<c>{baseDir}/Logs/operation-{envName}-{date}.log</c>(平面布局)
+    /// 新:v0.6.17.3 起的 subdir layout — File Explorer 一目了然看到哪个 env 哪天跑了什么。
+    ///
+    /// envName 净化非法字符 + 截断 100 字符 + 空 fallback "unknown"(跟 v0.6.12 一致)。
+    /// baseDir 是 <c>logs/</c> 的父目录(默认 = 调用方 AppLogger 的 _projectRoot);
     /// 静态调用可显式传。
     /// </summary>
     public static string OperationLogPath(string envName, DateTime date, string? baseDir = null)
@@ -186,8 +229,8 @@ public sealed class AppLogger : IDisposable
         var dir = baseDir ?? throw new ArgumentNullException(nameof(baseDir),
             "OperationLogPath 静态调用必须显式传 baseDir");
         var sanitized = SanitizeFileName(envName);
-        var fileName = $"operation-{sanitized}-{date:yyyy-MM-dd}.log";
-        return Path.Combine(dir, "Logs", fileName);
+        var fileName = $"{date:yyyy-MM-dd}.log";
+        return Path.Combine(dir, "logs", "env", sanitized, fileName);
     }
 
     /// <summary>

@@ -85,16 +85,21 @@ public sealed class ProcessLauncher : IDisposable
     public int StartupTimeoutSeconds => _startupTimeoutSeconds;
 
     /// <summary>
-    /// v0.6.12:per-env operation log 路径。
-    /// 从 &lt;logsDir&gt;/logs/&lt;env-id&gt;.log(单文件,无滚动)改为
-    /// &lt;logsDir&gt;/Logs/operation-{sanitized envName}-{date}.log(按日切)。
-    /// <paramref name="envId"/> 保留参数是向后兼容 + 未来使用 —— 当前实现只用 envName。
-    /// <paramref name="date"/> 默认 = DateTime.Now(测试可显式传固定值)。
+    /// v0.6.17.3:per-env operation log 路径 — 子目录布局
+    /// <c>{logsDir}/logs/env/{sanitized envName}/{yyyy-MM-dd}.log</c>。
+    ///
+    /// 历史:
+    /// - v0.6.7.1: <c>{logsDir}/logs/{env-id}.log</c>(单文件,无滚动)
+    /// - v0.6.12:  <c>{logsDir}/Logs/operation-{envName}-{date}.log</c>(平面 + 按日切)
+    /// - v0.6.17.3: 子目录 <c>{logsDir}/logs/env/{envName}/{date}.log</c>(用户原话:
+    ///   "日志目录更改为 logs\env\环境名称\当前日期.log")
+    ///
+    /// <paramref name="envId"/> 保留参数是向后兼容 —— 当前实现只用 envName。
+    /// <paramref name="date"/> 默认 = DateTime.Now(本地时区;测试可显式传固定值)。
     /// </summary>
     public string LogFilePath(string envName, string envId, DateTime? date = null)
     {
         var d = date ?? DateTime.Now;
-        // delegate filename sanitization + Logs/ subdirectory to AppLogger
         return AppLogger.OperationLogPath(envName, d, _logsDir);
     }
 
@@ -247,7 +252,7 @@ public sealed class ProcessLauncher : IDisposable
 
             stageProgress?.Report("stage:在环境中启用");
 
-            var entry = new ProcessEntry(process, logPath);
+            var entry = new ProcessEntry(process, env.Name, logPath);
             lock (_runningLock)
             {
                 _running[env.Id] = entry;
@@ -545,18 +550,17 @@ public sealed class ProcessLauncher : IDisposable
     private void AttachStdoutReader(ProcessEntry entry, IProgress<string>? logProgress = null)
     {
         var process = entry.Process;
-        var logPath = entry.LogFilePath;
+        var envName = entry.EnvName;
         var pid = process.Id;
         _ = Task.Run(async () =>
         {
+            // v0.6.17.3:rollover helper — 每次写之前重算 logPath(env 跨午夜后自动切到
+            // 今天的子目录文件),旧 writer 关闭,新 writer 接上。修用户报告的
+            // "上午开 LogViewer 窗口空"bug 的主因:旧实现启动时捕获 logPath 一次,
+            // 跨午夜后 env 仍写昨天的文件,LogViewer 今天读到空文件。
+            var rollover = new EnvLogRolloverWriter(envName, LogFilePath, _logsDir);
             try
             {
-                using var writer = new StreamWriter(
-                    new FileStream(logPath, FileMode.Append, FileAccess.Write,
-                        FileShare.ReadWrite | FileShare.Delete))
-                {
-                    AutoFlush = true,
-                };
                 string? line;
                 while ((line = await process.StandardOutput.ReadLineAsync()) is not null)
                 {
@@ -566,12 +570,16 @@ public sealed class ProcessLauncher : IDisposable
                     // 后台线程 reader + 主线程 grace snapshot — 必须 lock,List 非线程安全。
                     lock (entry.StartupLines) entry.StartupLines.Add(line);
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
-                    await writer.WriteLineAsync($"[{ts}] [pid {pid}] OUT: {line}");
+                    await rollover.WriteLineAsync($"[{ts}] [pid {pid}] OUT: {line}");
                 }
             }
             catch
             {
                 // 进程退出 / reader 取消,忽略
+            }
+            finally
+            {
+                rollover.Dispose();
             }
         });
     }
@@ -579,18 +587,14 @@ public sealed class ProcessLauncher : IDisposable
     private void AttachStderrReader(ProcessEntry entry, IProgress<string>? logProgress = null)
     {
         var process = entry.Process;
-        var logPath = entry.LogFilePath;
+        var envName = entry.EnvName;
         var pid = process.Id;
         _ = Task.Run(async () =>
         {
+            // v0.6.17.3:rollover helper — 同 stdout reader 注释。
+            var rollover = new EnvLogRolloverWriter(envName, LogFilePath, _logsDir);
             try
             {
-                using var writer = new StreamWriter(
-                    new FileStream(logPath, FileMode.Append, FileAccess.Write,
-                        FileShare.ReadWrite | FileShare.Delete))
-                {
-                    AutoFlush = true,
-                };
                 string? line;
                 while ((line = await process.StandardError.ReadLineAsync()) is not null)
                 {
@@ -600,12 +604,16 @@ public sealed class ProcessLauncher : IDisposable
                     // 后台线程 reader + 主线程 grace snapshot — 必须 lock,List 非线程安全。
                     lock (entry.StartupLines) entry.StartupLines.Add(line);
                     var ts = DateTime.Now.ToString("HH:mm:ss.fff");
-                    await writer.WriteLineAsync($"[{ts}] [pid {pid}] ERR: {line}");
+                    await rollover.WriteLineAsync($"[{ts}] [pid {pid}] ERR: {line}");
                 }
             }
             catch
             {
                 // 进程退出 / reader 取消,忽略
+            }
+            finally
+            {
+                rollover.Dispose();
             }
         });
     }
@@ -613,7 +621,6 @@ public sealed class ProcessLauncher : IDisposable
     private void AttachExitedHandler(string envId, string envName, ProcessEntry entry)
     {
         var process = entry.Process;
-        var logPath = entry.LogFilePath;
         process.EnableRaisingEvents = true;
         process.Exited += (_, _) =>
         {
@@ -643,19 +650,14 @@ public sealed class ProcessLauncher : IDisposable
             }
             catch { }
 
+            // v0.6.17.3:exit 写也走 rollover helper,跨午夜 exit 写到当天文件(而不是启动期旧文件)。
             try
             {
-                using var writer = new StreamWriter(
-                    new FileStream(logPath, FileMode.Append, FileAccess.Write,
-                        FileShare.ReadWrite | FileShare.Delete))
-                {
-                    AutoFlush = true,
-                };
-                var ts = DateTime.Now.ToString("HH:mm:ss.fff");
+                using var rollover = new EnvLogRolloverWriter(envName, LogFilePath, _logsDir);
                 int? exitCode = null;
                 try { exitCode = process.ExitCode; } catch { }
-                writer.WriteLine(
-                    $"[{ts}] [pid {process.Id}] EXIT: env '{envName}' exit code {exitCode?.ToString() ?? "?"}");
+                rollover.WriteLine(
+                    $"[pid {process.Id}] EXIT: env '{envName}' exit code {exitCode?.ToString() ?? "?"}");
             }
             catch { }
             // v0.6.12:per-env 操作日志。意外退出 / 自然退出都在这里统一记一行,跟 StopEnvAsync 的 [env-stop] stopped 区分开。
@@ -851,6 +853,11 @@ public sealed class ProcessLauncher : IDisposable
         public Process Process { get; }
         public string LogFilePath { get; }
         /// <summary>
+        /// v0.6.17.3:env 名字给 EnvLogRolloverWriter — 跨午夜时重新算路径用 envName + DateTime.Now,
+        /// LogFilePath(启动期固定)只保留给 LogViewer 默认路径。
+        /// </summary>
+        public string EnvName { get; }
+        /// <summary>
         /// v0.6.15.7: 启动期 stdout/stderr 行缓存,5s grace 后被 NodeStartupErrorDetector 扫描。
         /// AttachStdoutReader / AttachStderrReader 在 <c>lock (StartupLines)</c> 下 Add,
         /// grace 后 new List&lt;string&gt;(StartupLines) 拿快照。
@@ -862,9 +869,10 @@ public sealed class ProcessLauncher : IDisposable
         public TaskCompletionSource ReadySignal { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public ProcessEntry(Process process, string logFilePath)
+        public ProcessEntry(Process process, string envName, string logFilePath)
         {
             Process = process;
+            EnvName = envName;
             LogFilePath = logFilePath;
         }
     }
@@ -880,5 +888,104 @@ public sealed class ProcessLauncher : IDisposable
             || line.Contains("Starting server", StringComparison.OrdinalIgnoreCase)
             || line.Contains("Application startup complete", StringComparison.OrdinalIgnoreCase)
             || line.Contains("Uvicorn running on", StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+/// <summary>
+/// v0.6.17.3: per-env 日志 rollover writer —— 每次写之前重算路径,env 跨午夜自动
+/// 切到当天的 <c>{logsDir}/logs/env/{envName}/{date}.log</c> 文件。修用户报告的
+/// "上午开 LogViewer 窗口空"bug:旧实现启动时捕获路径一次,跨午夜后 env 仍写
+/// 昨天的文件,LogViewer 今天读到空文件。
+///
+/// 用法:AttachStdoutReader / AttachStderrReader / AttachExitedHandler 在 reader
+/// 循环里 <c>await rollover.WriteLineAsync(...)</c>,Dispose 时关闭当前 writer。
+///
+/// 设计选择:
+/// - 每次 WriteLine 重算 path 而不是定时器检查:开销极小(< 1μs 字符串拼接)
+///   且保证第一行新日期的写出就进新文件,无延迟。
+/// - 同一天写复用同一个 writer:减少 IO(每次 open + close 至少 ~10ms)。
+/// - 日切原子性:旧 writer Dispose 完毕才 open 新 writer,中间窗口无 IO,LogViewer
+///   reader 不会看到 "partial" 行。
+/// - 异常隔离:FileStream.Open 抛 → 返回 false 让调用方吃掉,reader 继续跑(不会
+///   让一个 IO 抖动拖死整个 stdout reader)。
+/// </summary>
+internal sealed class EnvLogRolloverWriter : IDisposable
+{
+    private readonly string _envName;
+    private readonly Func<string, string, DateTime?, string> _pathResolver;
+    private readonly string _logsDir;
+    private readonly object _gate = new();
+    private DateTime _currentDay;
+    private StreamWriter? _writer;
+    private string _currentPath = "";
+    private bool _disposed;
+
+    public EnvLogRolloverWriter(
+        string envName,
+        Func<string, string, DateTime?, string> pathResolver,
+        string logsDir)
+    {
+        _envName = envName;
+        _pathResolver = pathResolver;
+        _logsDir = logsDir;
+    }
+
+    public void WriteLine(string text)
+    {
+        if (_disposed) return;
+        if (TryRotate()) _writer!.WriteLine(text);
+    }
+
+    public async Task WriteLineAsync(string text)
+    {
+        if (_disposed) return;
+        if (TryRotate()) await _writer!.WriteLineAsync(text);
+    }
+
+    /// <summary>
+    /// 检查日期是否变化,变化则关闭旧 writer + 打开新 writer。返回 writer 是否可用。
+    /// </summary>
+    private bool TryRotate()
+    {
+        lock (_gate)
+        {
+            var now = DateTime.Now;
+            var newPath = _pathResolver(_envName, "", now);
+            if (_writer is null || newPath != _currentPath)
+            {
+                _writer?.Dispose();
+                _currentPath = newPath;
+                var dir = Path.GetDirectoryName(newPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                try
+                {
+                    _writer = new StreamWriter(new FileStream(
+                        newPath,
+                        FileMode.Append,
+                        FileAccess.Write,
+                        FileShare.ReadWrite | FileShare.Delete))
+                    {
+                        AutoFlush = true,
+                    };
+                    _currentDay = now.Date;
+                }
+                catch
+                {
+                    _writer = null;
+                    return false;
+                }
+            }
+            return _writer is not null;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _disposed = true;
+            _writer?.Dispose();
+            _writer = null;
+        }
     }
 }

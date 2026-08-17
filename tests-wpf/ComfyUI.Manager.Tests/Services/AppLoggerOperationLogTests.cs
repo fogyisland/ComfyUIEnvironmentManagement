@@ -29,23 +29,24 @@ public class AppLoggerOperationLogTests : IDisposable
     public void OperationLogPath_RegularEnvName_ReturnsExpectedFormat()
     {
         var path = AppLogger.OperationLogPath("firstEnv", new DateTime(2026, 8, 12), _tmpDir);
-        Assert.Equal(Path.Combine(_tmpDir, "Logs", "operation-firstEnv-2026-08-12.log"), path);
+        // v0.6.17.3: 子目录布局 logs/env/firstEnv/2026-08-12.log(老格式是平面 Logs/operation-firstEnv-...)
+        Assert.Equal(Path.Combine(_tmpDir, "logs", "env", "firstEnv", "2026-08-12.log"), path);
     }
 
     [Fact]
     public void OperationLogPath_SpecialChars_ReplacedWithUnderscore()
     {
         var path = AppLogger.OperationLogPath("foo/bar:baz", new DateTime(2026, 8, 12), _tmpDir);
-        var fileName = Path.GetFileName(path);
-        Assert.Equal("operation-foo_bar_baz-2026-08-12.log", fileName);
+        // v0.6.17.3: envName 净化结果决定子目录名;filename 现在只有日期
+        Assert.Equal(Path.Combine("foo_bar_baz", "2026-08-12.log"), Path.GetRelativePath(Path.Combine(_tmpDir, "logs", "env"), path));
     }
 
     [Fact]
     public void OperationLogPath_EmptyEnvName_FallsBackToUnknown()
     {
         var path = AppLogger.OperationLogPath("", new DateTime(2026, 8, 12), _tmpDir);
-        var fileName = Path.GetFileName(path);
-        Assert.Equal("operation-unknown-2026-08-12.log", fileName);
+        // 空 envName fallback "unknown" 子目录
+        Assert.Equal(Path.Combine(_tmpDir, "logs", "env", "unknown", "2026-08-12.log"), path);
     }
 
     [Fact]
@@ -53,13 +54,12 @@ public class AppLoggerOperationLogTests : IDisposable
     {
         var longName = new string('a', 200);
         var path = AppLogger.OperationLogPath(longName, new DateTime(2026, 8, 12), _tmpDir);
-        var fileName = Path.GetFileName(path);
-        // G7 spec: sanitized envName ≤ 100 字符。格式固定前缀后缀:
-        //   operation-(10) + {sanitized}(≤100) + -(1) + yyyy-MM-dd.log(14) = 125
-        Assert.True(fileName.Length <= 125, $"fileName too long: {fileName.Length}");
-        Assert.StartsWith("operation-", fileName);
-        // 200 a's 应被截断到 100
-        Assert.DoesNotContain(new string('a', 101), fileName);
+        // 200 a's 截断到 100 → env 子目录名是 100 个 a
+        var envDir = Path.GetFileName(Path.GetDirectoryName(path)!);
+        Assert.Equal(100, envDir.Length);
+        Assert.Equal(new string('a', 100), envDir);
+        // 文件名 = yyyy-MM-dd.log(14 字符)
+        Assert.Equal("2026-08-12.log", Path.GetFileName(path));
     }
 
     [Fact]
