@@ -256,4 +256,52 @@ public class BulkUpdateViewModelTests
         var managerRow = new BulkUpdateRow("env-x", BulkUpdateTargetKind.ComfyUiManager, "pending", null, 0, 0, null);
         Assert.Equal("env-x · ComfyUI-Manager", managerRow.ItemName);
     }
+
+    // ----- v0.6.18.2 G11+:HasRunningSelectedEnv -----
+
+    [Fact]
+    public void HasRunningSelectedEnv_FalseWhenAllStopped()
+    {
+        // 默认 EnvRow.Status="stopped" → 警告 banner 不显示
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "Env 1");
+        var vm = NewVmWithFixture(db);
+        Assert.False(vm.HasRunningSelectedEnv);
+    }
+
+    [Fact]
+    public void HasRunningSelectedEnv_TrueWhenSelectedEnvRunning()
+    {
+        // 选中 env 状态= running → 警告 banner 显示
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "Env 1");
+        var vm = NewVmWithFixture(db);
+        vm.LoadEnvs(new[] { new EnvRow("env-1", "Env 1", status: "running") }, new NodeRepository(db.Factory));
+        Assert.True(vm.HasRunningSelectedEnv);
+    }
+
+    [Fact]
+    public void HasRunningSelectedEnv_FalseWhenRunningEnvUnchecked()
+    {
+        // env 在 running 但取消勾 → 不再"被选中",警告不显示
+        using var db = new TestDb();
+        SeedEnv(db, "env-1", "Env 1");
+        var vm = NewVmWithFixture(db);
+        vm.LoadEnvs(new[] { new EnvRow("env-1", "Env 1", status: "running") }, new NodeRepository(db.Factory));
+        Assert.True(vm.HasRunningSelectedEnv);
+        vm.EnvRows[0].Selected = false;
+        Assert.False(vm.HasRunningSelectedEnv);
+    }
+
+    [Fact]
+    public void EnvRow_StoresStatusField()
+    {
+        // EnvRow.Status 必须从 Environment.Status 透传,running/stopped/failed 三态都保留
+        var running = new EnvRow("e1", "E1", "running");
+        Assert.Equal("running", running.Status);
+        var stopped = new EnvRow("e2", "E2");
+        Assert.Equal("stopped", stopped.Status);   // 默认值
+        var failed = new EnvRow("e3", "E3", "failed");
+        Assert.Equal("failed", failed.Status);
+    }
 }

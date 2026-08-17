@@ -511,7 +511,7 @@ public class MainViewModel : ViewModelBase
             var nodeRepo = new NodeRepository(_dbFactory);
             _bulkUpdateViewModel = new BulkUpdateViewModel(_orchestrator, nodeRepo);
             var envRows = envRepo.ListAll()
-                .Select(env => new EnvRow(env.Id, env.Name))
+                .Select(env => new EnvRow(env.Id, env.Name, env.Status ?? "stopped"))
                 .ToList();
             _bulkUpdateViewModel.LoadEnvs(envRows, nodeRepo);
             _bulkUpdateView = BulkUpdateViewFactory is null
@@ -525,7 +525,7 @@ public class MainViewModel : ViewModelBase
             var envRepo = new EnvironmentRepository(_dbFactory);
             var nodeRepo = new NodeRepository(_dbFactory);
             var envRows = envRepo.ListAll()
-                .Select(env => new EnvRow(env.Id, env.Name))
+                .Select(env => new EnvRow(env.Id, env.Name, env.Status ?? "stopped"))
                 .ToList();
             _bulkUpdateViewModel.LoadEnvs(envRows, nodeRepo);
         }

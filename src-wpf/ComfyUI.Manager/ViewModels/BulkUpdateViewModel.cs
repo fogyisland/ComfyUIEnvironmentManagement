@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -139,6 +140,7 @@ public class BulkUpdateViewModel : ViewModelBase
         }
         RebuildUpdateItems();
         StartCommand.RaiseCanExecuteChanged();
+        RaisePropertyChanged(nameof(HasRunningSelectedEnv));
     }
 
     private void OnEnvRowChanged(object? sender, PropertyChangedEventArgs e)
@@ -147,6 +149,7 @@ public class BulkUpdateViewModel : ViewModelBase
         {
             RebuildUpdateItems();
             StartCommand.RaiseCanExecuteChanged();
+            RaisePropertyChanged(nameof(HasRunningSelectedEnv));
         }
     }
 
@@ -253,6 +256,15 @@ public class BulkUpdateViewModel : ViewModelBase
     /// <summary>summary 计数 — 绑底部 inline Border,实时跟 orchestrator Completed 更新。</summary>
     public BulkUpdateSummary? Summary { get; private set; }
 
+    /// <summary>
+    /// v0.6.18.2 G11+:True = 至少有一个 *被选中* 且 *正在运行* 的 env。绑顶部警告 banner
+    /// "更新前请先关闭环境,否则 git 操作可能失败或留下脏状态"。env 选中 / 取消勾时
+    /// PropertyChanged 触发重算。
+    /// </summary>
+    [JsonIgnore]
+    public bool HasRunningSelectedEnv =>
+        EnvRows.Any(e => e.Selected && string.Equals(e.Status, "running", StringComparison.OrdinalIgnoreCase));
+
     private void Start()
     {
         var jobs = BuildJobs();
@@ -352,15 +364,18 @@ public class EnvRow : ViewModelBase
     private bool _selected = true;
     public string EnvId { get; }
     public string DisplayName { get; }
+    /// <summary>v0.6.18.2 G11+:running / stopped / failed,镜像 Environment.Status,用于左列卡片显示状态点 + 顶部"先关闭环境再更新"警告 banner。</summary>
+    public string Status { get; }
     public bool Selected
     {
         get => _selected;
         set { _selected = value; RaisePropertyChanged(); }
     }
-    public EnvRow(string envId, string displayName)
+    public EnvRow(string envId, string displayName, string status = "stopped")
     {
         EnvId = envId;
         DisplayName = displayName;
+        Status = status;
     }
 }
 

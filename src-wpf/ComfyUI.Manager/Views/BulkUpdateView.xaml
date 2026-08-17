@@ -9,6 +9,11 @@
     Middle 主区),Middle 现在是 3 列(env / items / progress),不再是 2 列 +
     TabControl。
 
+    v0.6.18.2 G11+:左列 env 卡片镜像 EnvironmentListView 的 env 卡(状态点 + Name +
+    checkbox),用 Environment.Status 渲染填充色;顶部加"先关闭环境再更新"警告
+    banner(任何选中 env 处于 running 时显示),跑 git 写入工作树时 live env
+    会留脏状态或失败。
+
     DataContext 由 MainViewModel.OpenBulkUpdate 在 SetView 时绑成 BulkUpdateViewModel。
     -->
     <UserControl.Resources>
@@ -31,27 +36,63 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- v0.6.18.2 G11+:左列 env 卡片,镜像 EnvironmentListView 的 env 卡设计 —
+             状态点(running=SuccessBrush / stopped=OutlineBrush / failed=ErrorBrush)
+             + Name + checkbox。用户选中切换驱动 RebuildUpdateItems + HasRunningSelectedEnv 重算。 -->
         <DataTemplate x:Key="EnvCardTemplate" DataType="{x:Type vm:EnvRow}">
-            <Border Padding="8,6"
-                    Background="{DynamicResource BackgroundBrush}"
+            <Border Padding="10,8"
+                    Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                    CornerRadius="4">
-                <CheckBox Content="{Binding DisplayName}"
-                          IsChecked="{Binding Selected}"
-                          VerticalAlignment="Center" />
+                    CornerRadius="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <!-- 状态点:running=Success / stopped=Outline / failed=Error,镜像 EnvironmentListView Ellipse pattern -->
+                    <Ellipse Grid.Column="0" Width="10" Height="10"
+                             VerticalAlignment="Center" Margin="0,0,8,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource OutlineBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="running">
+                                        <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="failed">
+                                        <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                    <CheckBox Grid.Column="2" IsChecked="{Binding Selected}"
+                              VerticalAlignment="Center"
+                              ToolTip="取消勾选 = 跳过该 env 的所有 update items" />
+                </Grid>
             </Border>
         </DataTemplate>
+        <!-- v0.6.18.2 G11+:中列 update item 卡片,镜像 LocalNodeListView 的卡片风格 —
+             checkbox + DisplayName + InstalledEnvId 灰色小字,标识 item 装在哪个 env
+             (跨 env 合并去重时 <see cref="UpdateItem.DisplayName"/> 已经带 "…")。 -->
         <DataTemplate x:Key="UpdateItemCardTemplate" DataType="{x:Type vm:UpdateItem}">
-            <Border Padding="8,6"
-                    Background="{DynamicResource BackgroundBrush}"
+            <Border Padding="10,8"
+                    Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                    CornerRadius="4">
+                    CornerRadius="6">
                 <CheckBox IsChecked="{Binding Selected}" VerticalAlignment="Center">
-                    <TextBlock>
-                        <Run Text="{Binding DisplayName, Mode=OneWay}" />
-                        <Run Text=" (" />
-                        <Run Text="{Binding InstalledEnvId, Mode=OneWay}" />
-                        <Run Text=")" />
+                    <TextBlock VerticalAlignment="Center">
+                        <Run Text="{Binding DisplayName, Mode=OneWay}" FontSize="13"
+                             Foreground="{DynamicResource OnSurfaceBrush}" />
+                        <Run Text=" (" FontSize="11" Foreground="{DynamicResource OutlineBrush}" />
+                        <Run Text="{Binding InstalledEnvId, Mode=OneWay}" FontSize="11"
+                             Foreground="{DynamicResource OutlineBrush}" />
+                        <Run Text=")" FontSize="11" Foreground="{DynamicResource OutlineBrush}" />
                     </TextBlock>
                 </CheckBox>
             </Border>
@@ -74,9 +115,9 @@
                            Margin="0,2,0,0">
                     <Run Text="环境:" />
                     <Run Text="{Binding EnvRows.Count, Mode=OneWay}" />
-                    <Run Text=" · 更新项:" />
+                    <Run Text="  ·  更新项:" />
                     <Run Text="{Binding UpdateItems.Count, Mode=OneWay}" />
-                    <Run Text=" · 默认全跑,按勾选" />
+                    <Run Text="  ·  默认全跑,按勾选" />
                 </TextBlock>
             </StackPanel>
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -90,6 +131,28 @@
                         Style="{StaticResource MaterialButton}" />
             </StackPanel>
         </Grid>
+
+        <!-- v0.6.18.2 G11+:running env 警告 banner — 任何选中 env 处于 running 时显示,
+             提示"更新前请先关闭环境,否则 git 操作可能失败或留下脏状态"。镜像
+             EnvironmentListView 底部状态面板的 Border 风格(SurfaceBrush / OutlineBrush
+             / CornerRadius 6),用 ErrorBrush 边框强调警告性质。 -->
+        <Border DockPanel.Dock="Top" Margin="12,0,12,8" Padding="12"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource ErrorBrush}" BorderThickness="1"
+                CornerRadius="6"
+                Visibility="{Binding HasRunningSelectedEnv, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+            <StackPanel>
+                <TextBlock FontWeight="Bold" FontSize="13"
+                           Foreground="{DynamicResource ErrorBrush}">
+                    <Run Text="⚠ 检测到正在运行的环境,更新前请先关闭" />
+                </TextBlock>
+                <TextBlock FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource OnSurfaceBrush}">
+                    <Run Text="选中环境中包含正在运行的 ComfyUI 实例。git 操作期间 live 进程可能持有文件锁,导致 pull 失败或留下脏状态。" />
+                    <Run Text="建议:切到「环境」页点击对应环境的「停止」按钮,确认关闭后再回来运行批量更新。" />
+                </TextBlock>
+            </StackPanel>
+        </Border>
 
         <!-- 底部:summary inline 面板 + ErrorMessage -->
         <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,12">
@@ -117,15 +180,15 @@
                        Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
         </StackPanel>
 
-        <!-- 中间:3 列(env / items / progress) -->
+        <!-- 中间:3 列(env 卡片 / items / progress),镜像 EnvironmentListView Grid + Border 风格 -->
         <Grid Margin="12,0,12,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="200" />
-                <ColumnDefinition Width="280" />
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="300" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- 左:env checkbox 列表 -->
+            <!-- 左:env 卡片列表(状态点 + Name + check),镜像 EnvironmentListView env 卡 -->
             <Border Grid.Column="0" Margin="0,0,8,0"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
@@ -152,7 +215,7 @@
                 </Grid>
             </Border>
 
-            <!-- 中:扁平 UpdateItem checklist(env-level + node-level 混排) -->
+            <!-- 中:扁平 UpdateItem checklist(env-level + node-level 混排),镜像 LocalNodeListView 卡片风格 -->
             <Border Grid.Column="1" Margin="0,0,8,0"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
@@ -200,7 +263,7 @@
                               BorderThickness="0"
                               Visibility="{Binding Rows.Count, Converter={StaticResource InverseZeroCountToVisibility}}">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="220" />
+                            <DataGridTextColumn Header="Item" Binding="{Binding ItemName}" Width="240" />
                             <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
                             <DataGridTextColumn Header="Progress"
                                                 Binding="{Binding Percent, StringFormat={}{0}%}"
