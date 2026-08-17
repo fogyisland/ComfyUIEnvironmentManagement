@@ -96,7 +96,7 @@ public class EnvironmentListViewModelRestartTests : IDisposable
         return new MainViewModel(
             _db.Factory,
             null!, null!, null!, null!, null!, null!, null!,
-            new Settings(), null!, null!, null!, null!, null!,
+            new Settings(), null!, null!, null!, null!, null!, null!,
             null!, "", _tempRoot, null!, null!, new UiPreferencesService(_tempRoot),
             baseEnvUninstaller: null, requirementsUninstaller: null,
             themeService: null, dashboardService: null);
@@ -208,7 +208,7 @@ public class EnvironmentListViewModelRestartTests : IDisposable
         string? capturedEnvId = null;
         Func<string, Task>? capturedCallback = null;
         global::ComfyUI.Manager.Views.CatalogEntryPickerDialog.ShowOverride =
-            (_, _, _, _, _, _, envId, onSuccess, _) =>
+            (_, _, _, _, _, _, _, envId, onSuccess, _) =>
             {
                 capturedEnvId = envId;
                 capturedCallback = onSuccess;
@@ -248,7 +248,7 @@ public class EnvironmentListViewModelRestartTests : IDisposable
 
         Func<string, Task>? capturedCallback = _ => Task.CompletedTask;
         global::ComfyUI.Manager.Views.CatalogEntryPickerDialog.ShowOverride =
-            (_, _, _, _, _, _, envId, onSuccess, _) =>
+            (_, _, _, _, _, _, _, envId, onSuccess, _) =>
             {
                 capturedCallback = onSuccess;
                 return null;

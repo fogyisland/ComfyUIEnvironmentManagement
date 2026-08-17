@@ -9,6 +9,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -59,12 +60,59 @@
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <!-- Row 2: list of picker items (cards)
+        <!-- Row 2: v0.6.15.6 inline 状态面板 — clone 成功后自动跑节点 requirements 的进度。
+             跟 LocalNodeListView 同样模式:NodeRequirementsStatus=null 时 Collapsed,非 null 时
+             显示 Title + StatusText + Logs + 取消 + 关闭。Border DataContext 切到 status VM,
+             inner binding 走 status VM 属性。 -->
+        <Border Grid.Row="2" Margin="0,0,0,8" Padding="12" CornerRadius="6"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                Visibility="{Binding NodeRequirementsStatus, Converter={StaticResource NullToVisibility}}"
+                DataContext="{Binding NodeRequirementsStatus}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold">
+                        <Run Text="装节点依赖:" />
+                        <Run Text="{Binding Title, Mode=OneWay}" />
+                        <Run Text=" — " />
+                        <Run Text="{Binding StatusText, Mode=OneWay}" />
+                    </TextBlock>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="取消" Command="{Binding CancelCommand}"
+                                MinWidth="60" Margin="0,0,8,0" />
+                        <Button Content="关闭" Click="OnCloseNodeRequirementsClicked"
+                                MinWidth="60" />
+                    </StackPanel>
+                </Grid>
+                <ScrollViewer x:Name="LogScrollViewer" Grid.Row="1" MaxHeight="200" Margin="0,8,0,0"
+                              VerticalScrollBarVisibility="Visible"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding LogLines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                                           TextWrapping="NoWrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- Row 3: list of picker items (cards)
              v0.6.14 R1 fix:MouseDoubleClick 触发 OkCommand(只对 IsInstalled==false 生效,
              OkCommand.CanExecute 已 gate)。配合行内安装按钮用户单双击都能选。
              v0.6.15.9.2:右侧按钮列改固定 Width=120(原 Auto 会在窄屏挤压触发横向滚动),
              卸载/安装 并排(原上下),description 单行 ellipsis + tooltip 看完整。 -->
-        <ListBox Grid.Row="2"
+        <ListBox Grid.Row="3"
                  ItemsSource="{Binding Items}"
                  SelectedItem="{Binding Selected}"
                  MouseDoubleClick="OnListDoubleClick"
@@ -529,7 +577,7 @@
         </ListBox>
 
         <!-- Row 4: footer with cancel -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0"
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,12,0,0"
                     HorizontalAlignment="Right">
             <TextBlock Text="双击未装条目 或 点击行内安装 / 卸载按钮"
                        FontSize="11" Foreground="{DynamicResource OutlineBrush}"

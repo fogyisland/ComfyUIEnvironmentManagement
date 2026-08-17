@@ -22,6 +22,7 @@ public class NodeManagementViewModelTests : IDisposable
     private readonly EnvironmentRepository _envRepo;
     private readonly CatalogRepository _catalogRepo;
     private readonly NodeVersionRepository _versionRepo;
+    private readonly FakeRequirementsInstaller _reqInstaller;
     private readonly string _envId = "env-1";
 
     public NodeManagementViewModelTests()
@@ -36,6 +37,10 @@ public class NodeManagementViewModelTests : IDisposable
         _envRepo = new EnvironmentRepository(_db.Factory);
         _catalogRepo = new CatalogRepository(new CatalogCacheStore(_db.Path));
         _versionRepo = new NodeVersionRepository(new CatalogCacheStore(_db.Path));
+        // v0.6.15.6:VM ctor 拿 RequirementsInstaller 给 picker dialog。不在本测试触发
+        // 任何 catalog install 路径(picker 用 OpenInstallPickerOverride 替换),fake 只为
+        // 让 ctor 编译过。
+        _reqInstaller = new FakeRequirementsInstaller();
     }
 
     // NOTE: brief's tests use plain `FakeNodeOperations` but there's already an
@@ -44,6 +49,13 @@ public class NodeManagementViewModelTests : IDisposable
     // `FakeNodeOperationsForManagement` to avoid namespace collision.
 
     public void Dispose() => _db.Dispose();
+
+    /// <summary>v0.6.15.6:fake RequirementsInstaller — 不真跑 pip。NodeManagementVM ctor
+    /// 拿 RequirementsInstaller 给 picker dialog;测试用 OpenInstallPickerOverride,
+    /// 这 fake 只为让 ctor 编译过。</summary>
+    private sealed class FakeRequirementsInstaller : RequirementsInstaller
+    {
+    }
 
     [Fact]
     public void Constructor_TriggersScanAsync_PopulatesNodes()
@@ -54,7 +66,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "n2", EnvId = _envId, Package = "pkg-b", Source = "env" },
         };
         _nodeOps.NodeRepo = _nodeRepo;
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         // Pump message loop briefly so fire-and-forget ScanAsync completes
         SpinWait.SpinUntil(() => vm.Nodes.Count == 2, TimeSpan.FromSeconds(2));
         Assert.Equal(2, vm.Nodes.Count);
@@ -70,7 +82,7 @@ public class NodeManagementViewModelTests : IDisposable
         {
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         _nodeOps.ScanResult = new List<ScannedNode>
@@ -88,7 +100,7 @@ public class NodeManagementViewModelTests : IDisposable
     {
         _nodeOps.NodeRepo = _nodeRepo;
         _nodeOps.ScanResult = new List<ScannedNode>();
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => !vm.Busy, TimeSpan.FromSeconds(2));
 
         var called = false;
@@ -112,7 +124,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
         _nodeOps.UninstallResult = NodeOperationResult.Ok("v1.0");
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         vm.ConfirmDialogOverride = (_, _, _) => true;
@@ -129,7 +141,7 @@ public class NodeManagementViewModelTests : IDisposable
         {
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         vm.ConfirmDialogOverride = (_, _, _) => false;
@@ -147,7 +159,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "n1", EnvId = _envId, Package = "pkg-a", Source = "env" },
         };
         _nodeOps.UninstallResult = NodeOperationResult.Fail("目录锁住");
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         vm.ConfirmDialogOverride = (_, _, _) => true;
@@ -161,7 +173,7 @@ public class NodeManagementViewModelTests : IDisposable
     {
         _nodeOps.NodeRepo = _nodeRepo;
         _nodeOps.ScanResult = new List<ScannedNode>();
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => !vm.Busy, TimeSpan.FromSeconds(2));
 
         var fired = false;
@@ -195,7 +207,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "x1", EnvId = _envId, Package = "uncatalogued-pkg", Source = "env",
                     ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v0.1" } },
         };
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 4, TimeSpan.FromSeconds(2));
 
         Assert.True(vm.Nodes.Single(n => n.Id == "o1").IsOutdated);
@@ -227,7 +239,7 @@ public class NodeManagementViewModelTests : IDisposable
                     ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.0" } },
         };
         // After first scan returns, swap ScanResult to simulate upgrade
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
         // Outdated should be true at this point
         Assert.True(vm.Nodes[0].IsOutdated);
@@ -259,7 +271,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "c1", EnvId = _envId, Package = "current-pkg", Source = "env",
                     ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.2" } },
         };
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         Assert.False(vm.Nodes[0].IsOutdated);
@@ -277,7 +289,7 @@ public class NodeManagementViewModelTests : IDisposable
             new() { Id = "x1", EnvId = _envId, Package = "unknown-pkg", Source = "env",
                     ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v0.1" } },
         };
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         Assert.False(vm.Nodes[0].IsOutdated);
@@ -300,7 +312,7 @@ public class NodeManagementViewModelTests : IDisposable
                     ScanMeta = new Dictionary<string, string> { ["installed_tag"] = "v1.0" } },
         };
         _nodeOps.UpgradeResult = NodeOperationResult.Fail("git pull 失败");
-        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _envId, envName: "test-env");
+        var vm = new NodeManagementViewModel(_nodeRepo, _nodeOps, _errorBanner, _envRepo, _catalogRepo, _versionRepo, _reqInstaller, _envId, envName: "test-env");
         SpinWait.SpinUntil(() => vm.Nodes.Count == 1, TimeSpan.FromSeconds(2));
 
         await vm.UpgradeAsync(vm.Nodes[0]);

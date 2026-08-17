@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -103,14 +104,16 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
     }
 
     private CatalogEntryPickerViewModel NewVm(
-        FakeNodeOps? ops = null, string envId = "env-1")
+        FakeNodeOps? ops = null, string envId = "env-1",
+        FakeRequirementsInstaller? reqInstaller = null)
     {
         var envRepo = new EnvironmentRepository(_db.Factory);
         var nodeRepo = NewNodeRepo();
         SeedEnv(envId);
         var fakeOps = ops ?? new FakeNodeOps(envRepo, nodeRepo, new Settings());
+        var req = reqInstaller ?? new FakeRequirementsInstaller();
         return new CatalogEntryPickerViewModel(
-            NewCatalogRepo(), nodeRepo, fakeOps, NewVersionRepo(), envId);
+            NewCatalogRepo(), nodeRepo, fakeOps, NewVersionRepo(), envRepo, req, envId);
     }
 
     /// <summary>
@@ -581,6 +584,189 @@ public sealed class CatalogEntryPickerViewModelTests : IDisposable
                 throw new TimeoutException($"condition not met within {timeoutMs}ms");
             await Task.Delay(20);
         }
+    }
+
+    /// <summary>
+    /// v0.6.15.6:fake RequirementsInstaller — override InstallNodeRequirementsAsync 让
+    /// VM 测试不真跑 pip,只记录调用 + 返回可控结果。Default 返 Success(reason="节点无
+    /// requirements.txt")= LocalNodeListViewModelTests 同款 skip 路径。
+    /// </summary>
+    private sealed class FakeRequirementsInstaller : RequirementsInstaller
+    {
+        public int InstallNodeReqCallCount { get; private set; }
+        public Environment? LastEnv { get; private set; }
+        public string? LastNodeDir { get; private set; }
+        public RequirementsInstallResult NextResult { get; set; } =
+            new(true, false, "节点无 requirements.txt", 0);
+
+        public override Task<RequirementsInstallResult> InstallNodeRequirementsAsync(
+            Environment env, string nodeDir,
+            IProgress<string>? logProgress = null,
+            CancellationToken ct = default)
+        {
+            InstallNodeReqCallCount++;
+            LastEnv = env;
+            LastNodeDir = nodeDir;
+            return Task.FromResult(NextResult);
+        }
+    }
+
+    // ---- v0.6.15.6:行内安装成功后自动装节点 requirements ----
+
+    [Fact]
+    public async Task InstallCommand_Success_TriggersNodeRequirementsInstall()
+    {
+        // catalog 装 pkg-reqs;FakeNodeOps.InstallAsync upsert ScannedNode(envId="env-1",
+        // package="pkg-reqs");成功 → VM 调 RequirementsInstaller.InstallNodeRequirementsAsync。
+        var catRepo = NewCatalogRepo();
+        catRepo.Upsert(new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-reqs",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        });
+        var reqInstaller = new FakeRequirementsInstaller();
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings())
+        {
+            NextInstallResult = NodeOperationResult.Ok("fake-sha"),
+        };
+        var vm = NewVm(ops, reqInstaller: reqInstaller);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-reqs");
+        Assert.False(item.IsInstalled);
+
+        vm.InstallCommand.Execute(item);
+        // 等 fire-and-forget 的 RunAsync 跑完
+        await WaitForCondition(() => reqInstaller.InstallNodeReqCallCount == 1, timeoutMs: 2000);
+
+        Assert.Equal(1, reqInstaller.InstallNodeReqCallCount);
+        Assert.NotNull(reqInstaller.LastEnv);
+        Assert.Equal("env-1", reqInstaller.LastEnv!.Id);
+        Assert.NotNull(reqInstaller.LastNodeDir);
+        Assert.Equal("pkg-reqs",
+            Path.GetFileName(reqInstaller.LastNodeDir!.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+        Assert.StartsWith("/tmp/env-1/custom_nodes", reqInstaller.LastNodeDir);
+    }
+
+    [Fact]
+    public async Task InstallCommand_Success_NoRequirements_ShowsSkippedStatus()
+    {
+        // FakeRequirementsInstaller 默认 NextResult = Success(reason="节点无 requirements.txt")
+        // → VM 应该设 NodeRequirementsStatus(面板 VM 不为 null,IsVisible 控制显示)。
+        var catRepo = NewCatalogRepo();
+        catRepo.Upsert(new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-noreqs",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        });
+        var reqInstaller = new FakeRequirementsInstaller();
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings())
+        {
+            NextInstallResult = NodeOperationResult.Ok("fake-sha"),
+        };
+        var vm = NewVm(ops, reqInstaller: reqInstaller);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-noreqs");
+        vm.InstallCommand.Execute(item);
+
+        await WaitForCondition(() => vm.NodeRequirementsStatus is not null, timeoutMs: 2000);
+        Assert.Equal(1, reqInstaller.InstallNodeReqCallCount);
+        // Panel VM 已挂上;IsVisible 控制实际显示。
+        Assert.NotNull(vm.NodeRequirementsStatus);
+    }
+
+    [Fact]
+    public async Task InstallCommand_Failure_DoesNotTriggerNodeRequirementsInstall()
+    {
+        // 失败 → InstallError 写原因 + IsInstalling=false,但不调 RequirementsInstaller。
+        var catRepo = NewCatalogRepo();
+        catRepo.Upsert(new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-fail",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        });
+        var reqInstaller = new FakeRequirementsInstaller();
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings())
+        {
+            NextInstallResult = NodeOperationResult.Fail("git clone failed"),
+        };
+        var vm = NewVm(ops, reqInstaller: reqInstaller);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-fail");
+        vm.InstallCommand.Execute(item);
+
+        await WaitForCondition(() => item.InstallError is not null, timeoutMs: 2000);
+
+        Assert.Equal(0, reqInstaller.InstallNodeReqCallCount);
+        Assert.Null(vm.NodeRequirementsStatus);
+    }
+
+    [Fact]
+    public async Task InstallCommand_Success_PipFailure_KeepsRowInstalled_NoError()
+    {
+        // pip 失败 → row 已装(clone 成功)+ 不进 ErrorBanner(面板 VM 自己显示错误)。
+        var catRepo = NewCatalogRepo();
+        catRepo.Upsert(new CatalogEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            SourceUrl = "https://example.com/catalog.json",
+            Package = "pkg-pipfail",
+            CachedAt = "2026-08-01T00:00:00",
+            ExpiresAt = "2027-08-01T00:00:00",
+            RawMetadata = new Dictionary<string, object?>
+            {
+                ["repository"] = "https://github.com/owner/repo",
+            },
+            InstallType = "git",
+        });
+        var reqInstaller = new FakeRequirementsInstaller
+        {
+            NextResult = new RequirementsInstallResult(false, false, "pip 退出码 1", 0),
+        };
+        var ops = new FakeNodeOps(
+            new EnvironmentRepository(_db.Factory), NewNodeRepo(), new Settings())
+        {
+            NextInstallResult = NodeOperationResult.Ok("fake-sha"),
+        };
+        var vm = NewVm(ops, reqInstaller: reqInstaller);
+
+        var item = vm.Items.Single(i => i.Entry.Package == "pkg-pipfail");
+        vm.InstallCommand.Execute(item);
+        await WaitForCondition(() => reqInstaller.InstallNodeReqCallCount == 1, timeoutMs: 2000);
+
+        // DB row 已写入(pip 失败不回滚)
+        var dbNode = NewNodeRepo().Get("pkg-pipfail");
+        Assert.NotNull(dbNode);
+        // 面板 VM 已挂上,用户能看到 pip 错误
+        Assert.NotNull(vm.NodeRequirementsStatus);
+        Assert.True(vm.NodeRequirementsStatus!.HasError);
+        Assert.Contains("pip 退出码", vm.NodeRequirementsStatus!.Error);
     }
 
     // ---- v0.6.14 T3: Closed event ----

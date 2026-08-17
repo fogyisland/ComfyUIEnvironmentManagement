@@ -33,6 +33,7 @@ public class NodeManagementViewModel : ViewModelBase
     private readonly EnvironmentRepository _envRepo;
     private readonly CatalogRepository _catalogRepo;
     private readonly NodeVersionRepository _versionRepo;
+    private readonly RequirementsInstaller _requirementsInstaller;
     private readonly string _envId;
     private readonly SynchronizationContext? _uiContext;
 
@@ -114,6 +115,7 @@ public class NodeManagementViewModel : ViewModelBase
         EnvironmentRepository envRepo,
         CatalogRepository catalogRepo,
         NodeVersionRepository versionRepo,
+        RequirementsInstaller requirementsInstaller,
         string envId, string envName)
     {
         _nodeRepo = repo;
@@ -122,6 +124,7 @@ public class NodeManagementViewModel : ViewModelBase
         _envRepo = envRepo;
         _catalogRepo = catalogRepo;
         _versionRepo = versionRepo;
+        _requirementsInstaller = requirementsInstaller;
         _envId = envId;
         EnvName = envName;
         // Capture UI SynchronizationContext so collection mutations in ScanAsync /
@@ -277,6 +280,7 @@ public class NodeManagementViewModel : ViewModelBase
                 catalogRepo: _catalogRepo,
                 nodeRepo: _nodeRepo,
                 versionRepo: _versionRepo,
+                requirementsInstaller: _requirementsInstaller,
                 logger: null,
                 envId: _envId,
                 onInstallSuccess: null,

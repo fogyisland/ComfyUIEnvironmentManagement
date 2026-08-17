@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
+using Environment = ComfyUI.Manager.Models.Environment;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -28,6 +30,8 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     private readonly NodeRepository _nodeRepo;
     private readonly NodeOperations _nodeOps;
     private readonly NodeVersionRepository _versionRepo;
+    private readonly EnvironmentRepository _envRepo;
+    private readonly RequirementsInstaller? _requirementsInstaller;
     private readonly string _envId;
     private readonly AppLogger? _logger;
     private readonly Func<string, Task>? _onInstallSuccess;
@@ -77,6 +81,14 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     public RelayCommand CancelCommand { get; }
     public RelayCommand UninstallCommand { get; }     // 参数:CatalogEntryPickerItem
 
+    /// <summary>
+    /// v0.6.15.6:catalog 行内安装成功后自动触发节点依赖装的 inline 状态面板。
+    /// null = 无任务在跑。XAML 绑这个属性:非 null 且 <c>IsVisible</c> 时显示 Border。
+    /// 跟 <see cref="LocalNodeListViewModel.NodeRequirementsStatus"/> 同款模式,
+    /// 共享 <see cref="NodeRequirementsStatusViewModel"/>。
+    /// </summary>
+    public NodeRequirementsStatusViewModel? NodeRequirementsStatus { get; private set; }
+
     /// <summary>Picker 关 dialog 时 fire 一次(Cancel / X / Alt+F4 都触发),caller 用来刷新 env-list。</summary>
     public event Action? Closed;
 
@@ -99,6 +111,8 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         NodeRepository nodeRepo,
         NodeOperations nodeOps,
         NodeVersionRepository versionRepo,
+        EnvironmentRepository envRepo,
+        RequirementsInstaller? requirementsInstaller,
         string envId,
         AppLogger? logger = null,
         Func<string, Task>? onInstallSuccess = null)
@@ -107,6 +121,8 @@ public class CatalogEntryPickerViewModel : ViewModelBase
         _nodeRepo = nodeRepo;
         _nodeOps = nodeOps;
         _versionRepo = versionRepo;
+        _envRepo = envRepo;
+        _requirementsInstaller = requirementsInstaller;
         _envId = envId;
         _logger = logger;
         _onInstallSuccess = onInstallSuccess;
@@ -245,6 +261,9 @@ public class CatalogEntryPickerViewModel : ViewModelBase
                     $"env='{_envId}' node='{entry.Package}' tag='{item.SelectedVersion}' 装成功");
                 // rebuild:item 被换成 IsInstalled=true 的新 row,IsInstalling 自动清掉
                 BuildItems();
+                // v0.6.15.6:clone 成功 → 自动跑节点自己的 requirements.txt(若存在)。
+                // pip 失败按用户偏好只 WARN 日志,不回滚 clone(同 LocalNodeListVM 语义)。
+                TriggerNodeRequirementsInstall(entry.Package);
                 // 自动重启回调(等同原 InstallDialog 的 onInstallSuccess)
                 if (_onInstallSuccess is not null)
                 {
@@ -343,5 +362,50 @@ public class CatalogEntryPickerViewModel : ViewModelBase
     {
         InstallCommand.RaiseCanExecuteChanged();
         UninstallCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// v0.6.15.6:clone 成功后 fire-and-forget 跑节点自己的 requirements.txt。
+    /// 跟 <see cref="LocalNodeListViewModel"/> 的同款模式,共享
+    /// <see cref="NodeRequirementsStatusViewModel"/>。无 requirements.txt 的节点
+    /// 由 installer 内部返 Success(reason="节点无 requirements.txt")自动走 skip 路径,
+    /// 面板 2s 后 Hide,行为一致。
+    ///
+    /// pip 失败按用户偏好:不阻断、不回滚 clone,只 WARN 日志(installer 内部 _logger.Warn);
+    /// 面板保留可见让用户看到具体 pip 错误。
+    ///
+    /// 节点目录 = <c>{env.CustomNodesPath}/{nodeId}</c>,env 拿不到(已被删/迁移)→ no-op。
+    /// </summary>
+    private void TriggerNodeRequirementsInstall(string nodeId)
+    {
+        // 测试 seam:load test 不传 installer 时直接 no-op,跟 RunAsync 失败路径同款日志。
+        if (_requirementsInstaller is null)
+        {
+            _logger?.Warn("catalog-picker-reqs",
+                $"env='{_envId}' 无 RequirementsInstaller,跳过 {nodeId} 的依赖装");
+            return;
+        }
+        var env = _envRepo.Get(_envId);
+        if (env is null || string.IsNullOrWhiteSpace(env.CustomNodesPath))
+        {
+            _logger?.Warn("catalog-picker-reqs",
+                $"env='{_envId}' 不存在或缺 custom_nodes_path,跳过 {nodeId} 的依赖装");
+            return;
+        }
+        var nodeDir = Path.Combine(env.CustomNodesPath, nodeId);
+        var status = new NodeRequirementsStatusViewModel(env, nodeId, nodeDir, _requirementsInstaller);
+        NodeRequirementsStatus = status;
+        RaisePropertyChanged(nameof(NodeRequirementsStatus));
+
+        // 不 await RunAsync 后续的"成功 → 2s 后 Hide"逻辑,避免阻塞 caller;
+        // 跑完后让面板 VM 自己管自己。
+        _ = status.RunAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[CatalogNodeReq] unexpected fault: {t.Exception?.GetBaseException().Message}");
+            }
+        });
     }
 }

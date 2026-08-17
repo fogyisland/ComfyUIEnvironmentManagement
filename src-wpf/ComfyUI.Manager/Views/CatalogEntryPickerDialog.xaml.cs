@@ -24,6 +24,7 @@ public partial class CatalogEntryPickerDialog : Window
         CatalogRepository,
         NodeRepository,
         NodeVersionRepository,
+        RequirementsInstaller,
         AppLogger?,
         string,
         Func<string, Task>?,
@@ -56,6 +57,29 @@ public partial class CatalogEntryPickerDialog : Window
             DialogResult = true;
             Close();
         };
+        // v0.6.15.6 / v0.6.15.7 T2:NodeRequirementsStatus.LogLines 新行追加时 ScrollViewer
+        // 自动滚到底。NodeRequirementsStatus 可能 VM 初始化时已经 set(目前不会,VM 构造
+        // 时 null),也可能在 InstallAsync 成功路径上 set。所以既 hook 当前实例(无 op),
+        // 又订阅 PropertyChanged 监听后续赋值。
+        HookLogScroll(vm.NodeRequirementsStatus);
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CatalogEntryPickerViewModel.NodeRequirementsStatus))
+            {
+                HookLogScroll(vm.NodeRequirementsStatus);
+            }
+        };
+    }
+
+    private void ScrollLogToEnd() => LogScrollViewer.ScrollToEnd();
+
+    private void HookLogScroll(NodeRequirementsStatusViewModel? status)
+    {
+        if (status is null) return;
+        status.LogLines.CollectionChanged += (_, _) =>
+        {
+            Dispatcher.BeginInvoke(new Action(ScrollLogToEnd));
+        };
     }
 
     /// <summary>
@@ -76,16 +100,17 @@ public partial class CatalogEntryPickerDialog : Window
         CatalogRepository catalogRepo,
         NodeRepository nodeRepo,
         NodeVersionRepository versionRepo,
+        RequirementsInstaller requirementsInstaller,
         AppLogger? logger,
         string envId,
         Func<string, Task>? onInstallSuccess = null,
         Action? onClosed = null)
     {
         if (ShowOverride is not null)
-            return ShowOverride(envRepo, nodeOps, catalogRepo, nodeRepo, versionRepo, logger, envId, onInstallSuccess, onClosed);
+            return ShowOverride(envRepo, nodeOps, catalogRepo, nodeRepo, versionRepo, requirementsInstaller, logger, envId, onInstallSuccess, onClosed);
 
         var vm = new CatalogEntryPickerViewModel(
-            catalogRepo, nodeRepo, nodeOps, versionRepo, envId, logger, onInstallSuccess);
+            catalogRepo, nodeRepo, nodeOps, versionRepo, envRepo, requirementsInstaller, envId, logger, onInstallSuccess);
         // onClosed 在 dialog 实际关闭时 fire 一次(任意路径)。
         // VM 的 CancelCommand 已经 fire Closed;这里再 hook dialog 的 Closing 覆盖
         // X 按钮 / Alt+F4 路径。
@@ -139,6 +164,19 @@ public partial class CatalogEntryPickerDialog : Window
         if (vm.InstallCommand.CanExecute(item))
         {
             vm.InstallCommand.Execute(item);
+        }
+    }
+
+    /// <summary>
+    /// v0.6.15.6:关闭 inline 装依赖面板。Border 的 DataContext 是
+    /// NodeRequirementsStatusViewModel 实例,直接调 Window.DataContext(即
+    /// CatalogEntryPickerViewModel)来清 NodeRequirementsStatus。
+    /// </summary>
+    private void OnCloseNodeRequirementsClicked(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogEntryPickerViewModel vm && vm.NodeRequirementsStatus is not null)
+        {
+            vm.NodeRequirementsStatus.Hide();
         }
     }
 }

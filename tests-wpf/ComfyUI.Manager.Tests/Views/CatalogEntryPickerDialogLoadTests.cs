@@ -34,7 +34,8 @@ public class CatalogEntryPickerDialogLoadTests
             Path.Combine(Path.GetTempPath(), $"picker-{Guid.NewGuid():N}.db")));
         var ops = new TestOnlyOps(envRepo, nodeRepo);
         return new CatalogEntryPickerViewModel(
-            catalogRepo, nodeRepo, ops, versionRepo, envId: "env-test", logger: null);
+            catalogRepo, nodeRepo, ops, versionRepo,
+            envRepo, requirementsInstaller: null, envId: "env-test", logger: null);
     }
 
     [Fact]
@@ -268,6 +269,8 @@ public class CatalogEntryPickerDialogLoadTests
             nodeRepo,
             ops,
             new NodeVersionRepository(new CatalogCacheStore(db.Path)),
+            envRepo,
+            requirementsInstaller: null,
             envId: "env-1",
             logger: null);
     }
