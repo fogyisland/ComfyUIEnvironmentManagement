@@ -486,6 +486,55 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
+    // v0.6.19:工作流市场
+    public string WorkflowsDirectory
+    {
+        get => _settings.WorkflowsDirectory;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.WorkflowsDirectory == v) return;
+            _settings.WorkflowsDirectory = v;
+            MarkDirty(nameof(WorkflowsDirectory));
+            RaisePropertyChanged();
+        }
+    }
+
+    public bool WorkflowSourceCommunityJsonEnabled
+    {
+        get => _settings.WorkflowSourceCommunityJsonEnabled;
+        set
+        {
+            if (_settings.WorkflowSourceCommunityJsonEnabled == value) return;
+            _settings.WorkflowSourceCommunityJsonEnabled = value;
+            MarkDirty(nameof(WorkflowSourceCommunityJsonEnabled));
+            RaisePropertyChanged();
+        }
+    }
+
+    public bool WorkflowSourceCivitAiEnabled
+    {
+        get => _settings.WorkflowSourceCivitAiEnabled;
+        set
+        {
+            if (_settings.WorkflowSourceCivitAiEnabled == value) return;
+            _settings.WorkflowSourceCivitAiEnabled = value;
+            MarkDirty(nameof(WorkflowSourceCivitAiEnabled));
+            RaisePropertyChanged();
+        }
+    }
+
+    public bool WorkflowSourceOpenArtEnabled
+    {
+        get => _settings.WorkflowSourceOpenArtEnabled;
+        set
+        {
+            if (_settings.WorkflowSourceOpenArtEnabled == value) return;
+            _settings.WorkflowSourceOpenArtEnabled = value;
+            MarkDirty(nameof(WorkflowSourceOpenArtEnabled));
+            RaisePropertyChanged();
+        }
+    }
     // v0.6.10: 全局默认 Models 目录(env-create junction 目标)。空 = 不动 env 的 models 目录。
     public string DefaultModelsDirectory
     {
@@ -849,6 +898,10 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(GlobalNodesDir));
         RaisePropertyChanged(nameof(LocalNodeDirectory));
         RaisePropertyChanged(nameof(DefaultModelsDirectory));
+        RaisePropertyChanged(nameof(WorkflowsDirectory));
+        RaisePropertyChanged(nameof(WorkflowSourceCommunityJsonEnabled));
+        RaisePropertyChanged(nameof(WorkflowSourceCivitAiEnabled));
+        RaisePropertyChanged(nameof(WorkflowSourceOpenArtEnabled));
         RaisePropertyChanged(nameof(LogDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));

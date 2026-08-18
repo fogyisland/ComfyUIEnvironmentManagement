@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using ComfyUI.Manager.Models;
@@ -118,6 +120,33 @@ public partial class SettingsView : UserControl
         {
             var picked = vm.PickFolder();
             if (picked is not null) vm.LocalNodeDirectory = picked;
+        }
+    }
+
+    private void BrowseWorkflowsDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.WorkflowsDirectory = picked;
+        }
+    }
+
+    private void OpenWorkflowsDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        var raw = vm.WorkflowsDirectory;
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        // WorkflowsDirectory 可为相对子目录名(如 "workflows"),以 AppContext.BaseDirectory 解绝对
+        var path = Path.IsPathRooted(raw) ? raw : Path.Combine(AppContext.BaseDirectory, raw);
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
+        }
+        catch
+        {
+            // 失败静默 — 用户用 "浏览..." 按钮 + 自己打开 explorer 也行
         }
     }
 
