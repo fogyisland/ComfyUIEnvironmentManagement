@@ -304,6 +304,16 @@ public partial class App : Application
         // 复用 envRepo + nodeRepo;首次 OpenSpotlight 时 BuildAsync,后续键入仅走内存(G7)。
         var globalSearchService = new GlobalSearchService(envRepo, nodeRepo);
 
+        // v0.6.19 T10: 工作流市场相关 service —— 复用共享 http(60s timeout,跟
+        // catalog / dashboard 同一份);JunctionLinker 跟 envCreator 内部是独立实例
+        // (WorkflowSymlinker 自己持有,不共用避免 lifetime 耦合)。
+        // WorkflowFilesystemScanner:Settings.WorkflowsDirectory 扫描已下载 workflows。
+        // WorkflowSymlinker:env-start 成功后 fire-and-forget 把每个 subfolder symlink
+        // 到 <env.ComfyuiSource>/user/default/workflows/,失败 WARN 不抛。
+        var workflowScanner = new WorkflowFilesystemScanner(logger: logger);
+        var workflowSymlinker = new WorkflowSymlinker(
+            settings, new JunctionLinker(), workflowScanner, logger: logger);
+
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, githubVersionService,
@@ -327,7 +337,13 @@ public partial class App : Application
             envRepo: envRepo,
             // v0.6.15: 进程级 rate limit 单例 —— MainViewModel 透传给
             // CatalogViewModel,触发入口 stage-skip + banner 状态共享。
-            rateLimitState: rateLimitState);
+            rateLimitState: rateLimitState,
+            // v0.6.19 T10: 共享 HttpClient — ShowWorkflows 用它构造 3 个 IWorkflowSource
+            // + WorkflowDownloader。同一份 60s timeout http,singleton 进程级。
+            http: http,
+            // v0.6.19 T10: WorkflowSymlinker — 传给 EnvironmentListViewModel 让
+            // env-start 成功后 fire-and-forget sync 已下载 workflows 到 env。
+            workflowSymlinker: workflowSymlinker);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

@@ -105,6 +105,11 @@
                              Command="{Binding ShowLocalNodesCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=LocalNodes, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
+                <!-- v0.6.19 T10:工作流市场 — 聚合 3 个 IWorkflowSource (Community/CivitAI/OpenArt) + batch download + env-start 后自动 symlink workflows 到 env。 -->
+                <RadioButton Content="工作流市场" GroupName="SidebarNav"
+                             Command="{Binding ShowWorkflowsCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Workflows, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
                 <RadioButton Content="设置" GroupName="SidebarNav"
                              Command="{Binding ShowSettingsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"

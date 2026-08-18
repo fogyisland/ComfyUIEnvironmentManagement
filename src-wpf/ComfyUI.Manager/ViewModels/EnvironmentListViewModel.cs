@@ -34,6 +34,11 @@ public class EnvironmentListViewModel : ViewModelBase
     private readonly RequirementsInstaller _requirementsInstaller;
     private readonly BaseEnvUninstaller _baseEnvUninstaller;
     private readonly RequirementsUninstaller _requirementsUninstaller;
+    // v0.6.19 T10: env-start 后异步 sync workflows 到 <env.ComfyuiSource>/user/default/workflows/。
+    // fire-and-forget 模式:StartEnvAsync 成功后 Task.Run 调 SyncToEnvAsync,失败仅
+    // log 永远不抛(env-start status 不受 workflow 同步影响)。
+    // 可空保留旧测试 ctor 兼容;生产 DI 在 App.xaml.cs 注入。
+    private readonly WorkflowSymlinker? _workflowSymlinker;
     // v0.6.10 T2:统一组件报告 + OpenBrowser 按钮的 Chrome 优先 fallback。
     // 可空保留测试 ctor(null! 仍能构造);生产 DI 在 App.xaml.cs 注入 new BrowserLauncher()。
     private readonly IBrowserLauncher? _browserLauncher;
@@ -261,7 +266,10 @@ public class EnvironmentListViewModel : ViewModelBase
         AppLogger? logger = null,
         CatalogRepository? catalogRepo = null,
         NodeRepository? nodeRepo = null,
-        NodeVersionRepository? versionRepo = null)
+        NodeVersionRepository? versionRepo = null,
+        // v0.6.19 T10: env-start 后异步 sync 已下载 workflows 到 env。可空保留
+        // 旧测试 ctor 兼容;生产 DI 在 App.xaml.cs 注入。
+        WorkflowSymlinker? workflowSymlinker = null)
     {
         _repo = repo;
         _launcher = launcher;
@@ -290,6 +298,8 @@ public class EnvironmentListViewModel : ViewModelBase
         _catalogRepo = catalogRepo;
         _nodeRepo = nodeRepo;
         _versionRepo = versionRepo;
+        // v0.6.19 T10: env-start hook — fire-and-forget sync workflows 到 env。
+        _workflowSymlinker = workflowSymlinker;
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -578,6 +588,29 @@ public class EnvironmentListViewModel : ViewModelBase
             status.Complete();
             // v0.6.17:不再 auto-hide — 面板留着让用户手动关 ✕;后续 "再次打开" 按钮
             // 直接复用 dict[env.Id] 显示同一 VM(数据不丢)。
+
+            // v0.6.19 T10: env-start 成功后 fire-and-forget sync workflows 到 env
+            // 的 user/default/workflows/。失败仅 log 永不抛 — workflow 同步失败
+            // 不阻断 env-start status,用户看到 running 即可。
+            // 走 Task.Run 而不是直接 await 是因为 JunctionLinker 跟 I/O 可能在
+            // 网络盘 / 大目录上花几秒,我们不想延长 env-start 反馈面板的 Complete 时刻。
+            if (_workflowSymlinker is not null && !string.IsNullOrEmpty(env.ComfyuiSource))
+            {
+                var symlinker = _workflowSymlinker;
+                var comfyuiSource = env.ComfyuiSource;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await symlinker.SyncToEnvAsync(comfyuiSource).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.Warn("workflow-symlink",
+                            $"fire-and-forget sync failed: {ex.Message}");
+                    }
+                });
+            }
         }
         catch (Exception ex)
         {

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -88,6 +89,14 @@ public class MainViewModel : ViewModelBase
     private readonly EnvironmentRepository? _envRepo;
     // v0.6.15: 进程级 rate limit 单例 —— 透传给 CatalogViewModel。可空保留旧测试 ctor。
     private readonly IRateLimitState? _rateLimitState;
+    // v0.6.19 T10: 共享 HttpClient(singleton, App.xaml.cs 注入)— ShowWorkflows 构造
+    // 3 个 IWorkflowSource (CommunityJson / CivitAi / OpenArt) + WorkflowDownloader
+    // 都用同一个 _http。YAGNI: 默认 null 保留旧测试 ctor 兼容。
+    private readonly HttpClient? _http;
+    // v0.6.19 T10: WorkflowSymlinker — ShowEnvironments 时传给 EnvironmentListViewModel,
+    // 让 env-start 成功后 fire-and-forget 把已下载 workflow subfolder symlink 到
+    // <env.ComfyuiSource>/user/default/workflows/。可空保留旧测试 ctor 兼容。
+    private readonly WorkflowSymlinker? _workflowSymlinker;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -109,6 +118,11 @@ public class MainViewModel : ViewModelBase
     // 若 IsBusy,VM.CancelRun() 兜底取消,避免 Task.Run 漏掉。
     private BulkUpdateViewModel? _bulkUpdateViewModel;
     private BulkUpdateView? _bulkUpdateView;
+    // v0.6.19 T10: 工作流市场 VM/View 缓存(同 ShowCatalog / ShowLocalNodes /
+    // OpenBulkUpdate 懒构造模式)。首次进入构造 VM + 触发 LoadAsync(后台拉 3 个 source),
+    // 后续进入复用同一份 VM,保留 IsBusy + Workflows + Selected + ConsoleLog 状态。
+    private WorkflowMarketplaceViewModel? _workflowMarketplaceViewModel;
+    private WorkflowMarketplaceView? _workflowMarketplaceView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
@@ -159,6 +173,12 @@ public class MainViewModel : ViewModelBase
     /// 测试可注入 stub 返回,绕开 WPF STA 初始化。
     /// </summary>
     internal Func<BulkUpdateViewModel, object?>? BulkUpdateViewFactory { get; set; }
+
+    /// <summary>
+    /// v0.6.19 T10: 构造 <see cref="WorkflowMarketplaceView"/> 的工厂 hook。
+    /// 默认 new 真实 View;测试可注入 stub 返回,绕开 WPF STA 初始化。
+    /// </summary>
+    internal Func<WorkflowMarketplaceViewModel, object?>? WorkflowMarketplaceViewFactory { get; set; }
 
     /// <summary>
     /// 测试用:获取当前缓存的"环境"页 VM(若有)。用于断言 ShowEnvironments
@@ -238,6 +258,7 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowEnvironmentsCommand { get; }
     public RelayCommand ShowCatalogCommand { get; }
     public RelayCommand ShowLocalNodesCommand { get; }   // v0.6.15
+    public RelayCommand ShowWorkflowsCommand { get; }    // v0.6.19 T10: 侧栏 8th "工作流市场"
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
@@ -302,7 +323,15 @@ public class MainViewModel : ViewModelBase
         // 可空保持旧测试 ctor 兼容。生产 DI(App.xaml.cs)总是传。
         EnvironmentRepository? envRepo = null,
         // v0.6.15: rate limit 单例 — 透传给 CatalogViewModel。
-        IRateLimitState? rateLimitState = null)
+        IRateLimitState? rateLimitState = null,
+        // v0.6.19 T10: 共享 HttpClient — ShowWorkflows 用它构造 3 个 IWorkflowSource
+        // + WorkflowDownloader。可空保留旧测试 ctor 兼容(传 null 时 ShowWorkflows
+        // 抛 InvalidOperationException — App.xaml.cs 总是传非 null)。
+        HttpClient? http = null,
+        // v0.6.19 T10: WorkflowSymlinker — 传给 EnvironmentListViewModel 让
+        // env-start 成功后 fire-and-forget sync workflows 到 env 的 user/default/workflows/。
+        // 可空保留旧测试 ctor 兼容。
+        WorkflowSymlinker? workflowSymlinker = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -347,12 +376,18 @@ public class MainViewModel : ViewModelBase
         _envRepo = envRepo;
         // v0.6.15: rate limit 单例 透传给 CatalogViewModel(ShowCatalog 内用)。
         _rateLimitState = rateLimitState;
+        // v0.6.19 T10: 共享 HttpClient + WorkflowSymlinker — ShowWorkflows + env-start
+        // 同步 workflow junction 都用这俩。
+        _http = http;
+        _workflowSymlinker = workflowSymlinker;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
         ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
         // v0.6.15:本地节点页命令。ShowLocalNodes 懒构造 LocalNodeListViewModel。
         ShowLocalNodesCommand = new RelayCommand(_ => ShowLocalNodes());
+        // v0.6.19 T10:工作流市场命令。ShowWorkflows 懒构造 WorkflowMarketplaceViewModel。
+        ShowWorkflowsCommand = new RelayCommand(_ => ShowWorkflows());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
         ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
@@ -426,7 +461,8 @@ public class MainViewModel : ViewModelBase
                 logger: _logger,                          // v0.6.11+ SDD D1
                 catalogRepo: catalogRepo,                 // v0.6.14 picker
                 nodeRepo: nodeRepo,                       // v0.6.14 picker
-                versionRepo: versionRepo);                // v0.6.14 T4 per-row version dropdown
+                versionRepo: versionRepo,                 // v0.6.14 T4 per-row version dropdown
+                workflowSymlinker: _workflowSymlinker);   // v0.6.19 T10: env-start 后异步 sync workflows
             // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
             // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget
             // 触发 env 重启。T2 加 wiring(T3 才会让 RestartEnvAsync 真正实现重启)。
@@ -475,6 +511,45 @@ public class MainViewModel : ViewModelBase
             _localNodesView = new LocalNodeListView { DataContext = _localNodesViewModel };
         }
         CurrentView = _localNodesView;
+    }
+
+    // v0.6.19 T10: 工作流市场页 — 侧栏 8th entry "工作流市场"。
+    // 懒构造 WorkflowMarketplaceViewModel(注入共享 HttpClient + 3 个 IWorkflowSource
+    // + WorkflowDownloader + WorkflowFilesystemScanner),首次进入触发后台 LoadAsync
+    // 并行拉 3 个 source,失败仅 log 不抛。复用同一份 _logger 跟 Settings,让
+    // Settings.WorkflowsDirectory 改动下次刷新立刻生效。
+    private void ShowWorkflows()
+    {
+        CurrentSection = MainSection.Workflows;
+        if (_workflowMarketplaceViewModel is null)
+        {
+            // App.xaml.cs 总是传非 null http;null → 测试或极端 wiring 漏接,
+            // 抛 InvalidOperationException 让问题立刻显形,而不是 NRE 在后台跑。
+            var http = _http
+                ?? throw new InvalidOperationException(
+                    "HttpClient not wired — App.xaml.cs 未在 MainViewModel ctor 传 HttpClient");
+            // YAGNI:3 个 source 全开(默认 IsEnabled=true);Settings 后续如加 toggle 再 gate。
+            // 每个 source 注入同一份 http + logger;baseUrl 走默认。
+            var marketplace = new WorkflowMarketplaceService(
+                new IWorkflowSource[]
+                {
+                    new CommunityJsonSource(http, logger: _logger),
+                    new CivitAiSource(http, logger: _logger),
+                    new OpenArtSource(http, logger: _logger),
+                },
+                logger: _logger);
+            var downloader = new WorkflowDownloader(http, logger: _logger);
+            var scanner = new WorkflowFilesystemScanner(logger: _logger);
+            _workflowMarketplaceViewModel = new WorkflowMarketplaceViewModel(
+                _settings, marketplace, downloader, scanner, logger: _logger);
+            _workflowMarketplaceView = WorkflowMarketplaceViewFactory is null
+                ? new WorkflowMarketplaceView { DataContext = _workflowMarketplaceViewModel }
+                : WorkflowMarketplaceViewFactory(_workflowMarketplaceViewModel) as WorkflowMarketplaceView;
+            // fire-and-forget:首次进入立刻构造 + 后台拉 3 个 source;后续进入复用 VM。
+            // LoadAsync 内部 try/catch cover 失败语义 + ErrorBanner 反馈。
+            _ = _workflowMarketplaceViewModel.LoadAsync();
+        }
+        CurrentView = _workflowMarketplaceView;
     }
 
     private void ShowSettings()
