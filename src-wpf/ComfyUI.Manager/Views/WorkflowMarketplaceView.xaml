@@ -1,0 +1,174 @@
+<UserControl x:Class="ComfyUI.Manager.Views.WorkflowMarketplaceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             xmlns:models="clr-namespace:ComfyUI.Manager.Models"
+             mc:Ignorable="d"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DataContext="{d:DesignInstance Type=vm:WorkflowMarketplaceViewModel}"
+             Background="{DynamicResource WindowBackgroundBrush}">
+  <!--
+    v0.6.19:工作流市场 view — 镜像 BulkUpdateView Console 模式(SurfaceBrush/OutlineBrush
+    /CornerRadius 6 + Consolas 11pt monospace + 三态可见性)。3-section Grid:
+    Row0=Top toolbar / Row1=Filter strip / Row2=Card grid / Row3=Console / Row4=Info/Error banner。
+
+    DataContext 由 MainViewModel 切换 section 时绑成 WorkflowMarketplaceViewModel。
+  -->
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Top toolbar -->
+    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+      <TextBlock DockPanel.Dock="Left" Text="工作流市场"
+                 FontSize="20" FontWeight="Bold"
+                 Foreground="{DynamicResource OnSurfaceBrush}"
+                 VerticalAlignment="Center" Margin="0,0,16,0" />
+      <TextBox DockPanel.Dock="Left" Width="240" Margin="0,0,8,0"
+               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+      <Button DockPanel.Dock="Right" Content="刷新"
+              Command="{Binding RefreshCommand}" Margin="4,0,0,0" />
+      <Button DockPanel.Dock="Right" Content="打开目录"
+              Command="{Binding OpenFolderCommand}" Margin="4,0,0,0" />
+      <Button DockPanel.Dock="Right" Content="全选"
+              Command="{Binding ToggleSelectAllCommand}" Margin="4,0,0,0" />
+      <Button DockPanel.Dock="Right" Content="批量下载"
+              Command="{Binding BatchDownloadCommand}" Margin="4,0,0,0" />
+    </DockPanel>
+
+    <!-- Filter strip -->
+    <Border Grid.Row="1" Padding="8" Margin="0,0,0,8"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource OutlineBrush}"
+            BorderThickness="1" CornerRadius="6">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="源:" VerticalAlignment="Center" Margin="0,0,4,0"
+                   Foreground="{DynamicResource OnSurfaceBrush}" />
+        <ItemsControl ItemsSource="{Binding ActiveSourceFilters}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <CheckBox Content="{Binding}" Margin="4,0"
+                        Foreground="{DynamicResource OnSurfaceBrush}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Text="排序:" VerticalAlignment="Center" Margin="12,0,4,0"
+                   Foreground="{DynamicResource OnSurfaceBrush}" />
+        <ComboBox SelectedItem="{Binding SortBy}" Width="100">
+          <x:Static Member="vm:WorkflowSortKind.Newest" />
+          <x:Static Member="vm:WorkflowSortKind.Downloads" />
+          <x:Static Member="vm:WorkflowSortKind.Name" />
+        </ComboBox>
+        <CheckBox Content="需装节点" IsChecked="{Binding FilterInstalledNodesOnly}"
+                  Margin="12,0,0,0" VerticalAlignment="Center"
+                  Foreground="{DynamicResource OnSurfaceBrush}" />
+        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
+                   Foreground="{DynamicResource OnSurfaceBrush}"
+                   Text="{Binding TotalCount, StringFormat='共 {0} 条'}" />
+        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
+                   Foreground="{DynamicResource OnSurfaceBrush}"
+                   Text="{Binding DownloadedCount, StringFormat='已下载 {0} 个'}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Card grid -->
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Workflows}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="{x:Type models:WorkflowEntry}">
+            <Border Width="200" Height="260" Margin="8"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}"
+                    BorderThickness="1" CornerRadius="6">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="*"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Image Grid.Row="0" Margin="8" Source="{Binding PreviewImageUrl}"
+                       Stretch="UniformToFill" />
+                <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                           Margin="8,4" MaxHeight="40" TextWrapping="Wrap"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                <StackPanel Grid.Row="2" Orientation="Vertical" Margin="8,0">
+                  <TextBlock Text="{Binding Author}" FontSize="11" Opacity="0.7"
+                             Foreground="{DynamicResource OnSurfaceBrush}" />
+                  <TextBlock Text="{Binding Source}" FontSize="10" Opacity="0.5"
+                             Foreground="{DynamicResource OutlineBrush}" />
+                </StackPanel>
+                <Button Grid.Row="3" Margin="8" Content="下载"
+                        Command="{Binding DataContext.DownloadSingleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        CommandParameter="{Binding}" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <!-- Console panel — mirrors BulkUpdateView Console (v0.6.18.4) -->
+    <Border Grid.Row="3" Margin="0,8,0,0" Padding="0"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource OutlineBrush}"
+            BorderThickness="1" CornerRadius="6"
+            Visibility="{Binding IsConsoleVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <DockPanel Grid.Row="0" Margin="12,8,8,4">
+          <Button DockPanel.Dock="Right" Content="✕"
+                  Click="OnConsoleCloseClicked"
+                  ToolTip="关闭 Console(下次 Start 时自动重新打开)" />
+          <TextBlock VerticalAlignment="Center" FontWeight="Bold" FontSize="13"
+                     Foreground="{DynamicResource OnSurfaceBrush}">
+            <Run Text="Console" />
+            <Run Text="  " />
+            <Run Text="{Binding ConsoleLog.Count, Mode=OneWay}" FontSize="11"
+                 Foreground="{DynamicResource OutlineBrush}" />
+            <Run Text=" 行" FontSize="11" Foreground="{DynamicResource OutlineBrush}" />
+          </TextBlock>
+        </DockPanel>
+        <ScrollViewer x:Name="ConsoleScrollViewer" Grid.Row="1"
+                      Height="160" Margin="8,0,8,8"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding ConsoleLog}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                           TextWrapping="NoWrap"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <!-- Info / Error banner -->
+    <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0,4,0,0">
+      <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource ErrorBrush}"
+                 FontWeight="Bold"
+                 Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
+      <TextBlock Text="{Binding InfoMessage}" Foreground="{DynamicResource SuccessBrush}"
+                 Visibility="{Binding InfoMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
+    </StackPanel>
+  </Grid>
+</UserControl>

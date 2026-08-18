@@ -22,6 +22,8 @@ public enum MainSection
     Environments,
     Catalog,
     LocalNodes,  // v0.6.15
+    // v0.6.19: 工作流市场 — between LocalNodes and Settings
+    Workflows,
     Settings,
     BulkUpdate,
     SystemStatus
