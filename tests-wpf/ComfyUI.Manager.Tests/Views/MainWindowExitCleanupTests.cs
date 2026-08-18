@@ -81,7 +81,7 @@ public class MainWindowExitCleanupTests : IDisposable
                 var mvm = new MainViewModel(
                     _db.Factory,
                     launcher, null!, null!, null!, null!, null!, null!,
-                    new Settings(), null!, null!, null!, null!, null!,
+                    new Settings(), null!, null!, null!, null!, null!, null!,
                     null!, "", _projectRoot, null!, null!,
                     new UiPreferencesService(_projectRoot),
                     envExitCleanup: cleanup,
@@ -243,7 +243,7 @@ public class MainWindowExitCleanupTests : IDisposable
                 mvm = new MainViewModel(
                     _db.Factory,
                     launcher, null!, null!, null!, null!, null!, null!,
-                    new Settings(), null!, null!, null!, null!, null!,
+                    new Settings(), null!, null!, null!, null!, null!, null!,
                     null!, "", _projectRoot, null!, null!,
                     prefs,
                     envExitCleanup: cleanup,
@@ -347,7 +347,7 @@ public class MainWindowExitCleanupTests : IDisposable
                     var mvm = new MainViewModel(
                         _db.Factory,
                         launcher, null!, null!, null!, null!, null!, null!,
-                        new Settings(), null!, null!, null!, null!, null!,
+                        new Settings(), null!, null!, null!, null!, null!, null!,
                         null!, "", _projectRoot, null!, null!,
                         prefsService,
                         envExitCleanup: cleanup,

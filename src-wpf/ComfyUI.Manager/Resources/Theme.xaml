@@ -10,9 +10,14 @@
     <converters:SectionEqualityToBoolConverter x:Key="SectionEquality" />
     <converters:EnumEqualsConverter x:Key="EnumEqualsConverter" />
     <converters:PickerFilterEqualsConverter x:Key="PickerFilterEqualsConverter" />
+    <!-- v0.6.17.1:DataTrigger.Value 不能挂 {Binding},改用 MultiBinding + 本 converter。
+         env 行 🪵 图标 deep/dim 切换:values[0]=VM ActiveStartStatusEnvId,values[1]=this.Id,
+         相等 → true → Foreground 切 OnSurfaceBrush(深)。 -->
+    <converters:StringEqualityMultiConverter x:Key="StringEqualityMulti" />
     <!-- v0.6.15.10:bool → "trueText|falseText",node-mgmt row details 用 "存在|无"。 -->
     <converters:BoolToTextConverter x:Key="BoolToText" />
     <views:BoolToBrushConverter x:Key="BoolToBrush" />
+    <views:SeverityToBrushConverter x:Key="SeverityToBrush" />
     <views:NullToVisibilityConverter x:Key="NullToVisibility" />
     <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
     <views:InverseBoolConverter x:Key="InverseBool" />

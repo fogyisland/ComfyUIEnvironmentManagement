@@ -43,4 +43,17 @@ public partial class EnvironmentListView : UserControl
             vm.CloseNodeManagementCommand.Execute(null);
         }
     }
+
+    /// <summary>
+    /// v0.6.17:启动状态面板 ✕ 按钮 — 调 <see cref="EnvironmentListViewModel.CloseStartStatusPanel"/>
+    /// 隐面板但 dict 条目留着(用户随时可通过 env 行 port 旁的小图标按钮重新打开)。
+    /// v0.6.17.1:入口从独立"启动控制台"按钮改成 port 9000 旁的小图标(更紧凑)。
+    /// </summary>
+    private void OnStartStatusCloseClicked(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ViewModels.EnvironmentListViewModel vm)
+        {
+            vm.CloseStartStatusPanel();
+        }
+    }
 }

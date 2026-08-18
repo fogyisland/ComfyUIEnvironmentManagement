@@ -36,8 +36,18 @@
                     CornerRadius="6"
                     Visibility="{Binding StartStatus.IsVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                 <StackPanel DataContext="{Binding StartStatus}">
-                    <TextBlock Text="启动状态" FontWeight="Bold" FontSize="14"
-                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                    <!-- v0.6.17:标题(per-env 显示 "启动状态 — envA")+ ✕ 关闭按钮
+                         (面板不再 auto-hide,启动成功后留到用户主动关;关闭后可通过
+                          env 行 "再次打开" 命令重新显示)。 -->
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="✕"
+                                Click="OnStartStatusCloseClicked"
+                                Style="{StaticResource GearIconButtonStyle}"
+                                Foreground="{DynamicResource OnSurfaceBrush}" />
+                        <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14"
+                                   Foreground="{DynamicResource OnSurfaceBrush}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
                     <TextBlock Text="{Binding CurrentStageText}" FontSize="16" Margin="0,4"
                                Foreground="{DynamicResource OnSurfaceBrush}" />
                     <ItemsControl ItemsSource="{Binding Stages}" Margin="0,4,0,0">
@@ -285,7 +295,7 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
-                                <!-- Row 0: Header — 状态点 + Name + Port + BED 徽章 -->
+                                <!-- Row 0: Header — 状态点 + Name + Port(图标入口)+ BED 徽章 -->
                                 <Grid Grid.Row="0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -313,15 +323,52 @@
                                     <TextBlock Grid.Column="1" Text="{Binding Name}"
                                                FontSize="16" FontWeight="Bold" VerticalAlignment="Center"
                                                Foreground="{DynamicResource OnSurfaceBrush}" />
-                                    <Border Grid.Column="2" Padding="8,2" CornerRadius="4"
-                                            Background="{DynamicResource BackgroundBrush}"
-                                            VerticalAlignment="Center" Margin="0,0,8,0">
-                                        <TextBlock FontSize="11"
-                                                   Foreground="{DynamicResource OnSurfaceBrush}">
-                                            <Run Text="Port " Foreground="{DynamicResource OutlineBrush}" />
-                                            <Run Text="{Binding Port, Mode=OneWay}" FontWeight="Bold" />
-                                        </TextBlock>
-                                    </Border>
+                                    <!-- v0.6.17.1:启动控制台图标按钮(常驻)+ Port 标签。
+                                         图标在 Port 左边,常驻可见(open 时深色 / close 时浅色)。
+                                         DataTrigger 比较 ActiveStartStatusEnvId 跟当前 env.Id:
+                                         相等 → Foreground=OnSurfaceBrush(深色,面板开着);
+                                         不等或 null → Foreground=OutlineBrush(浅色,面板关着或别的 env 开)。
+                                         从未启动过的 env 点图标 → 命令静默 no-op(CanExecute 永远
+                                         true 给 env 非 null,但 dict 没条目 Execute 直接 return)。 -->
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <Button Content="⌨" FontSize="14" MinWidth="24" MinHeight="24"
+                                                ToolTip="env 启动后,点此重新打开启动状态面板(3 阶段 + stdout 日志)。env 未启动时点击会提示"
+                                                Command="{Binding DataContext.ReopenStartStatusCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource GearIconButtonStyle}">
+                                                    <Setter Property="Foreground" Value="{DynamicResource OutlineBrush}" />
+                                                    <!-- v0.6.17.1:DataTrigger.Value 不能挂 {Binding}(非
+                                                         DependencyProperty,WPF 启动崩)。改用 MultiBinding
+                                                         把 VM.ActiveStartStatusEnvId + this.Id 喂给
+                                                         StringEqualityMultiConverter → bool → Value="True"。 -->
+                                                    <Style.Triggers>
+                                                        <DataTrigger Value="True">
+                                                            <DataTrigger.Binding>
+                                                                <MultiBinding Converter="{StaticResource StringEqualityMulti}">
+                                                                    <Binding Path="DataContext.ActiveStartStatusEnvId"
+                                                                             RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                                    <Binding Path="Id" />
+                                                                </MultiBinding>
+                                                            </DataTrigger.Binding>
+                                                            <Setter Property="Foreground"
+                                                                    Value="{DynamicResource OnSurfaceBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Border Padding="8,2" CornerRadius="4"
+                                                Background="{DynamicResource BackgroundBrush}">
+                                            <TextBlock FontSize="11"
+                                                       Foreground="{DynamicResource OnSurfaceBrush}">
+                                                <Run Text="Port " Foreground="{DynamicResource OutlineBrush}" />
+                                                <Run Text="{Binding Port, Mode=OneWay}" FontWeight="Bold" />
+                                            </TextBlock>
+                                        </Border>
+                                    </StackPanel>
                                     <!-- BED 徽章 -->
                                     <Border Grid.Column="3" Padding="8,2" CornerRadius="4"
                                             VerticalAlignment="Center">
@@ -357,14 +404,16 @@
                                     <Run Text="{Binding BedProfileId, Mode=OneWay, TargetNullValue='未部署'}" />
                                 </TextBlock>
 
-                                <!-- Row 2: Actions — 2 行 × 6 列 Grid -->
+                                <!-- Row 2: Actions — 2 行 × 5 列 Grid(v0.6.15.9 P0:从 2x6 改 2x5,
+                                     删 2 个空 cell,按钮宽 ~20%。节点管理 + 升级节点 升级已
+                                     迁入节点管理面板行内,不再独立。v0.6.17.1:第三行启动控制台
+                                     按钮删除 — 入口改 Row 0 port 旁的小图标(更紧凑)。) -->
                                 <Grid Grid.Row="2">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
@@ -402,15 +451,13 @@
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
-                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — 同 col 0-3 pattern,共用 6 列 Grid。 -->
+                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — 同 col 0-3 pattern,共用 5 列 Grid。 -->
                                     <Button Grid.Row="0" Grid.Column="4" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleComfyUiManagerCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="git clone ltdrdata/ComfyUI-Manager 到 custom_nodes 并装 requirements.txt;已装则 rm -rf 整个目录" />
-                                    <!-- v0.6.15.8 T6:第 6 列预留空 cell(后续填),保留 grid 形状 -->
-                                    <Border Grid.Row="0" Grid.Column="5" Margin="2" />
                                     <!-- Row 1: 调试/删除链路 -->
                                     <Button Grid.Row="1" Grid.Column="0" Content="查看日志" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
@@ -430,19 +477,19 @@
                                             Command="{Binding DataContext.OpenNodeManagementCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <!-- v0.6.15.9:升级按钮位置 Col 3 预留空 cell,保持 2×6 网格形状 -->
-                                    <Border Grid.Row="1" Grid.Column="3" Margin="2" />
-                                    <Button Grid.Row="1" Grid.Column="4" Content="组件报告" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="1" Grid.Column="3" Content="组件报告" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ReportComponentsCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
-                                    <Button Grid.Row="1" Grid.Column="5" Content="删除" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="1" Grid.Column="4" Content="删除" Margin="2" MinWidth="0"
                                             Style="{StaticResource DangerButton}"
                                             Command="{Binding DataContext.DeleteCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
+                                    <!-- v0.6.17.1:启动控制台入口移至 Row 0 col 2(port 旁小图标),
+                                         这里不再独立按钮,Row 2 actions Grid 收成 2 行 × 5 列。 -->
                                 </Grid>
                             </Grid>
                         </Border>

@@ -21,6 +21,8 @@ public class CatalogViewModel : ViewModelBase
     private readonly SettingsRepository _settingsRepo;
     private readonly string _projectRoot;
     private readonly NodeRepository? _nodeRepo;
+    private readonly GitHubVersionService? _versionService;
+    private CancellationTokenSource? _versionsFetchCts;
 
     private List<CatalogEntry> _allEntries = new();
 
@@ -89,6 +91,8 @@ public class CatalogViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(SelectedAuthor));
                 RaisePropertyChanged(nameof(SelectedTitle));
                 RaisePropertyChanged(nameof(SelectedLastUpdate));
+                RaisePropertyChanged(nameof(SelectedDeveloper));
+                RaisePropertyChanged(nameof(SelectedDevelopedAt));
                 RaisePropertyChanged(nameof(SelectedPipRequirements));
                 RaisePropertyChanged(nameof(HasPipRequirements));
                 LoadVersionsForSelected();
@@ -100,6 +104,7 @@ public class CatalogViewModel : ViewModelBase
     {
         SelectedVersions.Clear();
         SelectedVersion = null;
+        LoadVersionsError = null;
         RaisePropertyChanged(nameof(HasVersions));
         RaisePropertyChanged(nameof(SelectedVersionDate));
         RaisePropertyChanged(nameof(DownloadButtonLabel));
@@ -110,8 +115,99 @@ public class CatalogViewModel : ViewModelBase
         if (SelectedVersions.Count > 0)
         {
             SelectedVersion = SelectedVersions[0];
+            return;
+        }
+        // v0.6.16+: node_versions 表空 + 有 GitHub ref URL → 自动触发单节点 /releases 拉取。
+        // 不依赖 Settings.FetchNodeVersionsOnRefresh(那是 batch 入口,需要 refresh 跑);
+        // 用户点详情面板的瞬间就该看到版本历史 — 否则"字段没填充"是直接卡点。
+        // Token 缺/未鉴权会让 GitHub API 60/h 限流;失败提示用户去 Settings 配置 token。
+        if (_versionService is not null && !string.IsNullOrEmpty(SelectedReferenceUrl))
+        {
+            _ = FetchVersionsForSelectedAsync();
         }
     }
+
+    /// <summary>
+    /// v0.6.16+:单节点 /releases 拉取 + 落库 + 刷新 ComboBox。
+    /// Cancellation 处理:用户切换节点时取消旧 fetch,只有最新 selected 的 fetch 写 UI。
+    /// </summary>
+    private async Task FetchVersionsForSelectedAsync()
+    {
+        var entry = _selected;
+        if (entry is null) return;
+        var refUrl = SelectedReferenceUrl;
+        if (string.IsNullOrEmpty(refUrl)) return;
+
+        _versionsFetchCts?.Cancel();
+        _versionsFetchCts = new CancellationTokenSource();
+        var ct = _versionsFetchCts.Token;
+
+        IsLoadingVersions = true;
+        LoadVersionsError = null;
+        try
+        {
+            var result = await _versionService!.FetchVersionsAsync(
+                [(entry.Id, refUrl)], _settings.GitHubToken, ct: ct);
+            // 用户已切换到别的节点 → 丢弃本次结果
+            if (ct.IsCancellationRequested || _selected?.Id != entry.Id) return;
+            if (result.TryGetValue(entry.Id, out var versions) && versions.Count > 0)
+            {
+                _versionRepo.UpsertBatch(versions.Select(v => (entry.SourceUrl, entry.Package, v)));
+                if (_selected?.Id != entry.Id) return;  // 落库后再 check
+                SelectedVersions.Clear();
+                foreach (var v in versions) SelectedVersions.Add(v);
+                if (SelectedVersions.Count > 0)
+                {
+                    SelectedVersion = SelectedVersions[0];
+                }
+            }
+            else
+            {
+                LoadVersionsError = "未找到该仓库的 release 历史";
+            }
+        }
+        catch (OperationCanceledException) { /* 用户切换节点时正常 cancel */ }
+        catch (RateLimitException)
+        {
+            if (_selected?.Id == entry.Id)
+                LoadVersionsError = "GitHub API 限流,请稍后再试或去 Settings 配置 token";
+        }
+        catch (Exception ex)
+        {
+            if (_selected?.Id == entry.Id)
+                LoadVersionsError = $"获取版本失败:{ex.Message}";
+        }
+        finally
+        {
+            if (_selected?.Id == entry.Id)
+            {
+                IsLoadingVersions = false;
+            }
+        }
+    }
+
+    private bool _isLoadingVersions;
+    /// <summary>v0.6.16+:on-demand 拉取节点历史版本时为 true,XAML 显示"加载中…"。</summary>
+    public bool IsLoadingVersions
+    {
+        get => _isLoadingVersions;
+        private set => SetField(ref _isLoadingVersions, value);
+    }
+
+    private string? _loadVersionsError;
+    /// <summary>v0.6.16+:on-demand 拉取失败的原因,null = 无错误。XAML 显示错误文案。</summary>
+    public string? LoadVersionsError
+    {
+        get => _loadVersionsError;
+        private set
+        {
+            if (SetField(ref _loadVersionsError, value))
+            {
+                RaisePropertyChanged(nameof(HasLoadVersionsError));
+            }
+        }
+    }
+    public bool HasLoadVersionsError => !string.IsNullOrEmpty(_loadVersionsError);
 
     /// <summary>
     /// v0.6.9 T7:Spotlight 选中 Node target 后,MainViewModel 调这里把
@@ -140,6 +236,46 @@ public class CatalogViewModel : ViewModelBase
         => _selected?.PipRequirements ?? Array.Empty<PipRequirement>();
     public bool HasPipRequirements => SelectedPipRequirements.Count > 0;
     public string? SelectedLatestVersion => string.IsNullOrEmpty(_selected?.LatestVersion) ? "未知" : _selected!.LatestVersion;
+
+    /// <summary>
+    /// 开发者 = GitHub owner 登录名,从 <c>html_url</c> 第一段路径解析(如
+    /// "https://github.com/ltdrdata/..." → "ltdrdata")。Python backfill 写入
+    /// html_url 后即生效 — 不需要单独 owner_login 列,zero-cost。
+    /// html_url 为空返 "未知"。
+    /// </summary>
+    public string? SelectedDeveloper
+    {
+        get
+        {
+            var url = _selected?.HtmlUrl;
+            if (string.IsNullOrEmpty(url)) return "未知";
+            try
+            {
+                var u = new Uri(url);
+                var firstSegment = u.AbsolutePath.TrimStart('/').Split('/', 2)[0];
+                return string.IsNullOrEmpty(firstSegment) ? "未知" : firstSegment;
+            }
+            catch
+            {
+                return "未知";
+            }
+        }
+    }
+
+    /// <summary>
+    /// 开发起始日期 = GitHub repo <c>created_at</c> 截短到日期部分(YYYY-MM-DD)。
+    /// Python backfill 已捕获 created_at 到 catalog_cache.created_at;detail panel
+    /// 直接读字段。无值时显示 "未知"。
+    /// </summary>
+    public string? SelectedDevelopedAt
+    {
+        get
+        {
+            var c = _selected?.CreatedAt;
+            if (string.IsNullOrEmpty(c) || c.Length < 10) return "未知";
+            return c[..10];
+        }
+    }
 
     /// <summary>
     /// v0.6.15.2 hotfix:从 raw_metadata 抽出实际仓库 URL(优先 id / repository / url / files[0] / reference),
@@ -252,7 +388,8 @@ public class CatalogViewModel : ViewModelBase
         SettingsRepository settingsRepo,
         string projectRoot,
         IRateLimitState? rateLimitState = null,
-        NodeRepository? nodeRepo = null)
+        NodeRepository? nodeRepo = null,
+        GitHubVersionService? versionService = null)
     {
         _repo = repo;
         _versionRepo = versionRepo;
@@ -263,6 +400,7 @@ public class CatalogViewModel : ViewModelBase
         _projectRoot = projectRoot;
         _rateLimitState = rateLimitState;
         _nodeRepo = nodeRepo;
+        _versionService = versionService;
 
         RefreshCommand = new RelayCommand(_ => _ = RefreshAsync(), _ => !IsBusy);
         CancelRefreshCommand = new RelayCommand(_ => _refreshCts?.Cancel(), _ => IsBusy);
@@ -448,6 +586,15 @@ public class CatalogViewModel : ViewModelBase
             return;
         }
         var localDir = Path.Combine(_projectRoot, _settings.LocalNodeDirectory);
+        // 用户反馈:节点已下载过再点"下载"会弹"下载失败:目录已存在:..."看着像出错。
+        // 这里 pre-check:目录已存在就当 InfoMessage "节点已存在",不再调 NodeOperations,
+        // 既给用户友好提示,也避免 NodeOperations 走完 git clone 才报错的浪费。
+        var targetDir = Path.Combine(localDir, entry.Package);
+        if (Directory.Exists(targetDir))
+        {
+            InfoMessage = $"节点已存在:{entry.Package}";
+            return;
+        }
         var result = await _nodeOps.DownloadAsync(
             localDir, entry.Package, repoUrl,
             SelectedVersion?.Tag);

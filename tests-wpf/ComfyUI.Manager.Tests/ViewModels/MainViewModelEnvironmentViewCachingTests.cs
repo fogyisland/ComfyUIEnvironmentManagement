@@ -43,7 +43,7 @@ public sealed class MainViewModelEnvironmentViewCachingTests : IDisposable
         return new MainViewModel(
             db.Factory,
             null!, null!, null!, null!, null!, null!, null!,
-            new Settings(), null!, null!, null!, null!, null!,
+            new Settings(), null!, null!, null!, null!, null!, null!,
             null!, "", "", null!, null!, new UiPreferencesService(_projectRoot));
     }
 

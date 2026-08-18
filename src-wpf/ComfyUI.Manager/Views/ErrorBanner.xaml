@@ -4,7 +4,9 @@
     <!-- v0.6.9 T9 fix:Storyboard 从 XAML Resources 搬到 code-behind 构造 — Theme.xaml
          的 MotionDuration*Ms 是 sys:Double,不能直接给 Duration property(要 Duration 类型)。
          code-behind 用 MotionSettings.DurationSlideBanner (TimeSpan→Duration 隐式转换)构造,
-         既绕开 type mismatch,又尊重 G9 (MotionSettings.IsAnimationEnabled)。 -->
+         既绕开 type mismatch,又尊重 G9 (MotionSettings.IsAnimationEnabled)。
+         v0.6.16+:Background 按 Severity 取色(Info=主题色,Warn=橙,Error=红,Critical=深红);
+         加 ✕ Close 按钮,Command 绑 VM.DismissCommand(参数=本 entry)。 -->
     <Border x:Name="RootBorder"
             Background="Transparent"
             Opacity="1">
@@ -14,16 +16,34 @@
         <ItemsControl ItemsSource="{Binding Entries}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Border Background="{StaticResource ErrorBrush}"
+                    <Border Background="{Binding Severity, Converter={StaticResource SeverityToBrush}}"
                             Padding="8" Margin="2" CornerRadius="4">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Code}"
-                                       FontWeight="Bold"
-                                       Foreground="White" />
-                            <TextBlock Text="{Binding Message}"
-                                       Foreground="White"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding Code}"
+                                           FontWeight="Bold"
+                                           Foreground="White" />
+                                <TextBlock Text="{Binding Message}"
+                                           Foreground="White"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="✕"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Foreground="White"
+                                    FontSize="14"
+                                    Padding="6,0"
+                                    Cursor="Hand"
+                                    VerticalAlignment="Top"
+                                    ToolTip="关闭"
+                                    Command="{Binding DataContext.DismissCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" />
+                        </Grid>
                     </Border>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>

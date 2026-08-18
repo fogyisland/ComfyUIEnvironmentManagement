@@ -197,7 +197,7 @@
                             <Border Height="1" Margin="0,12"
                                     Background="{DynamicResource OutlineBrush}" />
 
-                            <!-- Group 2: Metadata 2 列 Grid -->
+                            <!-- Group 2: 项目信息 -->
                             <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -216,69 +216,154 @@
                                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedAuthor}"
                                            FontSize="12" Margin="0,6"
                                            Foreground="{DynamicResource OutlineBrush}" />
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="安装类型:"
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="开发者:"
                                            FontSize="12" Margin="0,6,16,6"
                                            Foreground="{DynamicResource OnSurfaceBrush}" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedInstallType}"
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedDeveloper, Mode=OneWay}"
                                            FontSize="12" Margin="0,6"
                                            Foreground="{DynamicResource OutlineBrush}" />
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="最后更新:"
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="开发起始:"
                                            FontSize="12" Margin="0,6,16,6"
                                            Foreground="{DynamicResource OnSurfaceBrush}" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedLastUpdate}"
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedDevelopedAt, Mode=OneWay}"
                                            FontSize="12" Margin="0,6"
                                            Foreground="{DynamicResource OutlineBrush}" />
-                                <!-- v0.6.15.2 hotfix:详情面板显式展示 latest version(VM 定义了但 XAML 漏绑)。
-                                     VM 在 entry.LatestVersion 为空时返 "未知",binding 直接走。 -->
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="最新版本:"
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="安装类型:"
                                            FontSize="12" Margin="0,6,16,6"
                                            Foreground="{DynamicResource OnSurfaceBrush}" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedLatestVersion}"
-                                           FontSize="12" Margin="0,6" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource OnSurfaceBrush}" />
-                                <!-- v0.6.15.2 hotfix:仓库 URL(id / repository / url / files[0] / reference 5 路 fallback)。
-                                     有 URL 时显示可点击 hyperlink,无 URL 时整行隐藏。 -->
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="仓库:"
-                                           FontSize="12" Margin="0,6,16,6"
-                                           Foreground="{DynamicResource OnSurfaceBrush}" />
-                                <TextBlock Grid.Row="4" Grid.Column="1"
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedInstallType}"
                                            FontSize="12" Margin="0,6"
-                                           TextTrimming="CharacterEllipsis"
-                                           Foreground="{DynamicResource OutlineBrush}"
-                                           ToolTip="{Binding SelectedRepositoryUrl}"
-                                           Visibility="{Binding SelectedRepositoryUrl, Converter={StaticResource StringNotEmptyToVisibility}}">
-                                    <Hyperlink NavigateUri="{Binding SelectedRepositoryUrl}"
-                                               RequestNavigate="OnRepoLinkClick"
-                                               Foreground="{DynamicResource PrimaryBrush}">
-                                        <Run Text="{Binding SelectedRepositoryUrl, Mode=OneWay}" />
-                                    </Hyperlink>
-                                </TextBlock>
+                                           Foreground="{DynamicResource OutlineBrush}" />
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="最后更新:"
+                                           FontSize="12" Margin="0,6,16,6"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedLastUpdate}"
+                                           FontSize="12" Margin="0,6"
+                                           Foreground="{DynamicResource OutlineBrush}" />
                             </Grid>
 
                             <!-- Divider -->
                             <Border Height="1" Margin="0,4,0,12"
                                     Background="{DynamicResource OutlineBrush}" />
 
-                            <!-- Group 3: 版本选择 -->
+                            <!-- Group 3: 版本信息(用户原话:"这个才是最重要的") — 卡片化强调
+                                 内含 4 个用户最关心的字段:最新版本 / 版本日期 / 开发者 / 开发起始。
+                                 浅背景 + 粗体值让这块信息从其他字段(灰/小)跳出。 -->
+                            <Border Background="{DynamicResource SurfaceVariantBrush}"
+                                    CornerRadius="6" Padding="14,10"
+                                    Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="版本信息"
+                                               FontSize="11" FontWeight="Bold"
+                                               Foreground="{DynamicResource PrimaryBrush}"
+                                               Margin="0,0,0,8" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,8">
+                                            <TextBlock Text="最新版本" FontSize="10"
+                                                       Foreground="{DynamicResource OnSurfaceVariantBrush}" />
+                                            <TextBlock Text="{Binding SelectedLatestVersion, Mode=OneWay}"
+                                                       FontSize="16" FontWeight="Bold"
+                                                       Foreground="{DynamicResource OnSurfaceBrush}"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,8">
+                                            <TextBlock Text="版本日期" FontSize="10"
+                                                       Foreground="{DynamicResource OnSurfaceVariantBrush}" />
+                                            <TextBlock Text="{Binding SelectedVersionDate, Mode=OneWay}"
+                                                       FontSize="16" FontWeight="Bold"
+                                                       Foreground="{DynamicResource OnSurfaceBrush}"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,0,0">
+                                            <TextBlock Text="开发者" FontSize="10"
+                                                       Foreground="{DynamicResource OnSurfaceVariantBrush}" />
+                                            <TextBlock Text="{Binding SelectedDeveloper, Mode=OneWay}"
+                                                       FontSize="14" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource OnSurfaceBrush}"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,0,0,0">
+                                            <TextBlock Text="开发起始" FontSize="10"
+                                                       Foreground="{DynamicResource OnSurfaceVariantBrush}" />
+                                            <TextBlock Text="{Binding SelectedDevelopedAt, Mode=OneWay}"
+                                                       FontSize="14" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource OnSurfaceBrush}"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- v0.6.15.2 hotfix:仓库 URL(id / repository / url / files[0] / reference 5 路 fallback)。
+                                 有 URL 时显示可点击 hyperlink,无 URL 时整行隐藏。
+                                 从 Group 2 移出来作为独立行;视觉权重降低(版本信息卡片才是主角)。 -->
+                            <TextBlock Margin="0,0,0,4"
+                                       FontSize="12"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource OutlineBrush}"
+                                       ToolTip="{Binding SelectedRepositoryUrl}"
+                                       Visibility="{Binding SelectedRepositoryUrl, Converter={StaticResource StringNotEmptyToVisibility}}">
+                                <Run Text="仓库:" FontWeight="Bold" />
+                                <Hyperlink NavigateUri="{Binding SelectedRepositoryUrl}"
+                                           RequestNavigate="OnRepoLinkClick"
+                                           Foreground="{DynamicResource PrimaryBrush}">
+                                    <Run Text="{Binding SelectedRepositoryUrl, Mode=OneWay}" />
+                                </Hyperlink>
+                            </TextBlock>
+
+                            <!-- Divider -->
+                            <Border Height="1" Margin="0,4,0,12"
+                                    Background="{DynamicResource OutlineBrush}" />
+
+                            <!-- Group 4: 版本选择 -->
                             <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox Grid.Column="0"
-                                          ItemsSource="{Binding SelectedVersions}"
-                                          SelectedItem="{Binding SelectedVersion}"
-                                          DisplayMemberPath="DisplayLabel"
-                                          IsEditable="False"
-                                          Style="{StaticResource CatalogVersionComboBoxStyle}" />
-                                <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-                                    <Run Text="发布:" Foreground="{DynamicResource OutlineBrush}" />
-                                    <Run Text="{Binding SelectedVersionDate, Mode=OneWay}" FontWeight="Bold"
-                                         Foreground="{DynamicResource OnSurfaceBrush}" />
-                                </TextBlock>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0"
+                                              ItemsSource="{Binding SelectedVersions}"
+                                              SelectedItem="{Binding SelectedVersion}"
+                                              DisplayMemberPath="DisplayLabel"
+                                              IsEditable="False"
+                                              Style="{StaticResource CatalogVersionComboBoxStyle}" />
+                                    <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <Run Text="发布:" Foreground="{DynamicResource OutlineBrush}" />
+                                        <Run Text="{Binding SelectedVersionDate, Mode=OneWay}" FontWeight="Bold"
+                                             Foreground="{DynamicResource OnSurfaceBrush}" />
+                                    </TextBlock>
+                                </Grid>
+                                <!-- v0.6.16+:on-demand 拉取状态 + 错误提示 + 重试按钮。
+                                     LoadVersionsForSelected 看到 node_versions 空 + 有 ref URL
+                                     → 自动触发单节点 /releases 拉取;无 token 撞 60/h 限流时
+                                     LoadVersionsError 给出原因 + "重试"按钮让用户配置完 token 再试。 -->
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="加载版本历史中…" FontSize="11"
+                                               Foreground="{DynamicResource OutlineBrush}"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding IsLoadingVersions, Converter={StaticResource BoolToVisibility}}" />
+                                    <TextBlock Text="{Binding LoadVersionsError, Mode=OneWay}"
+                                               FontSize="11" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource ErrorBrush}"
+                                               VerticalAlignment="Center"
+                                               Visibility="{Binding HasLoadVersionsError, Converter={StaticResource BoolToVisibility}}" />
+                                </StackPanel>
                             </Grid>
 
-                            <!-- Group 4: Requirements Expander -->
+                            <!-- Group 5: Requirements Expander -->
                             <Expander Header="Requirements" Margin="0,8,0,0" IsExpanded="False"
                                       Visibility="{Binding HasPipRequirements, Converter={StaticResource BoolToVisibility}}">
                                 <ItemsControl ItemsSource="{Binding SelectedPipRequirements}">

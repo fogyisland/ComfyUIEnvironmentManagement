@@ -38,7 +38,7 @@ public class MainViewModelMenuTests : IDisposable
         var svc = new UiPreferencesService(_projectRoot);
         var main = new MainViewModel(
             _db.Factory, null!, null!, null!, null!, null!, null!, null!,
-            new Settings(), null!, null!, null!, null!, null!,
+            new Settings(), null!, null!, null!, null!, null!, null!,
             null!, "", _projectRoot, null!, null!, svc);
         main.EnvironmentsViewFactory = vm => new object();  // 避 STA,跟 v0.6.5.20 同款
         main.OpenFolderOverride = p => cap.Folder = p;

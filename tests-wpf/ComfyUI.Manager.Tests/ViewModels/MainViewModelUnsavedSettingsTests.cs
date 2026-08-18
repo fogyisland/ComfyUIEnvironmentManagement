@@ -47,7 +47,7 @@ public sealed class MainViewModelUnsavedSettingsTests : IDisposable
         _factory,
         null!, null!, null!, null!, null!,
         _settingsRepo, HttpProxyConfig.Disabled, _settings,
-        null!, null!, null!, null!, null!, null!,
+        null!, null!, null!, null!, null!, null!, null!,
         "", _rootDir,
         null!, null!, new UiPreferencesService(_rootDir))
     {

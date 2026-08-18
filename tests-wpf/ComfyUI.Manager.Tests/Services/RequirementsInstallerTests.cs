@@ -504,4 +504,117 @@ public sealed class RequirementsInstallerTests : IDisposable
             return new RequirementsInstallResult(true, false, null, filtered.Count);
         }
     }
+
+    // ──────────────── v0.6.15.6:InstallNodeRequirementsAsync (节点级 requirements.txt) ────────────────
+
+    /// <summary>
+    /// Fake RequirementsFileInstaller:不让真 pip 跑,只记录调用 + 返可控结果。
+    /// 复用 RequirementsInstaller 内部 _reqFileInstaller 字段是 private —
+    /// 走 InstallNodeRequirementsAsync → _reqFileInstaller.InstallAsync 这条链
+    /// 需要能拦截。用子类化 + override 不行(private 字段拿不到),所以改在
+    /// RequirementsInstaller 自身的实现里走 _reqFileInstaller 注入。
+    /// 测试通过 ctor 传 fake 实现。
+    /// </summary>
+    private sealed class FakeReqFileInstaller : RequirementsFileInstaller
+    {
+        public int CallCount { get; private set; }
+        public string? LastRequirementsPath { get; private set; }
+        public string? LastFilteredPath { get; private set; }
+        public string? LastPythonExe { get; private set; }
+        public RequirementsInstallResult NextResult { get; set; } =
+            new(true, false, null, 3);
+
+        public override Task<RequirementsInstallResult> InstallAsync(
+            string requirementsFilePath, string filteredOutputPath,
+            string venvPythonPath, Action<string>? onLine, CancellationToken ct)
+        {
+            CallCount++;
+            LastRequirementsPath = requirementsFilePath;
+            LastFilteredPath = filteredOutputPath;
+            LastPythonExe = venvPythonPath;
+            // 模拟几行 pip 输出,验 onLine 链路
+            onLine?.Invoke("Looking in indexes: https://pypi.org/simple");
+            onLine?.Invoke("Collecting SQLAlchemy");
+            onLine?.Invoke("Installing collected packages: SQLAlchemy");
+            return Task.FromResult(NextResult);
+        }
+    }
+
+    [Fact]
+    public async Task InstallNodeRequirementsAsync_NoRequirementsTxt_ReturnsSuccessSkip()
+    {
+        var env = SeedEnv("env-node", Path.Combine(_tempRoot, "env-node"), Path.Combine(_tempRoot, "venv-node"));
+        var nodeDir = Path.Combine(_tempRoot, "node-empty");
+        Directory.CreateDirectory(nodeDir);
+        // 不写 requirements.txt
+        var fakeReqFile = new FakeReqFileInstaller();
+        var installer = new RequirementsInstaller(reqFileInstaller: fakeReqFile);
+
+        var result = await installer.InstallNodeRequirementsAsync(env, nodeDir);
+
+        Assert.True(result.Success);
+        Assert.Equal("节点无 requirements.txt", result.Reason);
+        Assert.Equal(0, fakeReqFile.CallCount);  // 关键:没调 pip
+    }
+
+    [Fact]
+    public async Task InstallNodeRequirementsAsync_HappyPath_CallsPipOnNodeRequirements()
+    {
+        var env = SeedEnv("env-node", Path.Combine(_tempRoot, "env-node"), Path.Combine(_tempRoot, "venv-node"));
+        var nodeDir = Path.Combine(_tempRoot, "node-with-req");
+        Directory.CreateDirectory(nodeDir);
+        File.WriteAllLines(Path.Combine(nodeDir, "requirements.txt"), new[] { "SQLAlchemy", "einops" });
+        var fakeReqFile = new FakeReqFileInstaller();
+        var installer = new RequirementsInstaller(reqFileInstaller: fakeReqFile);
+
+        var progressLines = new System.Collections.Generic.List<string>();
+        var progress = new Progress<string>(line => progressLines.Add(line));
+        var result = await installer.InstallNodeRequirementsAsync(env, nodeDir, progress);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, fakeReqFile.CallCount);
+        Assert.Equal(Path.Combine(nodeDir, "requirements.txt"), fakeReqFile.LastRequirementsPath);
+        Assert.Equal(Path.Combine(nodeDir, RequirementsFileInstaller.FilteredRequirementsFileName), fakeReqFile.LastFilteredPath);
+        Assert.Equal(env.PythonExecutable, fakeReqFile.LastPythonExe);
+        Assert.Equal(3, result.InstalledCount);
+        // progress 链路通了 — 至少 1 行 pip 输出
+        Assert.NotEmpty(progressLines);
+    }
+
+    [Fact]
+    public async Task InstallNodeRequirementsAsync_PipFail_ReturnsFailure()
+    {
+        var env = SeedEnv("env-node", Path.Combine(_tempRoot, "env-node"), Path.Combine(_tempRoot, "venv-node"));
+        var nodeDir = Path.Combine(_tempRoot, "node-fail");
+        Directory.CreateDirectory(nodeDir);
+        File.WriteAllText(Path.Combine(nodeDir, "requirements.txt"), "SQLAlchemy");
+        var fakeReqFile = new FakeReqFileInstaller
+        {
+            NextResult = new RequirementsInstallResult(false, false, "pip 退出码 1", 0)
+        };
+        var installer = new RequirementsInstaller(reqFileInstaller: fakeReqFile);
+
+        var result = await installer.InstallNodeRequirementsAsync(env, nodeDir);
+
+        Assert.False(result.Success);
+        Assert.Equal("pip 退出码 1", result.Reason);
+        Assert.Equal(1, fakeReqFile.CallCount);
+    }
+
+    [Fact]
+    public async Task InstallNodeRequirementsAsync_NullEnv_Throws()
+    {
+        var installer = new RequirementsInstaller(reqFileInstaller: new FakeReqFileInstaller());
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => installer.InstallNodeRequirementsAsync(null!, Path.Combine(_tempRoot, "x")));
+    }
+
+    [Fact]
+    public async Task InstallNodeRequirementsAsync_NodeDirEmpty_Throws()
+    {
+        var env = SeedEnv("env-node", Path.Combine(_tempRoot, "env-node"), Path.Combine(_tempRoot, "venv-node"));
+        var installer = new RequirementsInstaller(reqFileInstaller: new FakeReqFileInstaller());
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => installer.InstallNodeRequirementsAsync(env, ""));
+    }
 }

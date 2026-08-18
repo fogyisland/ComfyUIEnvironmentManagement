@@ -82,7 +82,7 @@ public sealed class StatusBarViewModelTests : IDisposable
     private MainViewModel NewMainViewModel() => new(
         _db.Factory,
         null!, null!, null!, null!, null!, null!, null!,
-        new Settings(), null!, null!, null!, null!, null!,
+        new Settings(), null!, null!, null!, null!, null!, null!,
         null!, "", _projectRoot, null!, null!, new UiPreferencesService(_projectRoot));
 
     private static void ExecuteAllowingViewConstructionFailure(RelayCommand command)

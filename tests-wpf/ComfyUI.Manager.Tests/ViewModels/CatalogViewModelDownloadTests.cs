@@ -244,7 +244,9 @@ public sealed class CatalogViewModelDownloadTests : IDisposable
     [Fact]
     public async Task DownloadCommand_FailureFromNodeOps_SetsErrorMessage()
     {
-        var ops = new CapturingNodeOps { NextResult = NodeOperationResult.Fail("目录已存在:xxx") };
+        // 用户反馈 hotfix:目录已存在改走 InfoMessage("节点已存在"),不再走 NodeOps 也不走 ErrorMessage。
+        // 这条测试用 *其他* 失败 reason 来验证错误路径仍工作。
+        var ops = new CapturingNodeOps { NextResult = NodeOperationResult.Fail("git clone failed") };
         var vm = NewVm(ops);
         var entry = SeedEntry("pkg-fail", "https://example.com/pkg-fail.git");
         FixRawMetadataToStrings(entry);
@@ -256,6 +258,30 @@ public sealed class CatalogViewModelDownloadTests : IDisposable
         Assert.Equal(1, ops.CallCount);
         Assert.Null(vm.InfoMessage);
         Assert.Contains("下载失败", vm.ErrorMessage);
-        Assert.Contains("目录已存在", vm.ErrorMessage);
+        Assert.Contains("git clone failed", vm.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task DownloadCommand_DirectoryExists_SetsInfoMessage_DoesNotCallNodeOps()
+    {
+        var ops = new CapturingNodeOps();
+        var vm = NewVm(ops);
+        var entry = SeedEntry("pkg-already", "https://example.com/pkg-already.git");
+        FixRawMetadataToStrings(entry);
+        vm.Selected = entry;
+
+        // 在目标目录预先创建子目录,模拟"节点已下载过"的场景
+        var localDir = Path.Combine(_projectRoot, _settings.LocalNodeDirectory);
+        Directory.CreateDirectory(Path.Combine(localDir, entry.Package));
+
+        vm.DownloadCommand.Execute(entry);
+        await Task.Delay(50);
+
+        // 不调 NodeOperations,避免 git clone 浪费 + 错误路径
+        Assert.Equal(0, ops.CallCount);
+        Assert.Null(vm.ErrorMessage);
+        Assert.NotNull(vm.InfoMessage);
+        Assert.Contains("节点已存在", vm.InfoMessage ?? "");
+        Assert.Contains(entry.Package, vm.InfoMessage ?? "");
     }
 }

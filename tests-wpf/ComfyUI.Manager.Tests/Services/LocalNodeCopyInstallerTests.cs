@@ -76,27 +76,6 @@ public class LocalNodeCopyInstallerTests : IDisposable
     }
 
     [Fact]
-    public async Task InstallAsync_TargetDirExists_FailsWithoutOverwriting()
-    {
-        SeedEnv("env-1", "prod", Path.Combine(_envRoot, "env-1", "custom_nodes"));
-        Directory.CreateDirectory(Path.Combine(_srcDir, "pkg-b"));
-        File.WriteAllText(Path.Combine(_srcDir, "pkg-b", "f.txt"), "new");
-        var target = Path.Combine(_envRoot, "env-1", "custom_nodes", "pkg-b");
-        Directory.CreateDirectory(target);
-        File.WriteAllText(Path.Combine(target, "f.txt"), "existing");
-
-        var r = await _installer.InstallAsync(
-            "env-1", Path.Combine(_srcDir, "pkg-b"), "pkg-b", CancellationToken.None);
-
-        Assert.False(r.Success);
-        Assert.Contains("目录已存在", r.Reason);
-        // 现有文件未覆盖
-        Assert.Equal("existing", File.ReadAllText(Path.Combine(target, "f.txt")));
-        // DB 没写
-        Assert.Null(_nodeRepo.Get("pkg-b"));
-    }
-
-    [Fact]
     public async Task InstallAsync_EnvNotFound_Fails()
     {
         var r = await _installer.InstallAsync(

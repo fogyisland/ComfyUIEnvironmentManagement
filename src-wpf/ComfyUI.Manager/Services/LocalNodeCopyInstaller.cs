@@ -48,10 +48,9 @@ public class LocalNodeCopyInstaller
         }
 
         var targetDir = Path.Combine(env.CustomNodesPath, nodeId);
-        if (Directory.Exists(targetDir))
-        {
-            return NodeOperationResult.Fail($"目录已存在:{targetDir}");
-        }
+        // v0.6.15.6:"已装没装" 由 caller (LocalNodeListViewModel) 预先检查 — ScannedNode 行
+        // + Directory.Exists 双查。installer 这里不再 Fail("目录已存在:..."),避免
+        // 已装节点重复点复制弹红色错误条;caller 自己走 info banner 路径。
 
         try
         {

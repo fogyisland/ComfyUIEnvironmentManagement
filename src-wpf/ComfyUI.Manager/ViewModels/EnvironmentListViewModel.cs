@@ -432,6 +432,13 @@ public class EnvironmentListViewModel : ViewModelBase
                 return true;
             });
         CloseNodeManagementCommand = new RelayCommand(_ => NodeManagement = null);
+        // v0.6.17:env 行 "再次打开" 启动日志按钮 — 取出缓存的 VM 设回 StartStatus。
+        // v0.6.17.1:CanExecute 只看 env 参数是否非 null(常驻按钮 — 即使 env 从未
+        // 启动过也允许点,Execute 内部检查 dict,没有条目就静默 no-op)。env 行
+        // 图标永远亮起,通过 brush 颜色告诉用户面板是否打开。
+        ReopenStartStatusCommand = new RelayCommand(
+            p => ReopenStartStatus(p as Environment ?? Selected),
+            p => (p as Environment ?? Selected) is not null);
         Load();
     }
 
@@ -544,9 +551,11 @@ public class EnvironmentListViewModel : ViewModelBase
     {
         if (env is null) return;
         if (IsEnvBusy(env)) return;  // T4:per-env mutex
-        var status = new EnvStartStatusViewModel();
-        StartStatus = status;
-        RaisePropertyChanged(nameof(StartStatus));
+        var status = new EnvStartStatusViewModel { Title = $"启动状态 — {env.Name}" };
+        // v0.6.17:per-env VM cache — 启动结束后面板留着(用户可手动 ✕ 关),后续
+        // "再次打开" 命令从 dict 拿回原 VM 显示。重复启动同一 env 替换 dict 条目。
+        _startStatuses[env.Id] = status;
+        SetStartStatus(status, env.Id);
         status.Begin();
         MarkEnvBusy(env, BusyKind.Start);
         // 把 status 包成 Progress<string>:Progress<T> 构造时捕获当前
@@ -558,10 +567,17 @@ public class EnvironmentListViewModel : ViewModelBase
         var logProgress = new Progress<string>(line => status.Report(line));
         try
         {
-            await _launcher.StartEnvAsync(env, stageProgress, logProgress, default);
+            if (StartEnvForTest is not null)
+            {
+                await StartEnvForTest(env, stageProgress, logProgress, default);
+            }
+            else
+            {
+                await _launcher.StartEnvAsync(env, stageProgress, logProgress, default);
+            }
             status.Complete();
-            await Task.Delay(TimeSpan.FromSeconds(2));
-            status.Hide();
+            // v0.6.17:不再 auto-hide — 面板留着让用户手动关 ✕;后续 "再次打开" 按钮
+            // 直接复用 dict[env.Id] 显示同一 VM(数据不丢)。
         }
         catch (Exception ex)
         {
@@ -576,7 +592,85 @@ public class EnvironmentListViewModel : ViewModelBase
         }
     }
 
-    public EnvStartStatusViewModel? StartStatus { get; private set; }
+    /// <summary>
+    /// v0.6.17:per-env 启动状态缓存(支持 env 跑起来后"再次打开"启动日志)。
+    /// 每个 env 启动一次都建一个独立 <see cref="EnvStartStatusViewModel"/>,放在
+    /// 这里;UI 关掉面板(<see cref="StartStatus"/> = null)不会清条目,后续 reopen
+    /// 直接拿回原 VM。同一 env 重复启动会替换 dict 条目。
+    /// </summary>
+    private readonly Dictionary<string, EnvStartStatusViewModel> _startStatuses = new();
+
+    private EnvStartStatusViewModel? _startStatus;
+    public EnvStartStatusViewModel? StartStatus
+    {
+        get => _startStatus;
+        private set
+        {
+            _startStatus = value;
+            RaisePropertyChanged(nameof(StartStatus));
+        }
+    }
+
+    /// <summary>
+    /// v0.6.17.1:当前 StartStatus 显示的是哪个 env 的面板。null = 没面板。
+    /// env 行的 🪵 图标用这个值切深/浅色(深色 = 该 env 面板正打开)。
+    /// </summary>
+    public string? ActiveStartStatusEnvId { get; private set; }
+
+    /// <summary>
+    /// v0.6.17:env 跑起来后"再次打开启动日志"命令 — 把对应 env 的 VM 设回
+    /// <see cref="StartStatus"/> 让面板重新可见。v0.6.17.1:CanExecute 只看 env
+    /// 参数是否非 null(常驻按钮 — 即使 env 从未启动过也允许点,Execute 内部
+    /// 检查 dict,没有条目就静默 no-op)。测试 / 面板 ✕ 按钮通过
+    /// <see cref="CloseStartStatusPanel"/> 隐面板,dict 条目留着。
+    /// </summary>
+    public RelayCommand ReopenStartStatusCommand { get; }
+
+    /// <summary>
+    /// 内部 helper — 同时更新 <see cref="StartStatus"/> 和
+    /// <see cref="ActiveStartStatusEnvId"/>,保证两属性同步。
+    /// </summary>
+    private void SetStartStatus(EnvStartStatusViewModel? vm, string? envId)
+    {
+        _startStatus = vm;
+        ActiveStartStatusEnvId = envId;
+        RaisePropertyChanged(nameof(StartStatus));
+        RaisePropertyChanged(nameof(ActiveStartStatusEnvId));
+    }
+
+    /// <summary>
+    /// v0.6.17:面板 ✕ 按钮 handler — 把 <see cref="StartStatus"/> 置 null 让面板
+    /// 隐藏;dict 条目不动,用户随时可通过 ReopenStartStatusCommand 重新打开。
+    /// </summary>
+    public void CloseStartStatusPanel()
+    {
+        SetStartStatus(null, null);
+    }
+
+    private void ReopenStartStatus(Environment? env)
+    {
+        if (env is null) return;
+        if (!_startStatuses.TryGetValue(env.Id, out var status))
+        {
+            // v0.6.17.1:env 本会话没记录 → 区分两种场景,避免统一报"未启动"
+            // 让用户困惑(env 实际可能在跑,只是 manager 重启前的运行实例)。
+            //
+            // (a) env.Status == "running" 但本会话没启动过:典型场景 = manager
+            //     重启后 _startStatuses dict 空了(内存丢),env 进程还活着。
+            //     提示用 env 行「查看日志」按钮看实时 stdout。
+            // (b) env.Status == "stopped" 也没启动过:真没日志,引导先点启动。
+            var running = string.Equals(env.Status, "running", StringComparison.OrdinalIgnoreCase);
+            var msg = running
+                ? $"env '{env.Name}' 当前正在运行,但本会话没有捕获到它的启动日志。\n" +
+                  "可能原因:manager 重启前的运行实例,或者手动用其他工具启动。\n" +
+                  "本图标只记录当前会话的启动过程。要查看实时输出请用 env 行的「查看日志」按钮。"
+                : $"env '{env.Name}' 还未启动,没有启动日志可查看。\n" +
+                  "请先点 env 行的「启动」按钮,启动后面板会保留在此图标上。";
+            ShowInfoDialog(msg, "启动控制台");
+            return;
+        }
+        SetStartStatus(status, env.Id);
+    }
 
     /// <summary>
     /// v0.6.11+ SDD D1:给 MainViewModel.RestartEnvAsync 调的内部入口。
@@ -603,9 +697,11 @@ public class EnvironmentListViewModel : ViewModelBase
         }
 
         // 跟 StartEnvAsync 一样构造 status panel,复用现有 EnvStartStatusViewModel 显示
-        var status = new EnvStartStatusViewModel();
-        StartStatus = status;
-        RaisePropertyChanged(nameof(StartStatus));
+        var status = new EnvStartStatusViewModel { Title = $"启动状态 — {env.Name}" };
+        // v0.6.17:per-env VM cache — 同 StartEnvAsync 一起用 _startStatuses 字典,
+        // 跑起来后面板留着让用户 reopen。
+        _startStatuses[env.Id] = status;
+        SetStartStatus(status, env.Id);
         status.Begin();
         MarkEnvBusy(env, BusyKind.Restart);
         // v0.6.5.11 fix:把 status 包成 Progress<string> 捕获 UI SynchronizationContext,
@@ -638,8 +734,7 @@ public class EnvironmentListViewModel : ViewModelBase
                 await _launcher.StartEnvAsync(env, stageProgress, logProgress, default);
             }
             status.Complete();
-            await Task.Delay(TimeSpan.FromSeconds(2));
-            status.Hide();
+            // v0.6.17:不再 auto-hide — 同 StartEnvAsync,面板留着让用户 ✕ 关。
         }
         catch (Exception ex)
         {
@@ -1318,6 +1413,7 @@ public class EnvironmentListViewModel : ViewModelBase
             vm = new NodeManagementViewModel(
                 _nodeRepo, _nodeOps, _errorBanner,
                 _repo, _catalogRepo!, _versionRepo!,
+                _requirementsInstaller,
                 env.Id, env.Name);
             // CloseRequested 是 VM 触发的"自身关闭"信号,在这里把当前显示清空
             // (VM 留在 cache,re-open 时复用)。注意:不能 `NodeManagement = null`
@@ -1362,7 +1458,7 @@ public class EnvironmentListViewModel : ViewModelBase
         }
 
         Views.CatalogEntryPickerDialog.Show(
-            _repo, _nodeOps, _catalogRepo, _nodeRepo, _versionRepo, _logger, env.Id,
+            _repo, _nodeOps, _catalogRepo, _nodeRepo, _versionRepo, _requirementsInstaller, _logger, env.Id,
             onInstallSuccess: onInstallSuccess,
             onClosed: () => Load());
     }
@@ -1512,5 +1608,8 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.15.8 T5:NodeManagement open 命令的 CanExecute 依赖 IsEnvBusy(env),
         // busy 状态变化要 refresh 让按钮 enable/disable。
         OpenNodeManagementCommand.RaiseCanExecuteChanged();
+        // v0.6.17:启动 / 关面板 / 启动成功 / 删除 env 都会改 _startStatuses dict,
+        // "再次打开" 按钮要 refresh。
+        ReopenStartStatusCommand.RaiseCanExecuteChanged();
     }
 }

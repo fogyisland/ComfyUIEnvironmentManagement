@@ -25,7 +25,7 @@ namespace ComfyUI.Manager.Services;
 /// - 成功 → 删 filteredOutputPath,返 Success
 /// - pip 非零 / 取消 → 删 filteredOutputPath,返 Failure/Cancelled
 /// </summary>
-public sealed class RequirementsFileInstaller
+public class RequirementsFileInstaller
 {
     public const string FilteredRequirementsFileName = ".requirements_filtered.txt";
 
@@ -79,7 +79,7 @@ public sealed class RequirementsFileInstaller
     /// 每行 stdout/stderr 回调 onLine。失败/取消不抛 — 返 RequirementsInstallResult。
     /// filteredOutputPath 会在末尾清理(成功失败都清)。
     /// </summary>
-    public async Task<RequirementsInstallResult> InstallAsync(
+    public virtual async Task<RequirementsInstallResult> InstallAsync(
         string requirementsFilePath,
         string filteredOutputPath,
         string venvPythonPath,

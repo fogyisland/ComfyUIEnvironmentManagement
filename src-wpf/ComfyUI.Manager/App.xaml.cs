@@ -90,6 +90,13 @@ public partial class App : Application
         // 新路径也能保证存在。
         var localPaths = new LocalDataPaths(projectRoot);
 
+        // v0.6.16 hotfix: 迁移必须在 SettingsRepository.Load() **之前** 跑 ——
+        // 否则 Load() 读到空 .manager/settings.json → 回退到 defaults → in-memory settings
+        // 是 defaults,后续第一次 Save 覆盖 .manager/settings.json → 即使迁移后来真把旧文件
+        // 复制过来了,也被默认 settings 盖回去。Bug 现象:用户原本设的 theme / GitHub token /
+        // python 路径等全丢。
+        new LocalDataMigrationService(localPaths, logger: null).RunIfNeeded();
+
         // v0.6.7.1 + v0.6.12: 在 logger / launcher 构造前先 Load settings —
         // logger 读 LogDirectory(决定 Logs 父目录),launcher 读 startupTimeoutSeconds / locale / models。
         // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
@@ -97,11 +104,6 @@ public partial class App : Application
         // v0.6.16: 走 LocalDataPaths 注入,settings.json 现在落 <projectRoot>/.manager/。
         var settingsRepo = new SettingsRepository(localPaths);
         var settings = settingsRepo.Load();
-
-        // v0.6.16: 一次性迁移 %APPDATA%/ComfyUI-Manager/ → <projectRoot>/.manager/。
-        // 必须先于 SqliteConnectionFactory 构造 —— factory 第一次 Open() 就读 state.db,
-        // 必须保证 .manager/ 里有旧文件被复制过来。
-        new LocalDataMigrationService(localPaths, logger: null).RunIfNeeded();
 
         // v0.6.16: db path 也走 LocalDataPaths 注入 —— state.db 落 <projectRoot>/.manager/。
         var dbFactory = new SqliteConnectionFactory(localPaths);
@@ -164,6 +166,15 @@ public partial class App : Application
             logsDir: logsDir,  // v0.6.12: 末参 Settings.LogDirectory (Logs parent) or projectRoot fallback
             startupErrorDetector: new NodeStartupErrorDetector(),  // v0.6.15.7: 5s grace 后扫描 stdout/stderr 找加载失败的 custom node
             nodeRepo: nodeRepo);  // v0.6.15.7: 写 ScanMeta["load_error"] 让 env-detail 看到红 badge
+
+        // v0.6.17.2: 启动时主动停掉所有 running + 进程活着的 env — 跟
+        // EnvExitCleanupService(graceful 退出)对称。用户原话"环境管理之前应该
+        // 中止运行环境,然后开启不会自动启动,需要手动启动才可以"。先于
+        // MainViewModel.Load() 让 UI 看到 clean slate(否则会先显示 running
+        // 几秒后才变 stopped 闪烁)。Launcher 已构造所以可调 StopEnvAsync。
+        // 顺序:EnvStartupReconciler 先标 stale → 本服务再停活着的(分工不重叠)。
+        new EnvStartupStopper(envRepo, _launcher, logger).StopRunningOnStartupAsync()
+            .GetAwaiter().GetResult();
 
         // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
         // 1) 空字段 → 默认子目录名(相对)
@@ -295,7 +306,8 @@ public partial class App : Application
 
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
-            settings, catalogFetcher, catalogRefreshService, catalogCacheStore, baseEnvInstaller,
+            settings, catalogFetcher, catalogRefreshService, catalogCacheStore, githubVersionService,
+            baseEnvInstaller,
             profileLoader, BuildPyTorchVersionDirectory(localPaths.Directory, http), localPaths.Directory, projectRoot,
             requirementsInstaller, systemInfoCollector, uiPreferencesService,
             _baseEnvUninstaller, _requirementsUninstaller,
@@ -324,6 +336,15 @@ public partial class App : Application
         // → 应用直接退出。显式指 MainWindow=main 让 splash close 不影响应用生命周期。
         main.Show();
         Application.Current.MainWindow = main;
+
+        // v0.6.16: --auto-refresh-catalog CLI flag — 启动后后台触发 catalog 刷新
+        // (含 GitHub metadata enrichment 如果 settings.FetchCatalogMetadata=true)。
+        // fire-and-forget,不阻塞 UI;异常由 CatalogRefreshService 内部处理 + AppLogger。
+        if (Array.IndexOf(e.Args, "--auto-refresh-catalog") >= 0 && _mainVm is not null)
+        {
+            logger?.Info("app-startup", "--auto-refresh-catalog: 触发后台 catalog 刷新");
+            _ = _mainVm.RefreshCatalogAsync();
+        }
 
         // v0.6.11+ dashboard/splash polish:Stage 4 Ready(MainWindow 已 Show)。
         // 必须在 NotifyMainWindowReady() 之前 — 后者启动 fade 计时,fade 完
@@ -384,7 +405,10 @@ public partial class App : Application
             handler.Proxy = null;
             handler.UseProxy = false;
         }
-        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
+        // v0.6.16 hotfix: 15s 太短 — catalog JSON 是 ~3MB,在慢网络(代理/跨地区)下
+        // 经常 >15s,被 Timeout 切 → refresh 已取消 + 后续 metadata enrichment 不跑。
+        // 60s 足够大多数情况,极端慢的网络可以再调。
+        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
     }
 
     /// <summary>

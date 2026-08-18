@@ -16,6 +16,12 @@ public sealed class EnvStartStatusViewModel : ViewModelBase, IProgress<string>
     public bool IsVisible { get; private set; }
     public bool IsComplete => CurrentStageIndex == StageNames.Length - 1;
 
+    /// <summary>
+    /// v0.6.17:面板标题 — ctor 设默认 "启动状态",生产代码(StartEnvAsync /
+    /// RestartEnvInternalAsync)改成 "启动状态 — {env.Name}" 让多 env 切换时区分。
+    /// </summary>
+    public string Title { get; set; } = "启动状态";
+
     public void Begin()
     {
         CurrentStageIndex = 0;

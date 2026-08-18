@@ -198,6 +198,74 @@ public class RequirementsInstaller
         else _logger.Error("requirements", msg);
     }
 
+    /// <summary>
+    /// v0.6.15.6:在 <paramref name="nodeDir"/> 上跑 <c>pip install -r</c>(仅当该节点
+    /// 目录里有 requirements.txt),用 env 的 venv python。专给"本地节点 → 复制到 env"
+    /// 流程在复制完节点目录后顺手装依赖 — 跟 <see cref="InstallAsync"/> 装 env 的
+    /// ComfyUI requirements.txt 是不同文件路径。
+    ///
+    /// 行为差异(相对 <see cref="InstallAsync"/>):
+    /// - 不写 marker(节点级依赖,idempotent 跑就行,不需要 "装过没装过" 状态)
+    /// - 不触发 ComfyUI Manager / 常用节点 自动装(那些是 env 级)
+    /// - 不存在 requirements.txt → 直接返 Success(reason="节点无 requirements.txt"),
+    ///   caller 走 "skip" 路径,不报错
+    /// - pip 失败 → 返回 Failure。调用方按业务决定要不要阻断(本地节点复制场景下
+    ///   推荐不阻断,只 WARN 日志)
+    /// </summary>
+    public virtual async Task<RequirementsInstallResult> InstallNodeRequirementsAsync(
+        Environment env,
+        string nodeDir,
+        IProgress<string>? logProgress = null,
+        CancellationToken ct = default)
+    {
+        if (env is null) throw new ArgumentNullException(nameof(env));
+        if (string.IsNullOrWhiteSpace(nodeDir))
+            throw new ArgumentException("nodeDir 为空", nameof(nodeDir));
+
+        var nodeId = Path.GetFileName(nodeDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var requirementsPath = Path.Combine(nodeDir, "requirements.txt");
+        if (!File.Exists(requirementsPath))
+        {
+            // 节点没有 requirements.txt 是合法场景,不算错。caller 据此走 skip。
+            return new RequirementsInstallResult(true, false, "节点无 requirements.txt", 0);
+        }
+
+        var filteredPath = Path.Combine(nodeDir, RequirementsFileInstaller.FilteredRequirementsFileName);
+        string pythonExe;
+        try
+        {
+            pythonExe = ResolveVenvPython(env);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("node-requirements", $"env='{env.Name}' node='{nodeId}' 解析 venv python 失败:{ex.Message}");
+            return new RequirementsInstallResult(false, false, $"解析 venv python 失败:{ex.Message}", 0);
+        }
+
+        _logger?.Info("node-requirements", $"env='{env.Name}' node='{nodeId}' 开始装节点依赖");
+
+        var result = await _reqFileInstaller.InstallAsync(
+            requirementsPath, filteredPath, pythonExe,
+            line => logProgress?.Report(line), ct);
+
+        if (result.Cancelled)
+        {
+            _logger?.Info("node-requirements", $"env='{env.Name}' node='{nodeId}' 用户取消");
+        }
+        else if (result.Success)
+        {
+            _logger?.Info("node-requirements",
+                $"env='{env.Name}' node='{nodeId}' 装节点依赖成功 ({result.InstalledCount} 包)");
+        }
+        else
+        {
+            // 节点级依赖失败 → WARN(不 ERROR)。caller 决定要不要回滚;本地节点复制
+            // 场景按用户偏好:复制成功就算 OK,只 WARN 日志。
+            _logger?.Warn("node-requirements",
+                $"env='{env.Name}' node='{nodeId}' 装节点依赖失败 — {result.Reason}");
+        }
+        return result;
+    }
 
     /// <summary>
     /// 列出 env 里 requirements.txt 的可能路径,按优先级排序。

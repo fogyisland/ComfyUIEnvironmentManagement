@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
+using ComfyUI.Manager.ViewModels;
 
 namespace ComfyUI.Manager.Views;
 
@@ -57,6 +58,41 @@ public sealed class BoolToBrushConverter : IValueConverter
             return new SolidColorBrush(Color.FromRgb(0x67, 0x50, 0xA4));
         }
         return new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC));
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// SeverityToBrushConverter:ErrorSeverity → Brush(按 palette 资源键解析)。
+/// Info → PrimaryBrush(主题色,light/dark 自动跟随)
+/// Warn → WarningBrush(橙)
+/// Error → ErrorBrush(红)
+/// Critical → ErrorVariantBrush(深红)
+/// 没找到资源时 fallback 到 ErrorBrush(永远有定义)。
+/// </summary>
+public sealed class SeverityToBrushConverter : IValueConverter
+{
+    public static readonly SeverityToBrushConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var key = value switch
+        {
+            ErrorSeverity.Info => "PrimaryBrush",
+            ErrorSeverity.Warn => "WarningBrush",
+            ErrorSeverity.Error => "ErrorBrush",
+            ErrorSeverity.Critical => "ErrorVariantBrush",
+            _ => "ErrorBrush",
+        };
+        if (System.Windows.Application.Current?.TryFindResource(key) is Brush b)
+        {
+            return b;
+        }
+        return new SolidColorBrush(Color.FromRgb(0xBA, 0x1A, 0x1A));  // 默认红
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

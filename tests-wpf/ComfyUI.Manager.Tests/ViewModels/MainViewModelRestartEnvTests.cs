@@ -55,7 +55,7 @@ public sealed class MainViewModelRestartEnvTests : IDisposable
         return new MainViewModel(
             _db.Factory,
             null!, null!, null!, null!, null!, null!, null!,
-            new Settings(), null!, null!, null!, null!, null!,
+            new Settings(), null!, null!, null!, null!, null!, null!,
             null!, "", _projectRoot, null!, null!, new UiPreferencesService(_projectRoot),
             baseEnvUninstaller: null, requirementsUninstaller: null,
             themeService: null, dashboardService: null,
