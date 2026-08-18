@@ -53,16 +53,6 @@ public class Settings
     [JsonPropertyName("log_directory")]
     public string LogDirectory { get; set; } = "";
 
-    // v0.6.19:工作流市场 — 共享 workflows 目录 + 3 source enabled bools
-    [JsonPropertyName("workflows_directory")]
-    public string WorkflowsDirectory { get; set; } = "";
-    [JsonPropertyName("workflow_source_community_json_enabled")]
-    public bool WorkflowSourceCommunityJsonEnabled { get; set; } = true;
-    [JsonPropertyName("workflow_source_civitai_enabled")]
-    public bool WorkflowSourceCivitAiEnabled { get; set; } = true;
-    [JsonPropertyName("workflow_source_openart_enabled")]
-    public bool WorkflowSourceOpenArtEnabled { get; set; } = true;
-
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
     [JsonPropertyName("http_proxy_enabled")] public bool HttpProxyEnabled { get; set; }
@@ -151,10 +141,6 @@ public class Settings
         target.LocalNodeDirectory = source.LocalNodeDirectory;
         target.DefaultModelsDirectory = source.DefaultModelsDirectory;
         target.LogDirectory = source.LogDirectory;
-        target.WorkflowsDirectory = source.WorkflowsDirectory;
-        target.WorkflowSourceCommunityJsonEnabled = source.WorkflowSourceCommunityJsonEnabled;
-        target.WorkflowSourceCivitAiEnabled = source.WorkflowSourceCivitAiEnabled;
-        target.WorkflowSourceOpenArtEnabled = source.WorkflowSourceOpenArtEnabled;
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;
