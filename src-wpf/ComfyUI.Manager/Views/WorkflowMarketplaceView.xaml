@@ -68,9 +68,6 @@
           <x:Static Member="vm:WorkflowSortKind.Downloads" />
           <x:Static Member="vm:WorkflowSortKind.Name" />
         </ComboBox>
-        <CheckBox Content="需装节点" IsChecked="{Binding FilterInstalledNodesOnly}"
-                  Margin="12,0,0,0" VerticalAlignment="Center"
-                  Foreground="{DynamicResource OnSurfaceBrush}" />
         <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
                    Foreground="{DynamicResource OnSurfaceBrush}"
                    Text="{Binding TotalCount, StringFormat='共 {0} 条'}" />

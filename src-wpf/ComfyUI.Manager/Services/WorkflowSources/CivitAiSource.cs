@@ -70,11 +70,6 @@ public class CivitAiSource : IWorkflowSource
                 {
                     jsonUrl = wjProp.GetString();
                 }
-                // 部分 CivitAI 图像 metadata 用不同字段名 — 尝试 backup 路径
-                if (string.IsNullOrEmpty(jsonUrl) && item.TryGetProperty("url", out var urlProp))
-                {
-                    jsonUrl = urlProp.GetString();
-                }
                 if (string.IsNullOrEmpty(jsonUrl)) continue;
 
                 var title = item.TryGetProperty("name", out var nameProp) ? nameProp.GetString() ?? "" : "";

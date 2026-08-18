@@ -26,7 +26,6 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
 
     private string _searchText = "";
     private WorkflowSortKind _sortBy = WorkflowSortKind.Newest;
-    private bool _filterInstalledNodesOnly;
     private bool _isBusy;
     private string? _errorMessage;
     private string? _infoMessage;
@@ -43,9 +42,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         _logger = logger;
 
         Workflows = new ObservableCollection<WorkflowEntry>();
-        AllTags = new ObservableCollection<string>();
         ActiveSourceFilters = new ObservableCollection<WorkflowSourceKind>();
-        ActiveTagFilters = new ObservableCollection<string>();
         Selected = new ObservableCollection<WorkflowEntry>();
         ConsoleLog = new ObservableCollection<string>();
 
@@ -63,7 +60,6 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         };
 
         ActiveSourceFilters.CollectionChanged += (_, _) => ApplyFilter();
-        ActiveTagFilters.CollectionChanged += (_, _) => ApplyFilter();
         ConsoleLog.CollectionChanged += OnConsoleLogChanged;
 
         RefreshCommand = new RelayCommand(async _ => await RefreshAsync(), _ => !IsBusy);
@@ -78,9 +74,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
 
     // —— Outputs ——
     public ObservableCollection<WorkflowEntry> Workflows { get; }
-    public ObservableCollection<string> AllTags { get; }
     public ObservableCollection<WorkflowSourceKind> ActiveSourceFilters { get; }
-    public ObservableCollection<string> ActiveTagFilters { get; }
     public ObservableCollection<WorkflowEntry> Selected { get; }
     public ObservableCollection<string> ConsoleLog { get; }
     public int SelectedCount => Selected.Count;
@@ -95,11 +89,6 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
     {
         get => _sortBy;
         set { if (_sortBy == value) return; _sortBy = value; ApplyFilter(); }
-    }
-    public bool FilterInstalledNodesOnly
-    {
-        get => _filterInstalledNodesOnly;
-        set { if (_filterInstalledNodesOnly == value) return; _filterInstalledNodesOnly = value; ApplyFilter(); }
     }
     public bool IsBusy
     {
@@ -190,12 +179,6 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
             filtered = filtered.Where(e => ActiveSourceFilters.Contains(e.Source));
         }
 
-        // tags
-        if (ActiveTagFilters.Count > 0)
-        {
-            filtered = filtered.Where(e => ActiveTagFilters.All(t => e.Tags.Contains(t)));
-        }
-
         // sort
         filtered = _sortBy switch
         {
@@ -207,11 +190,6 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         var list = filtered.ToList();
         Workflows.Clear();
         foreach (var e in list) Workflows.Add(e);
-
-        // tags union
-        var tagUnion = _allEntries.SelectMany(e => e.Tags).Distinct().OrderBy(t => t).ToList();
-        AllTags.Clear();
-        foreach (var t in tagUnion) AllTags.Add(t);
 
         RaisePropertyChanged(nameof(TotalCount));
     }

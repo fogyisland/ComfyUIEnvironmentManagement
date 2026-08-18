@@ -118,4 +118,51 @@ public class WorkflowSymlinkerTests : IDisposable
         Assert.Equal(0, result.Linked);
         Assert.Equal(0, result.Failed);
     }
+
+    [Fact]
+    public async Task SyncToEnvAsync_WrongExistingJunction_RecreatesLink()
+    {
+        // 已下载一个 valid subfolder
+        CreateDownloaded("portrait", "abc12345");
+
+        // 预先在 target 路径放一个指向 *错误* target 的 junction
+        var wrongTarget = Path.Combine(_tempRoot, "wrong-sub");
+        Directory.CreateDirectory(wrongTarget);
+        var linkPath = Path.Combine(_envComfyuiSrc, "user", "default", "workflows", "portrait-abc12345");
+        await _linker.CreateAsync(linkPath, wrongTarget, default).ConfigureAwait(false);
+
+        // 调用 sync — 应该检测到 mismatch → 删 + 重建
+        var result = await _symlinker.SyncToEnvAsync(_envComfyuiSrc);
+
+        Assert.Equal(1, result.Linked);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.Failed);
+
+        // 确认 junction 现在指向正确的 downloaded subfolder
+        Assert.True(Directory.Exists(linkPath));
+        var actualTarget = await _linker.GetTargetAsync(linkPath, default).ConfigureAwait(false);
+        var expectedTarget = Path.GetFullPath(Path.Combine(_workflowsDir, "portrait-abc12345"));
+        Assert.Equal(expectedTarget, actualTarget, ignoreCase: true);
+    }
+
+    [Fact]
+    public async Task SyncToEnvAsync_LinkCreationFails_RecordsErrorWithoutThrowing()
+    {
+        // 已下载一个 valid subfolder
+        CreateDownloaded("broken", "deadbeef");
+
+        // 在 link 路径放一个 regular file(非目录):symlinker 的 `Directory.Exists(link)` → false,
+        // 走到 CreateAsync,CreateAsync 内部 `File.Exists(linkPath)` → true → 抛
+        // JunctionCreationException("link 路径已存在");symlinker 应 catch 它并记录。
+        var linkPath = Path.Combine(_envComfyuiSrc, "user", "default", "workflows", "broken-deadbeef");
+        var linkParent = Path.GetDirectoryName(linkPath)!;
+        Directory.CreateDirectory(linkParent);
+        File.WriteAllText(linkPath, "occupying regular file");
+
+        // sync 应该 catch 这个 link creation 失败 → Failed >= 1, 不抛
+        var result = await _symlinker.SyncToEnvAsync(_envComfyuiSrc);
+
+        Assert.True(result.Failed >= 1, $"expected Failed >= 1, got {result.Failed}");
+        Assert.NotEmpty(result.Errors);
+    }
 }
