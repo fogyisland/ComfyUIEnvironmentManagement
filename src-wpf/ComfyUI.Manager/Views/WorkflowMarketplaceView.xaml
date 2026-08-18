@@ -9,9 +9,17 @@
              d:DataContext="{d:DesignInstance Type=vm:WorkflowMarketplaceViewModel}"
              Background="{DynamicResource WindowBackgroundBrush}">
   <!--
-    v0.6.19:工作流市场 view — 镜像 BulkUpdateView Console 模式(SurfaceBrush/OutlineBrush
-    /CornerRadius 6 + Consolas 11pt monospace + 三态可见性)。3-section Grid:
-    Row0=Top toolbar / Row1=Filter strip / Row2=Card grid / Row3=Console / Row4=Info/Error banner。
+    v0.6.19.x:工作流市场 view polish — 4 axes:
+    A) card layout:220x300 + Uniform stretch + source badge pill (WorkflowSourceBadge* converters)
+    B) toolbar:uniform 6px gaps + 刷新 rightmost + MaterialButton style + 排序 chips
+       filter strip:counts pushed right
+    C) loading state:overlay Grid with indeterminate ProgressBar + 加载中… + IsEnabled dim
+    D) empty state:overlay Grid with — icon + 未找到匹配工作流 + 重新刷新 button
+       error/info banner:⚠ / ✓ prefix + close ✕ + Border pill 风格 (移到 card grid 之上)
+
+    5-row Grid:
+    Row0=Top toolbar / Row1=Filter strip / Row2=Info+Error banners /
+    Row3=Card grid (with 3 layered overlays) / Row4=Console.
 
     DataContext 由 MainViewModel 切换 section 时绑成 WorkflowMarketplaceViewModel。
   -->
@@ -19,107 +27,201 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
-    <!-- Top toolbar -->
+    <!-- Top toolbar (v0.6.19.x B: uniform 6px gaps + 刷新 moved rightmost + MaterialButton) -->
     <DockPanel Grid.Row="0" Margin="0,0,0,8">
+      <Button DockPanel.Dock="Right" Content="刷新"
+              Command="{Binding RefreshCommand}" Margin="6,0,0,0"
+              Style="{StaticResource MaterialButton}"
+              IsEnabled="{Binding NotIsBusy}" />
+      <Button DockPanel.Dock="Right" Content="打开目录"
+              Command="{Binding OpenFolderCommand}" Margin="6,0,0,0"
+              Style="{StaticResource MaterialButton}" />
+      <Button DockPanel.Dock="Right" Content="全选"
+              Command="{Binding ToggleSelectAllCommand}" Margin="6,0,0,0"
+              Style="{StaticResource MaterialButton}" />
+      <Button DockPanel.Dock="Right" Content="批量下载"
+              Command="{Binding BatchDownloadCommand}" Margin="6,0,0,0"
+              Style="{StaticResource MaterialButton}" />
+      <TextBox DockPanel.Dock="Left" Width="240" Margin="0,0,8,0" Padding="6,4"
+               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+               IsEnabled="{Binding NotIsBusy}" />
       <TextBlock DockPanel.Dock="Left" Text="工作流市场"
                  FontSize="20" FontWeight="Bold"
                  Foreground="{DynamicResource OnSurfaceBrush}"
                  VerticalAlignment="Center" Margin="0,0,16,0" />
-      <TextBox DockPanel.Dock="Left" Width="240" Margin="0,0,8,0"
-               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
-      <Button DockPanel.Dock="Right" Content="刷新"
-              Command="{Binding RefreshCommand}" Margin="4,0,0,0" />
-      <Button DockPanel.Dock="Right" Content="打开目录"
-              Command="{Binding OpenFolderCommand}" Margin="4,0,0,0" />
-      <Button DockPanel.Dock="Right" Content="全选"
-              Command="{Binding ToggleSelectAllCommand}" Margin="4,0,0,0" />
-      <Button DockPanel.Dock="Right" Content="批量下载"
-              Command="{Binding BatchDownloadCommand}" Margin="4,0,0,0" />
     </DockPanel>
 
-    <!-- Filter strip -->
+    <!-- Filter strip (v0.6.19.x B: 排序 chips + counts pushed right) -->
     <Border Grid.Row="1" Padding="8" Margin="0,0,0,8"
             Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource OutlineBrush}"
             BorderThickness="1" CornerRadius="6">
-      <StackPanel Orientation="Horizontal">
-        <TextBlock Text="源:" VerticalAlignment="Center" Margin="0,0,4,0"
-                   Foreground="{DynamicResource OnSurfaceBrush}" />
-        <ItemsControl ItemsSource="{Binding ActiveSourceFilters}">
+      <DockPanel LastChildFill="False">
+        <!-- Counts pushed right -->
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16,0,0,0">
+          <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Opacity="0.7"
+                     Foreground="{DynamicResource OnSurfaceBrush}"
+                     Text="{Binding TotalCount, StringFormat='共 {0} 条'}" />
+          <TextBlock VerticalAlignment="Center" Margin="0,0,0,0" Opacity="0.7"
+                     Foreground="{DynamicResource OnSurfaceBrush}"
+                     Text="{Binding DownloadedCount, StringFormat='已下载 {0} 个'}" />
+        </StackPanel>
+        <!-- Sort chips (v0.6.19.x B:3 RadioButton segmented,镜像 CatalogSegmentedRadioButton) -->
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+          <TextBlock Text="源:" VerticalAlignment="Center" Margin="0,0,6,0"
+                     Foreground="{DynamicResource OnSurfaceBrush}" />
+          <ItemsControl ItemsSource="{Binding ActiveSourceFilters}" VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <CheckBox Content="{Binding}" Margin="6,0"
+                          Foreground="{DynamicResource OnSurfaceBrush}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="排序:" VerticalAlignment="Center" Margin="16,0,6,0"
+                     Foreground="{DynamicResource OnSurfaceBrush}" />
+          <RadioButton GroupName="SortBy" Content="最新"
+                       IsChecked="{Binding SortBy, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Newest}"
+                       Style="{StaticResource CatalogSegmentedRadioButton}" />
+          <RadioButton GroupName="SortBy" Content="下载"
+                       IsChecked="{Binding SortBy, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Downloads}"
+                       Style="{StaticResource CatalogSegmentedRadioButton}" />
+          <RadioButton GroupName="SortBy" Content="名称"
+                       IsChecked="{Binding SortBy, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Name}"
+                       Style="{StaticResource CatalogSegmentedRadioButton}" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Info / Error banner (v0.6.19.x D:moved ABOVE card grid,⚠ / ✓ prefix + close ✕ + Border pill) -->
+    <StackPanel Grid.Row="2" Margin="0,0,0,8">
+      <Border CornerRadius="6" Padding="8,6" Margin="0,0,0,4"
+              BorderBrush="{DynamicResource ErrorBrush}" BorderThickness="1"
+              Background="{DynamicResource SurfaceBrush}"
+              Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="✕" Padding="4,0" Background="Transparent"
+                  BorderThickness="0" Foreground="{DynamicResource ErrorBrush}"
+                  Click="OnErrorBannerCloseClicked" />
+          <TextBlock Foreground="{DynamicResource ErrorBrush}" FontWeight="SemiBold"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+            <Run Text="⚠  " FontSize="14" />
+            <Run Text="{Binding ErrorMessage, Mode=OneWay}" />
+          </TextBlock>
+        </DockPanel>
+      </Border>
+      <Border CornerRadius="6" Padding="8,6"
+              BorderBrush="{DynamicResource SuccessBrush}" BorderThickness="1"
+              Background="{DynamicResource SurfaceBrush}"
+              Visibility="{Binding InfoMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="✕" Padding="4,0" Background="Transparent"
+                  BorderThickness="0" Foreground="{DynamicResource SuccessBrush}"
+                  Click="OnInfoBannerCloseClicked" />
+          <TextBlock Foreground="{DynamicResource SuccessBrush}" FontWeight="SemiBold"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+            <Run Text="✓  " FontSize="14" />
+            <Run Text="{Binding InfoMessage, Mode=OneWay}" />
+          </TextBlock>
+        </DockPanel>
+      </Border>
+    </StackPanel>
+
+    <!-- Card grid + loading overlay + empty state overlay (v0.6.19.x A/C/D) -->
+    <Grid Grid.Row="3">
+      <!-- Existing ScrollViewer with cards — disabled during IsBusy (C) -->
+      <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    IsEnabled="{Binding NotIsBusy}">
+        <ItemsControl ItemsSource="{Binding Workflows}">
           <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <CheckBox Content="{Binding}" Margin="4,0"
-                        Foreground="{DynamicResource OnSurfaceBrush}" />
+            <DataTemplate DataType="{x:Type models:WorkflowEntry}">
+              <Border Width="220" Height="300" Margin="8"
+                      Background="{DynamicResource SurfaceBrush}"
+                      BorderBrush="{DynamicResource OutlineBrush}"
+                      BorderThickness="1" CornerRadius="6">
+                <Grid>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                  </Grid.RowDefinitions>
+                  <!-- Preview: Uniform + SurfaceVariantBrush letterbox fill (A) -->
+                  <Border Grid.Row="0" Margin="8" CornerRadius="4" ClipToBounds="True"
+                          Background="{DynamicResource SurfaceVariantBrush}">
+                    <Image Source="{Binding PreviewImageUrl}" Stretch="Uniform" />
+                  </Border>
+                  <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                             Margin="8,4" MaxHeight="60" TextWrapping="Wrap"
+                             TextTrimming="CharacterEllipsis"
+                             Foreground="{DynamicResource OnSurfaceBrush}" />
+                  <TextBlock Grid.Row="2" Text="{Binding Author}" FontSize="11" Opacity="0.7"
+                             Margin="8,0"
+                             Foreground="{DynamicResource OnSurfaceBrush}"
+                             TextTrimming="CharacterEllipsis" />
+                  <!-- Source badge pill (A) + Download button stretching full width -->
+                  <Grid Grid.Row="3" Margin="8,4,8,8">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" CornerRadius="8" Padding="6,2"
+                            Background="{Binding Source, Converter={StaticResource WorkflowSourceBadgeBrush}}">
+                      <TextBlock Text="{Binding Source, Converter={StaticResource WorkflowSourceBadgeText}}"
+                                 FontSize="10" Foreground="{DynamicResource OnPrimaryBrush}" />
+                    </Border>
+                    <Button Grid.Column="1" Content="下载" Margin="6,0,0,0"
+                            HorizontalAlignment="Stretch"
+                            Style="{StaticResource MaterialButton}"
+                            Command="{Binding DataContext.DownloadSingleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                </Grid>
+              </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <TextBlock Text="排序:" VerticalAlignment="Center" Margin="12,0,4,0"
-                   Foreground="{DynamicResource OnSurfaceBrush}" />
-        <ComboBox SelectedItem="{Binding SortBy}" Width="100">
-          <x:Static Member="vm:WorkflowSortKind.Newest" />
-          <x:Static Member="vm:WorkflowSortKind.Downloads" />
-          <x:Static Member="vm:WorkflowSortKind.Name" />
-        </ComboBox>
-        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
-                   Foreground="{DynamicResource OnSurfaceBrush}"
-                   Text="{Binding TotalCount, StringFormat='共 {0} 条'}" />
-        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
-                   Foreground="{DynamicResource OnSurfaceBrush}"
-                   Text="{Binding DownloadedCount, StringFormat='已下载 {0} 个'}" />
-      </StackPanel>
-    </Border>
+      </ScrollViewer>
 
-    <!-- Card grid -->
-    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-      <ItemsControl ItemsSource="{Binding Workflows}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate DataType="{x:Type models:WorkflowEntry}">
-            <Border Width="200" Height="260" Margin="8"
-                    Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}"
-                    BorderThickness="1" CornerRadius="6">
-              <Grid>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="*"/>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Image Grid.Row="0" Margin="8" Source="{Binding PreviewImageUrl}"
-                       Stretch="UniformToFill" />
-                <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
-                           Margin="8,4" MaxHeight="40" TextWrapping="Wrap"
-                           TextTrimming="CharacterEllipsis"
-                           Foreground="{DynamicResource OnSurfaceBrush}" />
-                <StackPanel Grid.Row="2" Orientation="Vertical" Margin="8,0">
-                  <TextBlock Text="{Binding Author}" FontSize="11" Opacity="0.7"
-                             Foreground="{DynamicResource OnSurfaceBrush}" />
-                  <TextBlock Text="{Binding Source}" FontSize="10" Opacity="0.5"
-                             Foreground="{DynamicResource OutlineBrush}" />
-                </StackPanel>
-                <Button Grid.Row="3" Margin="8" Content="下载"
-                        Command="{Binding DataContext.DownloadSingleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                        CommandParameter="{Binding}" />
-              </Grid>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-    </ScrollViewer>
+      <!-- Loading overlay (C) -->
+      <Grid Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+            Background="#80000000">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ProgressBar IsIndeterminate="True" Width="200" Height="6" />
+          <TextBlock Text="加载中…" HorizontalAlignment="Center" Margin="0,12,0,0"
+                     Foreground="{DynamicResource OnSurfaceBrush}" />
+        </StackPanel>
+      </Grid>
+
+      <!-- Empty state overlay (D) -->
+      <Grid Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock Text="—" FontSize="48" Opacity="0.4"
+                     Foreground="{DynamicResource OutlineBrush}"
+                     HorizontalAlignment="Center" />
+          <TextBlock Text="未找到匹配工作流" FontSize="14"
+                     Foreground="{DynamicResource OnSurfaceBrush}"
+                     Margin="0,8,0,0" HorizontalAlignment="Center" />
+          <Button Content="重新刷新" Command="{Binding RefreshCommand}"
+                  Margin="0,12,0,0"
+                  Style="{StaticResource MaterialButton}" />
+        </StackPanel>
+      </Grid>
+    </Grid>
 
     <!-- Console panel — mirrors BulkUpdateView Console (v0.6.18.4) -->
-    <Border Grid.Row="3" Margin="0,8,0,0" Padding="0"
+    <Border Grid.Row="4" Margin="0,8,0,0" Padding="0"
             Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource OutlineBrush}"
             BorderThickness="1" CornerRadius="6"
@@ -158,14 +260,5 @@
         </ScrollViewer>
       </Grid>
     </Border>
-
-    <!-- Info / Error banner -->
-    <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0,4,0,0">
-      <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource ErrorBrush}"
-                 FontWeight="Bold"
-                 Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
-      <TextBlock Text="{Binding InfoMessage}" Foreground="{DynamicResource SuccessBrush}"
-                 Visibility="{Binding InfoMessage, Converter={StaticResource NullToVisibility}, FallbackValue=Collapsed}" />
-    </StackPanel>
   </Grid>
 </UserControl>

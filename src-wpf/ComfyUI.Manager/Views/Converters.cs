@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.ViewModels;
 
 namespace ComfyUI.Manager.Views;
@@ -43,6 +44,62 @@ public sealed class NullToVisibilityConverter : IValueConverter
     }
 }
 
+/// <summary>
+/// v0.6.19.x UI polish:WorkflowSourceKind → Brush,工作流卡片 source pill badge。
+/// CommunityJson → PrimaryBrush(主题紫) / CivitAi → SecondaryBrush / OpenArt → SuccessBrush。
+/// 用 Application.Current.TryFindResource 走 palette(light/dark 自动跟随);
+/// 找不到资源时 fallback 到一个固定色,保证 XAML 解析不会 UnsetValue。
+/// </summary>
+public sealed class WorkflowSourceBadgeBrushConverter : IValueConverter
+{
+    public static readonly WorkflowSourceBadgeBrushConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var key = value switch
+        {
+            WorkflowSourceKind.CommunityJson => "PrimaryBrush",
+            WorkflowSourceKind.CivitAi => "SecondaryBrush",
+            WorkflowSourceKind.OpenArt => "SuccessBrush",
+            _ => "OutlineBrush",
+        };
+        if (System.Windows.Application.Current?.TryFindResource(key) is Brush b)
+        {
+            return b;
+        }
+        return new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC));  // 默认灰
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// v0.6.19.x UI polish:WorkflowSourceKind → string,工作流卡片 source pill 文案。
+/// CommunityJson → "社区" / CivitAi → "CivitAI" / OpenArt → "OpenArt"。
+/// </summary>
+public sealed class WorkflowSourceBadgeTextConverter : IValueConverter
+{
+    public static readonly WorkflowSourceBadgeTextConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value switch
+        {
+            WorkflowSourceKind.CommunityJson => "社区",
+            WorkflowSourceKind.CivitAi => "CivitAI",
+            WorkflowSourceKind.OpenArt => "OpenArt",
+            _ => "?",
+        };
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
 /// <summary>
 /// BoolToBrushConverter:bool → Brush(active/inactive),用于视图切换按钮高亮。
 /// </summary>

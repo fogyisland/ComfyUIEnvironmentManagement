@@ -146,6 +146,57 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
         Assert.True(_vm.BatchDownloadCommand.CanExecute(null));
     }
 
+    // v0.6.19.x UI polish:IsEmpty 用于 empty-state overlay 可见性。
+    // IsEmpty = !IsBusy && Workflows.Count == 0 && ErrorMessage is null
+    [Fact]
+    public void IsEmpty_NoBusyNoResultsNoError_ReturnsTrue()
+    {
+        Assert.True(_vm.IsEmpty);
+    }
+
+    [Fact]
+    public async Task IsEmpty_BusyWhileFetching_ReturnsFalse()
+    {
+        // 配一个慢一点的 service(返回 TaskCompletionSource),先 IsBusy=true 再 assert
+        var slowSvc = new SlowMarketplaceService();
+        var vm = new WorkflowMarketplaceViewModel(_settings, slowSvc, _downloader,
+            new WorkflowFilesystemScanner(logger: null), logger: null);
+        var refreshTask = vm.RefreshAsync();
+        // RefreshAsync 同步段立即设 IsBusy=true 然后 await,所以 await Yield 后 IsBusy 还是 true
+        await Task.Yield();
+        Assert.True(vm.IsBusy);
+        Assert.False(vm.IsEmpty);
+        slowSvc.Complete();
+        await refreshTask;
+    }
+
+    [Fact]
+    public async Task IsEmpty_HasResults_ReturnsFalse()
+    {
+        _marketplace.Next = new[] { Entry("a") };
+        await _vm.RefreshAsync();
+        Assert.False(_vm.IsEmpty);
+    }
+
+    [Fact]
+    public async Task IsEmpty_HasError_ReturnsFalse()
+    {
+        _marketplace.ThrowOnNext = new InvalidOperationException("boom");
+        await _vm.RefreshAsync();
+        Assert.False(_vm.IsEmpty);
+    }
+
+    private sealed class SlowMarketplaceService : WorkflowMarketplaceService
+    {
+        private readonly TaskCompletionSource<IReadOnlyList<WorkflowEntry>?> _tcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public SlowMarketplaceService() : base(Array.Empty<IWorkflowSource>()) { }
+        public void Complete() => _tcs.SetResult(Array.Empty<WorkflowEntry>());
+        public override Task<IReadOnlyList<WorkflowEntry>> LoadAllAsync(
+            string query, int maxResultsPerSource, CancellationToken ct = default)
+            => _tcs.Task!;
+    }
+
     private sealed class StubMarketplaceService : WorkflowMarketplaceService
     {
         public IReadOnlyList<WorkflowEntry>? Next { get; set; }

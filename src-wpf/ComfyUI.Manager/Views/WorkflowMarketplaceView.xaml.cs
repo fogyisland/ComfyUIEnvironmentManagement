@@ -53,4 +53,16 @@ public partial class WorkflowMarketplaceView : UserControl
     {
         _vm?.ClearConsole();
     }
+
+    /// <summary>v0.6.19.x:error banner ✕ — 清掉 VM 的 ErrorMessage,触发 IsEmpty 重算。</summary>
+    private void OnErrorBannerCloseClicked(object sender, System.Windows.RoutedEventArgs e)
+    {
+        _vm?.ClearErrorMessage();
+    }
+
+    /// <summary>v0.6.19.x:info banner ✕ — 清掉 VM 的 InfoMessage。</summary>
+    private void OnInfoBannerCloseClicked(object sender, System.Windows.RoutedEventArgs e)
+    {
+        _vm?.ClearInfoMessage();
+    }
 }

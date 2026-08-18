@@ -100,6 +100,8 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(IsConsoleVisible));
             RaisePropertyChanged(nameof(DownloadsEnabled));
+            RaisePropertyChanged(nameof(NotIsBusy));
+            RaisePropertyChanged(nameof(IsEmpty));
             RefreshCommand.RaiseCanExecuteChanged();
             BatchDownloadCommand.RaiseCanExecuteChanged();
         }
@@ -107,7 +109,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
     public string? ErrorMessage
     {
         get => _errorMessage;
-        private set { _errorMessage = value; RaisePropertyChanged(); }
+        private set { _errorMessage = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(IsEmpty)); }
     }
     public string? InfoMessage
     {
@@ -119,6 +121,13 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
     public bool DownloadsEnabled => ResolveWorkflowsDirOk();
 
     public bool IsConsoleVisible => !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0);
+
+    // v0.6.19.x UI polish:loading overlay / button-disable 用 NotIsBusy 比 DataTrigger 简洁。
+    public bool NotIsBusy => !IsBusy;
+
+    // v0.6.19.x UI polish:空状态文案条件 — 不是忙 + 没结果 + 没错误信息。
+    // ErrorMessage 非空时优先显示错误条,不显示空状态。
+    public bool IsEmpty => !IsBusy && Workflows.Count == 0 && ErrorMessage is null;
 
     // —— Commands ——
     public RelayCommand RefreshCommand { get; }
@@ -192,6 +201,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         foreach (var e in list) Workflows.Add(e);
 
         RaisePropertyChanged(nameof(TotalCount));
+        RaisePropertyChanged(nameof(IsEmpty));
     }
 
     private void ToggleSelectAll()
@@ -275,6 +285,10 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         _userHiddenConsole = true;
         RaisePropertyChanged(nameof(IsConsoleVisible));
     }
+
+    // v0.6.19.x UI polish:错误 / 信息 banner ✕ 按钮调用。
+    public void ClearErrorMessage() => ErrorMessage = null;
+    public void ClearInfoMessage() => InfoMessage = null;
 
     private void OpenWorkflowsFolder()
     {
