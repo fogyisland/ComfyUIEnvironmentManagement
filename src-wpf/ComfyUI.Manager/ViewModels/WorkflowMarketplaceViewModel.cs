@@ -142,7 +142,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         ErrorMessage = null;
         try
         {
-            var results = await _marketplace.LoadAllAsync(SearchText, maxResultsPerSource: 50, ct).ConfigureAwait(false);
+            var results = await _marketplace.LoadAllAsync(SearchText, maxResultsPerSource: 50, ct);
             _allEntries.Clear();
             _allEntries.AddRange(results);
             ApplyFilter();
@@ -221,7 +221,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         {
             var entries = Selected.ToList();
             var log = new Progress<string>(line => ConsoleLog.Add(line));
-            var summary = await _downloader.DownloadBatchAsync(entries, dir, log).ConfigureAwait(false);
+            var summary = await _downloader.DownloadBatchAsync(entries, dir, log);
             InfoMessage = $"批量下载完成:成功 {summary.Succeeded} / 失败 {summary.Failed}";
             ScanDownloaded();
         }
@@ -244,7 +244,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         try
         {
             var log = new Progress<string>(line => ConsoleLog.Add(line));
-            var result = await _downloader.DownloadAsync(entry, dir, log).ConfigureAwait(false);
+            var result = await _downloader.DownloadAsync(entry, dir, log);
             if (result.Success) InfoMessage = $"已下载:{entry.Title}";
             else ErrorMessage = $"下载失败:{result.FailureReason}";
             ScanDownloaded();
