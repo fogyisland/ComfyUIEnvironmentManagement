@@ -63,6 +63,12 @@ public class Settings
     [JsonPropertyName("workflow_source_openart_enabled")]
     public bool WorkflowSourceOpenArtEnabled { get; set; } = true;
 
+    // v0.6.20:模型市场 — 共享 models 目录 + CivitAI source enabled bool
+    [JsonPropertyName("models_directory")]
+    public string ModelsDirectory { get; set; } = "";
+    [JsonPropertyName("model_source_civitai_enabled")]
+    public bool ModelSourceCivitAiEnabled { get; set; } = true;
+
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
     [JsonPropertyName("http_proxy_enabled")] public bool HttpProxyEnabled { get; set; }
@@ -155,6 +161,8 @@ public class Settings
         target.WorkflowSourceCommunityJsonEnabled = source.WorkflowSourceCommunityJsonEnabled;
         target.WorkflowSourceCivitAiEnabled = source.WorkflowSourceCivitAiEnabled;
         target.WorkflowSourceOpenArtEnabled = source.WorkflowSourceOpenArtEnabled;
+        target.ModelsDirectory = source.ModelsDirectory;
+        target.ModelSourceCivitAiEnabled = source.ModelSourceCivitAiEnabled;
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;

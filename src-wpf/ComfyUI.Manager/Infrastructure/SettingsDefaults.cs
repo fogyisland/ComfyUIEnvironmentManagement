@@ -37,6 +37,7 @@ public static class SettingsDefaults
     public const string GlobalNodesSubdir = "global-nodes";
     public const string LocalNodesSubdir = "local-nodes";
     public const string WorkflowsSubdir = "workflows";
+    public const string ModelsSubdir = "models";
     public const string DefaultQuerySourceName = "comfyui manager";
     public const string DefaultQuerySourceUrl =
         "https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json";
@@ -67,6 +68,8 @@ public static class SettingsDefaults
         s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
         // v0.6.19:WorkflowsDirectory — template-style,空字段自动填 "workflows" 子目录名
         s.WorkflowsDirectory = Resolve(s.WorkflowsDirectory, WorkflowsSubdir, projectRoot);
+        // v0.6.20:ModelsDirectory — template-style,空字段自动填 "models" 子目录名
+        s.ModelsDirectory = Resolve(s.ModelsDirectory, ModelsSubdir, projectRoot);
 
         // 节点源:空列表 → 装默认 "comfyui manager";空 active → 回落到列表第一条
         if (s.QuerySources is null || s.QuerySources.Count == 0)

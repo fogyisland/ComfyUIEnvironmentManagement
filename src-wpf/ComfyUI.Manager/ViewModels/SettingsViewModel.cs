@@ -535,6 +535,31 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
+    // v0.6.20:模型市场
+    public string ModelsDirectory
+    {
+        get => _settings.ModelsDirectory;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.ModelsDirectory == v) return;
+            _settings.ModelsDirectory = v;
+            MarkDirty(nameof(ModelsDirectory));
+            RaisePropertyChanged();
+        }
+    }
+
+    public bool ModelSourceCivitAiEnabled
+    {
+        get => _settings.ModelSourceCivitAiEnabled;
+        set
+        {
+            if (_settings.ModelSourceCivitAiEnabled == value) return;
+            _settings.ModelSourceCivitAiEnabled = value;
+            MarkDirty(nameof(ModelSourceCivitAiEnabled));
+            RaisePropertyChanged();
+        }
+    }
     // v0.6.10: 全局默认 Models 目录(env-create junction 目标)。空 = 不动 env 的 models 目录。
     public string DefaultModelsDirectory
     {
@@ -902,6 +927,8 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(WorkflowSourceCommunityJsonEnabled));
         RaisePropertyChanged(nameof(WorkflowSourceCivitAiEnabled));
         RaisePropertyChanged(nameof(WorkflowSourceOpenArtEnabled));
+        RaisePropertyChanged(nameof(ModelsDirectory));
+        RaisePropertyChanged(nameof(ModelSourceCivitAiEnabled));
         RaisePropertyChanged(nameof(LogDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
