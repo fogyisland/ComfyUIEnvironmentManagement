@@ -66,14 +66,6 @@ public class WorkflowDownloader
             var previewPath = await TryDownloadPreviewAsync(entry, subfolderName, subfolderPath, ct).ConfigureAwait(false);
 
             // 3. meta.json sidecar
-            var meta = new WorkflowMetaSidecar
-            {
-                Title = entry.Title,
-                Source = entry.Source.ToString(),
-                SourceId = entry.SourceId,
-                DownloadedAt = DateTime.UtcNow,
-            };
-            // augment with extra fields via serialization — use anonymous helper
             var metaJson = JsonSerializer.Serialize(new
             {
                 title = entry.Title,
@@ -85,7 +77,7 @@ public class WorkflowDownloader
                 workflow_json_url = entry.WorkflowJsonUrl,
                 preview_image_url = entry.PreviewImageUrl,
                 tags = entry.Tags,
-                downloaded_at = meta.DownloadedAt,
+                downloaded_at = DateTime.UtcNow,
             }, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(Path.Combine(subfolderPath, "meta.json"), metaJson, ct).ConfigureAwait(false);
 
