@@ -19,16 +19,21 @@ public class CivitAiModelSource : IModelSource
     private readonly HttpClient _http;
     private readonly AppLogger? _logger;
     private const int PageSize = 100;
-    private const string BaseUrl = "https://civitai.com/api/v1/models";
+    private readonly string _baseUrl;
 
     public ModelSourceKind SourceKind => ModelSourceKind.CivitAi;
     public string DisplayName => "CivitAI";
     public bool IsEnabled { get; set; } = true;
 
-    public CivitAiModelSource(HttpClient http, AppLogger? logger = null)
+    public CivitAiModelSource(HttpClient http, string baseUrl, AppLogger? logger = null)
     {
         _http = http;
+        _baseUrl = baseUrl;
         _logger = logger;
+        if (baseUrl != "https://civitai.com")
+        {
+            _logger?.Info("model-civitai", $"using mirror: {baseUrl}");
+        }
     }
 
     public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct)
@@ -74,7 +79,7 @@ public class CivitAiModelSource : IModelSource
         };
         if (!string.IsNullOrWhiteSpace(query)) qs.Add($"query={Uri.EscapeDataString(query)}");
         if (!string.IsNullOrEmpty(cursor)) qs.Add($"page={Uri.EscapeDataString(cursor)}");
-        return $"{BaseUrl}?{string.Join("&", qs)}";
+        return $"{_baseUrl}?{string.Join("&", qs)}";
     }
 
     private static ModelEntry? MapItemToEntry(CivitAiItem item)

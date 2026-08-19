@@ -53,7 +53,7 @@ public class ModelSourceCivitAiTests
         }
         """;
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler)) { IsEnabled = true };
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com") { IsEnabled = true };
 
         var entries = await source.SearchAsync("", maxResults: 50, ct: default);
 
@@ -85,7 +85,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 1, "name": "Mature Model", "type": "LORA", "nsfwLevel": 2, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler));
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -97,7 +97,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 2, "name": "NSFW Model", "type": "Checkpoint", "nsfwLevel": 3, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler));
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -109,7 +109,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 3, "name": "Lora", "type": "LORA", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler));
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -121,7 +121,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 4, "name": "Unknown", "type": "MotionModule", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler));
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -134,7 +134,7 @@ public class ModelSourceCivitAiTests
         var page1 = """{"items": [{"id": 1, "name": "A", "type": "Checkpoint", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": "abc"}}""";
         var page2 = """{"items": [{"id": 2, "name": "B", "type": "Checkpoint", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(page1, page2);
-        var source = new CivitAiModelSource(CreateClient(handler));
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
 
         var entries = await source.SearchAsync("", maxResults: 100, default);
 
@@ -147,7 +147,7 @@ public class ModelSourceCivitAiTests
     public async Task SearchAsync_HttpError_Throws()
     {
         var handler = new DelegatingHandlerStub(HttpStatusCode.InternalServerError, "");
-        var source = new CivitAiModelSource(CreateClient(handler));
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
 
         await Assert.ThrowsAsync<HttpRequestException>(() => source.SearchAsync("", 50, default));
     }
@@ -156,7 +156,7 @@ public class ModelSourceCivitAiTests
     public async Task LiveFetch_RealEndpoint_ReturnsEntries()
     {
         var client = new HttpClient { BaseAddress = new Uri("https://civitai.com/") };
-        var source = new CivitAiModelSource(client);
+        var source = new CivitAiModelSource(client, "https://civitai.com");
         var entries = await source.SearchAsync("", 5, default);
         Assert.NotEmpty(entries);
     }

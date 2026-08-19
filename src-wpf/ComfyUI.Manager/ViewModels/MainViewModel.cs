@@ -593,13 +593,12 @@ public class MainViewModel : ViewModelBase
             var http = _http
                 ?? throw new InvalidOperationException(
                     "HttpClient not wired — App.xaml.cs 未在 MainViewModel ctor 传 HttpClient");
-            // 注入 1 个 source(CivitAI full)+ 共享 logger;T4 aggregator 内部
-            // IsEnabled 过滤。HF stub 留作 v0.6.21+ placeholder(HuggingFaceModelSource.cs 保留)。
+            // v0.6.21: 通过 ModelSourceFactory 构造所有启用的源(基于 Settings 6 个新字段 +
+            // per-source mirror 解析)。Factory 内部 skip disabled source → aggregator 永远只看 enabled。
+            // 替代 v0.6.20 T9 之前的 `new CivitAiModelSource(http, logger: _logger)` 直接构造 + T10
+            // polish 删 HF 的模式。
             var marketplace = new ModelMarketplaceService(
-                new IModelSource[]
-                {
-                    new CivitAiModelSource(http, logger: _logger),
-                },
+                ModelSourceFactory.CreateAll(_settings, http),
                 logger: _logger);
             var downloader = new ModelDownloader(http, logger: _logger);
             var scanner = new ModelFilesystemScanner(logger: _logger);
@@ -608,7 +607,7 @@ public class MainViewModel : ViewModelBase
             _modelMarketplaceView = ModelMarketplaceViewFactory is null
                 ? new ModelMarketplaceView { DataContext = _modelMarketplaceViewModel }
                 : ModelMarketplaceViewFactory(_modelMarketplaceViewModel) as ModelMarketplaceView;
-            // fire-and-forget 首次进入后台拉 2 个 source;后续进入复用 VM。RefreshAsync 内部
+            // fire-and-forget 首次进入后台拉所有启用的 source;后续进入复用 VM。RefreshAsync 内部
             // try/catch cover 失败语义 + ConsoleLog 反馈。VM 端 await *不* 用
             // ConfigureAwait(false) — UI-bound ObservableCollection 需 UI SynchronizationContext。
             _ = _modelMarketplaceViewModel.RefreshAsync();
