@@ -82,7 +82,7 @@ public class ModelSymlinker
                 if (Directory.Exists(linkPath))
                 {
                     var existingTarget = await _linker.GetTargetAsync(linkPath, ct);
-                    if (existingTarget == targetPath)
+                    if (string.Equals(existingTarget, Path.GetFullPath(targetPath), StringComparison.OrdinalIgnoreCase))
                     {
                         skipped++;
                         continue;
