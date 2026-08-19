@@ -110,6 +110,13 @@
                              Command="{Binding ShowWorkflowsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Workflows, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
+                <!-- v0.6.20 T9:模型市场 — 紧邻工作流市场(同类"市场"分区,UI 连排便于切换)。
+                     聚合 IModelSource (CivitAI full + HF placeholder) + batch download +
+                     env-start 后自动 symlink 已下载 models 到 env。 -->
+                <RadioButton Content="模型市场" GroupName="SidebarNav"
+                             Command="{Binding ShowModelsCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Models, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
                 <RadioButton Content="设置" GroupName="SidebarNav"
                              Command="{Binding ShowSettingsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"

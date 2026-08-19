@@ -314,6 +314,20 @@ public partial class App : Application
         var workflowSymlinker = new WorkflowSymlinker(
             settings, new JunctionLinker(), workflowScanner, logger: logger);
 
+        // v0.6.20 T9: 模型市场 service —— 复用共享 http(60s timeout,跟 workflow / catalog
+        // / dashboard 同一份 singleton)。JunctionLinker 跟 WorkflowSymlinker / envCreator
+        // 都是独立实例(各自 lifetime,不耦合)。
+        // ModelFilesystemScanner:扫描 Settings.ModelsDirectory 找已下载 models,递归读
+        // <ModelsDir>/<kind>/<model-slug>-<id8>/<version-slug>-<vid8>/meta.json。
+        // ModelSymlinker:env-start 成功后 fire-and-forget 把每个 version symlink 到
+        // <env.ComfyuiSource>/models/<kind>/<slug>__<vid8>,失败 WARN 不抛。
+        // CivitAiModelSource:full CivitAI Models API fetcher + pagination(nsfw=true 全部)。
+        // HuggingFaceModelSource:v0.6.20 placeholder(stub),SearchAsync 永远返 empty,
+        // 默认 IsEnabled=false → T4 aggregator 内部自动 skip。
+        var modelScanner = new ModelFilesystemScanner(logger: logger);
+        var modelSymlinker = new ModelSymlinker(
+            settings, modelScanner, new JunctionLinker(), logger: logger);
+
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, githubVersionService,
@@ -343,7 +357,11 @@ public partial class App : Application
             http: http,
             // v0.6.19 T10: WorkflowSymlinker — 传给 EnvironmentListViewModel 让
             // env-start 成功后 fire-and-forget sync 已下载 workflows 到 env。
-            workflowSymlinker: workflowSymlinker);
+            workflowSymlinker: workflowSymlinker,
+            // v0.6.20 T9: ModelSymlinker — 传给 EnvironmentListViewModel 让
+            // env-start 成功后 fire-and-forget sync 已下载 models 到 env。同 workflow hook 模式,
+            // 各自独立 try/catch,失败互不干扰。
+            modelSymlinker: modelSymlinker);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

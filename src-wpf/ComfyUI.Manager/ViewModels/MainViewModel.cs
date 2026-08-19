@@ -12,6 +12,7 @@ using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Search;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.Views;
 using Microsoft.Win32;
 
@@ -25,6 +26,8 @@ public enum MainSection
     LocalNodes,  // v0.6.15
     // v0.6.19: 工作流市场 — between LocalNodes and Settings
     Workflows,
+    // v0.6.20 T9: 模型市场 — 紧邻 Workflows(同类"市场"分区,UI 上连排便于切换)。
+    Models,
     Settings,
     BulkUpdate,
     SystemStatus
@@ -97,6 +100,9 @@ public class MainViewModel : ViewModelBase
     // 让 env-start 成功后 fire-and-forget 把已下载 workflow subfolder symlink 到
     // <env.ComfyuiSource>/user/default/workflows/。可空保留旧测试 ctor 兼容。
     private readonly WorkflowSymlinker? _workflowSymlinker;
+    // v0.6.20 T9: ModelSymlinker — 透传给 EnvironmentListViewModel 让 env-start 成功后
+    // fire-and-forget sync 已下载 models 到 env。可空保留旧测试 ctor 兼容。
+    private readonly ModelSymlinker? _modelSymlinker;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -123,6 +129,10 @@ public class MainViewModel : ViewModelBase
     // 后续进入复用同一份 VM,保留 IsBusy + Workflows + Selected + ConsoleLog 状态。
     private WorkflowMarketplaceViewModel? _workflowMarketplaceViewModel;
     private WorkflowMarketplaceView? _workflowMarketplaceView;
+    // v0.6.20 T9: 模型市场 VM/View 缓存(同 ShowWorkflows 模式 — 首次进入构造 +
+    // 后台触发 LoadAsync,后续进入复用同一份 VM 保留 IsBusy / Models / SelectedVersions)。
+    private ModelMarketplaceViewModel? _modelMarketplaceViewModel;
+    private ModelMarketplaceView? _modelMarketplaceView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
@@ -179,6 +189,12 @@ public class MainViewModel : ViewModelBase
     /// 默认 new 真实 View;测试可注入 stub 返回,绕开 WPF STA 初始化。
     /// </summary>
     internal Func<WorkflowMarketplaceViewModel, object?>? WorkflowMarketplaceViewFactory { get; set; }
+
+    /// <summary>
+    /// v0.6.20 T9: 构造 <see cref="ModelMarketplaceView"/> 的工厂 hook。
+    /// 默认 new 真实 View;测试可注入 stub 返回,绕开 WPF STA 初始化。
+    /// </summary>
+    internal Func<ModelMarketplaceViewModel, object?>? ModelMarketplaceViewFactory { get; set; }
 
     /// <summary>
     /// 测试用:获取当前缓存的"环境"页 VM(若有)。用于断言 ShowEnvironments
@@ -259,6 +275,7 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowCatalogCommand { get; }
     public RelayCommand ShowLocalNodesCommand { get; }   // v0.6.15
     public RelayCommand ShowWorkflowsCommand { get; }    // v0.6.19 T10: 侧栏 8th "工作流市场"
+    public RelayCommand ShowModelsCommand { get; }      // v0.6.20 T9: 侧栏 9th "模型市场"
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
@@ -331,7 +348,10 @@ public class MainViewModel : ViewModelBase
         // v0.6.19 T10: WorkflowSymlinker — 传给 EnvironmentListViewModel 让
         // env-start 成功后 fire-and-forget sync workflows 到 env 的 user/default/workflows/。
         // 可空保留旧测试 ctor 兼容。
-        WorkflowSymlinker? workflowSymlinker = null)
+        WorkflowSymlinker? workflowSymlinker = null,
+        // v0.6.20 T9: ModelSymlinker — 传给 EnvironmentListViewModel 让 env-start 成功后
+        // fire-and-forget sync 已下载 models 到 env 的 models/<kind>/。可空保留旧测试 ctor 兼容。
+        ModelSymlinker? modelSymlinker = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -380,6 +400,8 @@ public class MainViewModel : ViewModelBase
         // 同步 workflow junction 都用这俩。
         _http = http;
         _workflowSymlinker = workflowSymlinker;
+        // v0.6.20 T9: ModelSymlinker — 透传给 EnvironmentListViewModel env-start 同步 model junction。
+        _modelSymlinker = modelSymlinker;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -388,6 +410,8 @@ public class MainViewModel : ViewModelBase
         ShowLocalNodesCommand = new RelayCommand(_ => ShowLocalNodes());
         // v0.6.19 T10:工作流市场命令。ShowWorkflows 懒构造 WorkflowMarketplaceViewModel。
         ShowWorkflowsCommand = new RelayCommand(_ => ShowWorkflows());
+        // v0.6.20 T9:模型市场命令。ShowModels 懒构造 ModelMarketplaceViewModel + 后台 LoadAsync。
+        ShowModelsCommand = new RelayCommand(_ => ShowModels());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
         ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
@@ -462,7 +486,8 @@ public class MainViewModel : ViewModelBase
                 catalogRepo: catalogRepo,                 // v0.6.14 picker
                 nodeRepo: nodeRepo,                       // v0.6.14 picker
                 versionRepo: versionRepo,                 // v0.6.14 T4 per-row version dropdown
-                workflowSymlinker: _workflowSymlinker);   // v0.6.19 T10: env-start 后异步 sync workflows
+                workflowSymlinker: _workflowSymlinker,   // v0.6.19 T10: env-start 后异步 sync workflows
+                modelSymlinker: _modelSymlinker);     // v0.6.20 T9: env-start 后异步 sync models
             // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
             // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget
             // 触发 env 重启。T2 加 wiring(T3 才会让 RestartEnvAsync 真正实现重启)。
@@ -550,6 +575,46 @@ public class MainViewModel : ViewModelBase
             _ = _workflowMarketplaceViewModel.LoadAsync();
         }
         CurrentView = _workflowMarketplaceView;
+    }
+
+    // v0.6.20 T9: 模型市场页 — 侧栏 9th entry "模型市场"。
+    // 懒构造 ModelMarketplaceViewModel(注入共享 HttpClient + ModelMarketplaceService
+    // + ModelDownloader + ModelFilesystemScanner)。DI 注册的所有 service 都是 singleton,
+    // 但 ViewModel 本身 lazy 首次构造(同 WorkflowMarketplaceViewModel 模式)— 切走再回来
+    // 复用同一份 VM 保留 IsBusy / Models / SelectedVersions 状态。
+    // CivitAI/HF sources 状态由 T4 aggregator 内部 IsEnabled filter(t4 spec 设计)——
+    // 保持 v0.6.20 单一 source 真活的体验;若以后加 settings toggle,需把
+    // CivitAI/HF 改为 IsEnabled 由 settings 控制(此处不动 spec)。
+    private void ShowModels()
+    {
+        CurrentSection = MainSection.Models;
+        if (_modelMarketplaceViewModel is null)
+        {
+            var http = _http
+                ?? throw new InvalidOperationException(
+                    "HttpClient not wired — App.xaml.cs 未在 MainViewModel ctor 传 HttpClient");
+            // 注入 2 个 source(CivitAI full + HF stub)+ 共享 logger;T4 aggregator 内部
+            // IsEnabled 过滤 — HF 默认 IsEnabled=false (v0.6.20 placeholder) 被自动 skip。
+            var marketplace = new ModelMarketplaceService(
+                new IModelSource[]
+                {
+                    new CivitAiModelSource(http, logger: _logger),
+                    new HuggingFaceModelSource(),
+                },
+                logger: _logger);
+            var downloader = new ModelDownloader(http, logger: _logger);
+            var scanner = new ModelFilesystemScanner(logger: _logger);
+            _modelMarketplaceViewModel = new ModelMarketplaceViewModel(
+                marketplace, downloader, scanner, _settings, logger: _logger);
+            _modelMarketplaceView = ModelMarketplaceViewFactory is null
+                ? new ModelMarketplaceView { DataContext = _modelMarketplaceViewModel }
+                : ModelMarketplaceViewFactory(_modelMarketplaceViewModel) as ModelMarketplaceView;
+            // fire-and-forget 首次进入后台拉 2 个 source;后续进入复用 VM。RefreshAsync 内部
+            // try/catch cover 失败语义 + ConsoleLog 反馈。VM 端 await *不* 用
+            // ConfigureAwait(false) — UI-bound ObservableCollection 需 UI SynchronizationContext。
+            _ = _modelMarketplaceViewModel.RefreshAsync();
+        }
+        CurrentView = _modelMarketplaceView;
     }
 
     private void ShowSettings()

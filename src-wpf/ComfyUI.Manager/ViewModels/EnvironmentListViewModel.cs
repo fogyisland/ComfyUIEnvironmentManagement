@@ -39,6 +39,11 @@ public class EnvironmentListViewModel : ViewModelBase
     // log 永远不抛(env-start status 不受 workflow 同步影响)。
     // 可空保留旧测试 ctor 兼容;生产 DI 在 App.xaml.cs 注入。
     private readonly WorkflowSymlinker? _workflowSymlinker;
+    // v0.6.20 T9: env-start 后异步 sync 已下载 models 到 <env.ComfyuiSource>/models/<kind>/。
+    // 同 workflow hook 模式:StartEnvAsync 成功后 Task.Run 调 SyncToEnvAsync,失败仅
+    // log 永不抛(env-start status 不受 model 同步影响)。
+    // 可空保留旧测试 ctor 兼容;生产 DI 在 App.xaml.cs 注入。
+    private readonly ModelSymlinker? _modelSymlinker;
     // v0.6.10 T2:统一组件报告 + OpenBrowser 按钮的 Chrome 优先 fallback。
     // 可空保留测试 ctor(null! 仍能构造);生产 DI 在 App.xaml.cs 注入 new BrowserLauncher()。
     private readonly IBrowserLauncher? _browserLauncher;
@@ -269,7 +274,11 @@ public class EnvironmentListViewModel : ViewModelBase
         NodeVersionRepository? versionRepo = null,
         // v0.6.19 T10: env-start 后异步 sync 已下载 workflows 到 env。可空保留
         // 旧测试 ctor 兼容;生产 DI 在 App.xaml.cs 注入。
-        WorkflowSymlinker? workflowSymlinker = null)
+        WorkflowSymlinker? workflowSymlinker = null,
+        // v0.6.20 T9: env-start 后异步 sync 已下载 models 到 env。可空保留旧测试 ctor 兼容;
+        // 生产 DI 在 App.xaml.cs 注入。Signature(envId, envComfyuiSource, ct) — envId
+        // 取 env.Id, envComfyuiSource 取 env.ComfyuiSource(同 workflow hook)。
+        ModelSymlinker? modelSymlinker = null)
     {
         _repo = repo;
         _launcher = launcher;
@@ -300,6 +309,8 @@ public class EnvironmentListViewModel : ViewModelBase
         _versionRepo = versionRepo;
         // v0.6.19 T10: env-start hook — fire-and-forget sync workflows 到 env。
         _workflowSymlinker = workflowSymlinker;
+        // v0.6.20 T9: env-start hook — fire-and-forget sync models 到 env。
+        _modelSymlinker = modelSymlinker;
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -608,6 +619,30 @@ public class EnvironmentListViewModel : ViewModelBase
                     {
                         _logger?.Warn("workflow-symlink",
                             $"fire-and-forget sync failed: {ex.Message}");
+                    }
+                });
+            }
+
+            // v0.6.20 T9: env-start 成功后 fire-and-forget sync 已下载 models 到 env
+            // 的 models/<kind>/<model-slug>-<id8>__<version-slug>-<vid8>。失败仅 log
+            // 永不抛 — model 同步失败不阻断 env-start status,workflow + model 两个
+            // hook 互不干扰,各自错误隔离。SyncToEnvAsync 内部 per-version try/catch
+            // + Errors list 聚合(对最终用户看不到),这里 catch 兜底防漏网异常。
+            if (_modelSymlinker is not null && !string.IsNullOrEmpty(env.ComfyuiSource))
+            {
+                var modelSymlinker = _modelSymlinker;
+                var envId = env.Id;
+                var comfyuiSource = env.ComfyuiSource;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await modelSymlinker.SyncToEnvAsync(envId, comfyuiSource).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.Warn("model-symlink",
+                            $"env '{envId}' fire-and-forget sync failed: {ex.Message}");
                     }
                 });
             }
