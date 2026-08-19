@@ -103,6 +103,9 @@ public class MainViewModel : ViewModelBase
     // v0.6.20 T9: ModelSymlinker — 透传给 EnvironmentListViewModel 让 env-start 成功后
     // fire-and-forget sync 已下载 models 到 env。可空保留旧测试 ctor 兼容。
     private readonly ModelSymlinker? _modelSymlinker;
+    // v0.6.22 T5: ComfyUI 模板更新 service —— 透传给 EnvironmentListViewModel
+    // 让 UpdateTemplateCommand 触发 wipe + git clone。可空保留旧测试 ctor 兼容。
+    private readonly ComfyUITemplateUpdater? _templateUpdater;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -351,7 +354,11 @@ public class MainViewModel : ViewModelBase
         WorkflowSymlinker? workflowSymlinker = null,
         // v0.6.20 T9: ModelSymlinker — 传给 EnvironmentListViewModel 让 env-start 成功后
         // fire-and-forget sync 已下载 models 到 env 的 models/<kind>/。可空保留旧测试 ctor 兼容。
-        ModelSymlinker? modelSymlinker = null)
+        ModelSymlinker? modelSymlinker = null,
+        // v0.6.22 T5: ComfyUI 模板更新 service —— 传给 EnvironmentListViewModel
+        // 让 UpdateTemplateCommand 触发 wipe + git clone。可空保留旧测试 ctor
+        // 兼容(null 时 UpdateTemplateCommand.CanExecute 永远 false)。
+        ComfyUITemplateUpdater? templateUpdater = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -402,6 +409,8 @@ public class MainViewModel : ViewModelBase
         _workflowSymlinker = workflowSymlinker;
         // v0.6.20 T9: ModelSymlinker — 透传给 EnvironmentListViewModel env-start 同步 model junction。
         _modelSymlinker = modelSymlinker;
+        // v0.6.22 T5: ComfyUI 模板更新 service — 透传给 EnvironmentListViewModel。
+        _templateUpdater = templateUpdater;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -487,7 +496,8 @@ public class MainViewModel : ViewModelBase
                 nodeRepo: nodeRepo,                       // v0.6.14 picker
                 versionRepo: versionRepo,                 // v0.6.14 T4 per-row version dropdown
                 workflowSymlinker: _workflowSymlinker,   // v0.6.19 T10: env-start 后异步 sync workflows
-                modelSymlinker: _modelSymlinker);     // v0.6.20 T9: env-start 后异步 sync models
+                modelSymlinker: _modelSymlinker,      // v0.6.20 T9: env-start 后异步 sync models
+                templateUpdater: _templateUpdater);   // v0.6.22 T5: ComfyUI 模板更新(wipe + reclone)
             // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
             // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget
             // 触发 env 重启。T2 加 wiring(T3 才会让 RestartEnvAsync 真正实现重启)。
