@@ -41,4 +41,21 @@ public class BindablePasswordBoxTests
             Assert.False(box.IsPasswordRevealed);
         });
     }
+
+    // v0.6.21 T3 R1:验证 👁 toggle button 依赖的 IsPasswordRevealed DP 双向可写。
+    // 模板里的 ToggleButton.IsChecked TwoWay 绑 IsPasswordRevealed,setter 走通就
+    // 能 toggle 控件(测试不实例化 template,只验证 DP setter 路径)。
+    [Fact]
+    public void IsPasswordRevealed_Toggle_BoundFromExternalSetter()
+    {
+        StaFact.RunOnSTA(() =>
+        {
+            var box = new BindablePasswordBox { Password = "secret123" };
+            Assert.False(box.IsPasswordRevealed);
+            box.IsPasswordRevealed = true;
+            Assert.True(box.IsPasswordRevealed);
+            box.HidePassword();
+            Assert.False(box.IsPasswordRevealed);
+        });
+    }
 }
