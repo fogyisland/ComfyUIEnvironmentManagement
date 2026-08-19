@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="clr-namespace:ComfyUI.Manager.Views"
              xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             xmlns:controls="clr-namespace:ComfyUI.Manager.Controls"
              d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -654,11 +655,12 @@
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Content="测试连接" Click="TestHuggingFaceConnection"
                             Style="{StaticResource MaterialButton}" Margin="4,0,0,0" Padding="8,4" />
-                    <!-- v0.6.21 T1: TextBox placeholder for token; T3 swaps to BindablePasswordBox -->
-                    <TextBox x:Name="HuggingFaceTokenBox"
-                             Text="{Binding HuggingFaceApiToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             FontFamily="Consolas"
-                             Style="{StaticResource MaterialTextBox}" />
+                    <!-- v0.6.21 T3:BindablePasswordBox 替代 T1 的 TextBox placeholder。
+                         模板按 IsPasswordRevealed 切 PasswordBox / TextBox;默认隐藏,IsPasswordRevealed=false。
+                         应用通常不需要 reveal —— 隐藏状态更适合用户复制 token 场景(reveal 时可读明文);
+                         SettingsView.xaml.cs 可后续按需挂 reveal toggle(本次 SDD 不在 T3 scope)。 -->
+                    <controls:BindablePasswordBox x:Name="HuggingFaceTokenBox"
+                                                   Password="{Binding HuggingFaceApiToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </DockPanel>
                 <TextBlock Margin="0,4,0,0">
                     <Hyperlink NavigateUri="https://huggingface.co/settings/tokens" RequestNavigate="OpenHyperlink">

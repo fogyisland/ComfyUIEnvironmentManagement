@@ -6,6 +6,16 @@
     xmlns:behaviors="clr-namespace:ComfyUI.Manager.Behaviors"
     xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
+    <!-- v0.6.21 T3:BindablePasswordBox.xaml 自定义控件样式注册。
+         BindablePasswordBox.xaml 内 {StaticResource BoolToVisibility} / {StaticResource InverseBoolToVisibility}
+         经 parent-dict 查找命中本 Theme.xaml 下方 converter 声明;style TargetType 不带 x:Key
+         自动应用到任何 <controls:BindablePasswordBox/> 实例,跟 MaterialButton 同款隐式 style。
+         MergedDictionaries 必须在 ResourceDictionary 顶端(WPF XAML:property element 不能
+         在 element content 中间),所以放最上面。 -->
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="pack://application:,,,/ComfyUI.Manager;component/Controls/BindablePasswordBox.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     <converters:SectionEqualityToBoolConverter x:Key="SectionEquality" />
     <converters:EnumEqualsConverter x:Key="EnumEqualsConverter" />
