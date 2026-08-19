@@ -166,6 +166,12 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand ReportComponentsCommand { get; }
     public RelayCommand OpenBrowserCommand { get; }
     /// <summary>
+    /// v0.6.22 T4:env-list Row 0 col 2 新增"进入虚拟环境"图标按钮(在 ⌨ 旁边)。
+    /// 参数 = Environment;CanExecute 要求 env.VenvPath 非空且目录存在(避免已删 env
+    /// 点图标静默失败)。Execute 调 <see cref="OpenVenv"/> 启动 cmd.exe /k cd 到 venv。
+    /// </summary>
+    public RelayCommand OpenVenvCommand { get; }
+    /// <summary>
     /// v0.6.11+ T3:env-list 行 6th 按钮 "装/卸 ComfyUI Manager" toggle 命令 —
     /// 根据 IsComfyUiManagerInstalled 切换 Install / Uninstall,inline 状态面板显示进度。
     /// </summary>
@@ -346,6 +352,11 @@ public class EnvironmentListViewModel : ViewModelBase
                 // 只有跑起来且知道端口才有页面可开。
                 return env is { Status: "running" } && env.Port.HasValue;
             });
+        // v0.6.22 T4:env-list Row 0 col 2 新增"进入虚拟环境"图标按钮。
+        // CanExecute = VenvPath 非空且目录存在(避免已删 env 点了图标静默失败)。
+        OpenVenvCommand = new RelayCommand(
+            p => OpenVenv(p as Environment),
+            p => p is Environment e && !string.IsNullOrWhiteSpace(e.VenvPath) && Directory.Exists(e.VenvPath));
         CreateCommand = new RelayCommand(_ => CreateEnv());
         BaseEnvCommand = new RelayCommand(
             async _ => await OpenBaseEnvProgressAsync(),
@@ -1651,6 +1662,31 @@ public class EnvironmentListViewModel : ViewModelBase
             return;
         }
         (BrowserLauncherOverride ?? _browserLauncher)?.OpenWithChromeFallback(url, ReportOpenError);
+    }
+
+    /// <summary>
+    /// v0.6.22 T4:env-list Row 0 col 2 新增"进入虚拟环境"图标按钮 handler — 启动
+    /// cmd.exe /k cd /d 到 env.VenvPath,在新窗口打开该环境的虚拟环境。
+    /// UseShellExecute=true 是关键(/k 需要一个真正的 console host,不带的话窗口
+    /// 进程会立刻退出)。失败仅 _logger.Warn,不弹窗(env-list inline UI 不阻塞)。
+    /// </summary>
+    private void OpenVenv(Environment? env)
+    {
+        if (env is null || string.IsNullOrWhiteSpace(env.VenvPath)) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/k \"cd /d \\\"{env.VenvPath}\\\"\"",
+                UseShellExecute = true,
+            });
+            _logger?.Info("env-venv-open", $"env='{env.Name}' venv='{env.VenvPath}'");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("env-venv-open", $"failed to open venv for env='{env.Name}': {ex.Message}");
+        }
     }
 
     // v0.6.10 T2:DefaultOpenBrowser + ResolveChromePath 移到 BrowserLauncher。

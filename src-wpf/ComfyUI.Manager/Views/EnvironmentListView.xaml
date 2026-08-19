@@ -332,6 +332,19 @@
                                          true 给 env 非 null,但 dict 没条目 Execute 直接 return)。 -->
                                     <StackPanel Grid.Column="2" Orientation="Horizontal"
                                                 VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <!-- v0.6.22 T4:进入虚拟环境图标按钮 — 在 ⌨ 左边,terminal <Path>
+                                             图标(无 emoji per v0.6.17.1)。点开新 cmd.exe /k cd 到 venv。 -->
+                                        <Button MinWidth="24" MinHeight="24"
+                                                ToolTip="在新窗口中打开该环境的虚拟环境(cmd.exe)"
+                                                Command="{Binding DataContext.OpenVenvCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource GearIconButtonStyle}">
+                                            <Viewbox Width="14" Height="14">
+                                                <Path Fill="{DynamicResource OutlineBrush}"
+                                                      Data="M2,4 L8,9 L2,14 M9,4 L13,4 M9,14 L13,14" />
+                                            </Viewbox>
+                                        </Button>
                                         <Button Content="⌨" FontSize="14" MinWidth="24" MinHeight="24"
                                                 ToolTip="env 启动后,点此重新打开启动状态面板(3 阶段 + stdout 日志)。env 未启动时点击会提示"
                                                 Command="{Binding DataContext.ReopenStartStatusCommand,
