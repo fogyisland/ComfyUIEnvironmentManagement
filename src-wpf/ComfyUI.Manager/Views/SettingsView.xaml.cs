@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using ComfyUI.Manager.Models;
@@ -220,5 +222,79 @@ public partial class SettingsView : UserControl
             var picked = vm.PickFolder();
             if (picked is not null) ep.Path = picked;
         }
+    }
+
+    // ============ v0.6.21: 模型市场扩展 handler ============
+
+    /// <summary>
+    /// Test HuggingFace connection: probes /api/whoami-v2 endpoint on the chosen base URL
+    /// (mirror or official). Token sent as Bearer header only over HTTPS.
+    /// All errors surfaced via MessageBox (per spec §7 security policy).
+    /// </summary>
+    private void TestHuggingFaceConnection(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        var baseUrl = vm.ModelSourceHuggingFaceUseMirror && !string.IsNullOrWhiteSpace(vm.ModelSourceHuggingFaceMirrorUrl)
+            ? vm.ModelSourceHuggingFaceMirrorUrl.TrimEnd('/')
+            : "https://huggingface.co";
+        var token = vm.HuggingFaceApiToken;
+
+        // HTTP mirror with token → refuse (security policy from spec §7)
+        if (baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(token))
+        {
+            MessageBox.Show($"镜像 {baseUrl} 使用 http,不发送 token。\n请改用 https 镜像或临时清空 token。",
+                "测试连接", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Fire-and-forget async probe
+        _ = ProbeHuggingFaceConnectionAsync(baseUrl, token);
+    }
+
+    private async Task ProbeHuggingFaceConnectionAsync(string baseUrl, string token)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            if (!string.IsNullOrEmpty(token))
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var resp = await client.GetAsync($"{baseUrl}/api/whoami-v2").ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                Dispatcher.Invoke(() => MessageBox.Show($"✅ 连接成功 ({baseUrl})", "测试连接", MessageBoxButton.OK, MessageBoxImage.Information));
+            }
+            else
+            {
+                Dispatcher.Invoke(() => MessageBox.Show($"❌ 失败 {(int)resp.StatusCode} {resp.ReasonPhrase}\n({baseUrl})", "测试连接", MessageBoxButton.OK, MessageBoxImage.Warning));
+            }
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() => MessageBox.Show($"❌ 连接失败: {ex.Message}\n({baseUrl})", "测试连接", MessageBoxButton.OK, MessageBoxImage.Error));
+        }
+    }
+
+    private void ResetHuggingFaceMirrorUrl(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            vm.ModelSourceHuggingFaceMirrorUrl = "https://hf-mirror.com";
+        }
+    }
+
+    private void RefreshModelMarketplace(object sender, RoutedEventArgs e)
+    {
+        // Find MainViewModel and call its refresh entry point
+        if (System.Windows.Application.Current?.MainWindow?.DataContext is MainViewModel mvm)
+        {
+            mvm.RefreshModelMarketplace();
+        }
+    }
+
+    private void OpenHyperlink(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
     }
 }

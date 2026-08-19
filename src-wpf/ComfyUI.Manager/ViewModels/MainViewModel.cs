@@ -616,6 +616,16 @@ public class MainViewModel : ViewModelBase
         CurrentView = _modelMarketplaceView;
     }
 
+    /// <summary>
+    /// v0.6.21 T1 stub — invoked from SettingsView "立即刷新模型市场" button.
+    /// T4 replaces this stub body with the real impl that re-constructs the marketplace VM
+    /// (or triggers an in-place refresh) so the UI sees fresh results immediately.
+    /// </summary>
+    public void RefreshModelMarketplace()
+    {
+        // TODO v0.6.21 T4: implement
+    }
+
     private void ShowSettings()
     {
         CurrentSection = MainSection.Settings;

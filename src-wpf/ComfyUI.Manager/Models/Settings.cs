@@ -68,6 +68,19 @@ public class Settings
     public string ModelsDirectory { get; set; } = "";
     [JsonPropertyName("model_source_civitai_enabled")]
     public bool ModelSourceCivitAiEnabled { get; set; } = true;
+    // v0.6.21: 模型市场 per-source mirror + HuggingFace source + API token
+    [JsonPropertyName("model_source_civitai_use_mirror")]
+    public bool ModelSourceCivitAiUseMirror { get; set; } = false;
+    [JsonPropertyName("model_source_civitai_mirror_url")]
+    public string ModelSourceCivitAiMirrorUrl { get; set; } = "";
+    [JsonPropertyName("model_source_huggingface_enabled")]
+    public bool ModelSourceHuggingFaceEnabled { get; set; } = false;
+    [JsonPropertyName("huggingface_api_token")]
+    public string HuggingFaceApiToken { get; set; } = "";
+    [JsonPropertyName("model_source_huggingface_use_mirror")]
+    public bool ModelSourceHuggingFaceUseMirror { get; set; } = true;
+    [JsonPropertyName("model_source_huggingface_mirror_url")]
+    public string ModelSourceHuggingFaceMirrorUrl { get; set; } = "https://hf-mirror.com";
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
@@ -163,6 +176,12 @@ public class Settings
         target.WorkflowSourceOpenArtEnabled = source.WorkflowSourceOpenArtEnabled;
         target.ModelsDirectory = source.ModelsDirectory;
         target.ModelSourceCivitAiEnabled = source.ModelSourceCivitAiEnabled;
+        target.ModelSourceCivitAiUseMirror = source.ModelSourceCivitAiUseMirror;
+        target.ModelSourceCivitAiMirrorUrl = source.ModelSourceCivitAiMirrorUrl;
+        target.ModelSourceHuggingFaceEnabled = source.ModelSourceHuggingFaceEnabled;
+        target.HuggingFaceApiToken = source.HuggingFaceApiToken;
+        target.ModelSourceHuggingFaceUseMirror = source.ModelSourceHuggingFaceUseMirror;
+        target.ModelSourceHuggingFaceMirrorUrl = source.ModelSourceHuggingFaceMirrorUrl;
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;

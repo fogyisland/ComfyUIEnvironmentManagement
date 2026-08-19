@@ -561,12 +561,13 @@
                            Visibility="{Binding Dirty[WorkflowSourceOpenArtEnabled], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
 
-            <!-- ============ v0.6.20:模型市场 ============ -->
+            <!-- ============ v0.6.21:模型市场(扩展) ============ -->
             <TextBlock x:Name="SectionModels" Text="模型市场" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="共享 models 目录(留空 = 默认 models/)。下载完成后通过 env-start junction 链接到 env 的对应子目录(checkpoint/lora/vae/...)。"
                        Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
+            <!-- ModelsDirectory (保留 v0.6.20 布局) -->
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
                 <TextBlock Text="共享 models 目录" VerticalAlignment="Center"/>
                 <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
@@ -591,9 +592,114 @@
                            ToolTip="尚未保存"
                            Visibility="{Binding Dirty[ModelsDirectory], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
-            <TextBlock Text="模型市场页面使用的共享 models 目录;留空 = 默认 models/。下载完成后通过 env-start junction 链接到 env 的对应子目录(checkpoint/lora/vae/...)。"
-                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+
+            <!-- CivitAI enabled + mirror sub-block -->
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <CheckBox Content="CivitAI" IsChecked="{Binding ModelSourceCivitAiEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          VerticalAlignment="Center" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ModelSourceCivitAiEnabled], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="20,4,0,0"
+                        Visibility="{Binding ModelSourceCivitAiEnabled, Converter={StaticResource BoolToVisibility}}">
+                <CheckBox Content="使用镜像" IsChecked="{Binding ModelSourceCivitAiUseMirror, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          VerticalAlignment="Center" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ModelSourceCivitAiUseMirror], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <DockPanel Margin="20,4,0,0"
+                       Visibility="{Binding ModelSourceCivitAiUseMirror, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock DockPanel.Dock="Left" Text="镜像地址" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox Text="{Binding ModelSourceCivitAiMirrorUrl, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}"
+                         ToolTip="无流行国内镜像,留空 = 走官方" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ModelSourceCivitAiMirrorUrl], Converter={StaticResource BoolToVisibility}}"/>
+            </DockPanel>
+
+            <!-- HuggingFace enabled checkbox -->
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <CheckBox Content="HuggingFace" IsChecked="{Binding ModelSourceHuggingFaceEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          VerticalAlignment="Center" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ModelSourceHuggingFaceEnabled], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <TextBlock Text="未配置 token 也能浏览公开模型,但部分 gated 模型将 403。hf-mirror.com 已设为默认镜像。"
+                       Foreground="Gray" FontSize="11" Margin="20,2,0,0" TextWrapping="Wrap" MaxWidth="500"
                        HorizontalAlignment="Left" />
+
+            <!-- HF sub-block (only visible when HF enabled) -->
+            <StackPanel Margin="20,8,0,0"
+                        Visibility="{Binding ModelSourceHuggingFaceEnabled, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="API Token" VerticalAlignment="Center" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[HuggingFaceApiToken], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="测试连接" Click="TestHuggingFaceConnection"
+                            Style="{StaticResource MaterialButton}" Margin="4,0,0,0" Padding="8,4" />
+                    <!-- v0.6.21 T1: TextBox placeholder for token; T3 swaps to BindablePasswordBox -->
+                    <TextBox x:Name="HuggingFaceTokenBox"
+                             Text="{Binding HuggingFaceApiToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             FontFamily="Consolas"
+                             Style="{StaticResource MaterialTextBox}" />
+                </DockPanel>
+                <TextBlock Margin="0,4,0,0">
+                    <Hyperlink NavigateUri="https://huggingface.co/settings/tokens" RequestNavigate="OpenHyperlink">
+                        在 https://huggingface.co/settings/tokens 获取 token
+                    </Hyperlink>
+                </TextBlock>
+
+                <!-- HF mirror toggle + URL + reset -->
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <CheckBox Content="使用国内镜像 (默认 https://hf-mirror.com)"
+                              IsChecked="{Binding ModelSourceHuggingFaceUseMirror, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              VerticalAlignment="Center" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[ModelSourceHuggingFaceUseMirror], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <DockPanel Margin="0,4,0,0"
+                           Visibility="{Binding ModelSourceHuggingFaceUseMirror, Converter={StaticResource BoolToVisibility}}">
+                    <Button DockPanel.Dock="Right" Content="重置" Click="ResetHuggingFaceMirrorUrl"
+                            Style="{StaticResource MaterialButton}" Margin="4,0,0,0" Padding="8,4" />
+                    <TextBox Text="{Binding ModelSourceHuggingFaceMirrorUrl, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource MaterialTextBox}" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[ModelSourceHuggingFaceMirrorUrl], Converter={StaticResource BoolToVisibility}}"/>
+                </DockPanel>
+                <TextBlock Text="⚠ http 镜像将不会发送 token(安全) — 仅 HTTPS 镜像支持 gated 模型"
+                           Foreground="{DynamicResource WarningBrush}" FontSize="11" Margin="0,4,0,0"
+                           Visibility="{Binding IsHuggingFaceMirrorInsecure, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+
+            <!-- Helper text + refresh button -->
+            <TextBlock Text="勾选镜像后访问国内镜像地址,速度更快不需代理。CivitAI 无流行国内镜像,留空即可。"
+                       Foreground="Gray" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap" MaxWidth="500"
+                       HorizontalAlignment="Left" />
+            <Button Content="立即刷新模型市场" Click="RefreshModelMarketplace" Margin="0,8,0,0"
+                    HorizontalAlignment="Left" Style="{StaticResource MaterialButton}" />
 
             <!-- ============ Python 解释器(v0.6.5.6) ============ -->
             <TextBlock x:Name="SectionPythonInterpreters" Text="Python 解释器" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />

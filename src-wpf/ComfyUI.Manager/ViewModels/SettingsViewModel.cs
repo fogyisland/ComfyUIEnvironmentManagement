@@ -560,6 +560,98 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
+    // v0.6.21: 模型市场 per-source mirror + HuggingFace source + API token
+    public bool ModelSourceCivitAiUseMirror
+    {
+        get => _settings.ModelSourceCivitAiUseMirror;
+        set
+        {
+            if (_settings.ModelSourceCivitAiUseMirror == value) return;
+            _settings.ModelSourceCivitAiUseMirror = value;
+            MarkDirty(nameof(ModelSourceCivitAiUseMirror));
+            RaisePropertyChanged();
+        }
+    }
+
+    public string ModelSourceCivitAiMirrorUrl
+    {
+        get => _settings.ModelSourceCivitAiMirrorUrl;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.ModelSourceCivitAiMirrorUrl == v) return;
+            _settings.ModelSourceCivitAiMirrorUrl = v;
+            MarkDirty(nameof(ModelSourceCivitAiMirrorUrl));
+            RaisePropertyChanged();
+        }
+    }
+
+    public bool ModelSourceHuggingFaceEnabled
+    {
+        get => _settings.ModelSourceHuggingFaceEnabled;
+        set
+        {
+            if (_settings.ModelSourceHuggingFaceEnabled == value) return;
+            _settings.ModelSourceHuggingFaceEnabled = value;
+            MarkDirty(nameof(ModelSourceHuggingFaceEnabled));
+            RaisePropertyChanged();
+        }
+    }
+
+    public string HuggingFaceApiToken
+    {
+        get => _settings.HuggingFaceApiToken;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.HuggingFaceApiToken == v) return;
+            _settings.HuggingFaceApiToken = v;
+            MarkDirty(nameof(HuggingFaceApiToken));
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsHuggingFaceMirrorInsecure));
+        }
+    }
+
+    public bool ModelSourceHuggingFaceUseMirror
+    {
+        get => _settings.ModelSourceHuggingFaceUseMirror;
+        set
+        {
+            if (_settings.ModelSourceHuggingFaceUseMirror == value) return;
+            _settings.ModelSourceHuggingFaceUseMirror = value;
+            MarkDirty(nameof(ModelSourceHuggingFaceUseMirror));
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsHuggingFaceMirrorInsecure));
+        }
+    }
+
+    public string ModelSourceHuggingFaceMirrorUrl
+    {
+        get => _settings.ModelSourceHuggingFaceMirrorUrl;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.ModelSourceHuggingFaceMirrorUrl == v) return;
+            _settings.ModelSourceHuggingFaceMirrorUrl = v;
+            MarkDirty(nameof(ModelSourceHuggingFaceMirrorUrl));
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsHuggingFaceMirrorInsecure));
+        }
+    }
+
+    /// <summary>
+    /// v0.6.21: Returns true if user has a token configured AND the mirror is http:// (insecure).
+    /// Used in XAML to show a security warning when token would be sent over plaintext HTTP.
+    /// </summary>
+    public bool IsHuggingFaceMirrorInsecure
+    {
+        get
+        {
+            if (!ModelSourceHuggingFaceUseMirror) return false;
+            var url = ModelSourceHuggingFaceMirrorUrl ?? "";
+            return url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(HuggingFaceApiToken);
+        }
+    }
     // v0.6.10: 全局默认 Models 目录(env-create junction 目标)。空 = 不动 env 的 models 目录。
     public string DefaultModelsDirectory
     {
@@ -929,6 +1021,13 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(WorkflowSourceOpenArtEnabled));
         RaisePropertyChanged(nameof(ModelsDirectory));
         RaisePropertyChanged(nameof(ModelSourceCivitAiEnabled));
+        RaisePropertyChanged(nameof(ModelSourceCivitAiUseMirror));
+        RaisePropertyChanged(nameof(ModelSourceCivitAiMirrorUrl));
+        RaisePropertyChanged(nameof(ModelSourceHuggingFaceEnabled));
+        RaisePropertyChanged(nameof(HuggingFaceApiToken));
+        RaisePropertyChanged(nameof(ModelSourceHuggingFaceUseMirror));
+        RaisePropertyChanged(nameof(ModelSourceHuggingFaceMirrorUrl));
+        RaisePropertyChanged(nameof(IsHuggingFaceMirrorInsecure));
         RaisePropertyChanged(nameof(LogDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
