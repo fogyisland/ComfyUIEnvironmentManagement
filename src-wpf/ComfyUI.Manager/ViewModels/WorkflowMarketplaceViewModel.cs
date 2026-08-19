@@ -71,6 +71,9 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         DownloadSingleCommand = new RelayCommand(async p => await DownloadSingleAsync(p as WorkflowEntry),
             p => p is WorkflowEntry && !IsBusy && ResolveWorkflowsDirOk());
         ClearSearchCommand = new RelayCommand(_ => SearchText = "", _ => HasSearchText);
+        RetryJsonPreviewCommand = new RelayCommand(
+            p => { if (p is WorkflowEntry entry) _ = LoadJsonPreviewAsync(entry); },
+            p => p is WorkflowEntry entry && !string.IsNullOrEmpty(entry.WorkflowJsonUrl));
     }
 
     // —— Outputs ——
@@ -266,6 +269,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand DownloadSingleCommand { get; }
     public RelayCommand ClearSearchCommand { get; }
+    public RelayCommand RetryJsonPreviewCommand { get; }
 
     /// <summary>Initial fetch + scan。call after view constructed。</summary>
     public async Task LoadAsync(CancellationToken ct = default)

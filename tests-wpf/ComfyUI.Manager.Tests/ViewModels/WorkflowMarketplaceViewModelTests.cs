@@ -281,6 +281,68 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
         Assert.Null(entry.JsonPreview);   // failed entry doesn't cache — next hover retries
     }
 
+    // v0.6.22 T3-R1: retry button on error state — re-invokes LoadJsonPreviewAsync;
+    // clears error state and populates overlay if fetch succeeds this time.
+    [Fact]
+    public async Task RetryJsonPreviewCommand_OnError_RetriesFetch_AndClearsErrorState()
+    {
+        var entry = new WorkflowEntry
+        {
+            Source = WorkflowSourceKind.CivitAi,
+            SourceId = "flaky",
+            Title = "Flaky",
+            WorkflowJsonUrl = "https://example.com/flaky.json",
+        };
+        // First call: 404 → error state
+        _httpHandler.RegisterStatus("https://example.com/flaky.json", HttpStatusCode.NotFound);
+
+        await _vm.LoadJsonPreviewAsync(entry);
+        Assert.True(_vm.IsJsonOverlayError);
+        Assert.Null(_vm.JsonOverlayText);
+        Assert.Null(entry.JsonPreview);
+
+        // CanExecute: valid entry with URL is allowed
+        Assert.True(_vm.RetryJsonPreviewCommand.CanExecute(entry));
+
+        // Re-register: clear status first, then now succeeds
+        _httpHandler.ClearStatus("https://example.com/flaky.json");
+        _httpHandler.RegisterResponse("https://example.com/flaky.json", "{\"nodes\":[{\"id\":2}]}");
+
+        // Execute retry — LoadJsonPreviewAsync resets IsJsonOverlayError=false on success
+        _vm.RetryJsonPreviewCommand.Execute(entry);
+
+        // Wait for the fire-and-forget load to complete
+        await Task.Delay(100);
+
+        Assert.False(_vm.IsJsonOverlayError);
+        Assert.False(_vm.IsJsonOverlayLoading);
+        Assert.NotNull(_vm.JsonOverlayText);
+        Assert.NotNull(entry.JsonPreview);   // now cached
+        Assert.Contains("\"id\": 2", _vm.JsonOverlayText);
+    }
+
+    // v0.6.22 T3-R1: retry button CanExecute — disabled when entry has no WorkflowJsonUrl.
+    [Fact]
+    public void RetryJsonPreviewCommand_CanExecute_FalseWhenEntryHasNoJsonUrl()
+    {
+        var entry = new WorkflowEntry
+        {
+            Source = WorkflowSourceKind.CivitAi,
+            SourceId = "no-url",
+            Title = "No URL",
+            WorkflowJsonUrl = null,
+        };
+        Assert.False(_vm.RetryJsonPreviewCommand.CanExecute(entry));
+    }
+
+    // v0.6.22 T3-R1: retry button CanExecute — false when param is not a WorkflowEntry.
+    [Fact]
+    public void RetryJsonPreviewCommand_CanExecute_FalseWhenParamNotEntry()
+    {
+        Assert.False(_vm.RetryJsonPreviewCommand.CanExecute("not-an-entry"));
+        Assert.False(_vm.RetryJsonPreviewCommand.CanExecute(null));
+    }
+
     private sealed class SlowMarketplaceService : WorkflowMarketplaceService
     {
         private readonly TaskCompletionSource<IReadOnlyList<WorkflowEntry>?> _tcs =
@@ -319,6 +381,8 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
             => _bodies[url] = body;
         public void RegisterStatus(string url, HttpStatusCode status)
             => _byUrl[url] = new HttpResponseMessage(status);
+        public void ClearStatus(string url)
+            => _byUrl.Remove(url);
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage req, CancellationToken ct)

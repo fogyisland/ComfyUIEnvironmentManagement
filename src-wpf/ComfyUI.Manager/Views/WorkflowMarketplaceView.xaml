@@ -223,9 +223,14 @@
                                        Foreground="{DynamicResource OnSurfaceBrush}" />
                           </ScrollViewer>
                           <!-- Error state -->
-                          <TextBlock Text="无法加载 JSON" FontSize="11"
-                                     Foreground="{DynamicResource ErrorBrush}"
-                                     Visibility="{Binding DataContext.IsJsonOverlayError, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                      Visibility="{Binding DataContext.IsJsonOverlayError, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                            <TextBlock Text="无法加载 JSON" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ErrorBrush}" />
+                            <Button Content="重试" Margin="8,0,0,0" Padding="8,2"
+                                    Command="{Binding DataContext.RetryJsonPreviewCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}" />
+                          </StackPanel>
                         </Grid>
                       </Border>
                     </Grid>
