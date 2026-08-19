@@ -84,6 +84,39 @@ Translation: "Display Civitai results as cards with images. If image available, 
 - Per-card hover handling via `DataTrigger` or `EventSetter` (mouse events `MouseEnter`/`MouseLeave` on the preview Border).
 - Download button in card unchanged (already present line 184-188).
 
+### In scope (T4 — added 2026-08-19 per user follow-up)
+
+User message: "在环境管理中加一个按钮，用于进入到虚拟环境，这个按钮放在环境日志icon旁边，用一个ICON展示进入到虚拟环境"
+
+Translation: "In environment management, add a button for entering the virtual environment. Place this button next to the environment log icon, display it as an ICON."
+
+- Add new icon button to `Views/EnvironmentListView.xaml` Row 0 col 2 StackPanel — placed adjacent to the existing ⌨ start-status icon button (which is the closest existing "log-ish" icon). New icon = terminal/prompt `<Path>` SVG (no emoji per v0.6.17.1).
+- Wire to new `OpenVenvCommand` on `EnvironmentListViewModel` (parameter = `Environment` entry).
+- Handler: launch `cmd.exe /k "cd /d {env.VenvPath}"` (Windows-specific) — opens a new terminal window with cwd = env's venv directory.
+- Production wiring via existing `BrowserLauncher`-style seam OR new `ITerminalLauncher` interface (YAGNI for v0.6.22: inline `Process.Start` in command body; matches existing patterns).
+- Add 1 test: `OpenVenvCommand_StartsCmdWithVenvPath` (verify process launch via test seam).
+
+### In scope (T5 — added 2026-08-19 per user follow-up)
+
+User message: "增加一个模板更新，用于更新当前的ComfyUI的模板，其实是目录内容删除，然后重新gitclone"
+
+Translation: "Add a template update — for updating the current ComfyUI template. Actually this is: delete the directory contents, then git clone again."
+
+- Add new "模板更新" button to `Views/EnvironmentListView.xaml` actions grid — 3rd row (existing 2 rows × 5 cols becomes 3 rows × 5 cols). Button uses `DangerButton` style (destructive operation).
+- Wire to new `UpdateTemplateCommand` on `EnvironmentListViewModel` (parameter = `Environment` entry).
+- New service `Services/ComfyUITemplateUpdater.cs` with method `UpdateAsync(env, IProgress<string>, CancellationToken)`:
+  1. Verify env not running — if running, return `NodeOperationResult.Fail("env 正在运行,请先停止")`
+  2. Verify `env.ComfyuiSource` exists and is a git dir
+  3. Delete contents of `env.ComfyuiSource` (NOT the directory itself — keep junction/permission intact)
+  4. `git clone https://github.com/comfyanonymous/ComfyUI.git {env.ComfyuiSource}` via existing `GitRunner` infrastructure
+  5. Return progress via `IProgress<string>` (per v0.6.18.4 console pattern)
+- New inline status panel `TemplateUpdateStatusViewModel` (mirrors `RequirementsStatusViewModel` pattern from v0.6.5.12 hotfix):
+  - `StatusText` (string), `IsBusy` (bool), `LogLines` (ObservableCollection<string>), `Error` (string?), `IsVisible` (computed)
+  - Reuses inline Border pattern in `EnvironmentListView.xaml` bottom panel section
+- User confirmation via existing `ConfirmDialog` pattern (or inline "危险操作" panel) before destructive wipe.
+- AppLogger subsystem: `comfyui-template-update` (INFO on success, WARN on failure, ERROR on exception).
+- Add 2 tests: `UpdateTemplateAsync_RemovesAndReclonesComfyUI` + `UpdateTemplateAsync_EnvRunning_ReturnsFail`.
+
 ### Out of scope (YAGNI — deferred to v0.6.23+)
 
 - **PNG metadata extraction** (BitmapDecoder for `/tEXt/workflow` chunks) — ComfyUI-generated images embed workflow JSON, but most marketplaces use curated JSON files now; can add later if user feedback shows it's needed.
@@ -361,11 +394,13 @@ Hook `SearchText` setter to raise `HasSearchText` PropertyChanged (since it's a 
 
 ---
 
-## 10. Implementation outline (3 tasks)
+## 10. Implementation outline (5 tasks)
 
 - **T1**: CivitAI source endpoint + DTO + tests (~80 LoC service + ~150 LoC tests)
 - **T2**: VM clear command + XAML composite search box + placeholder strings + 1 test (~40 LoC VM + ~40 LoC XAML)
 - **T3** *(added per user follow-up 2026-08-19)*: VM hover JSON fetch + card preview image hover overlay + JsonPreview field on WorkflowEntry + 2 tests (~80 LoC VM + ~60 LoC XAML)
+- **T4** *(added per user follow-up 2026-08-19)*: env-list venv-entry icon button next to ⌨ icon + OpenVenvCommand + handler launching cmd.exe /k "cd /d {VenvPath}" + 1 test (~20 LoC VM + ~20 LoC XAML)
+- **T5** *(added per user follow-up 2026-08-19)*: env-list "模板更新" destructive button (DangerButton style) + ComfyUITemplateUpdater service (delete contents + git clone) + TemplateUpdateStatusViewModel inline panel + ConfirmDialog gate + 2 tests (~120 LoC service + ~80 LoC VM + ~50 LoC XAML)
 
 ---
 
@@ -387,4 +422,5 @@ Hook `SearchText` setter to raise `HasSearchText` PropertyChanged (since it's a 
 
 - **2026-08-19 user follow-up**: "civital的结果我们以卡片图的方式展现，如果他能够有图，就以图呈现，然后移动到图片中显示具体的json数据" → added T3 (card hover JSON overlay) + updated §2 in-scope T3 + §5 files to touch + §6 test plan + §10 implementation outline (now 3 tasks).
 - **User directive**: "接下来所有的数据不需要太多的确认，干就完了" — future scope additions skip approval gates; user trusts direction.
-- **No scope reduction** — T1 + T2 unchanged.
+- **No scope reduction** — T1 + T2 + T3 unchanged.
+- **2026-08-19 user follow-up #2**: "在环境管理中加一个按钮，用于进入到虚拟环境..." → added T4 (env-list venv icon button) + "增加一个模板更新，用于更新当前的ComfyUI的模板..." → added T5 (ComfyUI template wipe + reclone). §2 in-scope T4+T5 added. §10 outline expanded to 5 tasks.
