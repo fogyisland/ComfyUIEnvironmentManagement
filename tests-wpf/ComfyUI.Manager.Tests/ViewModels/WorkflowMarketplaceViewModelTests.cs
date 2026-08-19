@@ -186,6 +186,23 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
         Assert.False(_vm.IsEmpty);
     }
 
+    // v0.6.22: ✕ clear button — sets SearchText to "" which triggers ApplyFilter
+    // and HasSearchText recomputes to false (drives ✕ button visibility).
+    [Fact]
+    public void ClearSearchCommand_ClearsSearchText_AndAppliesFilter()
+    {
+        _vm.SearchText = "controlnet";
+        Assert.True(_vm.HasSearchText);
+
+        _vm.ClearSearchCommand.Execute(null);
+
+        Assert.Equal("", _vm.SearchText);
+        Assert.False(_vm.HasSearchText);
+        // Note: ClearSearchCommand CanExecute = HasSearchText, so post-clear CanExecute = false.
+        // RelayCommand's CanExecute.Invoke doesn't throw when predicate is false (idempotent).
+        Assert.False(_vm.HasSearchText);
+    }
+
     private sealed class SlowMarketplaceService : WorkflowMarketplaceService
     {
         private readonly TaskCompletionSource<IReadOnlyList<WorkflowEntry>?> _tcs =

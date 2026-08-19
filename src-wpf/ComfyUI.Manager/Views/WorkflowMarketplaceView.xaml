@@ -47,9 +47,47 @@
       <Button DockPanel.Dock="Right" Content="批量下载"
               Command="{Binding BatchDownloadCommand}" Margin="6,0,0,0"
               Style="{StaticResource MaterialButton}" />
-      <TextBox DockPanel.Dock="Left" Width="240" Margin="0,0,8,0" Padding="6,4"
-               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-               IsEnabled="{Binding NotIsBusy}" />
+      <!-- v0.6.22 composite search bar: Border + 🔍 Path + TextBox + ✕ Button + placeholder overlay -->
+      <Border DockPanel.Dock="Left" Width="360" Margin="0,0,16,0"
+              BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+              CornerRadius="6" Background="{DynamicResource SurfaceBrush}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <!-- 🔍 magnifying-glass icon (Path, no emoji per v0.6.17.1) -->
+          <Viewbox Grid.Column="0" Width="16" Height="16" Margin="8,0,4,0" VerticalAlignment="Center">
+            <Path Fill="{DynamicResource OnSurfaceBrush}" Opacity="0.6"
+                  Data="M10,2 a8,8 0 1,0 0,16 a8,8 0 1,0 0,-16 Z M14,14 l5,5" />
+          </Viewbox>
+          <!-- Search input with placeholder overlay -->
+          <TextBox Grid.Column="1" Padding="6,4"
+                   BorderThickness="0" Background="Transparent"
+                   VerticalAlignment="Center"
+                   Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                   IsEnabled="{Binding NotIsBusy}" />
+          <!-- Placeholder TextBlock (overlay, hidden when text non-empty) -->
+          <TextBlock Grid.Column="1" Margin="6,0,0,0"
+                     VerticalAlignment="Center" IsHitTestVisible="False"
+                     Foreground="{DynamicResource OnSurfaceBrush}" Opacity="0.5"
+                     Text="搜索工作流"
+                     Visibility="{Binding HasSearchText, Converter={StaticResource InverseBoolToVisibility}}" />
+          <!-- ✕ clear button (visible when text non-empty) -->
+          <Button Grid.Column="2" Padding="4,2" Margin="0,0,4,0"
+                  VerticalAlignment="Center"
+                  Command="{Binding ClearSearchCommand}"
+                  ToolTip="清除搜索"
+                  Visibility="{Binding HasSearchText, Converter={StaticResource BoolToVisibility}}"
+                  Style="{StaticResource MaterialButton}">
+            <Viewbox Width="12" Height="12">
+              <Path Fill="{DynamicResource OnSurfaceBrush}" Opacity="0.6"
+                    Data="M6,6 L18,18 M18,6 L6,18" />
+            </Viewbox>
+          </Button>
+        </Grid>
+      </Border>
       <TextBlock DockPanel.Dock="Left" Text="工作流市场"
                  FontSize="20" FontWeight="Bold"
                  Foreground="{DynamicResource OnSurfaceBrush}"

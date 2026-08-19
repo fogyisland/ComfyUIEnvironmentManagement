@@ -70,6 +70,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
         OpenFolderCommand = new RelayCommand(_ => OpenWorkflowsFolder(), _ => ResolveWorkflowsDirOk());
         DownloadSingleCommand = new RelayCommand(async p => await DownloadSingleAsync(p as WorkflowEntry),
             p => p is WorkflowEntry && !IsBusy && ResolveWorkflowsDirOk());
+        ClearSearchCommand = new RelayCommand(_ => SearchText = "", _ => HasSearchText);
     }
 
     // —— Outputs ——
@@ -80,10 +81,20 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
     public int SelectedCount => Selected.Count;
     public bool HasSelection => Selected.Count > 0;
 
+    /// <summary>v0.6.22: search input is non-empty — drives ✕ clear button Visibility
+    /// via BoolToVisibility converter in WorkflowMarketplaceView.xaml Row 0.</summary>
+    public bool HasSearchText => !string.IsNullOrWhiteSpace(SearchText);
+
     public string SearchText
     {
         get => _searchText;
-        set { if (_searchText == value) return; _searchText = value; ApplyFilter(); }
+        set
+        {
+            if (_searchText == value) return;
+            _searchText = value;
+            ApplyFilter();
+            RaisePropertyChanged(nameof(HasSearchText));
+        }
     }
     public WorkflowSortKind SortBy
     {
@@ -136,6 +147,7 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
     public RelayCommand ClearConsoleCommand { get; }
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand DownloadSingleCommand { get; }
+    public RelayCommand ClearSearchCommand { get; }
 
     /// <summary>Initial fetch + scan。call after view constructed。</summary>
     public async Task LoadAsync(CancellationToken ct = default)
