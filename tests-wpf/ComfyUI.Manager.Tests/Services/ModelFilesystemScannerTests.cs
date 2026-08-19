@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using Xunit;
@@ -103,6 +104,38 @@ public class ModelFilesystemScannerTests : IDisposable
         var result = scanner.Scan(_tmp);
 
         Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Scan_MetaJsonWithEnumString_RoundTripsKindCorrectly()
+    {
+        // Mirror T5 ModelDownloader: writes Kind as string via JsonStringEnumConverter.
+        // Scanner must use the same converter to read it back.
+        var kindDir = Path.Combine(_tmp, "loras");
+        var modelDir = Path.Combine(kindDir, "detail-totaling-23456789");
+        var versionDir = Path.Combine(modelDir, "v1-99887766");
+        Directory.CreateDirectory(versionDir);
+        File.WriteAllText(Path.Combine(versionDir, "model.safetensors"), "fake");
+        File.WriteAllText(Path.Combine(versionDir, "meta.json"),
+            JsonSerializer.Serialize(new ModelMetaSidecar
+            {
+                Title = "Detail Totaling",
+                Kind = ModelKind.LORA,
+                Source = "civitai",
+                SourceId = "23456789",
+                SourceVersionId = "99887766",
+                SourceUrl = "https://civitai.com/models/23456789",
+                PrimaryFilename = "model.safetensors",
+                SizeBytes = 12345,
+                NsfwLevel = 0,
+                DownloadedAt = DateTime.UtcNow,
+            }, new JsonSerializerOptions { Converters = { new JsonStringEnumConverter() } }));
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(ModelKind.LORA, result[0].Kind);
     }
 
     private void CreateVersion(string kind, string modelSlugId, string versionSlugId, string title)

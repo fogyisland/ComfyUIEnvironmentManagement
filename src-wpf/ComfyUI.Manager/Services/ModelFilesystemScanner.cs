@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Services;
@@ -41,7 +42,8 @@ public class ModelFilesystemScanner
                     try
                     {
                         var json = File.ReadAllText(metaPath);
-                        var sidecar = JsonSerializer.Deserialize<ModelMetaSidecar>(json);
+                        var sidecar = JsonSerializer.Deserialize<ModelMetaSidecar>(json,
+                            new JsonSerializerOptions { Converters = { new JsonStringEnumConverter() } });
                         if (sidecar is null)
                         {
                             _logger?.Warn("model-scanner", $"skip {versionDir}: meta.json null");
