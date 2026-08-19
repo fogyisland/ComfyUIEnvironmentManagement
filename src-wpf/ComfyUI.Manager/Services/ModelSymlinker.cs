@@ -57,7 +57,12 @@ public class ModelSymlinker
         var errors = new List<string>();
 
         var envModelsDir = Path.Combine(envComfyuiSource, "models");
-        Directory.CreateDirectory(envModelsDir);
+        try { Directory.CreateDirectory(envModelsDir); }
+        catch (Exception ex)
+        {
+            _logger?.Warn("model-symlink", $"env '{envId}' failed to create env models dir '{envModelsDir}': {ex.Message}");
+            return new ModelSyncResult();
+        }
 
         foreach (var dm in downloaded)
         {
