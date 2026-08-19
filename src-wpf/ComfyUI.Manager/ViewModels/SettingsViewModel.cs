@@ -536,18 +536,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         }
     }
     // v0.6.20:模型市场
-    public string ModelsDirectory
-    {
-        get => _settings.ModelsDirectory;
-        set
-        {
-            var v = value ?? "";
-            if (_settings.ModelsDirectory == v) return;
-            _settings.ModelsDirectory = v;
-            MarkDirty(nameof(ModelsDirectory));
-            RaisePropertyChanged();
-        }
-    }
+    // v0.6.22+:ModelsDirectory 字段已硬删 — 共享 models 目录 = DefaultModelsDirectory(全局默认 Models 目录)。
+    // 此处不再暴露 ModelsDirectory UI;DefaultModelsDirectory 字段承担 env-create junction 目标 +
+    // 模型市场下载目录两职。
 
     public bool ModelSourceCivitAiEnabled
     {
@@ -744,6 +735,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             _proxy.Enabled = value;
             _settings.HttpProxyEnabled = value;
             MarkDirty(nameof(HttpProxyEnabled));
+            RaisePropertyChanged();
+        }
+    }
+    // v0.6.22+:继承系统代理(OS-level IE settings / WPAD / PAC)。
+    // true → handler.UseProxy=true 但不设 Proxy,WinHTTP 自动走系统默认;URL/Port 字段被忽略。
+    // 改动仍走 SettingsViewModel "重启后生效" 的 tooltip — HttpClient handler 在 OnStartup 一次性构造。
+    public bool HttpProxyUseSystemProxy
+    {
+        get => _proxy.UseSystemProxy;
+        set
+        {
+            _proxy.UseSystemProxy = value;
+            _settings.HttpProxyUseSystemProxy = value;
+            MarkDirty(nameof(HttpProxyUseSystemProxy));
             RaisePropertyChanged();
         }
     }
@@ -1045,7 +1050,6 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(WorkflowSourceCommunityJsonEnabled));
         RaisePropertyChanged(nameof(WorkflowSourceCivitAiEnabled));
         RaisePropertyChanged(nameof(WorkflowSourceOpenArtEnabled));
-        RaisePropertyChanged(nameof(ModelsDirectory));
         RaisePropertyChanged(nameof(ModelSourceCivitAiEnabled));
         RaisePropertyChanged(nameof(ModelSourceCivitAiUseMirror));
         RaisePropertyChanged(nameof(ModelSourceCivitAiMirrorUrl));
@@ -1060,6 +1064,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(HttpProxyUrl));
         RaisePropertyChanged(nameof(HttpProxyPort));
         RaisePropertyChanged(nameof(HttpProxyEnabled));
+        RaisePropertyChanged(nameof(HttpProxyUseSystemProxy));
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
         RaisePropertyChanged(nameof(FetchNodeVersionsOnRefresh));

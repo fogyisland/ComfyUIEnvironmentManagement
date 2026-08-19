@@ -40,8 +40,9 @@ public class Settings
     [JsonPropertyName("global_nodes_dir")] public string GlobalNodesDir { get; set; } = "";
     // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,默认子目录名 "local-nodes"。
     [JsonPropertyName("local_node_directory")] public string LocalNodeDirectory { get; set; } = "";
-    // v0.6.10: 全局默认 Models 目录(env-create 时把 <env-root>/ComfyUI/models
-    // junction 到此路径,作为新 env 的默认 models 位置;每 env 可独立覆盖)。
+    // v0.6.10 + v0.6.22+:全局默认 Models 目录。两用:
+    // 1) env-create 时把 <env-root>/ComfyUI/models junction 到此路径,作为新 env 的默认 models 位置;每 env 可独立覆盖
+    // 2) 模型市场下载目录(原 ModelsDirectory 已硬删,所有下载直接走这里)
     // 空字符串 = 不动 env 的 models 目录(沿用项目根 fallback)。
     [JsonPropertyName("default_models_directory")]
     public string DefaultModelsDirectory { get; set; } = "";
@@ -63,9 +64,7 @@ public class Settings
     [JsonPropertyName("workflow_source_openart_enabled")]
     public bool WorkflowSourceOpenArtEnabled { get; set; } = true;
 
-    // v0.6.20:模型市场 — 共享 models 目录 + CivitAI source enabled bool
-    [JsonPropertyName("models_directory")]
-    public string ModelsDirectory { get; set; } = "";
+    // v0.6.20:模型市场 — CivitAI source enabled bool(共享 models 目录 = DefaultModelsDirectory,v0.6.22+ 硬删 models_directory 字段)
     [JsonPropertyName("model_source_civitai_enabled")]
     public bool ModelSourceCivitAiEnabled { get; set; } = true;
     // v0.6.21: 模型市场 per-source mirror + HuggingFace source + API token
@@ -93,6 +92,11 @@ public class Settings
     [JsonPropertyName("http_proxy_enabled")] public bool HttpProxyEnabled { get; set; }
     [JsonPropertyName("http_proxy_url")] public string HttpProxyUrl { get; set; } = "";
     [JsonPropertyName("http_proxy_port")] public int HttpProxyPort { get; set; }
+    // v0.6.22+:继承系统代理(OS-level IE settings / WPAD / PAC)。
+    // true → handler.UseProxy=true 但不设 Proxy,WinHTTP 自动走系统默认;URL/Port 字段被忽略。
+    // false → 用 URL/Port 自定义代理(默认,v0.6.22+ 之前的语义)。
+    [JsonPropertyName("http_proxy_use_system")]
+    public bool HttpProxyUseSystemProxy { get; set; }
     [JsonPropertyName("git_exe")] public string GitExe { get; set; } = "";
     // v0.6.7.1: ComfyUI 启动就绪等待上限(秒)。默认 600(10 分钟)—— 大模型/首次
     // 编译 kernel 时几分钟很正常,30s 硬编码会误判失败。
@@ -180,7 +184,6 @@ public class Settings
         target.WorkflowSourceCommunityJsonEnabled = source.WorkflowSourceCommunityJsonEnabled;
         target.WorkflowSourceCivitAiEnabled = source.WorkflowSourceCivitAiEnabled;
         target.WorkflowSourceOpenArtEnabled = source.WorkflowSourceOpenArtEnabled;
-        target.ModelsDirectory = source.ModelsDirectory;
         target.ModelSourceCivitAiEnabled = source.ModelSourceCivitAiEnabled;
         target.ModelSourceCivitAiUseMirror = source.ModelSourceCivitAiUseMirror;
         target.ModelSourceCivitAiMirrorUrl = source.ModelSourceCivitAiMirrorUrl;
@@ -195,6 +198,7 @@ public class Settings
         target.GitExe = source.GitExe;
         target.ComfyUiStartupTimeoutSeconds = source.ComfyUiStartupTimeoutSeconds;
         target.ComfyUiLocale = source.ComfyUiLocale;
+        target.HttpProxyUseSystemProxy = source.HttpProxyUseSystemProxy;
         // —— Catalog 视图 ——
         target.CatalogViewMode = source.CatalogViewMode;
         target.CatalogPageSize = source.CatalogPageSize;

@@ -26,7 +26,7 @@ public class ModelSymlinkerTests : IDisposable
         _modelsDir = Path.Combine(Path.GetTempPath(), "ComfyUIMgrModels_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_envRoot);
         Directory.CreateDirectory(_modelsDir);
-        _settings = new Settings { ModelsDirectory = _modelsDir };
+        _settings = new Settings { DefaultModelsDirectory = _modelsDir };
     }
 
     public void Dispose()

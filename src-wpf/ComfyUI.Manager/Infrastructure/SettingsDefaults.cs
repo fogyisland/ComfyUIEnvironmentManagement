@@ -68,8 +68,9 @@ public static class SettingsDefaults
         s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
         // v0.6.19:WorkflowsDirectory — template-style,空字段自动填 "workflows" 子目录名
         s.WorkflowsDirectory = Resolve(s.WorkflowsDirectory, WorkflowsSubdir, projectRoot);
-        // v0.6.20:ModelsDirectory — template-style,空字段自动填 "models" 子目录名
-        s.ModelsDirectory = Resolve(s.ModelsDirectory, ModelsSubdir, projectRoot);
+        // v0.6.22+:DefaultModelsDirectory — 同时担任 env-create junction 目标 + 模型市场下载目录。
+        // 原 v0.6.20 ModelsDirectory 字段已硬删,空字段自动填 "models" 子目录名。
+        s.DefaultModelsDirectory = Resolve(s.DefaultModelsDirectory, ModelsSubdir, projectRoot);
 
         // 节点源:空列表 → 装默认 "comfyui manager";空 active → 回落到列表第一条
         if (s.QuerySources is null || s.QuerySources.Count == 0)

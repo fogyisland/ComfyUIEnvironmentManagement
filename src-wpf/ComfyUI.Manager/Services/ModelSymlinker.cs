@@ -9,10 +9,12 @@ using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Services;
 
-/// <summary>v0.6.20:env 启动后扫描 Settings.ModelsDirectory,
+/// <summary>v0.6.20 + v0.6.22+:env 启动后扫描 Settings.DefaultModelsDirectory,
 /// 给每个已下载 model version 在 &lt;envComfyuiSource&gt;/models/&lt;kind&gt;/
 /// 下创建指向 &lt;modelsDir&gt;/&lt;kind&gt;/&lt;model-slug&gt;-&lt;id8&gt;/&lt;version-slug&gt;-&lt;vid8&gt;/
 /// 的 junction(Windows)/symlink(Linux/macOS)。
+/// v0.6.22+:原 ModelsDirectory 字段硬删 — 现在 DefaultModelsDirectory 同时担任 env-create
+/// junction 目标 + 模型市场下载目录 + symlinker 扫描源。
 /// link 名字 = &lt;model-slug&gt;-&lt;id8&gt;__&lt;version-slug&gt;-&lt;vid8&gt;
 /// (env 端用 __ 双下划线分隔,避免 model-slug 与 version-slug 同前缀时碰撞)。
 /// 失败 WARN + 计数 + Errors list,不抛 — 永远不影响 env-start 状态。</summary>
@@ -43,10 +45,10 @@ public class ModelSymlinker
             return new ModelSyncResult();
         }
 
-        var modelsDir = _settings.ModelsDirectory;
+        var modelsDir = _settings.DefaultModelsDirectory;
         if (string.IsNullOrWhiteSpace(modelsDir) || !Directory.Exists(modelsDir))
         {
-            _logger?.Warn("model-symlink", $"ModelsDirectory '{modelsDir}' not exist; skip");
+            _logger?.Warn("model-symlink", $"DefaultModelsDirectory '{modelsDir}' not exist; skip");
             return new ModelSyncResult();
         }
 

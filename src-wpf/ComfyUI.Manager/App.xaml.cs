@@ -326,7 +326,7 @@ public partial class App : Application
         // v0.6.20 T9: 模型市场 service —— 复用共享 http(60s timeout,跟 workflow / catalog
         // / dashboard 同一份 singleton)。JunctionLinker 跟 WorkflowSymlinker / envCreator
         // 都是独立实例(各自 lifetime,不耦合)。
-        // ModelFilesystemScanner:扫描 Settings.ModelsDirectory 找已下载 models,递归读
+        // ModelFilesystemScanner:扫描 Settings.DefaultModelsDirectory 找已下载 models,递归读
         // <ModelsDir>/<kind>/<model-slug>-<id8>/<version-slug>-<vid8>/meta.json。
         // ModelSymlinker:env-start 成功后 fire-and-forget 把每个 version symlink 到
         // <env.ComfyuiSource>/models/<kind>/<slug>__<vid8>,失败 WARN 不抛。

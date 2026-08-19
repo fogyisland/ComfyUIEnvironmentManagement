@@ -152,32 +152,9 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void BrowseModelsDir(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-        {
-            var picked = vm.PickFolder();
-            if (picked is not null) vm.ModelsDirectory = picked;
-        }
-    }
-
-    private void OpenModelsDir(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is not SettingsViewModel vm) return;
-        var raw = vm.ModelsDirectory;
-        if (string.IsNullOrWhiteSpace(raw)) return;
-        // ModelsDirectory 可为相对子目录名(如 "models"),以 AppContext.BaseDirectory 解绝对
-        var path = Path.IsPathRooted(raw) ? raw : Path.Combine(AppContext.BaseDirectory, raw);
-        try
-        {
-            Directory.CreateDirectory(path);
-            Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true });
-        }
-        catch
-        {
-            // 失败静默 — 用户用 "浏览..." 按钮 + 自己打开 explorer 也行
-        }
-    }
+    // v0.6.22+:ModelsDirectory 字段已硬删,模型市场下载目录 = DefaultModelsDirectory。
+// 原 BrowseModelsDir / OpenModelsDir 两个 handler 已删 — 用户改 DefaultModelsDirectory 用现有
+// BrowseDefaultModelsDirectory handler。
 
     private void BrowseDefaultModelsDirectory(object sender, RoutedEventArgs e)
     {

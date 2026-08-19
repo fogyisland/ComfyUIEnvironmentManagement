@@ -562,37 +562,11 @@
                            Visibility="{Binding Dirty[WorkflowSourceOpenArtEnabled], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
 
-            <!-- ============ v0.6.21:模型市场(扩展) ============ -->
+            <!-- ============ v0.6.21 + v0.6.22+:模型市场(扩展) ============ -->
             <TextBlock x:Name="SectionModels" Text="模型市场" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
-            <TextBlock Text="共享 models 目录(留空 = 默认 models/)。下载完成后通过 env-start junction 链接到 env 的对应子目录(checkpoint/lora/vae/...)。"
+            <TextBlock Text="下载到「全局默认 Models 目录」(见「环境/工具」段,可改路径)。下载完成后通过 env-start junction 链接到 env 的对应子目录(checkpoint/lora/vae/...)。"
                        Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
-
-            <!-- ModelsDirectory (保留 v0.6.20 布局) -->
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                <TextBlock Text="共享 models 目录" VerticalAlignment="Center"/>
-                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource WarningBrush}"
-                           ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[ModelsDirectory], Converter={StaticResource BoolToVisibility}}"/>
-            </StackPanel>
-            <DockPanel Margin="0,2,0,0">
-                <Button DockPanel.Dock="Right" Content="浏览..."
-                        Click="BrowseModelsDir"
-                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
-                <TextBox Text="{Binding ModelsDirectory, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}" />
-            </DockPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                <Button Content="打开目录" Click="OpenModelsDir"
-                        Style="{StaticResource MaterialButton}" />
-                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource WarningBrush}"
-                           ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[ModelsDirectory], Converter={StaticResource BoolToVisibility}}"/>
-            </StackPanel>
 
             <!-- CivitAI enabled + mirror sub-block -->
             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
@@ -834,9 +808,9 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                <TextBlock Text="网络代理" VerticalAlignment="Center"/>
-                <TextBlock Text="驱动 Git 拉取 + HTTP catalog 拉取。手动配置, 重启后生效。" Margin="8,0,0,0"
+            <StackPanel Orientation="Horizontal" Margin="0,16,0,4">
+                <TextBlock Text="访问代理" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+                <TextBlock Text="驱动 Git 拉取 + HTTP catalog 拉取。重启后生效(handler 在 OnStartup 一次性构造)。" Margin="8,0,0,0"
                            VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
@@ -848,7 +822,28 @@
                            ToolTip="尚未保存"
                            Visibility="{Binding Dirty[HttpProxyEnabled], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
-            <Grid Margin="0,2,0,0" IsEnabled="{Binding HttpProxyEnabled}">
+            <!-- v0.6.22+:继承系统代理 — 启用代理时勾选此 toggle 改走 OS 默认 proxy(IE settings / WPAD / PAC)。
+                 勾选后 URL/Port 输入框灰显(handler 走 WinHTTP 自动检测,不读这两个字段)。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,2,0,4"
+                        IsEnabled="{Binding HttpProxyEnabled}">
+                <CheckBox Content="继承系统代理" IsChecked="{Binding HttpProxyUseSystemProxy}"
+                          VerticalAlignment="Center"
+                          ToolTip="勾选后使用 Windows 系统级代理设置(IE / WPAD / PAC 自动检测)。URL/Port 字段被忽略。" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[HttpProxyUseSystemProxy], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <!-- URL + Port 字段 — UseSystemProxy=true 时灰显 -->
+            <Grid Margin="0,2,0,0">
+                <Grid.IsEnabled>
+                    <MultiBinding Converter="{StaticResource AndBool}">
+                        <Binding Path="HttpProxyEnabled" />
+                        <Binding Path="HttpProxyUseSystemProxy"
+                                 Converter="{StaticResource InvertBool}" />
+                    </MultiBinding>
+                </Grid.IsEnabled>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="8" />

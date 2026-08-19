@@ -249,8 +249,10 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             // construction — Report() automatically marshals back to UI thread.
             var progress = new Progress<string>(line => ConsoleLog.Add(line));
             var versions = SelectedVersions.ToList();
+            // v0.6.22+:ModelsDirectory 字段已硬删,改用 DefaultModelsDirectory (同时担任 env-create
+            // junction 目标 + 模型市场下载目录)。空字符串时 ModelDownloader 内部 fallback。
             var summary = await _downloader.DownloadBatchAsync(
-                versions, _settings.ModelsDirectory, progress);
+                versions, _settings.DefaultModelsDirectory, progress);
             ConsoleLog.Add(
                 $"[完成] 成功 {summary.Succeeded}, 失败 {summary.Failed}, 耗时 {summary.TotalDuration.TotalSeconds:F1}s");
         }
