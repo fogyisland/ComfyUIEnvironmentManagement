@@ -637,7 +637,7 @@ public class EnvironmentListViewModel : ViewModelBase
                 {
                     try
                     {
-                        await modelSymlinker.SyncToEnvAsync(envId, comfyuiSource).ConfigureAwait(false);
+                        await modelSymlinker.SyncToEnvAsync(comfyuiSource).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {

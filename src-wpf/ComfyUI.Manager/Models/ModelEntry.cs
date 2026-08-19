@@ -163,7 +163,9 @@ public static class ModelKindExtensions
         char last = '\0';
         foreach (var c in slug)
         {
-            var ch = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ? c : (c == '-' || c == ' ' || c == '_') ? '-' : '-';
+            // v0.6.20 T10 polish:collapse dead-condition ternary. alnum→c, all other→'-'
+            // (covers '-', ' ', '_' uniformly). Behavior unchanged.
+            var ch = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ? c : '-';
             if (ch == '-' && last == '-') continue;
             sb.Append(ch);
             last = ch;

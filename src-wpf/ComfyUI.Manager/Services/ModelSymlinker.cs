@@ -35,11 +35,11 @@ public class ModelSymlinker
         _logger = logger;
     }
 
-    public async Task<ModelSyncResult> SyncToEnvAsync(string envId, string envComfyuiSource, CancellationToken ct = default)
+    public virtual async Task<ModelSyncResult> SyncToEnvAsync(string envComfyuiSource, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(envComfyuiSource))
         {
-            _logger?.Warn("model-symlink", $"env '{envId}' has empty ComfyuiSource; skip");
+            _logger?.Warn("model-symlink", "env has empty ComfyuiSource; skip");
             return new ModelSyncResult();
         }
 
@@ -60,7 +60,7 @@ public class ModelSymlinker
         try { Directory.CreateDirectory(envModelsDir); }
         catch (Exception ex)
         {
-            _logger?.Warn("model-symlink", $"env '{envId}' failed to create env models dir '{envModelsDir}': {ex.Message}");
+            _logger?.Warn("model-symlink", $"failed to create env models dir '{envModelsDir}': {ex.Message}");
             return new ModelSyncResult();
         }
 
@@ -114,7 +114,7 @@ public class ModelSymlinker
             }
         }
 
-        _logger?.Info("model-symlink", $"env '{envId}' linked={linked} skipped={skipped} failed={failed}");
+        _logger?.Info("model-symlink", $"linked={linked} skipped={skipped} failed={failed}");
         return new ModelSyncResult { Linked = linked, Skipped = skipped, Failed = failed, Errors = errors };
     }
 }

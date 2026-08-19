@@ -62,7 +62,7 @@ public class ModelSymlinkerTests : IDisposable
 
         var scanner = new ModelFilesystemScanner();
         var symlinker = new ModelSymlinker(_settings, scanner, new JunctionLinker());
-        var result = await symlinker.SyncToEnvAsync("env1", _envRoot, default);
+        var result = await symlinker.SyncToEnvAsync(_envRoot, default);
 
         Assert.Equal(1, result.Linked);
         Assert.Equal(0, result.Failed);
@@ -77,7 +77,7 @@ public class ModelSymlinkerTests : IDisposable
 
         var scanner = new ModelFilesystemScanner();
         var symlinker = new ModelSymlinker(_settings, scanner, new JunctionLinker());
-        var result = await symlinker.SyncToEnvAsync("env1", "", default);
+        var result = await symlinker.SyncToEnvAsync("", default);
 
         Assert.Equal(0, result.Linked);
     }
@@ -91,8 +91,8 @@ public class ModelSymlinkerTests : IDisposable
         var scanner = new ModelFilesystemScanner();
         var symlinker = new ModelSymlinker(_settings, scanner, new JunctionLinker());
 
-        await symlinker.SyncToEnvAsync("env1", _envRoot, default);  // 1st sync
-        var result2 = await symlinker.SyncToEnvAsync("env1", _envRoot, default);  // 2nd sync
+        await symlinker.SyncToEnvAsync(_envRoot, default);  // 1st sync
+        var result2 = await symlinker.SyncToEnvAsync(_envRoot, default);  // 2nd sync
 
         Assert.Equal(1, result2.Skipped);
         Assert.Equal(0, result2.Linked);
@@ -115,7 +115,7 @@ public class ModelSymlinkerTests : IDisposable
 
         var scanner = new ModelFilesystemScanner();
         var symlinker = new ModelSymlinker(_settings, scanner, new JunctionLinker());
-        var result = await symlinker.SyncToEnvAsync("env1", _envRoot, default);
+        var result = await symlinker.SyncToEnvAsync(_envRoot, default);
 
         Assert.Equal(1, result.Linked);
         Assert.Equal(0, result.Failed);
@@ -135,7 +135,7 @@ public class ModelSymlinkerTests : IDisposable
 
         var scanner = new ModelFilesystemScanner();
         var symlinker = new ModelSymlinker(_settings, scanner, new JunctionLinker());
-        var result = await symlinker.SyncToEnvAsync("env1", _envRoot, default);
+        var result = await symlinker.SyncToEnvAsync(_envRoot, default);
 
         Assert.Equal(0, result.Linked);
         Assert.Equal(1, result.Failed);

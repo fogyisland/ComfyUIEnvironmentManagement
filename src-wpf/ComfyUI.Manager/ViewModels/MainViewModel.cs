@@ -593,13 +593,12 @@ public class MainViewModel : ViewModelBase
             var http = _http
                 ?? throw new InvalidOperationException(
                     "HttpClient not wired — App.xaml.cs 未在 MainViewModel ctor 传 HttpClient");
-            // 注入 2 个 source(CivitAI full + HF stub)+ 共享 logger;T4 aggregator 内部
-            // IsEnabled 过滤 — HF 默认 IsEnabled=false (v0.6.20 placeholder) 被自动 skip。
+            // 注入 1 个 source(CivitAI full)+ 共享 logger;T4 aggregator 内部
+            // IsEnabled 过滤。HF stub 留作 v0.6.21+ placeholder(HuggingFaceModelSource.cs 保留)。
             var marketplace = new ModelMarketplaceService(
                 new IModelSource[]
                 {
                     new CivitAiModelSource(http, logger: _logger),
-                    new HuggingFaceModelSource(),
                 },
                 logger: _logger);
             var downloader = new ModelDownloader(http, logger: _logger);

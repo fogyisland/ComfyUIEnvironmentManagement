@@ -69,11 +69,22 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate DataType="{x:Type models:ModelEntry}">
-            <Border Width="220" Height="340" Margin="6" Padding="10" CornerRadius="8"
+            <Border Width="220" Height="420" Margin="6" Padding="10" CornerRadius="8"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}"
                     BorderThickness="1">
               <StackPanel>
+                <!-- v0.6.20 T10 polish:preview image at top of card.
+                     CivitAI provides image URL via ModelEntry.PreviewImageUrl;
+                     empty URL = Image fails silently, Border background shows. -->
+                <Border Height="140" Margin="0,0,0,8" CornerRadius="6"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource OutlineBrush}"
+                        BorderThickness="1">
+                  <Grid>
+                    <Image Source="{Binding PreviewImageUrl}" Stretch="UniformToFill" />
+                  </Grid>
+                </Border>
                 <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14"
                            TextWrapping="Wrap" MaxHeight="40"
                            TextTrimming="CharacterEllipsis"

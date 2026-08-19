@@ -563,7 +563,7 @@
 
             <!-- ============ v0.6.20:模型市场 ============ -->
             <TextBlock x:Name="SectionModels" Text="模型市场" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
-            <TextBlock Text="共享 models 目录(留空 = 默认 models/),以及 CivitAI 来源的开关。"
+            <TextBlock Text="共享 models 目录(留空 = 默认 models/)。下载完成后通过 env-start junction 链接到 env 的对应子目录(checkpoint/lora/vae/...)。"
                        Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
@@ -594,17 +594,6 @@
             <TextBlock Text="模型市场页面使用的共享 models 目录;留空 = 默认 models/。下载完成后通过 env-start junction 链接到 env 的对应子目录(checkpoint/lora/vae/...)。"
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
-
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <CheckBox Content="启用 CivitAi 来源"
-                          IsChecked="{Binding ModelSourceCivitAiEnabled}"
-                          VerticalAlignment="Center"/>
-                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource WarningBrush}"
-                           ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[ModelSourceCivitAiEnabled], Converter={StaticResource BoolToVisibility}}"/>
-            </StackPanel>
 
             <!-- ============ Python 解释器(v0.6.5.6) ============ -->
             <TextBlock x:Name="SectionPythonInterpreters" Text="Python 解释器" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
