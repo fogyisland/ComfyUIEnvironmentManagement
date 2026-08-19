@@ -17,6 +17,8 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
 {
     private readonly string _tempDir;
     private readonly Settings _settings;
+    private readonly StubHttpHandler _httpHandler;
+    private readonly HttpClient _http;
     private readonly StubMarketplaceService _marketplace;
     private readonly WorkflowDownloader _downloader;
     private readonly WorkflowMarketplaceViewModel _vm;
@@ -26,8 +28,10 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
         _tempDir = Path.Combine(Path.GetTempPath(), "ComfyUIMgrWFVm_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
         _settings = new Settings { WorkflowsDirectory = _tempDir };
-        _marketplace = new StubMarketplaceService();
-        _downloader = new WorkflowDownloader(new HttpClient(new OkHandler()), logger: null);
+        _httpHandler = new StubHttpHandler();
+        _http = new HttpClient(_httpHandler);
+        _marketplace = new StubMarketplaceService(httpClient: _http);
+        _downloader = new WorkflowDownloader(_http, logger: null);
         _vm = new WorkflowMarketplaceViewModel(_settings, _marketplace, _downloader,
             new WorkflowFilesystemScanner(logger: null), logger: null);
     }
@@ -203,11 +207,85 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
         Assert.False(_vm.HasSearchText);
     }
 
+    // v0.6.22 T3: hover → fetch workflow JSON → cache on entry.JsonPreview,
+    // populate JsonOverlayText with pretty-printed JSON. Second hover = cache hit.
+    [Fact]
+    public async Task LoadJsonPreviewAsync_HoverEntry_FetchesAndCachesJson()
+    {
+        var entry = new WorkflowEntry
+        {
+            Source = WorkflowSourceKind.CivitAi,
+            SourceId = "test-1",
+            Title = "Test",
+            WorkflowJsonUrl = "https://example.com/wf.json",
+        };
+        _httpHandler.RegisterResponse("https://example.com/wf.json", "{\"nodes\":[{\"id\":1}],\"links\":[]}");
+
+        await _vm.LoadJsonPreviewAsync(entry);
+
+        Assert.Equal(entry, _vm.HoveredEntry);
+        Assert.NotNull(_vm.JsonOverlayText);   // pretty-printed
+        Assert.NotNull(entry.JsonPreview);   // cached for subsequent hovers
+        // second hover → cache hit, no additional HTTP call
+        await _vm.LoadJsonPreviewAsync(entry);
+        Assert.Equal(1, _httpHandler.RequestCount);
+        // IsJsonOverlayVisible is true after success
+        Assert.True(_vm.IsJsonOverlayVisible);
+    }
+
+    // v0.6.22 T3: mouse leave → Hide overlay, cache preserved for next hover.
+    [Fact]
+    public async Task ClearJsonOverlay_ClearsHoverState_AndJsonOverlayText()
+    {
+        var entry = new WorkflowEntry
+        {
+            Source = WorkflowSourceKind.CivitAi,
+            SourceId = "test-1",
+            Title = "Test",
+            WorkflowJsonUrl = "https://example.com/wf.json",
+        };
+        _httpHandler.RegisterResponse("https://example.com/wf.json", "{\"nodes\":[]}");
+
+        await _vm.LoadJsonPreviewAsync(entry);
+        Assert.Equal(entry, _vm.HoveredEntry);
+
+        _vm.ClearJsonOverlay();
+
+        Assert.Null(_vm.HoveredEntry);
+        Assert.Null(_vm.JsonOverlayText);
+        Assert.False(_vm.IsJsonOverlayVisible);
+        // cache preserved on entry
+        Assert.NotNull(entry.JsonPreview);
+    }
+
+    // v0.6.22 T3: fetch failure → IsJsonOverlayError=true, HoveredEntry still set,
+    // JsonOverlayText stays null. Failed entry doesn't cache.
+    [Fact]
+    public async Task LoadJsonPreviewAsync_OnFetchFailure_SetsErrorState()
+    {
+        var entry = new WorkflowEntry
+        {
+            Source = WorkflowSourceKind.CivitAi,
+            SourceId = "broken",
+            Title = "Broken",
+            WorkflowJsonUrl = "https://example.com/404.json",
+        };
+        _httpHandler.RegisterStatus("https://example.com/404.json", HttpStatusCode.NotFound);
+
+        await _vm.LoadJsonPreviewAsync(entry);
+
+        Assert.Equal(entry, _vm.HoveredEntry);
+        Assert.True(_vm.IsJsonOverlayError);
+        Assert.Null(_vm.JsonOverlayText);
+        Assert.False(_vm.IsJsonOverlayLoading);
+        Assert.Null(entry.JsonPreview);   // failed entry doesn't cache — next hover retries
+    }
+
     private sealed class SlowMarketplaceService : WorkflowMarketplaceService
     {
         private readonly TaskCompletionSource<IReadOnlyList<WorkflowEntry>?> _tcs =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public SlowMarketplaceService() : base(Array.Empty<IWorkflowSource>()) { }
+        public SlowMarketplaceService(HttpClient? http = null) : base(Array.Empty<IWorkflowSource>(), logger: null, httpClient: http) { }
         public void Complete() => _tcs.SetResult(Array.Empty<WorkflowEntry>());
         public override Task<IReadOnlyList<WorkflowEntry>> LoadAllAsync(
             string query, int maxResultsPerSource, CancellationToken ct = default)
@@ -219,7 +297,8 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
         public IReadOnlyList<WorkflowEntry>? Next { get; set; }
         public Exception? ThrowOnNext { get; set; }
 
-        public StubMarketplaceService() : base(Array.Empty<IWorkflowSource>()) { }
+        public StubMarketplaceService(HttpClient? httpClient = null)
+            : base(Array.Empty<IWorkflowSource>(), logger: null, httpClient: httpClient) { }
 
         public override Task<IReadOnlyList<WorkflowEntry>> LoadAllAsync(
             string query, int maxResultsPerSource, CancellationToken ct = default)
@@ -229,13 +308,31 @@ public class WorkflowMarketplaceViewModelTests : IDisposable
         }
     }
 
-    private sealed class OkHandler : HttpMessageHandler
+    // v0.6.22 T3: DelegatingHandler that records requests + serves configured responses.
+    private sealed class StubHttpHandler : HttpMessageHandler
     {
+        private readonly Dictionary<string, HttpResponseMessage> _byUrl = new();
+        private readonly Dictionary<string, string> _bodies = new();
+        public int RequestCount { get; private set; }
+
+        public void RegisterResponse(string url, string body)
+            => _bodies[url] = body;
+        public void RegisterStatus(string url, HttpStatusCode status)
+            => _byUrl[url] = new HttpResponseMessage(status);
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage req, CancellationToken ct)
-            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("{}"),
-            });
+        {
+            RequestCount++;
+            var url = req.RequestUri?.ToString() ?? "";
+            if (_byUrl.TryGetValue(url, out var resp)) return Task.FromResult(resp);
+            if (_bodies.TryGetValue(url, out var body))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+                });
+            // default: 404
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        }
     }
 }

@@ -20,6 +20,11 @@ public class WorkflowEntry
     [JsonPropertyName("tags")] public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
     /// <summary>节点 ID 列表 — "需装节点" 过滤器用。</summary>
     [JsonPropertyName("required_nodes")] public IReadOnlyList<string> RequiredNodes { get; init; } = Array.Empty<string>();
+
+    /// <summary>v0.6.22: in-memory cache of workflow JSON (populated on first hover,
+    /// not serialized — JsonIgnore prevents round-trip into meta.json sidecars).</summary>
+    [JsonIgnore]
+    public string? JsonPreview { get; set; }
 }
 
 public enum WorkflowSourceKind

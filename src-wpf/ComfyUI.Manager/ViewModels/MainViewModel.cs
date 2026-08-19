@@ -562,7 +562,8 @@ public class MainViewModel : ViewModelBase
                     new CivitAiSource(http, logger: _logger),
                     new OpenArtSource(http, logger: _logger),
                 },
-                logger: _logger);
+                logger: _logger,
+                httpClient: http);   // v0.6.22 T3: share http with sources for JSON preview fetch
             var downloader = new WorkflowDownloader(http, logger: _logger);
             var scanner = new WorkflowFilesystemScanner(logger: _logger);
             _workflowMarketplaceViewModel = new WorkflowMarketplaceViewModel(

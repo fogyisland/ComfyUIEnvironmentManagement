@@ -65,4 +65,24 @@ public partial class WorkflowMarketplaceView : UserControl
     {
         _vm?.ClearInfoMessage();
     }
+
+    /// <summary>v0.6.22 T3: mouse entered preview Border — lazy-fetch + cache workflow JSON.</summary>
+    private void OnPreviewMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Border b
+            && b.Tag is Models.WorkflowEntry entry
+            && DataContext is ViewModels.WorkflowMarketplaceViewModel vm)
+        {
+            _ = vm.LoadJsonPreviewAsync(entry);   // fire-and-forget; per-entry cache prevents dupes
+        }
+    }
+
+    /// <summary>v0.6.22 T3: mouse left preview Border — clear hover state (cache preserved).</summary>
+    private void OnPreviewMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (DataContext is ViewModels.WorkflowMarketplaceViewModel vm)
+        {
+            vm.ClearJsonOverlay();
+        }
+    }
 }

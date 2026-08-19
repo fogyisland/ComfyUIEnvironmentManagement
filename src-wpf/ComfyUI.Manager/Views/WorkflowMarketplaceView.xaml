@@ -196,9 +196,39 @@
                     <RowDefinition Height="Auto"/>
                   </Grid.RowDefinitions>
                   <!-- Preview: Uniform + SurfaceVariantBrush letterbox fill (A) -->
+                  <!-- v0.6.22 T3: hover handlers trigger LoadJsonPreviewAsync; overlay shows JSON -->
                   <Border Grid.Row="0" Margin="8" CornerRadius="4" ClipToBounds="True"
-                          Background="{DynamicResource SurfaceVariantBrush}">
-                    <Image Source="{Binding PreviewImageUrl}" Stretch="Uniform" />
+                          Background="{DynamicResource SurfaceVariantBrush}"
+                          MouseEnter="OnPreviewMouseEnter"
+                          MouseLeave="OnPreviewMouseLeave"
+                          Tag="{Binding}">
+                    <Grid>
+                      <Image Source="{Binding PreviewImageUrl}" Stretch="Uniform" />
+                      <!-- JSON overlay (visible when HoveredEntry == this entry) -->
+                      <Border Background="#CC000000" Padding="8"
+                              Visibility="{Binding DataContext.IsJsonOverlayVisible, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                        <Grid>
+                          <!-- Loading state -->
+                          <StackPanel Visibility="{Binding DataContext.IsJsonOverlayLoading, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                            <ProgressBar IsIndeterminate="True" Height="4" Width="60" />
+                            <TextBlock Text="加载 JSON..." FontSize="11" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource OnSurfaceBrush}" />
+                          </StackPanel>
+                          <!-- Loaded state -->
+                          <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto"
+                                        Visibility="{Binding DataContext.IsJsonOverlayLoading, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVisibility}, FallbackValue=Collapsed}">
+                            <TextBlock Text="{Binding DataContext.JsonOverlayText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                       FontFamily="Consolas" FontSize="10"
+                                       TextWrapping="NoWrap"
+                                       Foreground="{DynamicResource OnSurfaceBrush}" />
+                          </ScrollViewer>
+                          <!-- Error state -->
+                          <TextBlock Text="无法加载 JSON" FontSize="11"
+                                     Foreground="{DynamicResource ErrorBrush}"
+                                     Visibility="{Binding DataContext.IsJsonOverlayError, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                        </Grid>
+                      </Border>
+                    </Grid>
                   </Border>
                   <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
                              Margin="8,4" MaxHeight="60" TextWrapping="Wrap"

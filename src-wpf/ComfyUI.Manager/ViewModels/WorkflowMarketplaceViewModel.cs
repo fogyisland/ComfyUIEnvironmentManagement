@@ -133,6 +133,124 @@ public class WorkflowMarketplaceViewModel : ViewModelBase
 
     public bool IsConsoleVisible => !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0);
 
+    // —— v0.6.22 T3: card hover JSON overlay ——
+    private WorkflowEntry? _hoveredEntry;
+    private string? _jsonOverlayText;
+    private bool _isJsonOverlayLoading;
+    private bool _isJsonOverlayError;
+
+    public WorkflowEntry? HoveredEntry
+    {
+        get => _hoveredEntry;
+        private set
+        {
+            if (_hoveredEntry == value) return;
+            _hoveredEntry = value;
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsJsonOverlayVisible));
+        }
+    }
+
+    public string? JsonOverlayText
+    {
+        get => _jsonOverlayText;
+        private set { _jsonOverlayText = value; RaisePropertyChanged(); }
+    }
+
+    public bool IsJsonOverlayLoading
+    {
+        get => _isJsonOverlayLoading;
+        private set
+        {
+            if (_isJsonOverlayLoading == value) return;
+            _isJsonOverlayLoading = value;
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsJsonOverlayVisible));
+        }
+    }
+
+    public bool IsJsonOverlayError
+    {
+        get => _isJsonOverlayError;
+        private set { _isJsonOverlayError = value; RaisePropertyChanged(); }
+    }
+
+    public bool IsJsonOverlayVisible => _hoveredEntry != null && (_isJsonOverlayLoading || _jsonOverlayText != null || _isJsonOverlayError);
+
+    /// <summary>v0.6.22 T3: lazy-fetch workflow JSON for hovered entry. Caches result
+    /// on entry.JsonPreview (in-memory only — not serialized). Sets JsonOverlayText
+    /// to pretty-printed first 500 chars for display. Idempotent: no-op if already cached.</summary>
+    public async Task LoadJsonPreviewAsync(WorkflowEntry? entry, CancellationToken ct = default)
+    {
+        if (entry is null) return;
+        HoveredEntry = entry;
+
+        var http = _marketplace.HttpClient;
+        if (http is null)
+        {
+            IsJsonOverlayError = true;
+            _logger?.Warn("workflow-json-preview", "HttpClient not wired; cannot fetch");
+            return;
+        }
+
+        // cache hit: show immediately, no fetch
+        if (entry.JsonPreview != null)
+        {
+            JsonOverlayText = entry.JsonPreview;
+            return;
+        }
+
+        IsJsonOverlayLoading = true;
+        IsJsonOverlayError = false;
+        JsonOverlayText = null;
+        try
+        {
+            using var resp = await http.GetAsync(entry.WorkflowJsonUrl, ct).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+            var json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+            // pretty-print + truncate
+            string pretty;
+            try
+            {
+                var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+                pretty = System.Text.Json.JsonSerializer.Serialize(
+                    element,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                pretty = json;   // not valid JSON — show raw
+            }
+            var preview = pretty.Length > 500
+                ? pretty[..500] + $"\n\n... (剩余 {pretty.Length - 500} 字符)"
+                : pretty;
+
+            entry.JsonPreview = preview;   // [JsonIgnore] in-memory cache, no round-trip
+            JsonOverlayText = preview;
+            _logger?.Info("workflow-json-preview", $"fetched {entry.Source}/{entry.SourceId} ({pretty.Length} chars)");
+        }
+        catch (Exception ex)
+        {
+            IsJsonOverlayError = true;
+            _logger?.Warn("workflow-json-preview", $"fetch failed for {entry.Source}/{entry.SourceId}: {ex.Message}");
+        }
+        finally
+        {
+            IsJsonOverlayLoading = false;
+        }
+    }
+
+    /// <summary>v0.6.22 T3: clear hover state (mouse left the preview area). Cache preserved.</summary>
+    public void ClearJsonOverlay()
+    {
+        HoveredEntry = null;
+        JsonOverlayText = null;
+        IsJsonOverlayError = false;
+        // IsJsonOverlayLoading stays — if fetch is in-flight, let it complete;
+        // but overlay is hidden because HoveredEntry is null.
+    }
+
     // v0.6.19.x UI polish:loading overlay / button-disable 用 NotIsBusy 比 DataTrigger 简洁。
     public bool NotIsBusy => !IsBusy;
 

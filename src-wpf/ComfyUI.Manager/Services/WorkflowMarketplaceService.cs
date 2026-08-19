@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
@@ -13,12 +14,20 @@ public class WorkflowMarketplaceService
 {
     private readonly IReadOnlyList<IWorkflowSource> _sources;
     private readonly AppLogger? _logger;
+    private readonly HttpClient? _http;   // v0.6.22 T3: shared with sources, exposed for JSON preview fetch
 
-    public WorkflowMarketplaceService(IEnumerable<IWorkflowSource> sources, AppLogger? logger = null)
+    public WorkflowMarketplaceService(
+        IEnumerable<IWorkflowSource> sources,
+        AppLogger? logger = null,
+        HttpClient? httpClient = null)   // v0.6.22 T3: optional HttpClient for card-hover JSON fetch
     {
         _sources = sources?.ToList() ?? throw new ArgumentNullException(nameof(sources));
         _logger = logger;
+        _http = httpClient;
     }
+
+    /// <summary>v0.6.22 T3: exposed for card-hover JSON fetch. Null when service constructed without HTTP.</summary>
+    public HttpClient? HttpClient => _http;
 
     /// <summary>并行调每个 IsEnabled 的 source。返回 deduped 列表;
     /// 任一 source 失败仅 log,不影响其他 source 的结果。</summary>
