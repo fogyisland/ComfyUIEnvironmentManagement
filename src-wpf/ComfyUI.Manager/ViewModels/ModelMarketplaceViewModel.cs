@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using System.Windows.Data;
 using System.Windows.Input;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -32,10 +31,8 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     private string _query = "";
     private ModelKind? _activeKindFilter;
     private bool _isBusy;
-    // v0.6.21: source filter — view-time toggle to hide CivitAI / HF entries
-    // without re-querying the source. Backs the 2 toolbar CheckBoxes.
-    private bool _showOnlyCivitai = true;
-    private bool _showOnlyHuggingFace = true;
+    // v0.6.22 T6:source 单选 radio — 默认 CivitAI,切换自动重跑当前 query。
+    private ModelSourceKind _activeSource = ModelSourceKind.CivitAi;
 
     /// <summary>底层 fetch 后被 filter strip 处理的"全集"。</summary>
     public ObservableCollection<ModelEntry> Models { get; } = new();
@@ -52,6 +49,8 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
 
     // —— Commands ——
     public ICommand RefreshCommand { get; }
+    // v0.6.22 T6:SearchCommand — 输入框 Enter 键 + 工具栏 "搜索" 按钮绑的同一命令。
+    public ICommand SearchCommand { get; }
     public ICommand DownloadSelectedCommand { get; }
     public ICommand ClearConsoleLogCommand { get; }
     public ICommand HideConsoleCommand { get; }
@@ -71,6 +70,8 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         _logger = logger;
 
         RefreshCommand = new RelayCommand(async _ => await RefreshAsync(), _ => !IsBusy);
+        // v0.6.22 T6:SearchCommand — 复用 RefreshAsync 实现,语义 = "用当前输入 + 当前 source 重查"。
+        SearchCommand = new RelayCommand(async _ => await RefreshAsync(), _ => !IsBusy);
         DownloadSelectedCommand = new RelayCommand(
             async _ => await DownloadSelectedAsync(),
             _ => SelectedVersions.Count > 0 && !IsBusy);
@@ -91,10 +92,6 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
 
         // 3-state console visibility:任何 ConsoleLog 变化触发 IsConsoleVisible 重算
         ConsoleLog.CollectionChanged += OnConsoleLogChanged;
-
-        // v0.6.21 T4:Models 集合变化时(RefreshAsync Clear+Add)重装 view-time source filter,
-        // 保证新拉到的条目立即受 ShowOnlyCivitai / ShowOnlyHuggingFace 影响。
-        ((INotifyCollectionChanged)Models).CollectionChanged += (_, _) => ApplySourceFilter();
     }
 
     // —— Bindable properties ——
@@ -106,7 +103,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             if (_query == value) return;
             _query = value;
             OnPropertyChanged();
-            ApplyFilter();
+            // v0.6.22 T6:UI 改为 Enter 键 / 搜索按钮显式触发 — 不再 auto-filter on type。
         }
     }
 
@@ -123,32 +120,19 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// v0.6.21 T4:toolbar CheckBox "CivitAI" — false 时从 Models view 隐藏 CivitAI 来源条目,
-    /// 不重 query source。PropertyChanged → ApplySourceFilter() 重算 ICollectionView.Filter。
+    /// v0.6.22 T6:toolbar source 单选 radio — 默认 CivitAI,切换 radio 自动用当前 query
+    /// 重跑拉取(走 service-layer sourceFilter,避免 view-time 过滤造成的"看不到被禁 source")。
+    /// PropertyChanged → fire-and-forget RefreshAsync;IsBusy 守卫防止并发。
     /// </summary>
-    public bool ShowOnlyCivitai
+    public ModelSourceKind ActiveSource
     {
-        get => _showOnlyCivitai;
+        get => _activeSource;
         set
         {
-            if (_showOnlyCivitai == value) return;
-            _showOnlyCivitai = value;
-            ApplySourceFilter();
-        }
-    }
-
-    /// <summary>
-    /// v0.6.21 T4:toolbar CheckBox "HuggingFace" — false 时从 Models view 隐藏 HF 来源条目,
-    /// 不重 query source。PropertyChanged → ApplySourceFilter() 重算 ICollectionView.Filter。
-    /// </summary>
-    public bool ShowOnlyHuggingFace
-    {
-        get => _showOnlyHuggingFace;
-        set
-        {
-            if (_showOnlyHuggingFace == value) return;
-            _showOnlyHuggingFace = value;
-            ApplySourceFilter();
+            if (_activeSource == value) return;
+            _activeSource = value;
+            OnPropertyChanged();
+            _ = RefreshAsync();
         }
     }
 
@@ -162,6 +146,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsConsoleVisible));
             (RefreshCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (SearchCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DownloadSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
     }
@@ -182,7 +167,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         {
             // VM-side await MUST NOT use .ConfigureAwait(false) — continuation runs on UI sync ctx,
             // touching Models.Clear() / Add() requires WPF-friendly context.
-            var results = await _marketplace.LoadAllAsync(_query, maxResultsPerSource: 50);
+            var results = await _marketplace.LoadAllAsync(_query, maxResultsPerSource: 50, sourceFilter: _activeSource);
             _allModels.Clear();
             _allModels.AddRange(results);
             ApplyFilter();
@@ -239,23 +224,6 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         }
         Models.Clear();
         foreach (var m in filtered) Models.Add(m);
-    }
-
-    /// <summary>
-    /// v0.6.21 T4:view-time source filter — 装在 Models 集合的 ICollectionView.Filter 上,
-    /// 按 entry.Source 分流(CivitAI / HuggingFace)。closure 捕获私有字段 — filter
-    /// 在 setter 调用 ApplySourceFilter() 时被替换,默认 view 实例 GetDefaultView 幂等。
-    /// 未来新 source → default case 永远 visible。
-    /// </summary>
-    private void ApplySourceFilter()
-    {
-        var view = CollectionViewSource.GetDefaultView(Models);
-        view.Filter = m => ((ModelEntry)m).Source switch
-        {
-            ModelSourceKind.CivitAi => _showOnlyCivitai,
-            ModelSourceKind.HuggingFace => _showOnlyHuggingFace,
-            _ => true,
-        };
     }
 
     private void OnConsoleLogChanged(object? sender, NotifyCollectionChangedEventArgs e)

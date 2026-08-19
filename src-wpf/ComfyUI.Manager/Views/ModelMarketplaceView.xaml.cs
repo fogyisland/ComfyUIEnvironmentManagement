@@ -8,14 +8,27 @@ namespace ComfyUI.Manager.Views;
 
 /// <summary>
 /// v0.6.20 T8:模型市场 view code-behind。
-/// 只负责 ToggleButton 过滤器 click — VM 端绑定 IsChecked TwoWay 难以干净拿到
-/// "哪个 kind 被点" 的 metadata,所以用 Tag + Click handler 一行直接 set VM.ActiveKindFilter。
+/// v0.6.22 T6 加 RadioButton 源切换 click — ToggleButton kind chip + RadioButton 源 chip
+/// 两种 chip 都用 Tag + Click handler 一行直接 set VM 属性,避开 IsChecked TwoWay
+/// 转换 enum 难干净实现的痛点。
 /// </summary>
 public partial class ModelMarketplaceView : UserControl
 {
     public ModelMarketplaceView()
     {
         InitializeComponent();
+    }
+
+    private void OnSourceRadioClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton rb) return;
+        if (rb.Tag is not ModelSourceKind kind) return;
+        if (DataContext is not ModelMarketplaceViewModel vm) return;
+        // 切换 radio 自动重跑当前 query(setter 触发 RefreshAsync);已选中的再点 no-op
+        if (vm.ActiveSource != kind)
+        {
+            vm.ActiveSource = kind;
+        }
     }
 
     private void OnKindChipClicked(object sender, RoutedEventArgs e)

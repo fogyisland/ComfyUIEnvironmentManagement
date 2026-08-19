@@ -31,28 +31,50 @@
       <RowDefinition Height="Auto"/>  <!-- console -->
     </Grid.RowDefinitions>
 
-    <!-- Toolbar:刷新 + 下载选中 + 选中数 + Query TextBox -->
+    <!-- Toolbar (v0.6.22 T6):刷新 + 下载选中 + 选中数 + Search input + 搜索 button
+         Enter 键绑 SearchCommand 显式触发,文本框不再 auto-filter on type。
+         search input 放右:刷新/下载在左操作区,搜索区右聚。-->
     <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="True">
-      <Button DockPanel.Dock="Left" Content="刷新"
-              Command="{Binding RefreshCommand}"
-              Margin="0,0,8,0" />
-      <Button DockPanel.Dock="Left" Content="下载选中"
-              Command="{Binding DownloadSelectedCommand}"
-              Margin="0,0,8,0" />
-      <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,12,0">
+      <Button DockPanel.Dock="Right" Content="搜索"
+              Command="{Binding SearchCommand}"
+              Margin="8,0,0,0" Padding="14,4" />
+      <TextBox DockPanel.Dock="Right" Width="360" Margin="8,0,0,0"
+               Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
+               VerticalContentAlignment="Center"
+               Background="{DynamicResource SurfaceBrush}"
+               BorderBrush="{DynamicResource OutlineBrush}"
+               BorderThickness="1"
+               ToolTip="输入模型名称,按 Enter 或点右侧 搜索 按钮">
+        <TextBox.InputBindings>
+          <KeyBinding Key="Return" Command="{Binding SearchCommand}" />
+        </TextBox.InputBindings>
+      </TextBox>
+      <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,8,0">
         <Run Text="选中: " />
         <Run Text="{Binding SelectedVersions.Count, Mode=OneWay}" FontWeight="Bold" />
       </TextBlock>
-      <TextBox Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
-               VerticalContentAlignment="Center" />
+      <Button DockPanel.Dock="Right" Content="下载选中"
+              Command="{Binding DownloadSelectedCommand}"
+              Margin="8,0,8,0" />
+      <Button DockPanel.Dock="Right" Content="刷新"
+              Command="{Binding RefreshCommand}"
+              Margin="8,0,0,0" />
     </DockPanel>
 
-    <!-- Filter strip:8 个 kind ToggleButton chips(单选 toggle,再点取消) + v0.6.21 source CheckBoxes -->
+    <!-- Filter strip (v0.6.22 T6):kind chips + source 单选 radio (替换 v0.6.21 view-time 2 CheckBox) -->
     <DockPanel Grid.Row="1" Margin="0,0,0,8" LastChildFill="True">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock Text="源" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" />
-        <CheckBox Content="CivitAI"    IsChecked="{Binding ShowOnlyCivitai, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,0,0" VerticalAlignment="Center" />
-        <CheckBox Content="HuggingFace" IsChecked="{Binding ShowOnlyHuggingFace, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0" VerticalAlignment="Center" />
+        <RadioButton Content="CivitAI" GroupName="ActiveSource"
+                     Tag="{x:Static models:ModelSourceKind.CivitAi}"
+                     IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=CivitAi}"
+                     Click="OnSourceRadioClicked"
+                     Margin="4,0,0,0" VerticalAlignment="Center" />
+        <RadioButton Content="HuggingFace" GroupName="ActiveSource"
+                     Tag="{x:Static models:ModelSourceKind.HuggingFace}"
+                     IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=HuggingFace}"
+                     Click="OnSourceRadioClicked"
+                     Margin="8,0,0,0" VerticalAlignment="Center" />
       </StackPanel>
       <ItemsControl x:Name="KindFilterHost" ItemsSource="{Binding KindFilters}">
         <ItemsControl.ItemsPanel>

@@ -1,84 +1,108 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Data;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
 
 namespace ComfyUI.Manager.Tests.ViewModels;
 
 /// <summary>
-/// v0.6.21 T4:Source filter chips — ShowOnlyCivitai / ShowOnlyHuggingFace 两个 bool 闸
-/// Models view 的可见性。仅切 view-time ICollectionView.Filter,不重 query source,
-/// 也不改 Models 集合本身。
+/// v0.6.22 T6:ActiveSource 单选 radio — 切换 radio 自动重跑当前 query
+/// (走 service.LoadAllAsync sourceFilter 参),不再走 v0.6.21 view-time ICollectionView.Filter。
 ///
-/// 验证 ApplySourceFilter() 是否对 Sources 正确分流(经由 GetDefaultView().Cast&lt;ModelEntry&gt;()
-/// 取经过 filter 的可见条目):
-/// 1) 关 CivitAI → view 中 CivitAI 条目不可见
-/// 2) 关 HuggingFace → view 中 HuggingFace 条目不可见
-/// 3) 全关 → view 渲染空(view 实际显示 empty state hint)
+/// 验证:
+/// 1) 默认 ActiveSource = CivitAi(用户确认)
+/// 2) RefreshAsync 把当前 ActiveSource 透传给 service
+/// 3) 设置 ActiveSource 不直接调 service(setter 只 fire-and-forget RefreshAsync,
+///    测试覆盖 by SearchCommandTests / RefreshAsyncTests);Query setter 不再 auto-filter。
+///
+/// 注意:service.sourceFilter 把 service._sources 按 sourceKind 过滤 — 测试不需要真 source,
+/// MockModelMarketplaceService 直接 override LoadAllAsync 4 参版记录入参。
 /// </summary>
 public class ModelMarketplaceViewModelSourceFilterTests
 {
-    private static ModelEntry MakeEntry(ModelSourceKind source, int id) => new()
-    {
-        Source = source,
-        SourceId = id.ToString(),
-        SourceUrl = $"https://example.com/{source}/{id}",
-        Title = $"{source} {id}",
-        Kind = ModelKind.Checkpoint,
-        NsfwKind = ModelNsfwKind.SFW,
-        Versions = new List<ModelVersionEntry>().AsReadOnly(),
-    };
+    private static RecordingMockMarketplace MakeRecordingMock()
+        => new();
 
-    private static ModelMarketplaceViewModel MakeVmWithEntries(params ModelEntry[] entries)
+    [Fact]
+    public void ActiveSource_Default_IsCivitAi()
     {
-        var vm = new ModelMarketplaceViewModel(
-            marketplace: null!,
-            downloader: null!,
-            scanner: null!,
-            settings: null!,
-            logger: null);
-        foreach (var e in entries) vm.Models.Add(e);
-        return vm;
-    }
-
-    private static List<ModelEntry> Visible(ModelMarketplaceViewModel vm)
-    {
-        var view = CollectionViewSource.GetDefaultView(vm.Models);
-        return view.Cast<ModelEntry>().ToList();
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.Equal(ModelSourceKind.CivitAi, vm.ActiveSource);
     }
 
     [Fact]
-    public void ShowOnlyCivitai_False_HidesCivitAiEntries()
+    public async Task RefreshAsync_PassesCurrentActiveSource_AsSourceFilter()
     {
-        var vm = MakeVmWithEntries(
-            MakeEntry(ModelSourceKind.CivitAi, 1),
-            MakeEntry(ModelSourceKind.HuggingFace, 2));
-        vm.ShowOnlyCivitai = false;
-        var visible = Visible(vm);
-        Assert.Single(visible);
-        Assert.Equal(ModelSourceKind.HuggingFace, visible[0].Source);
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        // 先 await 一次让默认状态 settle,再改 ActiveSource(setter fire-and-forget 也会触发一次)
+        await vm.RefreshAsync();
+        var baseline = mock.CallCount;
+        mock.LastSourceFilter = null;
+        vm.ActiveSource = ModelSourceKind.HuggingFace;
+        // fire-and-forget 必触发一次 RefreshAsync — 等它跑完
+        for (var i = 0; i < 100 && mock.CallCount <= baseline; i++) await Task.Delay(10);
+        Assert.True(mock.CallCount > baseline);
+        Assert.Equal(ModelSourceKind.HuggingFace, mock.LastSourceFilter);
     }
 
     [Fact]
-    public void ShowOnlyHuggingFace_False_HidesHuggingFaceEntries()
+    public async Task RefreshAsync_CivitAiActiveSource_PassesCivitAiFilter()
     {
-        var vm = MakeVmWithEntries(
-            MakeEntry(ModelSourceKind.CivitAi, 1),
-            MakeEntry(ModelSourceKind.HuggingFace, 2));
-        vm.ShowOnlyHuggingFace = false;
-        var visible = Visible(vm);
-        Assert.Single(visible);
-        Assert.Equal(ModelSourceKind.CivitAi, visible[0].Source);
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        // 默认 CivitAi
+        await vm.RefreshAsync();
+        Assert.Equal(1, mock.CallCount);
+        Assert.Equal(ModelSourceKind.CivitAi, mock.LastSourceFilter);
     }
 
     [Fact]
-    public void BothFalse_RendersEmptyHint()
+    public async Task RefreshAsync_AfterQueryChange_PassesLatestQuery()
     {
-        var vm = MakeVmWithEntries(MakeEntry(ModelSourceKind.CivitAi, 1));
-        vm.ShowOnlyCivitai = false;
-        vm.ShowOnlyHuggingFace = false;
-        Assert.Empty(Visible(vm));
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        vm.Query = "controlnet";
+        await vm.RefreshAsync();
+        Assert.Equal("controlnet", mock.LastQuery);
+        Assert.Equal(ModelSourceKind.CivitAi, mock.LastSourceFilter);
+    }
+
+    [Fact]
+    public void Query_Change_DoesNotAutoFilter()
+    {
+        // v0.6.22 T6:UI 改 Enter 键 / 按钮显式触发;Query setter 不再 auto-filter on type。
+        // 模型测试:Query 改变后,Models 集合应保持不变(直到用户按 Enter / 点 搜索)。
+        var vm = new ModelMarketplaceViewModel(MakeRecordingMock(), null!, null!, null!, null);
+        vm.Models.Add(new ModelEntry { Title = "Foo", Source = ModelSourceKind.CivitAi, SourceId = "1" });
+        var before = vm.Models.Count;
+        vm.Query = "new search text";
+        Assert.Equal(before, vm.Models.Count);
+    }
+
+    /// <summary>Recording mock — 记录每次 LoadAllAsync 的入参(query / sourceFilter / call count)。</summary>
+    private sealed class RecordingMockMarketplace : ModelMarketplaceService
+    {
+        public int CallCount { get; set; }
+        public string? LastQuery { get; set; }
+        public ModelSourceKind? LastSourceFilter { get; set; }
+
+        public RecordingMockMarketplace()
+            : base(Enumerable.Empty<IModelSource>(), null) { }
+
+        public override Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
+            string query, int maxResultsPerSource, ModelSourceKind? sourceFilter = null, CancellationToken ct = default)
+        {
+            CallCount++;
+            LastQuery = query;
+            LastSourceFilter = sourceFilter;
+            return Task.FromResult<IReadOnlyList<ModelEntry>>(Array.Empty<ModelEntry>());
+        }
     }
 }

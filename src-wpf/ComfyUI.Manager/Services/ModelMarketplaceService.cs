@@ -26,8 +26,14 @@ public class ModelMarketplaceService
     }
 
     public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(string query, int maxResultsPerSource, CancellationToken ct = default)
+        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter: null, ct);
+
+    /// <summary>v0.6.22 T6:加 sourceFilter 单源查询 — UI 改成 source 单选 radio 后,
+    /// VM 只查选中的 source(避免被禁用的 source 拉白)。null = 查全部 enabled(旧行为兼容)。</summary>
+    public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
+        string query, int maxResultsPerSource, ModelSourceKind? sourceFilter = null, CancellationToken ct = default)
     {
-        var enabled = _sources.Where(s => s.IsEnabled).ToList();
+        var enabled = _sources.Where(s => s.IsEnabled && (sourceFilter is null || s.SourceKind == sourceFilter)).ToList();
         var tasks = enabled.Select(async src =>
         {
             try
