@@ -16,10 +16,13 @@ public class WorkflowSourceCivitAiTests
         => new HttpClient(new StubHandler(json, status));
 
     [Fact]
-    public async Task SearchAsync_ItemsWithWorkflowJson_ParsesEntry()
+    public async Task SearchAsync_ModelWithJsonFile_ReturnsEntry()
     {
-        // brief 把这 JSON 拆成两行 raw string literal — C# raw string literal 必须单行 """..."""
-        var json = "{\"items\":[{\"id\":\"123\",\"name\":\"Workflow A\",\"username\":\"bob\",\"url\":\"https://img.jpg\",\"meta\":{\"workflow\":{\"workflowJson\":\"https://files/wf.json\"}}}]}";
+        // v0.6.22: model-source endpoint — 1 model + 1 version + 2 files (.json + .safetensors)
+        // → 1 WorkflowEntry with WorkflowJsonUrl from the .json file
+        var json = """
+{"items":[{"id":123,"name":"Workflow A","creator":{"username":"bob"},"tags":["controlnet"],"modelVersions":[{"id":1,"files":[{"name":"workflow.json","downloadUrl":"https://files/wf.json"},{"name":"model.safetensors","downloadUrl":"https://files/m.safetensors"}],"images":[{"url":"https://img/preview.jpg"}]}]}]}
+""";
         var src = new CivitAiSource(MockHttp(json));
 
         var result = await src.SearchAsync(query: "", maxResults: 10);
@@ -28,15 +31,22 @@ public class WorkflowSourceCivitAiTests
         Assert.Equal(WorkflowSourceKind.CivitAi, result[0].Source);
         Assert.Equal("123", result[0].SourceId);
         Assert.Equal("Workflow A", result[0].Title);
+        Assert.Equal("bob", result[0].Author);
         Assert.Equal("https://files/wf.json", result[0].WorkflowJsonUrl);
+        Assert.Equal("https://img/preview.jpg", result[0].PreviewImageUrl);
+        Assert.Equal("https://civitai.com/models/123", result[0].SourceUrl);
+        Assert.Equal(new[] { "controlnet" }, result[0].Tags.ToArray());
     }
 
     [Fact]
-    public async Task SearchAsync_NoWorkflowJson_SkipsEntry()
+    public async Task SearchAsync_NoJsonFile_SkipsEntry()
     {
-        // brief 里这 JSON 含 url 字段,会触发 source 里的 jsonUrl fallback(把 url 当 json_url 用),
-        // 与 test 意图冲突。去掉 url 让 fallback 不命中,确认真的没 workflowJson 就跳过。
-        var json = """{"items":[{"id":"1","name":"Image only"}]}""";
+        // v0.6.22: entry with only .safetensors file → empty list (matches v0.6.19 R1
+        // "skip on missing" semantic — model-source uses json-file presence as the
+        // signal, not meta.workflow.workflowJson)
+        var json = """
+{"items":[{"id":1,"name":"Safetensors only","creator":{"username":"x"},"modelVersions":[{"id":1,"files":[{"name":"model.safetensors","downloadUrl":"https://files/m.safetensors"}],"images":[]}]}]}
+""";
         var src = new CivitAiSource(MockHttp(json));
 
         var result = await src.SearchAsync(query: "", maxResults: 10);
@@ -45,16 +55,35 @@ public class WorkflowSourceCivitAiTests
     }
 
     [Fact]
-    public async Task SearchAsync_QueryFilter_Applies()
+    public async Task SearchAsync_MultipleVersions_PicksFirstVersionJsonFile()
     {
-        // brief 把这 JSON 拆成两行 raw string literal — C# raw string literal 必须单行 """..."""
-        var json = "{\"items\":[{\"id\":\"1\",\"name\":\"Apple pie\",\"url\":\"x\",\"meta\":{\"workflow\":{\"workflowJson\":\"x1\"}}},{\"id\":\"2\",\"name\":\"Banana split\",\"url\":\"y\",\"meta\":{\"workflow\":{\"workflowJson\":\"y2\"}}}]}";
+        // v0.6.22: model with 2 versions, each with .json → uses first version's .json
+        var json = """
+{"items":[{"id":99,"name":"Multi version","creator":{"username":"alice"},"tags":[],"modelVersions":[{"id":1,"files":[{"name":"v1.json","downloadUrl":"https://files/v1.json"}],"images":[{"url":"https://img/v1.jpg"}]},{"id":2,"files":[{"name":"v2.json","downloadUrl":"https://files/v2.json"}],"images":[]}]}]}
+""";
         var src = new CivitAiSource(MockHttp(json));
 
-        var result = await src.SearchAsync(query: "banana", maxResults: 10);
+        var result = await src.SearchAsync(query: "", maxResults: 10);
 
         Assert.Single(result);
-        Assert.Equal("2", result[0].SourceId);
+        Assert.Equal("https://files/v1.json", result[0].WorkflowJsonUrl);
+        Assert.Equal("https://img/v1.jpg", result[0].PreviewImageUrl);
+    }
+
+    [Fact]
+    public async Task SearchAsync_EmptyCreatorUsername_DoesNotThrow()
+    {
+        // v0.6.22: model with empty creator.username → WorkflowEntry.Author = ""
+        // (no NullReferenceException, no exception bubbles out)
+        var json = """
+{"items":[{"id":42,"name":"Anon","creator":{"username":""},"modelVersions":[{"id":1,"files":[{"name":"wf.json","downloadUrl":"https://files/wf.json"}],"images":[]}]}]}
+""";
+        var src = new CivitAiSource(MockHttp(json));
+
+        var result = await src.SearchAsync(query: "", maxResults: 10);
+
+        Assert.Single(result);
+        Assert.Equal("", result[0].Author);
     }
 
     [Fact]
@@ -87,7 +116,23 @@ public class WorkflowSourceCivitAiTests
         Assert.Empty(result);
     }
 
-    [Fact(Skip = "Integration: hits real CivitAI /api/v1/images?tags=workflow")]
+    [Fact]
+    public async Task SearchAsync_QueryFilterByTag_MatchesEntry()
+    {
+        // v0.6.22: query match against tag array (new capability vs v0.6.19
+        // title/author-only filter — model-source exposes tags[] per entry)
+        var json = """
+{"items":[{"id":1,"name":"Apple pie","creator":{"username":"u"},"tags":["lora"],"modelVersions":[{"id":1,"files":[{"name":"wf.json","downloadUrl":"https://x/1.json"}],"images":[]}]},{"id":2,"name":"Banana split","creator":{"username":"v"},"tags":["controlnet"],"modelVersions":[{"id":2,"files":[{"name":"wf.json","downloadUrl":"https://x/2.json"}],"images":[]}]}]}
+""";
+        var src = new CivitAiSource(MockHttp(json));
+
+        var result = await src.SearchAsync(query: "control", maxResults: 10);
+
+        Assert.Single(result);
+        Assert.Equal("2", result[0].SourceId);
+    }
+
+    [Fact(Skip = "Integration: hits real CivitAI /api/v1/models?types=WORKFLOW")]
     public async Task LiveFetch_CivitAi_RealEndpoint_ReturnsEntries()
     {
         var src = new CivitAiSource(new HttpClient());
