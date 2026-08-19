@@ -29,6 +29,10 @@
     <!-- v0.6.19.x:工作流卡片 source pill badge — WorkflowSourceKind → Brush/Text。 -->
     <views:WorkflowSourceBadgeBrushConverter x:Key="WorkflowSourceBadgeBrush" />
     <views:WorkflowSourceBadgeTextConverter x:Key="WorkflowSourceBadgeText" />
+    <!-- v0.6.20 T7:模型卡片 NSFW + Kind badge pill — ModelNsfwKind → Brush/Text,ModelKind → Brush。 -->
+    <views:ModelNsfwBadgeBrushConverter x:Key="ModelNsfwBadgeBrush" />
+    <views:ModelNsfwBadgeTextConverter x:Key="ModelNsfwBadgeText" />
+    <views:ModelKindBadgeBrushConverter x:Key="ModelKindBadgeBrush" />
 
     <!-- Palette 资源现在由 Themes/Palette.Light.xaml 或 Themes/Palette.Dark.xaml 提供(经 App.xaml 槽位合并)。
          本文件只保留 converters / font sizes / paddings / styles / data templates。

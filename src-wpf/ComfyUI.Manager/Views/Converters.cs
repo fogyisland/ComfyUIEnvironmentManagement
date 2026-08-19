@@ -100,6 +100,102 @@ public sealed class WorkflowSourceBadgeTextConverter : IValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>
+/// v0.6.20 T7:ModelNsfwKind → Brush。SFW=OutlineBrush(中灰),Mature=WarningBrush(橙),NSFW=ErrorBrush(红)。
+/// palette fallback:ErrorBrush → (0xBA,0x1A,0x1A) 红,WarningBrush → (0xE6,0x7E,0x22) 橙,OutlineBrush → (0xCC,0xCC,0xCC) 灰。
+/// </summary>
+public sealed class ModelNsfwBadgeBrushConverter : IValueConverter
+{
+    public static readonly ModelNsfwBadgeBrushConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var key = value switch
+        {
+            ModelNsfwKind.SFW => "OutlineBrush",
+            ModelNsfwKind.Mature => "WarningBrush",
+            ModelNsfwKind.NSFW => "ErrorBrush",
+            _ => "OutlineBrush",
+        };
+        if (System.Windows.Application.Current?.TryFindResource(key) is Brush b)
+        {
+            return b;
+        }
+        return key switch
+        {
+            "ErrorBrush" => new SolidColorBrush(Color.FromRgb(0xBA, 0x1A, 0x1A)),
+            "WarningBrush" => new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x22)),
+            _ => new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC)),
+        };
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// v0.6.20 T7:ModelNsfwKind → string,NSFW badge pill 文案。SFW="SFW",Mature="Mature",NSFW="NSFW"。
+/// </summary>
+public sealed class ModelNsfwBadgeTextConverter : IValueConverter
+{
+    public static readonly ModelNsfwBadgeTextConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value switch
+        {
+            ModelNsfwKind.SFW => "SFW",
+            ModelNsfwKind.Mature => "Mature",
+            ModelNsfwKind.NSFW => "NSFW",
+            _ => "?",
+        };
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// v0.6.20 T7:ModelKind → Brush(8 kind 各自的 palette 颜色)。
+/// Checkpoint=PrimaryBrush,LORA=SecondaryBrush,VAE=TertiaryBrush,Controlnet=SuccessBrush,
+/// TextualInversion=WarningBrush,Upscaler=InfoBrush,Hypernetwork=ErrorBrush,Other/Unknown=OutlineBrush。
+/// palette fallback 8 种颜色全部硬编码,确保无 Application.Current 时 XAML 不会 UnsetValue。
+/// </summary>
+public sealed class ModelKindBadgeBrushConverter : IValueConverter
+{
+    public static readonly ModelKindBadgeBrushConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var (key, fallback) = value switch
+        {
+            ModelKind.Checkpoint       => ("PrimaryBrush",   Color.FromRgb(0x67, 0x50, 0xA4)),
+            ModelKind.LORA             => ("SecondaryBrush", Color.FromRgb(0x4F, 0x6D, 0x8C)),
+            ModelKind.VAE              => ("TertiaryBrush",  Color.FromRgb(0x6B, 0x8E, 0x23)),
+            ModelKind.Controlnet       => ("SuccessBrush",   Color.FromRgb(0x38, 0x8E, 0x3C)),
+            ModelKind.TextualInversion => ("WarningBrush",   Color.FromRgb(0xE6, 0x7E, 0x22)),
+            ModelKind.Upscaler         => ("InfoBrush",      Color.FromRgb(0x19, 0x76, 0xD2)),
+            ModelKind.Hypernetwork     => ("ErrorBrush",     Color.FromRgb(0xBA, 0x1A, 0x1A)),
+            ModelKind.Other            => ("OutlineBrush",   Color.FromRgb(0x75, 0x75, 0x75)),
+            _                          => ("OutlineBrush",   Color.FromRgb(0xCC, 0xCC, 0xCC)),
+        };
+        if (System.Windows.Application.Current?.TryFindResource(key) is Brush b)
+        {
+            return b;
+        }
+        return new SolidColorBrush(fallback);
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
 /// <summary>
 /// BoolToBrushConverter:bool → Brush(active/inactive),用于视图切换按钮高亮。
 /// </summary>
