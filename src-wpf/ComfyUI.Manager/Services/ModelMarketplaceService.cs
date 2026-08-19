@@ -25,7 +25,7 @@ public class ModelMarketplaceService
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(string query, int maxResultsPerSource, CancellationToken ct)
+    public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(string query, int maxResultsPerSource, CancellationToken ct = default)
     {
         var enabled = _sources.Where(s => s.IsEnabled).ToList();
         var tasks = enabled.Select(async src =>

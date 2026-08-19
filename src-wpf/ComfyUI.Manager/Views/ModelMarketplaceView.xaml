@@ -1,0 +1,153 @@
+<UserControl x:Class="ComfyUI.Manager.Views.ModelMarketplaceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             xmlns:models="clr-namespace:ComfyUI.Manager.Models"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:ModelMarketplaceViewModel}"
+             Background="{DynamicResource WindowBackgroundBrush}">
+  <!--
+    v0.6.20 T8:模型市场 view — 镜像 v0.6.19 WorkflowMarketplaceView toolbar / filter chips /
+    card grid / console 4-row 布局,卡片内容 = ModelEntry (title + Kind badge pill +
+    NsfwKind badge pill + per-version CheckBox 多选)。
+
+    DataContext 由 MainViewModel 在 section 切换时绑成 ModelMarketplaceViewModel。
+    3 个 T7 converter (`ModelKindBadgeBrush` / `ModelNsfwBadgeBrush` / `ModelNsfwBadgeText`)
+    在 Theme.xaml 注册为 StaticResource,view 必须放在 Application.Resources 加载后
+    (StaFact 内 WpfTestResources.EnsureLoaded 链路)。
+
+    Filter chips 用 Click event (而不是 IsChecked 双向绑) — 原因:KindFilters ObservableCollection
+    项是 ModelKind enum 值,转换 IsChecked TwoWay 走 IValueConverter.ConvertBack 时
+    需要"当前 IsChecked bool + 哪个 kind"哪个信息,DataTrigger 在 ItemsControl 场景
+    难以干净拉到。Code-behind 一行 Click handler 跟 enum tag 直接绑 — 更简单。
+  -->
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>  <!-- toolbar -->
+      <RowDefinition Height="Auto"/>  <!-- filter strip -->
+      <RowDefinition Height="*"/>     <!-- card grid -->
+      <RowDefinition Height="Auto"/>  <!-- console -->
+    </Grid.RowDefinitions>
+
+    <!-- Toolbar:刷新 + 下载选中 + 选中数 + Query TextBox -->
+    <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="True">
+      <Button DockPanel.Dock="Left" Content="刷新"
+              Command="{Binding RefreshCommand}"
+              Margin="0,0,8,0" />
+      <Button DockPanel.Dock="Left" Content="下载选中"
+              Command="{Binding DownloadSelectedCommand}"
+              Margin="0,0,8,0" />
+      <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,12,0">
+        <Run Text="选中: " />
+        <Run Text="{Binding SelectedVersions.Count, Mode=OneWay}" FontWeight="Bold" />
+      </TextBlock>
+      <TextBox Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
+               VerticalContentAlignment="Center" />
+    </DockPanel>
+
+    <!-- Filter strip:8 个 kind ToggleButton chips(单选 toggle,再点取消) -->
+    <ItemsControl x:Name="KindFilterHost" Grid.Row="1" ItemsSource="{Binding KindFilters}" Margin="0,0,0,8">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <ToggleButton x:Name="KindChip" Content="{Binding}" Margin="2" Padding="8,4"
+                        Tag="{Binding}"
+                        Click="OnKindChipClicked" />
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <!-- Card grid:WrapPanel of 220x340 cards -->
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Models}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="{x:Type models:ModelEntry}">
+            <Border Width="220" Height="340" Margin="6" Padding="10" CornerRadius="8"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}"
+                    BorderThickness="1">
+              <StackPanel>
+                <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14"
+                           TextWrapping="Wrap" MaxHeight="40"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                  <Border CornerRadius="4" Padding="6,2" Margin="0,0,4,0"
+                          Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}">
+                    <TextBlock Text="{Binding Kind}" Foreground="White" FontSize="11" />
+                  </Border>
+                  <Border CornerRadius="4" Padding="6,2"
+                          Background="{Binding NsfwKind, Converter={StaticResource ModelNsfwBadgeBrush}}">
+                    <TextBlock Text="{Binding NsfwKind, Converter={StaticResource ModelNsfwBadgeText}}"
+                               Foreground="White" FontSize="11" />
+                  </Border>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Versions}" Margin="0,8,0,0">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type models:ModelVersionEntry}">
+                      <CheckBox Content="{Binding Name}" Margin="0,2"
+                                Foreground="{DynamicResource OnSurfaceBrush}"
+                                Command="{Binding DataContext.ToggleVersionSelectionCommand,
+                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <!-- Console panel (3-state visibility) -->
+    <Border Grid.Row="3" Margin="0,8,0,0" Padding="0"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource OutlineBrush}"
+            BorderThickness="1" CornerRadius="6"
+            Visibility="{Binding IsConsoleVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <DockPanel Grid.Row="0" Margin="12,8,8,4">
+          <Button DockPanel.Dock="Right" Content="✕"
+                  Command="{Binding HideConsoleCommand}"
+                  ToolTip="关闭 Console(下次 Start 时自动重新打开)" />
+          <Button DockPanel.Dock="Right" Content="清空"
+                  Command="{Binding ClearConsoleLogCommand}"
+                  Margin="0,0,4,0" />
+          <TextBlock VerticalAlignment="Center" FontWeight="Bold" FontSize="13"
+                     Foreground="{DynamicResource OnSurfaceBrush}">
+            <Run Text="Console" />
+            <Run Text="  " />
+            <Run Text="{Binding ConsoleLog.Count, Mode=OneWay}" FontSize="11"
+                 Foreground="{DynamicResource OutlineBrush}" />
+            <Run Text=" 行" FontSize="11" Foreground="{DynamicResource OutlineBrush}" />
+          </TextBlock>
+        </DockPanel>
+        <ScrollViewer Grid.Row="1" Height="160" Margin="8,0,8,8"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding ConsoleLog}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                           TextWrapping="NoWrap"
+                           Foreground="{DynamicResource OnSurfaceBrush}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>
