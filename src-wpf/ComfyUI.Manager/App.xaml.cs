@@ -213,6 +213,12 @@ public partial class App : Application
         // 懒构造(避免 App 启动期同步拉 GitHub repo)。
         // v0.6.15.4: 网关代理走 HttpProxyConfig.Built HttpClient.BuildHttpClient test seam。
         var http = BuildHttpClient(gitProxy);
+        // v0.6.22+:per-source HttpClient builder — 传给 MainViewModel → ModelSourceFactory,
+        // 让每个 source 拿自己的 HttpClient(per-source proxy toggle 在此生效)。
+        // 共享 singleton `http` 仍给 ModelDownloader / metadata / GitHub API 复用 — 单一 client 60s
+        // timeout + 共享 User-Agent header 是这些共享场景的好处。Factory 内部 source 自己拿
+        // client 时不需要共享 User-Agent(CivitAI/HF 各自端点不强制要求)。
+        Func<HttpProxyConfig?, HttpClient> httpBuilder = BuildHttpClient;
         // v0.6.13-B: GitHub API 要求 User-Agent header,否则 403。
         // 复用同一份 http(singleton,15s timeout)— Dashboard / Changelog / Version / Metadata 全共享。
         http.DefaultRequestHeaders.UserAgent.ParseAdd("ComfyUI-Manager/0.6.13");
@@ -367,7 +373,11 @@ public partial class App : Application
             modelSymlinker: modelSymlinker,
             // v0.6.22 T5: ComfyUI 模板更新 service — 传给 EnvironmentListViewModel
             // 让 UpdateTemplateCommand 触发 wipe + git clone。
-            templateUpdater: comfyUiTemplateUpdater);
+            templateUpdater: comfyUiTemplateUpdater,
+            // v0.6.22+:per-source HttpClient builder — 传给 ModelSourceFactory 让每个 source
+            // 拿自己的 HttpClient(per-source proxy toggle 在此生效)。同 BuildHttpClient 静态方法
+            // 引用 — 复用同样的 handler 配置 + 60s timeout + Proxy=null/UseProxy=false fallback。
+            httpBuilder: httpBuilder);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

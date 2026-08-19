@@ -586,6 +586,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    // v0.6.22+:per-source "使用代理" 开关 — 仅在 HttpProxyEnabled=true 时生效。
+    // 同 mirror toggle:改完需重启应用才能让该 source 重新创建带 WebProxy 的 HttpClient。
+    public bool ModelSourceCivitAiUseProxy
+    {
+        get => _settings.ModelSourceCivitAiUseProxy;
+        set
+        {
+            if (_settings.ModelSourceCivitAiUseProxy == value) return;
+            _settings.ModelSourceCivitAiUseProxy = value;
+            MarkDirty(nameof(ModelSourceCivitAiUseProxy));
+            RaisePropertyChanged();
+        }
+    }
+
     public bool ModelSourceHuggingFaceEnabled
     {
         get => _settings.ModelSourceHuggingFaceEnabled;
@@ -636,6 +650,18 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             MarkDirty(nameof(ModelSourceHuggingFaceMirrorUrl));
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(IsHuggingFaceMirrorInsecure));
+        }
+    }
+
+    public bool ModelSourceHuggingFaceUseProxy
+    {
+        get => _settings.ModelSourceHuggingFaceUseProxy;
+        set
+        {
+            if (_settings.ModelSourceHuggingFaceUseProxy == value) return;
+            _settings.ModelSourceHuggingFaceUseProxy = value;
+            MarkDirty(nameof(ModelSourceHuggingFaceUseProxy));
+            RaisePropertyChanged();
         }
     }
 

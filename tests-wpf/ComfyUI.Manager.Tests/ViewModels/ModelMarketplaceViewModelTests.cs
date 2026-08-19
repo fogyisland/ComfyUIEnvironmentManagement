@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Services.ModelSources;
@@ -198,10 +200,68 @@ public class ModelMarketplaceViewModelTests
         Assert.False(vm.IsConsoleVisible);
     }
 
+    [Fact]
+    public void CivitAiUseProxy_DefaultFalse_MirrorsSettings()
+    {
+        var settings = new Settings { ModelSourceCivitAiUseProxy = false };
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
+        Assert.False(vm.CivitAiUseProxy);
+    }
+
+    [Fact]
+    public void CivitAiUseProxy_Setter_MutatesSettingsAndRaisesPropertyChanged()
+    {
+        var settings = new Settings { ModelSourceCivitAiUseProxy = false };
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
+        var changed = false;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.CivitAiUseProxy)) changed = true;
+        };
+        vm.CivitAiUseProxy = true;
+        Assert.True(vm.CivitAiUseProxy);
+        Assert.True(settings.ModelSourceCivitAiUseProxy);
+        Assert.True(changed);
+    }
+
+    [Fact]
+    public void CivitAiUseProxy_SameValue_NoPropertyChanged()
+    {
+        var settings = new Settings { ModelSourceCivitAiUseProxy = true };
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
+        var changed = false;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.CivitAiUseProxy)) changed = true;
+        };
+        vm.CivitAiUseProxy = true;  // same value — should not fire
+        Assert.False(changed);
+    }
+
+    [Fact]
+    public void HuggingFaceUseProxy_Setter_MutatesSettings()
+    {
+        var settings = new Settings { ModelSourceHuggingFaceUseProxy = false };
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
+        vm.HuggingFaceUseProxy = true;
+        Assert.True(vm.HuggingFaceUseProxy);
+        Assert.True(settings.ModelSourceHuggingFaceUseProxy);
+    }
+
+    [Fact]
+    public void IsGlobalProxyEnabled_TracksSettingsHttpProxyEnabled()
+    {
+        var settings = new Settings { HttpProxyEnabled = false };
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
+        Assert.False(vm.IsGlobalProxyEnabled);
+        settings.HttpProxyEnabled = true;
+        Assert.True(vm.IsGlobalProxyEnabled);
+    }
+
     /// <summary>
     /// v0.6.20 T8:Mock marketplace — 返回固定模型列表。
-    /// v0.6.22 T6 加 4 参 override(VM 改走 sourceFilter 入参),记录 CallCount 跟 LastSourceFilter。
-    /// 3 参版保留作为旧测试兜底(实际不会被 VM 触发)。
+    /// v0.6.22 T6+ override 5 参版 LoadAllAsync(VM 走 sourceFilter + IProgress 入参),
+    /// 记录 CallCount / LastSourceFilter / ProgressLines。
     /// DelayMs 属性让调用方在 IsBusy=true 期间留出观察窗口(否则同步 mock 立即回落)。
     /// </summary>
     private sealed class MockModelMarketplaceService : ModelMarketplaceService
@@ -217,13 +277,17 @@ public class ModelMarketplaceViewModelTests
         public int CallCount { get; private set; }
         public ModelSourceKind? LastSourceFilter { get; private set; }
         public int DelayMs { get; set; }
+        public List<string> ProgressLines { get; } = new();
 
         public override async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
-            string query, int maxResultsPerSource, ModelSourceKind? sourceFilter = null, CancellationToken ct = default)
+            string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
+            IProgress<string>? progress, CancellationToken ct = default)
         {
             CallCount++;
             LastSourceFilter = sourceFilter;
+            progress?.Report($"[mock] 开始 query='{query}' filter={sourceFilter}");
             if (DelayMs > 0) await Task.Delay(DelayMs);
+            progress?.Report($"[mock] 完成 {_entries.Count} 条");
             return _entries;
         }
     }

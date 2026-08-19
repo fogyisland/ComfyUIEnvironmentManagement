@@ -61,7 +61,10 @@
               Margin="8,0,0,0" />
     </DockPanel>
 
-    <!-- Filter strip (v0.6.22 T6):kind chips + source 单选 radio (替换 v0.6.21 view-time 2 CheckBox) -->
+    <!-- Filter strip (v0.6.22 T6):kind chips + source 单选 radio (替换 v0.6.21 view-time 2 CheckBox)。
+         v0.6.22+:每个 source radio 右侧挂 "使用代理" CheckBox — 全局 HTTP 代理未启用时灰显。
+         proxy 改完需重启应用才让 ModelSourceFactory 重建带 WebProxy 的 HttpClient(handler 在
+         OnStartup 一次性构造,本 view 改完只写 settings.json)。-->
     <DockPanel Grid.Row="1" Margin="0,0,0,8" LastChildFill="True">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock Text="源" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" />
@@ -70,11 +73,19 @@
                      IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=CivitAi}"
                      Click="OnSourceRadioClicked"
                      Margin="4,0,0,0" VerticalAlignment="Center" />
+        <CheckBox Content="使用代理" Margin="4,0,0,0" VerticalAlignment="Center"
+                  IsEnabled="{Binding IsGlobalProxyEnabled}"
+                  IsChecked="{Binding CivitAiUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                  ToolTip="勾选后该源经全局代理访问。需在 Settings → 环境/工具 段启用 HTTP 代理。重启应用生效。" />
         <RadioButton Content="HuggingFace" GroupName="ActiveSource"
                      Tag="{x:Static models:ModelSourceKind.HuggingFace}"
                      IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=HuggingFace}"
                      Click="OnSourceRadioClicked"
-                     Margin="8,0,0,0" VerticalAlignment="Center" />
+                     Margin="12,0,0,0" VerticalAlignment="Center" />
+        <CheckBox Content="使用代理" Margin="4,0,0,0" VerticalAlignment="Center"
+                  IsEnabled="{Binding IsGlobalProxyEnabled}"
+                  IsChecked="{Binding HuggingFaceUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                  ToolTip="勾选后该源经全局代理访问。需在 Settings → 环境/工具 段启用 HTTP 代理。重启应用生效。" />
       </StackPanel>
       <ItemsControl x:Name="KindFilterHost" ItemsSource="{Binding KindFilters}">
         <ItemsControl.ItemsPanel>

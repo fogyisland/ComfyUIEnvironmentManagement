@@ -26,24 +26,37 @@ public class ModelMarketplaceService
     }
 
     public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(string query, int maxResultsPerSource, CancellationToken ct = default)
-        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter: null, ct);
+        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter: null, progress: null, ct);
 
     /// <summary>v0.6.22 T6:加 sourceFilter 单源查询 — UI 改成 source 单选 radio 后,
     /// VM 只查选中的 source(避免被禁用的 source 拉白)。null = 查全部 enabled(旧行为兼容)。</summary>
     public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
         string query, int maxResultsPerSource, ModelSourceKind? sourceFilter = null, CancellationToken ct = default)
+        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter, progress: null, ct);
+
+    /// <summary>
+    /// v0.6.22 T6+:加 <paramref name="progress"/> 可选参数 — VM 用 Progress&lt;string&gt; 推 UI 状态:
+    /// 启动 / per-source 完成或失败 / 合并后总数。null = 静默(向后兼容)。
+    /// Progress&lt;string&gt;.ctor 捕获 SynchronizationContext — VM 端 await 后 ConsoleLog.Add 自动 marshal 回 UI 线程。
+    /// </summary>
+    public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
+        string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
+        IProgress<string>? progress, CancellationToken ct = default)
     {
         var enabled = _sources.Where(s => s.IsEnabled && (sourceFilter is null || s.SourceKind == sourceFilter)).ToList();
+        progress?.Report($"[开始] 启用源: {(enabled.Count == 0 ? "(无)" : string.Join(", ", enabled.Select(s => s.DisplayName)))}");
         var tasks = enabled.Select(async src =>
         {
             try
             {
                 var entries = await src.SearchAsync(query, maxResultsPerSource, ct);
+                progress?.Report($"[{src.DisplayName}] 完成, {entries.Count} 条");
                 _logger?.Info("model-marketplace", $"[{src.DisplayName}] fetched {entries.Count} entries");
                 return (src.SourceKind, entries);
             }
             catch (Exception ex)
             {
+                progress?.Report($"[{src.DisplayName}] 失败: {ex.Message}");
                 _logger?.Error("model-marketplace", $"[{src.DisplayName}] failed: {ex.Message}");
                 return (src.SourceKind, (IReadOnlyList<ModelEntry>)Array.Empty<ModelEntry>());
             }
@@ -60,6 +73,7 @@ public class ModelMarketplaceService
                     merged.Add(e);
             }
         }
+        progress?.Report($"[合并] 共 {merged.Count} 条(去重后)");
         return merged;
     }
 }

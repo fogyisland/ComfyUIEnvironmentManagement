@@ -5,8 +5,10 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 
@@ -25,6 +27,9 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     private readonly ModelFilesystemScanner _scanner;
     private readonly Settings _settings;
     private readonly AppLogger? _logger;
+    // v0.6.22+:可选 settings 持久化钩子 — proxy toggle 写完设置后立即 Save(用户勾选
+    // 期待下次重启生效)。null = 测试 ctor 不传,纯内存可写。
+    private readonly SettingsRepository? _settingsRepo;
 
     private readonly List<ModelEntry> _allModels = new();
     private bool _userHiddenConsole;
@@ -61,13 +66,17 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         ModelDownloader downloader,
         ModelFilesystemScanner scanner,
         Settings settings,
-        AppLogger? logger)
+        AppLogger? logger,
+        // v0.6.22+:可选 SettingsRepository — proxy toggle 写入后立即 Save 到 .manager/settings.json。
+        // 留可空让既有 5 参测试 ctor 不破。可空 → 内存 mutation 但不落盘。
+        SettingsRepository? settingsRepo = null)
     {
         _marketplace = marketplace;
         _downloader = downloader;
         _scanner = scanner;
         _settings = settings;
         _logger = logger;
+        _settingsRepo = settingsRepo;
 
         RefreshCommand = new RelayCommand(async _ => await RefreshAsync(), _ => !IsBusy);
         // v0.6.22 T6:SearchCommand — 复用 RefreshAsync 实现,语义 = "用当前输入 + 当前 source 重查"。
@@ -136,6 +145,48 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// v0.6.22+:CivitAI 源是否经全局代理访问。TwoWay 绑到 model marketplace view 中
+    /// "使用代理" CheckBox — 直接修改共享 _settings 实例 + 立即 Save 到 settings.json
+    /// (SettingsViewModel 也用同一份 sharedSettings 实例,此处写入对它可见)。
+    /// 注:实际 proxy 应用要在下次 app 启动时 factory 重建 per-source HttpClient 才生效
+    /// (HttpClient handler 在 OnStartup 一次性构造)。ToolTip 已说明重启生效。
+    /// </summary>
+    public bool CivitAiUseProxy
+    {
+        get => _settings.ModelSourceCivitAiUseProxy;
+        set
+        {
+            if (_settings.ModelSourceCivitAiUseProxy == value) return;
+            _settings.ModelSourceCivitAiUseProxy = value;
+            OnPropertyChanged();
+            PersistSettings();
+        }
+    }
+
+    /// <summary>v0.6.22+:同上,HuggingFace 源 "使用代理" toggle。</summary>
+    public bool HuggingFaceUseProxy
+    {
+        get => _settings.ModelSourceHuggingFaceUseProxy;
+        set
+        {
+            if (_settings.ModelSourceHuggingFaceUseProxy == value) return;
+            _settings.ModelSourceHuggingFaceUseProxy = value;
+            OnPropertyChanged();
+            PersistSettings();
+        }
+    }
+
+    /// <summary>v0.6.22+:全局代理未启用时禁用 per-source 勾选(checkBox IsEnabled=false)。</summary>
+    public bool IsGlobalProxyEnabled => _settings.HttpProxyEnabled;
+
+    private void PersistSettings()
+    {
+        if (_settingsRepo is null) return;
+        try { _settingsRepo.Save(_settings); }
+        catch (Exception ex) { _logger?.Warn("model-marketplace", $"保存 proxy 设置失败: {ex.Message}"); }
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -165,9 +216,13 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         _userHiddenConsole = false;  // reset user-hidden on new refresh
         try
         {
+            // v0.6.22 T6+:Progress<string> 在 VM 端构造 — ctor 捕获 UI SynchronizationContext,
+            // service 内 Report() 自动 marshal 回 UI 线程 → ConsoleLog.Add 安全。
+            var progress = new Progress<string>(line => ConsoleLog.Add(line));
             // VM-side await MUST NOT use .ConfigureAwait(false) — continuation runs on UI sync ctx,
             // touching Models.Clear() / Add() requires WPF-friendly context.
-            var results = await _marketplace.LoadAllAsync(_query, maxResultsPerSource: 50, sourceFilter: _activeSource);
+            var results = await _marketplace.LoadAllAsync(_query, maxResultsPerSource: 50,
+                sourceFilter: _activeSource, progress: progress, ct: CancellationToken.None);
             _allModels.Clear();
             _allModels.AddRange(results);
             ApplyFilter();

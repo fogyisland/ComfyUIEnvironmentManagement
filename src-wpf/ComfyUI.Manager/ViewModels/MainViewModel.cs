@@ -96,6 +96,10 @@ public class MainViewModel : ViewModelBase
     // 3 个 IWorkflowSource (CommunityJson / CivitAi / OpenArt) + WorkflowDownloader
     // 都用同一个 _http。YAGNI: 默认 null 保留旧测试 ctor 兼容。
     private readonly HttpClient? _http;
+    // v0.6.22+:per-source HttpClient builder — 传给 ModelSourceFactory 让每个 source 拿自己的
+    // HttpClient(per-source proxy toggle 才生效)。null → ShowModels 退回到包 _http 的简单 lambda。
+    // 可空保留旧测试 ctor 兼容。
+    private readonly Func<HttpProxyConfig?, HttpClient>? _httpBuilder;
     // v0.6.19 T10: WorkflowSymlinker — ShowEnvironments 时传给 EnvironmentListViewModel,
     // 让 env-start 成功后 fire-and-forget 把已下载 workflow subfolder symlink 到
     // <env.ComfyuiSource>/user/default/workflows/。可空保留旧测试 ctor 兼容。
@@ -358,7 +362,11 @@ public class MainViewModel : ViewModelBase
         // v0.6.22 T5: ComfyUI 模板更新 service —— 传给 EnvironmentListViewModel
         // 让 UpdateTemplateCommand 触发 wipe + git clone。可空保留旧测试 ctor
         // 兼容(null 时 UpdateTemplateCommand.CanExecute 永远 false)。
-        ComfyUITemplateUpdater? templateUpdater = null)
+        ComfyUITemplateUpdater? templateUpdater = null,
+        // v0.6.22+:per-source HttpClient builder — 传给 ModelSourceFactory 让每个 source
+        // 拿自己的 HttpClient(per-source proxy toggle 才生效)。可空保留旧测试 ctor 兼容
+        // (null 时 ShowModels 退回到包 _http 的简单 lambda,共享 singleton,无 per-source proxy)。
+        Func<HttpProxyConfig?, HttpClient>? httpBuilder = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -406,6 +414,7 @@ public class MainViewModel : ViewModelBase
         // v0.6.19 T10: 共享 HttpClient + WorkflowSymlinker — ShowWorkflows + env-start
         // 同步 workflow junction 都用这俩。
         _http = http;
+        _httpBuilder = httpBuilder;
         _workflowSymlinker = workflowSymlinker;
         // v0.6.20 T9: ModelSymlinker — 透传给 EnvironmentListViewModel env-start 同步 model junction。
         _modelSymlinker = modelSymlinker;
@@ -604,17 +613,25 @@ public class MainViewModel : ViewModelBase
             var http = _http
                 ?? throw new InvalidOperationException(
                     "HttpClient not wired — App.xaml.cs 未在 MainViewModel ctor 传 HttpClient");
+            // v0.6.22+:per-source builder — App.xaml.cs 注入 _httpBuilder 时 factory 拿每个 source 自己的
+            // HttpClient(per-source proxy toggle 在此生效)。null 退回 lambda 包 _http — 老测试 / 未注入
+            // 时仍用共享 singleton(单 source = 单 client,factory 内的 ResolveProxy 决策只控制"是否
+            // 再创建带 proxy 的新 client",不重启时全部 source 共享同 proxy 设置,跟 v0.6.21 行为一致)。
+            var builder = _httpBuilder ?? (_ => http);
             // v0.6.21: 通过 ModelSourceFactory 构造所有启用的源(基于 Settings 6 个新字段 +
             // per-source mirror 解析)。Factory 内部 skip disabled source → aggregator 永远只看 enabled。
-            // 替代 v0.6.20 T9 之前的 `new CivitAiModelSource(http, logger: _logger)` 直接构造 + T10
-            // polish 删 HF 的模式。
+            // v0.6.22+:builder 决定 per-source HttpClient + proxy 应用。
             var marketplace = new ModelMarketplaceService(
-                ModelSourceFactory.CreateAll(_settings, http),
+                ModelSourceFactory.CreateAll(_settings, builder),
                 logger: _logger);
             var downloader = new ModelDownloader(http, logger: _logger);
             var scanner = new ModelFilesystemScanner(logger: _logger);
+            // v0.6.22+:注入 SettingsRepository 让 model marketplace view 中的 proxy toggle
+            // 勾选时立即 Save 到 .manager/settings.json(用户期待持久化)。HttpClient 仍用
+            // 共享 singleton (60s timeout + 共享 User-Agent header)。
             _modelMarketplaceViewModel = new ModelMarketplaceViewModel(
-                marketplace, downloader, scanner, _settings, logger: _logger);
+                marketplace, downloader, scanner, _settings, logger: _logger,
+                settingsRepo: _settingsRepo);
             _modelMarketplaceView = ModelMarketplaceViewFactory is null
                 ? new ModelMarketplaceView { DataContext = _modelMarketplaceViewModel }
                 : ModelMarketplaceViewFactory(_modelMarketplaceViewModel) as ModelMarketplaceView;

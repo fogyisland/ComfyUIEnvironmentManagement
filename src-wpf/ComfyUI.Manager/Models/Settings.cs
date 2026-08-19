@@ -81,6 +81,12 @@ public class Settings
     public bool ModelSourceHuggingFaceUseMirror { get; set; } = true;
     [JsonPropertyName("model_source_huggingface_mirror_url")]
     public string ModelSourceHuggingFaceMirrorUrl { get; set; } = "https://hf-mirror.com";
+    // v0.6.22+:per-source 是否经全局代理访问。当 HttpProxyEnabled + 此项双 true 时,
+    // 该 source 自己的 HttpClient 配 WebProxy。改动需重启应用生效(同 mirror toggle)。
+    [JsonPropertyName("model_source_civitai_use_proxy")]
+    public bool ModelSourceCivitAiUseProxy { get; set; }
+    [JsonPropertyName("model_source_huggingface_use_proxy")]
+    public bool ModelSourceHuggingFaceUseProxy { get; set; }
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
@@ -182,6 +188,8 @@ public class Settings
         target.HuggingFaceApiToken = source.HuggingFaceApiToken;
         target.ModelSourceHuggingFaceUseMirror = source.ModelSourceHuggingFaceUseMirror;
         target.ModelSourceHuggingFaceMirrorUrl = source.ModelSourceHuggingFaceMirrorUrl;
+        target.ModelSourceCivitAiUseProxy = source.ModelSourceCivitAiUseProxy;
+        target.ModelSourceHuggingFaceUseProxy = source.ModelSourceHuggingFaceUseProxy;
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;

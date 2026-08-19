@@ -627,6 +627,19 @@
                            Visibility="{Binding Dirty[ModelSourceCivitAiMirrorUrl], Converter={StaticResource BoolToVisibility}}"/>
             </DockPanel>
 
+            <!-- v0.6.22+:CivitAI 使用代理(需全局 HttpProxyEnabled=true)。重启生效 -->
+            <StackPanel Orientation="Horizontal" Margin="20,8,0,0">
+                <CheckBox Content="使用代理" IsChecked="{Binding ModelSourceCivitAiUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          VerticalAlignment="Center"
+                          IsEnabled="{Binding HttpProxyEnabled}"
+                          ToolTip="勾选后该源经全局代理访问。需在 环境/工具 段启用 HTTP 代理。重启应用生效。" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ModelSourceCivitAiUseProxy], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+
             <!-- HuggingFace enabled checkbox -->
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                 <CheckBox Content="HuggingFace" IsChecked="{Binding ModelSourceHuggingFaceEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -694,6 +707,19 @@
                 <TextBlock Text="⚠ http 镜像将不会发送 token(安全) — 仅 HTTPS 镜像支持 gated 模型"
                            Foreground="{DynamicResource WarningBrush}" FontSize="11" Margin="0,4,0,0"
                            Visibility="{Binding IsHuggingFaceMirrorInsecure, Converter={StaticResource BoolToVisibility}}" />
+
+                <!-- v0.6.22+:HF 使用代理(需全局 HttpProxyEnabled=true)。重启生效 -->
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox Content="使用代理" IsChecked="{Binding ModelSourceHuggingFaceUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              VerticalAlignment="Center"
+                              IsEnabled="{Binding HttpProxyEnabled}"
+                              ToolTip="勾选后该源经全局代理访问。需在 环境/工具 段启用 HTTP 代理。重启应用生效。" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[ModelSourceHuggingFaceUseProxy], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
             </StackPanel>
 
             <!-- Helper text + refresh button -->

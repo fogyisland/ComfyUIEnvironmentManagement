@@ -97,7 +97,8 @@ public class ModelMarketplaceViewModelSourceFilterTests
             : base(Enumerable.Empty<IModelSource>(), null) { }
 
         public override Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
-            string query, int maxResultsPerSource, ModelSourceKind? sourceFilter = null, CancellationToken ct = default)
+            string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
+            IProgress<string>? progress, CancellationToken ct = default)
         {
             CallCount++;
             LastQuery = query;
