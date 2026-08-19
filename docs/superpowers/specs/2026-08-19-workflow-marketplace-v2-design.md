@@ -59,6 +59,31 @@ Two concrete asks:
   - Clear button bound to VM `ClearSearchCommand` (new command in `WorkflowMarketplaceViewModel`).
 - Add 1 placeholder string in `Resources/Strings.resx` (`Workflow_Search_Placeholder = "搜索工作流"`).
 
+### In scope (T3 — added 2026-08-19 per user follow-up)
+
+User message: "civital的结果我们以卡片图的方式展现，如果他能够有图，就以图呈现，然后移动到图片中显示具体的json数据"
+
+Translation: "Display Civitai results as cards with images. If image available, show image. Then on hover over the image, show the specific JSON data."
+
+- Redesign card preview area in `Views/WorkflowMarketplaceView.xaml` Row 3 card DataTemplate:
+  - Preview image area becomes the dominant element of the card (more vertical space than current 4-row split).
+  - **Hover overlay**: when mouse enters the preview image area, lazy-fetch the workflow JSON from `WorkflowEntry.WorkflowJsonUrl`, parse to `Dictionary<string, object>`, and show a semi-transparent overlay with:
+    - First ~500 chars of the raw JSON (pretty-printed), OR
+    - A condensed metadata panel: top-level keys count + sample prompt/sampler/cfgScale if present in `meta` field + total size in KB + last-modified timestamp
+  - **Lazy fetch + per-entry cache**: fetch on first hover only, cache result in `WorkflowEntry.JsonPreview` (nullable string) so subsequent hovers are instant.
+  - **Loading state**: while fetching, show a small inline spinner (ProgressBar IsIndeterminate, 16x4) with "加载 JSON..." text.
+  - **Error state**: if fetch fails, show "无法加载 JSON" with retry button.
+  - Mouse leave → overlay hides (instant, no fade animation per YAGNI).
+- VM changes (`WorkflowMarketplaceViewModel.cs`):
+  - New `HoveredEntry : WorkflowEntry?` property + `IsJsonOverlayVisible : bool` computed bool + `JsonOverlayText : string?` (raw JSON or formatted panel text).
+  - New `LoadJsonPreviewAsync(WorkflowEntry entry)` async method (uses injected HttpClient + AppLogger subsystem `workflow-json-preview`).
+  - Add `JsonPreview` field to `WorkflowEntry` DTO (`init` setter, optional) — populated on first hover, persisted in-memory only (no DB / no serialization).
+- Add 2 tests in `WorkflowMarketplaceViewModelTests.cs`:
+  - `HoverEntry_TriggersJsonFetch_AndSetsJsonOverlayText`
+  - `LeaveEntry_HidesOverlay_ClearsJsonOverlayText`
+- Per-card hover handling via `DataTrigger` or `EventSetter` (mouse events `MouseEnter`/`MouseLeave` on the preview Border).
+- Download button in card unchanged (already present line 184-188).
+
 ### Out of scope (YAGNI — deferred to v0.6.23+)
 
 - **PNG metadata extraction** (BitmapDecoder for `/tEXt/workflow` chunks) — ComfyUI-generated images embed workflow JSON, but most marketplaces use curated JSON files now; can add later if user feedback shows it's needed.
@@ -336,10 +361,11 @@ Hook `SearchText` setter to raise `HasSearchText` PropertyChanged (since it's a 
 
 ---
 
-## 10. Implementation outline (2 tasks)
+## 10. Implementation outline (3 tasks)
 
 - **T1**: CivitAI source endpoint + DTO + tests (~80 LoC service + ~150 LoC tests)
 - **T2**: VM clear command + XAML composite search box + placeholder strings + 1 test (~40 LoC VM + ~40 LoC XAML)
+- **T3** *(added per user follow-up 2026-08-19)*: VM hover JSON fetch + card preview image hover overlay + JsonPreview field on WorkflowEntry + 2 tests (~80 LoC VM + ~60 LoC XAML)
 
 ---
 
@@ -354,3 +380,11 @@ Hook `SearchText` setter to raise `HasSearchText` PropertyChanged (since it's a 
 ---
 
 **Status:** DRAFT — user review before plan/implementation.
+
+---
+
+## 12. v0.6.22 T3 amendment history
+
+- **2026-08-19 user follow-up**: "civital的结果我们以卡片图的方式展现，如果他能够有图，就以图呈现，然后移动到图片中显示具体的json数据" → added T3 (card hover JSON overlay) + updated §2 in-scope T3 + §5 files to touch + §6 test plan + §10 implementation outline (now 3 tasks).
+- **User directive**: "接下来所有的数据不需要太多的确认，干就完了" — future scope additions skip approval gates; user trusts direction.
+- **No scope reduction** — T1 + T2 unchanged.
