@@ -616,13 +616,20 @@ public class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// v0.6.21 T1 stub — invoked from SettingsView "立即刷新模型市场" button.
-    /// T4 replaces this stub body with the real impl that re-constructs the marketplace VM
-    /// (or triggers an in-place refresh) so the UI sees fresh results immediately.
+    /// v0.6.21 T4: 强制刷新模型市场 — 用户在 Settings 改完 source 启用 / 镜像 URL / token 后
+    /// 通过 [立即刷新模型市场] 按钮触发,丢弃缓存的 VM/View,跳到模型市场 tab + 重新构造
+    /// VM 并触发后台 RefreshAsync。
+    ///
+    /// 不重用现有 _modelMarketplaceViewModel 实例(避免缓存的 ShowOnlyCivitai /
+    /// ShowOnlyHuggingFace 状态粘性),改用 lazy-cache 模式:丢弃旧 VM 引用,下次 ShowModels
+    /// 构造新的。
     /// </summary>
     public void RefreshModelMarketplace()
     {
-        // TODO v0.6.21 T4: implement
+        _modelMarketplaceViewModel = null;  // force re-construct on next ShowModels call
+        _modelMarketplaceView = null;
+        ShowModelsCommand.Execute(null);
+        _ = _modelMarketplaceViewModel?.RefreshAsync();
     }
 
     private void ShowSettings()

@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using System.Windows.Data;
 using System.Windows.Input;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -31,6 +32,10 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     private string _query = "";
     private ModelKind? _activeKindFilter;
     private bool _isBusy;
+    // v0.6.21: source filter — view-time toggle to hide CivitAI / HF entries
+    // without re-querying the source. Backs the 2 toolbar CheckBoxes.
+    private bool _showOnlyCivitai = true;
+    private bool _showOnlyHuggingFace = true;
 
     /// <summary>底层 fetch 后被 filter strip 处理的"全集"。</summary>
     public ObservableCollection<ModelEntry> Models { get; } = new();
@@ -86,6 +91,10 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
 
         // 3-state console visibility:任何 ConsoleLog 变化触发 IsConsoleVisible 重算
         ConsoleLog.CollectionChanged += OnConsoleLogChanged;
+
+        // v0.6.21 T4:Models 集合变化时(RefreshAsync Clear+Add)重装 view-time source filter,
+        // 保证新拉到的条目立即受 ShowOnlyCivitai / ShowOnlyHuggingFace 影响。
+        ((INotifyCollectionChanged)Models).CollectionChanged += (_, _) => ApplySourceFilter();
     }
 
     // —— Bindable properties ——
@@ -110,6 +119,36 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             _activeKindFilter = value;
             OnPropertyChanged();
             ApplyFilter();
+        }
+    }
+
+    /// <summary>
+    /// v0.6.21 T4:toolbar CheckBox "CivitAI" — false 时从 Models view 隐藏 CivitAI 来源条目,
+    /// 不重 query source。PropertyChanged → ApplySourceFilter() 重算 ICollectionView.Filter。
+    /// </summary>
+    public bool ShowOnlyCivitai
+    {
+        get => _showOnlyCivitai;
+        set
+        {
+            if (_showOnlyCivitai == value) return;
+            _showOnlyCivitai = value;
+            ApplySourceFilter();
+        }
+    }
+
+    /// <summary>
+    /// v0.6.21 T4:toolbar CheckBox "HuggingFace" — false 时从 Models view 隐藏 HF 来源条目,
+    /// 不重 query source。PropertyChanged → ApplySourceFilter() 重算 ICollectionView.Filter。
+    /// </summary>
+    public bool ShowOnlyHuggingFace
+    {
+        get => _showOnlyHuggingFace;
+        set
+        {
+            if (_showOnlyHuggingFace == value) return;
+            _showOnlyHuggingFace = value;
+            ApplySourceFilter();
         }
     }
 
@@ -200,6 +239,23 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         }
         Models.Clear();
         foreach (var m in filtered) Models.Add(m);
+    }
+
+    /// <summary>
+    /// v0.6.21 T4:view-time source filter — 装在 Models 集合的 ICollectionView.Filter 上,
+    /// 按 entry.Source 分流(CivitAI / HuggingFace)。closure 捕获私有字段 — filter
+    /// 在 setter 调用 ApplySourceFilter() 时被替换,默认 view 实例 GetDefaultView 幂等。
+    /// 未来新 source → default case 永远 visible。
+    /// </summary>
+    private void ApplySourceFilter()
+    {
+        var view = CollectionViewSource.GetDefaultView(Models);
+        view.Filter = m => ((ModelEntry)m).Source switch
+        {
+            ModelSourceKind.CivitAi => _showOnlyCivitai,
+            ModelSourceKind.HuggingFace => _showOnlyHuggingFace,
+            _ => true,
+        };
     }
 
     private void OnConsoleLogChanged(object? sender, NotifyCollectionChangedEventArgs e)

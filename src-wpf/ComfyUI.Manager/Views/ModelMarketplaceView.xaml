@@ -47,19 +47,26 @@
                VerticalContentAlignment="Center" />
     </DockPanel>
 
-    <!-- Filter strip:8 个 kind ToggleButton chips(单选 toggle,再点取消) -->
-    <ItemsControl x:Name="KindFilterHost" Grid.Row="1" ItemsSource="{Binding KindFilters}" Margin="0,0,0,8">
-      <ItemsControl.ItemsPanel>
-        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-      </ItemsControl.ItemsPanel>
-      <ItemsControl.ItemTemplate>
-        <DataTemplate>
-          <ToggleButton x:Name="KindChip" Content="{Binding}" Margin="2" Padding="8,4"
-                        Tag="{Binding}"
-                        Click="OnKindChipClicked" />
-        </DataTemplate>
-      </ItemsControl.ItemTemplate>
-    </ItemsControl>
+    <!-- Filter strip:8 个 kind ToggleButton chips(单选 toggle,再点取消) + v0.6.21 source CheckBoxes -->
+    <DockPanel Grid.Row="1" Margin="0,0,0,8" LastChildFill="True">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBlock Text="源" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" />
+        <CheckBox Content="CivitAI"    IsChecked="{Binding ShowOnlyCivitai, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,0,0" VerticalAlignment="Center" />
+        <CheckBox Content="HuggingFace" IsChecked="{Binding ShowOnlyHuggingFace, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0" VerticalAlignment="Center" />
+      </StackPanel>
+      <ItemsControl x:Name="KindFilterHost" ItemsSource="{Binding KindFilters}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <ToggleButton x:Name="KindChip" Content="{Binding}" Margin="2" Padding="8,4"
+                          Tag="{Binding}"
+                          Click="OnKindChipClicked" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </DockPanel>
 
     <!-- Card grid:WrapPanel of 220x340 cards -->
     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
