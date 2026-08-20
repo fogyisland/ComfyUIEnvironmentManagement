@@ -81,4 +81,41 @@ public class EnvironmentListViewModelOpenVenvTests
             Assert.False(vm.OpenVenvCommand.CanExecute(env));
         }
     }
+
+    [Fact]
+    public void OpenVenv_Execute_InvokesLaunchVenvOverride_WithActivateBatPath()
+    {
+        // v0.6.22.x 修:OpenVenv 必须传 (venvPath, <venvPath>/Scripts/activate.bat)
+        // 给 LaunchVenvOverride(原版只 cd 不 activate — 用户 2026-08-20 反馈
+        // "其实并没有激活环境,而只是打开cmd 端口")。这个测试断言 activate.bat 路径
+        // 指向正确位置,确保不会回归到只 cd 的旧行为。
+        var (vm, db) = NewVm();
+        using (db)
+        {
+            var tmpDir = Path.Combine(Path.GetTempPath(), "ComfyUIMgrVenvActTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tmpDir);
+            try
+            {
+                string? capturedVenvPath = null;
+                string? capturedBatPath = null;
+                vm.LaunchVenvOverride = (vp, bat) =>
+                {
+                    capturedVenvPath = vp;
+                    capturedBatPath = bat;
+                };
+
+                var env = new Environment { Id = "test-env", Name = "TestEnv", VenvPath = tmpDir };
+                vm.Environments.Add(env);
+
+                vm.OpenVenvCommand.Execute(env);
+
+                Assert.Equal(tmpDir.TrimEnd('\\', '/'), capturedVenvPath);
+                Assert.Equal(Path.Combine(tmpDir.TrimEnd('\\', '/'), "Scripts", "activate.bat"), capturedBatPath);
+            }
+            finally
+            {
+                try { Directory.Delete(tmpDir, recursive: true); } catch { }
+            }
+        }
+    }
 }

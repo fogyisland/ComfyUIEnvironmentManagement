@@ -172,9 +172,17 @@ public class EnvironmentListViewModel : ViewModelBase
     /// <summary>
     /// v0.6.22 T4:env-list Row 0 col 2 新增"进入虚拟环境"图标按钮(在 ⌨ 旁边)。
     /// 参数 = Environment;CanExecute 要求 env.VenvPath 非空且目录存在(避免已删 env
-    /// 点图标静默失败)。Execute 调 <see cref="OpenVenv"/> 启动 cmd.exe /k cd 到 venv。
+    /// 点图标静默失败)。Execute 调 <see cref="OpenVenv"/> 启动 cmd.exe /k 调用
+    /// activate.bat 激活 venv(v0.6.22.x 修:原版只 cd 不 activate)。
     /// </summary>
     public RelayCommand OpenVenvCommand { get; }
+
+    /// <summary>
+    /// v0.6.22.x:OpenVenv 测试 seam — 接收 (venvPath, activateBatPath)。null =
+    /// 生产路径走 cmd.exe /k 启动 activate.bat。测试拦截断言 activate.bat 路径
+    /// 正确(避免回归到 cd-only 旧行为)。
+    /// </summary>
+    public Action<string, string>? LaunchVenvOverride { get; set; }
     /// <summary>
     /// v0.6.11+ T3:env-list 行 6th 按钮 "装/卸 ComfyUI Manager" toggle 命令 —
     /// 根据 IsComfyUiManagerInstalled 切换 Install / Uninstall,inline 状态面板显示进度。
@@ -1708,23 +1716,51 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// v0.6.22 T4:env-list Row 0 col 2 新增"进入虚拟环境"图标按钮 handler — 启动
-    /// cmd.exe /k cd /d 到 env.VenvPath,在新窗口打开该环境的虚拟环境。
-    /// UseShellExecute=true 是关键(/k 需要一个真正的 console host,不带的话窗口
-    /// 进程会立刻退出)。失败仅 _logger.Warn,不弹窗(env-list inline UI 不阻塞)。
+    /// v0.6.22 T4:env-list Row 0 col 2 新增"进入虚拟环境"图标按钮 handler。
+    /// v0.6.22.x 修:原版 cmd.exe /k "cd /d {VenvPath}" 只切目录不激活 venv —
+    /// 用户 2026-08-20 反馈"其实并没有激活环境,而只是打开cmd 端口"。改为运行
+    /// {VenvPath}\Scripts\activate.bat,设置 VIRTUAL_ENV / PATH / PROMPT,新 cmd
+    /// 窗口提示符直接显示 (venv) 前缀。activate.bat 不存在(venv 未建或被破坏)
+    /// 时降级到 cd-only 旧行为,保底不报错。UseShellExecute=true 是关键
+    /// (/k 需要真 console host)。失败仅 _logger.Warn,不弹窗(env-list inline 不阻塞)。
     /// </summary>
     private void OpenVenv(Environment? env)
     {
         if (env is null || string.IsNullOrWhiteSpace(env.VenvPath)) return;
+        var venvPath = env.VenvPath.TrimEnd('\\', '/');
+        var activateBat = Path.Combine(venvPath, "Scripts", "activate.bat");
+
+        // 测试 seam — 测试断言 activate.bat 路径正确(避免回归 cd-only)
+        if (LaunchVenvOverride is not null)
+        {
+            LaunchVenvOverride(venvPath, activateBat);
+            return;
+        }
+
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                Arguments = $"/k \"cd /d \\\"{env.VenvPath}\\\"\"",
                 UseShellExecute = true,
-            });
-            _logger?.Info("env-venv-open", $"env='{env.Name}' venv='{env.VenvPath}'");
+            };
+            if (File.Exists(activateBat))
+            {
+                // cmd /k ""<activate.bat>"" — activate.bat 改当前 cmd session 的
+                // VIRTUAL_ENV/PROMPT/PATH,激活完 cmd 仍留着可继续敲命令。
+                // WorkingDirectory 落地 prompt 路径 = venv 根,不需要再 cd。
+                psi.WorkingDirectory = venvPath;
+                psi.Arguments = $"/k \"\"{activateBat}\"\"";
+                System.Diagnostics.Process.Start(psi);
+                _logger?.Info("env-venv-open", $"env='{env.Name}' venv='{venvPath}' activate.bat called");
+            }
+            else
+            {
+                // activate.bat 不存在(venv 未创建/被破坏)→ 降级 cd-only,不报错
+                psi.Arguments = $"/k \"cd /d \\\"{venvPath}\\\"\"";
+                System.Diagnostics.Process.Start(psi);
+                _logger?.Warn("env-venv-open", $"activate.bat missing at {activateBat}, fallback to cd-only");
+            }
         }
         catch (Exception ex)
         {
