@@ -458,6 +458,102 @@ public class ModelSourceCivitAiTests
     }
 
     [Fact]
+    public async Task SearchPageAsync_ReportsRichDebugInfo_WithHostPortStatusBytes()
+    {
+        // v0.6.22++:Console 调试日志应包含 proxy / port / status / bytes / duration / item count,
+        // 不止 URL(用户 2026-08-20 反馈"是否通过代理连接,连接的端口返回值,基本上结果
+        // 最好都能显示" — 深 debug 信息)。
+        var json = """
+        {
+          "items": [
+            {
+              "id": 1, "name": "T", "type": "Checkpoint", "nsfw": false, "nsfwLevel": 0,
+              "modelVersions": [{"id": 11, "files": [{"name": "a.safetensors", "sizeKB": 1024, "downloadUrl": "https://x/a", "primary": true}], "images": []}]
+            },
+            {"id": 2, "name": "U", "type": "Checkpoint", "nsfw": false, "nsfwLevel": 0, "modelVersions": []}
+          ],
+          "metadata": {"nextPage": null}
+        }
+        """;
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+        var lines = new List<string>();
+        var progress = new Progress<string>(line => lines.Add(line));
+
+        await source.SearchPageAsync(
+            "", null, 100, CivitAiSort.Newest, CivitAiPeriod.AllTime, default,
+            includeNsfw: true, baseModel: null, progress);
+        await Task.Delay(50);
+
+        // → 行:port + 直连(proxy=null)
+        var reqLine = Assert.Single(lines, l => l.StartsWith("[CivitAI] → "));
+        Assert.Contains("civitai.com:443", reqLine);
+        Assert.Contains("HTTPS", reqLine);
+        Assert.Contains("直连", reqLine);
+
+        // ← 行:status code + ms + bytes
+        var respLine = Assert.Single(lines, l => l.StartsWith("[CivitAI] ← "));
+        Assert.Contains("200", respLine);
+        Assert.Contains("OK", respLine);
+        Assert.Contains("ms", respLine);
+        Assert.Contains("bytes", respLine);
+
+        // ✓ 行:item count + 下一页: 无
+        var okLine = Assert.Single(lines, l => l.StartsWith("[CivitAI] ✓ "));
+        Assert.Contains("1 项", okLine);  // 第 2 条 modelVersions 空被过滤
+        Assert.Contains("下一页: 无", okLine);
+    }
+
+    [Fact]
+    public async Task SearchPageAsync_ReportsProxyInfo_WhenProxyEnabled()
+    {
+        // v0.6.22++:proxy 已启用 → Console 日志应显示"代理=host:port"代替"直连"。
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var proxy = new ComfyUI.Manager.Infrastructure.HttpProxyConfig
+        {
+            Enabled = true,
+            Url = "127.0.0.1",
+            Port = 7890,
+        };
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "", null, proxy);
+        var lines = new List<string>();
+        var progress = new Progress<string>(line => lines.Add(line));
+
+        await source.SearchPageAsync(
+            "", null, 100, CivitAiSort.Newest, CivitAiPeriod.AllTime, default,
+            includeNsfw: true, baseModel: null, progress);
+        await Task.Delay(50);
+
+        var reqLine = Assert.Single(lines, l => l.StartsWith("[CivitAI] → "));
+        Assert.Contains("代理=127.0.0.1:7890", reqLine);
+        Assert.DoesNotContain("直连", reqLine);
+    }
+
+    [Fact]
+    public async Task SearchPageAsync_ReportsErrorOnNonSuccess()
+    {
+        // v0.6.22++:HTTP 非 2xx 也走 progress 报告 status + duration + 抛
+        // HttpRequestException 让 aggregator 隔离(同原 v0.6.22+ 行为)。
+        var handler = new DelegatingHandlerStub(HttpStatusCode.ServiceUnavailable, "html error page");
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+        var lines = new List<string>();
+        var progress = new Progress<string>(line => lines.Add(line));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => source.SearchPageAsync(
+            "", null, 100, CivitAiSort.Newest, CivitAiPeriod.AllTime, default,
+            includeNsfw: true, baseModel: null, progress));
+        await Task.Delay(50);
+
+        var respLine = Assert.Single(lines, l => l.StartsWith("[CivitAI] ← "));
+        Assert.Contains("503", respLine);
+        Assert.Contains("ms", respLine);
+        Assert.Contains("bytes", respLine);
+        // 无 ✓ 行(失败时不报成功 item 数)
+        Assert.DoesNotContain(lines, l => l.StartsWith("[CivitAI] ✓ "));
+    }
+
+    [Fact]
     public async Task SearchAsync_LoopsThroughPages_OnlyReportsUrlOnce()
     {
         // v0.6.22+:SearchAsync 循环 SearchPageAsync 应只在首次 page 上 report URL,

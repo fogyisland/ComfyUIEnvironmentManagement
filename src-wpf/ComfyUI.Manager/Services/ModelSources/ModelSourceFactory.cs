@@ -34,7 +34,9 @@ public static class ModelSourceFactory
             settings.ModelSourceCivitAiProxyMode,
             settings);
         var http = httpBuilder(proxy);
-        return new CivitAiModelSource(http, baseUrl, settings.CivitAiApiToken, logger);
+        // v0.6.22++:把 proxy 透传给 source — 仅用于 Console debug 日志显示"代理=URL:Port"
+        // (实际请求走 httpBuilder 内部 handler.ApplyTo,这里只是描述信息)。
+        return new CivitAiModelSource(http, baseUrl, settings.CivitAiApiToken, logger, proxy);
     }
 
     public static HuggingFaceModelSource? CreateHuggingFace(
@@ -50,7 +52,7 @@ public static class ModelSourceFactory
             settings.ModelSourceHuggingFaceProxyMode,
             settings);
         var http = httpBuilder(proxy);
-        return new HuggingFaceModelSource(http, baseUrl, settings.HuggingFaceApiToken, logger);
+        return new HuggingFaceModelSource(http, baseUrl, settings.HuggingFaceApiToken, logger, proxy);
     }
 
     public static IEnumerable<IModelSource> CreateAll(

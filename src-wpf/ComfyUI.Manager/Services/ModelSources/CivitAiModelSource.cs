@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -8,6 +9,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Services.ModelSources;
@@ -26,17 +28,21 @@ public class CivitAiModelSource : IModelSource
     private const int PageSize = 100;
     private readonly string _baseUrl;
     private readonly string _apiToken;
+    // v0.6.22+:factory 透传的 proxy 配置 — 仅用于 Console 调试日志显示,
+    // 不参与 HTTP 请求(实际 proxy 由 HttpClientHandler.ApplyTo 决定)。
+    private readonly HttpProxyConfig? _proxy;
 
     public ModelSourceKind SourceKind => ModelSourceKind.CivitAi;
     public string DisplayName => "CivitAI";
     public bool IsEnabled { get; set; } = true;
 
-    public CivitAiModelSource(HttpClient http, string baseUrl, string apiToken, AppLogger? logger = null)
+    public CivitAiModelSource(HttpClient http, string baseUrl, string apiToken, AppLogger? logger = null, HttpProxyConfig? proxy = null)
     {
         _http = http;
         _baseUrl = baseUrl;
         _apiToken = apiToken ?? "";
         _logger = logger;
+        _proxy = proxy;
         if (baseUrl != "https://civitai.com")
         {
             _logger?.Info("model-civitai", $"using mirror: {baseUrl}");
@@ -82,10 +88,16 @@ public class CivitAiModelSource : IModelSource
     {
         var url = BuildUrl(query, cursor, pageSize, sort, period, includeNsfw, baseModel);
         var cursorLabel = string.IsNullOrEmpty(cursor) ? "(none)" : cursor;
+        var proxyInfo = FormatProxyInfo(_proxy);
         // v0.6.22+:report URL via progress sink — visible in VM Console panel,
         // 给用户"我真的把 baseModels=SDXL 1.0 传到 API 了"的可见证据(用户 2026-08-20
         // 反馈"感觉还是筛选,并没有将模型类型传递给 search api")。
         progress?.Report($"[URL] {url}");
+        // v0.6.22++:rich debug log — proxy / port / status / bytes / duration / item count
+        // (用户 2026-08-20 反馈"是否通过代理连接,连接的端口返回值,基本上结果最好都
+        // 能显示" — 深 debug 信息)。
+        var uri = new Uri(url);
+        progress?.Report($"[CivitAI] → {uri.Host}:{uri.Port} ({uri.Scheme.ToUpper()}, {proxyInfo})");
         _logger?.Info("model-civitai", $"fetch page cursor={cursorLabel} sort={sort} period={period} nsfw={includeNsfw} bm={baseModel}: {url}");
 
         // v0.6.22+:per-request Authorization: Bearer(token 跟 HuggingFaceModelSource 同模式)。
@@ -95,22 +107,63 @@ public class CivitAiModelSource : IModelSource
         {
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
         }
-        var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        var page = JsonSerializer.Deserialize<CivitAiPage>(body, JsonOpts);
-        if (page?.Items is null || page.Items.Count == 0)
-            return (Array.Empty<ModelEntry>(), null);
-
-        var entries = new List<ModelEntry>(page.Items.Count);
-        foreach (var item in page.Items)
+        // v0.6.22++:stopwatch 包住 Send + Read 报告耗时,try/catch 让异常也走 progress
+        // 报告错误细节(用户要"返回值"—— 失败时也明确告知,而不只是异常冒泡到 aggregator)。
+        var sw = Stopwatch.StartNew();
+        try
         {
-            var entry = MapItemToEntry(item);
-            if (entry is not null) entries.Add(entry);
-        }
+            var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            sw.Stop();
+            progress?.Report($"[CivitAI] ← {(int)resp.StatusCode} {resp.StatusCode} ({sw.ElapsedMilliseconds}ms, {body.Length} bytes)");
 
-        return (entries, page.Metadata?.NextPage);
+            if (!resp.IsSuccessStatusCode)
+            {
+                // 失败但有响应体(HTML 错误页 / JSON 错误)— 让 user 看到 body 长度 + status code
+                throw new HttpRequestException(
+                    $"CivitAI 返回 {(int)resp.StatusCode} {resp.StatusCode},body {body.Length} bytes,耗时 {sw.ElapsedMilliseconds}ms");
+            }
+
+            var page = JsonSerializer.Deserialize<CivitAiPage>(body, JsonOpts);
+            if (page?.Items is null || page.Items.Count == 0)
+            {
+                progress?.Report($"[CivitAI] 空结果集, 下一页: 无");
+                return (Array.Empty<ModelEntry>(), null);
+            }
+
+            var entries = new List<ModelEntry>(page.Items.Count);
+            foreach (var item in page.Items)
+            {
+                var entry = MapItemToEntry(item);
+                if (entry is not null) entries.Add(entry);
+            }
+            progress?.Report($"[CivitAI] ✓ {entries.Count} 项, 下一页: {(page.Metadata?.NextPage is null ? "无" : "有")}");
+            return (entries, page.Metadata?.NextPage);
+        }
+        catch (OperationCanceledException)
+        {
+            sw.Stop();
+            progress?.Report($"[CivitAI] ⏹ 已取消 ({sw.ElapsedMilliseconds}ms)");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            progress?.Report($"[CivitAI] ✗ {ex.GetType().Name} ({sw.ElapsedMilliseconds}ms): {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>把 HttpProxyConfig 格式化成单行可读字符串,用于 Console 调试日志。
+    /// null → "直连" / UseSystemProxy → "系统代理" / else "代理={Url}:{Port}"。
+    /// 跟 <see cref="HttpProxyConfig.ApplyTo"/> 三种分支一一对应,user 看 log 立即知道走哪种 mode。</summary>
+    internal static string FormatProxyInfo(HttpProxyConfig? proxy)
+    {
+        if (proxy is null || !proxy.Enabled) return "直连";
+        if (proxy.UseSystemProxy) return "系统代理";
+        if (string.IsNullOrWhiteSpace(proxy.Url) || proxy.Port <= 0 || proxy.Port > 65535) return "直连(无效配置)";
+        return $"代理={proxy.Url}:{proxy.Port}";
     }
 
     private string BuildUrl(string query, string? cursor, int pageSize,

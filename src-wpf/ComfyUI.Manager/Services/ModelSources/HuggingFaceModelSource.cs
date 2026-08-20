@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -7,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Services.ModelSources;
@@ -22,18 +24,20 @@ public class HuggingFaceModelSource : IModelSource
     private readonly string _baseUrl;
     private readonly string _apiToken;
     private readonly AppLogger? _logger;
+    private readonly HttpProxyConfig? _proxy;
     private const int PageSize = 50;  // HF default limit per page
 
     public ModelSourceKind SourceKind => ModelSourceKind.HuggingFace;
     public string DisplayName => "HuggingFace";
     public bool IsEnabled { get; set; } = true;  // factory decides enabled via construction (returns null if disabled)
 
-    public HuggingFaceModelSource(HttpClient http, string baseUrl, string apiToken, AppLogger? logger = null)
+    public HuggingFaceModelSource(HttpClient http, string baseUrl, string apiToken, AppLogger? logger = null, HttpProxyConfig? proxy = null)
     {
         _http = http;
         _baseUrl = baseUrl.TrimEnd('/');
         _apiToken = apiToken ?? "";
         _logger = logger;
+        _proxy = proxy;
         if (_baseUrl != "https://huggingface.co")
         {
             _logger?.Info("model-mirror", $"using HF mirror: {_baseUrl}");
@@ -83,6 +87,10 @@ public class HuggingFaceModelSource : IModelSource
         var url = $"{_baseUrl}/api/models?{string.Join("&", qs)}";
         // v0.6.22+:report URL via progress — 同 CivitAI 模式,用户可见。
         progress?.Report($"[URL] {url}");
+        // v0.6.22++:rich debug log — proxy / port / status / bytes / duration(同 CivitAI)
+        var uri = new Uri(url);
+        var proxyInfo = CivitAiModelSource.FormatProxyInfo(_proxy);
+        progress?.Report($"[HuggingFace] → {uri.Host}:{uri.Port} ({uri.Scheme.ToUpper()}, {proxyInfo})");
         _logger?.Info("model-huggingface", $"search page nsfw={includeNsfw} bm={baseModel}: {url}");
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -90,25 +98,51 @@ public class HuggingFaceModelSource : IModelSource
         {
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
         }
-        var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        var items = JsonSerializer.Deserialize<List<HfModelSummary>>(body, JsonOpts);
-        if (items is null) return (results, null);
-
-        foreach (var item in items)
+        // v0.6.22++:stopwatch + 错误也走 progress 报告(同 CivitAI 模式)
+        var sw = Stopwatch.StartNew();
+        try
         {
-            if (string.IsNullOrEmpty(item.Id)) continue;
-            var entry = await MapToModelEntryAsync(item, ct).ConfigureAwait(false);
-            // v0.6.22+:HF API 不支持 NSFW 参数(只通过 tag 标记);includeNsfw=false 时
-            // post-filter 掉 NsfwKind != SFW 的条目。等价于 VM post-filter 但在 source 层
-            // 完成,确保后续 caller 拿到的就是筛选后的干净集合。
-            if (entry is null) continue;
-            if (!includeNsfw && entry.NsfwKind != ModelNsfwKind.SFW) continue;
-            results.Add(entry);
+            var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            sw.Stop();
+            progress?.Report($"[HuggingFace] ← {(int)resp.StatusCode} {resp.StatusCode} ({sw.ElapsedMilliseconds}ms, {body.Length} bytes)");
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException(
+                    $"HF 返回 {(int)resp.StatusCode} {resp.StatusCode},body {body.Length} bytes,耗时 {sw.ElapsedMilliseconds}ms");
+            }
+
+            var items = JsonSerializer.Deserialize<List<HfModelSummary>>(body, JsonOpts);
+            if (items is null) return (results, null);
+
+            foreach (var item in items)
+            {
+                if (string.IsNullOrEmpty(item.Id)) continue;
+                var entry = await MapToModelEntryAsync(item, ct).ConfigureAwait(false);
+                // v0.6.22+:HF API 不支持 NSFW 参数(只通过 tag 标记);includeNsfw=false 时
+                // post-filter 掉 NsfwKind != SFW 的条目。等价于 VM post-filter 但在 source 层
+                // 完成,确保后续 caller 拿到的就是筛选后的干净集合。
+                if (entry is null) continue;
+                if (!includeNsfw && entry.NsfwKind != ModelNsfwKind.SFW) continue;
+                results.Add(entry);
+            }
+            progress?.Report($"[HuggingFace] ✓ {results.Count} 项, 下一页: 无(HF 单页 limit 上限)");
+            return (results, null);
         }
-        return (results, null);
+        catch (OperationCanceledException)
+        {
+            sw.Stop();
+            progress?.Report($"[HuggingFace] ⏹ 已取消 ({sw.ElapsedMilliseconds}ms)");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            progress?.Report($"[HuggingFace] ✗ {ex.GetType().Name} ({sw.ElapsedMilliseconds}ms): {ex.Message}");
+            throw;
+        }
     }
 
     private async Task<ModelEntry?> MapToModelEntryAsync(HfModelSummary summary, CancellationToken ct)
