@@ -53,7 +53,7 @@ public class ModelSourceCivitAiTests
         }
         """;
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com") { IsEnabled = true };
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "") { IsEnabled = true };
 
         var entries = await source.SearchAsync("", maxResults: 50, ct: default);
 
@@ -85,7 +85,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 1, "name": "Mature Model", "type": "LORA", "nsfwLevel": 2, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -97,7 +97,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 2, "name": "NSFW Model", "type": "Checkpoint", "nsfwLevel": 3, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -109,7 +109,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 3, "name": "Lora", "type": "LORA", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -121,7 +121,7 @@ public class ModelSourceCivitAiTests
     {
         var json = """{"items": [{"id": 4, "name": "Unknown", "type": "MotionModule", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(json);
-        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
 
         var entries = await source.SearchAsync("", 50, default);
 
@@ -134,7 +134,7 @@ public class ModelSourceCivitAiTests
         var page1 = """{"items": [{"id": 1, "name": "A", "type": "Checkpoint", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": "abc"}}""";
         var page2 = """{"items": [{"id": 2, "name": "B", "type": "Checkpoint", "nsfwLevel": 0, "modelVersions": []}], "metadata": {"nextPage": null}}""";
         var handler = new DelegatingHandlerStub(page1, page2);
-        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
 
         var entries = await source.SearchAsync("", maxResults: 100, default);
 
@@ -147,7 +147,7 @@ public class ModelSourceCivitAiTests
     public async Task SearchAsync_HttpError_Throws()
     {
         var handler = new DelegatingHandlerStub(HttpStatusCode.InternalServerError, "");
-        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com");
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
 
         await Assert.ThrowsAsync<HttpRequestException>(() => source.SearchAsync("", 50, default));
     }
@@ -156,15 +156,65 @@ public class ModelSourceCivitAiTests
     public async Task LiveFetch_RealEndpoint_ReturnsEntries()
     {
         var client = new HttpClient { BaseAddress = new Uri("https://civitai.com/") };
-        var source = new CivitAiModelSource(client, "https://civitai.com");
+        var source = new CivitAiModelSource(client, "https://civitai.com", "");
         var entries = await source.SearchAsync("", 5, default);
         Assert.NotEmpty(entries);
+    }
+
+    // —— v0.6.22+:CivitAI API token — Authorization: Bearer 注入 ——
+    // 受限 / NSFW / 标记敏感模型 401/403 解决。镜像 HuggingFaceModelSource 同款测试模式。
+
+    [Fact]
+    public async Task SearchAsync_WithToken_SendsBearerHeader()
+    {
+        // token 非空 + baseUrl HTTPS → 每个 request 应带 Authorization: Bearer {token}
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "civ_test_token_abc");
+
+        await source.SearchAsync("test", 1, default);
+
+        Assert.NotEmpty(handler.Requests);
+        Assert.Contains(handler.Requests, r =>
+            r.Headers.Authorization?.Scheme == "Bearer" &&
+            r.Headers.Authorization?.Parameter == "civ_test_token_abc");
+    }
+
+    [Fact]
+    public async Task SearchAsync_NoToken_NoAuthHeader()
+    {
+        // token 空 → 不应发 Authorization header(避免空值触发上游鉴权解析报错)
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("test", 1, default);
+
+        Assert.NotEmpty(handler.Requests);
+        Assert.All(handler.Requests, r => Assert.Null(r.Headers.Authorization));
+    }
+
+    [Fact]
+    public async Task SearchAsync_HttpMirrorWithToken_DoesNotLeakBearerHeader()
+    {
+        // 防泄露:HTTP 镜像 URL 即使配了 token 也不注入(防明文传 token)
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        // baseUrl=http://civitai-mirror.example → 非 HTTPS → 不注入
+        var source = new CivitAiModelSource(CreateClient(handler), "http://civitai-mirror.example", "civ_secret_token");
+
+        await source.SearchAsync("test", 1, default);
+
+        Assert.NotEmpty(handler.Requests);
+        Assert.All(handler.Requests, r => Assert.Null(r.Headers.Authorization));
     }
 }
 
 internal class DelegatingHandlerStub : HttpMessageHandler
 {
     private readonly Queue<(HttpStatusCode, string)> _responses = new();
+    // v0.6.22+:记录每个发出的 request — 让测试能验证 Authorization: Bearer header。
+    public List<HttpRequestMessage> Requests { get; } = new();
 
     public DelegatingHandlerStub(string body)
     {
@@ -183,6 +233,7 @@ internal class DelegatingHandlerStub : HttpMessageHandler
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        Requests.Add(request);
         var (code, body) = _responses.Count > 0 ? _responses.Dequeue() : (HttpStatusCode.OK, "{}");
         return Task.FromResult(new HttpResponseMessage(code)
         {

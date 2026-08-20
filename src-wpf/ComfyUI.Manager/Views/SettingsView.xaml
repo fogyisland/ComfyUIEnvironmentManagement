@@ -578,6 +578,32 @@
                            ToolTip="尚未保存"
                            Visibility="{Binding Dirty[ModelSourceCivitAiEnabled], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
+            <!-- v0.6.22+:CivitAI API Token — 受限 / NSFW / 标记敏感模型 401/403 解决。
+                 镜像 HuggingFaceApiToken 同款 BindablePasswordBox UI + 测试连接按钮。
+                 用户原话 2026-08-20:"部分处于受限状态、特定权限或包含敏感标记的模型,
+                 直接调用下载链接可能会返回 401 Unauthorized 或 403 错误"。-->
+            <StackPanel Margin="20,8,0,0"
+                        Visibility="{Binding ModelSourceCivitAiEnabled, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="API Token" VerticalAlignment="Center" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[CivitAiApiToken], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="测试连接" Click="TestCivitAiConnection"
+                            Style="{StaticResource MaterialButton}" Margin="4,0,0,0" Padding="8,4" />
+                    <controls:BindablePasswordBox x:Name="CivitAiTokenBox"
+                                                   Password="{Binding CivitAiApiToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </DockPanel>
+                <TextBlock Margin="0,4,0,0">
+                    <Hyperlink NavigateUri="https://civitai.com/user/account" RequestNavigate="OpenHyperlink">
+                        在 https://civitai.com/user/account 获取 token(API Keys → Add API key)
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
             <StackPanel Orientation="Horizontal" Margin="20,4,0,0"
                         Visibility="{Binding ModelSourceCivitAiEnabled, Converter={StaticResource BoolToVisibility}}">
                 <CheckBox Content="使用镜像" IsChecked="{Binding ModelSourceCivitAiUseMirror, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"

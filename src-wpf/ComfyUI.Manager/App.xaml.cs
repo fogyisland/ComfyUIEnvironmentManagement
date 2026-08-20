@@ -217,11 +217,11 @@ public partial class App : Application
         // 让每个 source 拿自己的 HttpClient(per-source proxy toggle 在此生效)。
         // 共享 singleton `http` 仍给 ModelDownloader / metadata / GitHub API 复用 — 单一 client 60s
         // timeout + 共享 User-Agent header 是这些共享场景的好处。Factory 内部 source 自己拿
-        // client 时不需要共享 User-Agent(CivitAI/HF 各自端点不强制要求)。
+        // client 时也用同一个 builder → 同样的 User-Agent/Accept 头,避免被 CivitAI/HF
+        // Cloudflare 反爬当作 bot 拦截(用户 2026-08-20 报告:开启代理后搜索 "face" 返回 HTML
+        // 而非 JSON,加 User-Agent + Accept 后 .NET HttpClient 表现跟 curl 一致)。
+        // v0.6.13-B: GitHub API 要求 User-Agent header,否则 403 — 现已统一在 BuildHttpClient 注入。
         Func<HttpProxyConfig?, HttpClient> httpBuilder = BuildHttpClient;
-        // v0.6.13-B: GitHub API 要求 User-Agent header,否则 403。
-        // 复用同一份 http(singleton,15s timeout)— Dashboard / Changelog / Version / Metadata 全共享。
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("ComfyUI-Manager/0.6.13");
         var catalogFetcher = new CatalogFetcher(http, settings.CatalogCacheTtlMinutes, logger);
         var catalogCacheStore = new CatalogCacheStore();
         var catalogRepo = new CatalogRepository(catalogCacheStore);
@@ -439,9 +439,15 @@ public partial class App : Application
     /// <summary>
     /// v0.6.15.4: 构建带代理的 HttpClient。HttpProxyConfig.Enabled=true → WebProxy(http://url:port);
     /// 否则显式 Proxy=null/UseProxy=false (不走 WinHTTP default system proxy, R2 mitigation)。
+    /// v0.6.22+: 同时给所有 client 注入 User-Agent + Accept 头 — 避免 CivitAI/HF 等
+    /// Cloudflare 反爬把空 User-Agent 的 .NET HttpClient 当 bot 拦截(2026-08-20 用户报告
+    /// 开启代理后 CivitAI 返回 HTML 而非 JSON,加头后表现与 curl 一致)。User-Agent 跟
+    /// 之前 singleton 用的字符串保持一致(App.xaml.cs:224 旧显式 ParseAdd 现在幂等冗余)。
     /// <c>internal</c> 而非 <c>private</c>:<c>AppHttpProxyWiringTests</c> 验证 (csproj 已声明
     /// <c>InternalsVisibleTo("ComfyUI.Manager.Tests")</c>)。
     /// </summary>
+    internal const string DefaultUserAgent = "ComfyUI-Manager/0.6.13";
+
     internal static HttpClient BuildHttpClient(HttpProxyConfig? proxy)
     {
         var handler = new HttpClientHandler();
@@ -458,7 +464,12 @@ public partial class App : Application
         // v0.6.16 hotfix: 15s 太短 — catalog JSON 是 ~3MB,在慢网络(代理/跨地区)下
         // 经常 >15s,被 Timeout 切 → refresh 已取消 + 后续 metadata enrichment 不跑。
         // 60s 足够大多数情况,极端慢的网络可以再调。
-        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+        var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+        // v0.6.22+: User-Agent + Accept 头注入 — 减少 Cloudflare 反爬 false-positive。
+        // Per-request 头不污染全局集合 — 不影响 caller 自己再覆盖(详见 v0.6.13-B GitHub API)。
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(DefaultUserAgent);
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/plain, */*");
+        return client;
     }
 
     /// <summary>

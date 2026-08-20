@@ -551,6 +551,22 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
+    // v0.6.22+:CivitAI API key — 受限 / NSFW / 标记敏感模型 401/403 解决。
+    // 镜像 HuggingFaceApiToken 模式:BindablePasswordBox + MarkDirty + 不立即持久化
+    // (用户点 应用 才 Save 写 settings.json)。改 token 后需重启应用让 CivitAiModelSource
+    // 重建(同 mirror toggle 行为 — source 在 OnStartup 一次性构造)。
+    public string CivitAiApiToken
+    {
+        get => _settings.CivitAiApiToken;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.CivitAiApiToken == v) return;
+            _settings.CivitAiApiToken = v;
+            MarkDirty(nameof(CivitAiApiToken));
+            RaisePropertyChanged();
+        }
+    }
     // v0.6.21: 模型市场 per-source mirror + HuggingFace source + API token
     public bool ModelSourceCivitAiUseMirror
     {
@@ -1065,6 +1081,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(WorkflowSourceCivitAiEnabled));
         RaisePropertyChanged(nameof(WorkflowSourceOpenArtEnabled));
         RaisePropertyChanged(nameof(ModelSourceCivitAiEnabled));
+        RaisePropertyChanged(nameof(CivitAiApiToken));
         RaisePropertyChanged(nameof(ModelSourceCivitAiUseMirror));
         RaisePropertyChanged(nameof(ModelSourceCivitAiMirrorUrl));
         RaisePropertyChanged(nameof(ModelSourceHuggingFaceEnabled));

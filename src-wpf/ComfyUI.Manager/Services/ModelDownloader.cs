@@ -21,11 +21,16 @@ public class ModelDownloader
 {
     private readonly HttpClient _http;
     private readonly AppLogger? _logger;
+    // v0.6.22+:CivitAI API key — 受限 / 标记敏感模型直接调 download URL 返 401/403。
+    // token 注入 Authorization: Bearer header(URL ?token= 拼接会泄露到剪贴板历史,
+    // 故走 header)。仅在 HTTPS civitai.com 域名下注入 — 镜像 URL 走 HTTP 跳过注入。
+    private readonly string _civitaiToken;
 
-    public ModelDownloader(HttpClient http, AppLogger? logger = null)
+    public ModelDownloader(HttpClient http, AppLogger? logger = null, string civitaiToken = "")
     {
         _http = http;
         _logger = logger;
+        _civitaiToken = civitaiToken ?? "";
     }
 
     public async Task<ModelDownloadSummary> DownloadBatchAsync(
@@ -104,7 +109,10 @@ public class ModelDownloader
 
         try
         {
-            using var resp = await _http.GetAsync(primary.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+            // v0.6.22+:CivitAI 受限模型需要 token — 仅在 URL 是 HTTPS civitai.com 时
+            // 加 Authorization: Bearer header(防镜像 HTTP 泄露)。其他 source(HF / 镜像)的
+            // download URL 走默认 _http.GetAsync 不加 header。封装为 helper 让 using 正确 dispose。
+            using var resp = await SendCivitAiDownloadAsync(primary.DownloadUrl, ct);
             resp.EnsureSuccessStatusCode();
 
             var totalBytes = resp.Content.Headers.ContentLength;
@@ -186,6 +194,23 @@ public class ModelDownloader
                 FailureReason = ex.Message,
             };
         }
+    }
+
+    /// <summary>v0.6.22+:CivitAI download URL 加 token(受限 / NSFW / 标记敏感模型需要)。
+    /// 仅当 URL 是 HTTPS civitai.com 且 _civitaiToken 非空时注入 Authorization: Bearer。
+    /// 其他 URL(HF / 镜像 / 普通 HTTP)走默认 GetAsync 不加 header。helper 让 using
+    /// 正确 dispose resp,避免 leak。
+    /// </summary>
+    private async Task<HttpResponseMessage> SendCivitAiDownloadAsync(string downloadUrl, CancellationToken ct)
+    {
+        if (!string.IsNullOrEmpty(_civitaiToken)
+            && downloadUrl.StartsWith("https://civitai.com/", StringComparison.OrdinalIgnoreCase))
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _civitaiToken);
+            return await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        return await _http.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
     }
 
     /// <summary>v0.6.20:collision-free dir name = <baseDir>/<versionSlugId>[/+1/-2...]。

@@ -29,6 +29,9 @@ public class ModelDownloaderTests : IDisposable
     }
 
     private ModelDownloader NewDownloader() => new ModelDownloader(new HttpClient(_handler), null);
+    // v0.6.22+:token-aware factory overload — 让测试能传 CivitAI API key 给 downloader。
+    private ModelDownloader NewDownloaderWithToken(string token) =>
+        new ModelDownloader(new HttpClient(_handler), null, token);
 
     private ModelVersionEntry MakeVersion(string title = "Realistic Vision", string modelId = "12345", string versionId = "67890")
     {
@@ -200,11 +203,93 @@ public class ModelDownloaderTests : IDisposable
         Assert.Contains("67890", json);
         Assert.Contains("\"downloaded_at\"", json);
     }
+
+    // —— v0.6.22+:CivitAI download URL 加 token ——
+    // 受限 / NSFW / 标记敏感模型 401/403 解决。仅 HTTPS civitai.com 注入(防镜像 HTTP 泄露)。
+
+    [Fact]
+    public async Task DownloadAsync_CivitAiUrlWithToken_SendsBearerHeader()
+    {
+        // downloadUrl 是 https://civitai.com/... + token 非空 → 必须带 Authorization: Bearer
+        var fakeBytes = new byte[64];
+        _handler.Enqueue(HttpStatusCode.OK, fakeBytes, contentLength: 64);
+
+        var entry = new ModelEntry { Source = ModelSourceKind.CivitAi, SourceId = "1", Title = "T", Kind = ModelKind.Checkpoint };
+        var version = new ModelVersionEntry
+        {
+            Id = "CivitAi:1:2", Parent = entry, SourceVersionId = "2", Name = "v1",
+            SizeBytes = 64,
+            PrimaryDownloadUrl = "https://civitai.com/api/download/models/2",
+            Files = new List<ModelFile> {
+                new ModelFile {
+                    Name = "m.safetensors", Format = "Safe Tensor", SizeBytes = 64,
+                    DownloadUrl = "https://civitai.com/api/download/models/2", IsPrimary = true
+                }
+            },
+        };
+        var downloader = NewDownloaderWithToken("civ_secret_token_xyz");
+
+        var result = await downloader.DownloadAsync(version, _tmp, log: null, progress: null, default);
+
+        Assert.True(result.Success);
+        Assert.NotEmpty(_handler.Requests);
+        Assert.Contains(_handler.Requests, r =>
+            r.Headers.Authorization?.Scheme == "Bearer" &&
+            r.Headers.Authorization?.Parameter == "civ_secret_token_xyz");
+    }
+
+    [Fact]
+    public async Task DownloadAsync_NonCivitAiUrlWithToken_NoAuthHeader()
+    {
+        // 非 civitai.com URL(HF / cdn.example.com 镜像)即使配了 token 也不注入
+        var fakeBytes = new byte[64];
+        _handler.Enqueue(HttpStatusCode.OK, fakeBytes, contentLength: 64);
+
+        var v = MakeVersion();  // 默认 PrimaryDownloadUrl = https://cdn.example.com/...
+        var downloader = NewDownloaderWithToken("civ_token_should_not_be_sent");
+
+        var result = await downloader.DownloadAsync(v, _tmp, log: null, progress: null, default);
+
+        Assert.True(result.Success);
+        Assert.NotEmpty(_handler.Requests);
+        Assert.All(_handler.Requests, r => Assert.Null(r.Headers.Authorization));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_CivitAiUrlNoToken_NoAuthHeader()
+    {
+        // civitai.com URL 但 token 空 → 不发 Authorization header(否则空 token 触发上游解析报错)
+        var fakeBytes = new byte[64];
+        _handler.Enqueue(HttpStatusCode.OK, fakeBytes, contentLength: 64);
+
+        var entry = new ModelEntry { Source = ModelSourceKind.CivitAi, SourceId = "1", Title = "T", Kind = ModelKind.Checkpoint };
+        var version = new ModelVersionEntry
+        {
+            Id = "CivitAi:1:2", Parent = entry, SourceVersionId = "2", Name = "v1",
+            SizeBytes = 64,
+            PrimaryDownloadUrl = "https://civitai.com/api/download/models/2",
+            Files = new List<ModelFile> {
+                new ModelFile {
+                    Name = "m.safetensors", Format = "Safe Tensor", SizeBytes = 64,
+                    DownloadUrl = "https://civitai.com/api/download/models/2", IsPrimary = true
+                }
+            },
+        };
+        var downloader = NewDownloader();  // 默认空 token
+
+        var result = await downloader.DownloadAsync(version, _tmp, log: null, progress: null, default);
+
+        Assert.True(result.Success);
+        Assert.NotEmpty(_handler.Requests);
+        Assert.All(_handler.Requests, r => Assert.Null(r.Headers.Authorization));
+    }
 }
 
 internal class ModelDelegatingHandlerStub : HttpMessageHandler
 {
     private readonly Queue<(HttpStatusCode, byte[], long?)> _responses = new();
+    // v0.6.22+:记录 request — 让测试能验证 Authorization: Bearer header(用于 token 测试)。
+    public List<HttpRequestMessage> Requests { get; } = new();
 
     public void Enqueue(HttpStatusCode code, byte[] body, long? contentLength = null)
     {
@@ -219,6 +304,7 @@ internal class ModelDelegatingHandlerStub : HttpMessageHandler
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        Requests.Add(request);
         var (code, body, len) = _responses.Count > 0 ? _responses.Dequeue() : (HttpStatusCode.OK, Array.Empty<byte>(), (long?)null);
         var msg = new HttpResponseMessage(code)
         {

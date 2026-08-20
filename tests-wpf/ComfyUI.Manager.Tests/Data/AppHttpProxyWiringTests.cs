@@ -52,6 +52,36 @@ public class AppHttpProxyWiringTests
         Assert.Null(handler(http).Proxy);
     }
 
+    // v0.6.22+: 所有 BuildHttpClient 返回的 HttpClient 都要带 User-Agent + Accept 头 —
+    // 避免 CivitAI/HF 的 Cloudflare 反爬把空 User-Agent 的 .NET client 当 bot 拦截返回 HTML。
+    [Fact]
+    public void BuildHttpClient_SetsUserAgentHeader()
+    {
+        var http = InvokeBuildHttpClient(new Settings(), HttpProxyConfig.Disabled);
+
+        var ua = http.DefaultRequestHeaders.UserAgent;
+        Assert.NotEmpty(ua);
+        // ParseAdd("ComfyUI-Manager/0.6.13") 拆成 Product=Name="ComfyUI-Manager" Version="0.6.13"
+        Assert.Contains(ua, h => h.Product != null && h.Product.Name == "ComfyUI-Manager" && h.Product.Version == "0.6.13");
+    }
+
+    [Fact]
+    public void BuildHttpClient_SetsAcceptHeader()
+    {
+        var http = InvokeBuildHttpClient(new Settings(), HttpProxyConfig.Disabled);
+
+        var accept = http.DefaultRequestHeaders.Accept;
+        Assert.NotEmpty(accept);
+        Assert.Contains(accept, h => h.MediaType != null && h.MediaType.Contains("application/json"));
+    }
+
+    // 校验 DefaultUserAgent 常量 = "ComfyUI-Manager/0.6.13" (跟 v0.6.13-B singleton 用的一致)。
+    [Fact]
+    public void DefaultUserAgent_Constant_MatchesVersionedIdentifier()
+    {
+        Assert.Equal("ComfyUI-Manager/0.6.13", App.DefaultUserAgent);
+    }
+
     private static HttpClient InvokeBuildHttpClient(Settings _, HttpProxyConfig? proxy)
     {
         var method = typeof(App).GetMethod(

@@ -83,6 +83,16 @@ public class SettingsRepository
         {
             s.ThemeMode = "dark";
         }
+
+        // v0.6.22 T7+:per-source UseProxy 一键跟随全局代理。
+        // 旧 v0.6.22 默认 false,用户开启全局代理但未触 per-source → AND 失败 → request 直连 →
+        // Cloudflare 返 HTML 反爬页(2026-08-20 用户反馈"勾选了使用代理但模型市场没走代理")。
+        // 一次性迁移:全局开 + 任意 per-source = false → 提升为 true(opt-out 须用户手动设回 false)。
+        if (s.HttpProxyEnabled)
+        {
+            if (!s.ModelSourceCivitAiUseProxy) s.ModelSourceCivitAiUseProxy = true;
+            if (!s.ModelSourceHuggingFaceUseProxy) s.ModelSourceHuggingFaceUseProxy = true;
+        }
         return s;
     }
 

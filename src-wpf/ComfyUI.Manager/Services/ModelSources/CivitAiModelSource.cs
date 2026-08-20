@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -13,22 +14,27 @@ namespace ComfyUI.Manager.Services.ModelSources;
 /// <summary>v0.6.20:CivitAI Models API fetcher.
 /// Endpoint: https://civitai.com/api/v1/models?limit=100&amp;page=N&amp;nsfw=true&amp;sort=Newest
 /// Pagination: 走 "metadata.nextPage" cursor 直到 null。
-/// nsfw=true 全部拉回来,UI badge 区分 NSFW/Mature/SFW。</summary>
+/// nsfw=true 全部拉回来,UI badge 区分 NSFW/Mature/SFW。
+/// v0.6.22+:apiToken — Authorization: Bearer 注入所有 API 请求(用户 2026-08-20
+/// 反馈"受限模型 / 敏感标记模型返 401/403")。镜像 HuggingFaceModelSource 模式:
+/// 仅在 HTTPS baseUrl 下注入(防 token 通过 HTTP 镜像泄露)。</summary>
 public class CivitAiModelSource : IModelSource
 {
     private readonly HttpClient _http;
     private readonly AppLogger? _logger;
     private const int PageSize = 100;
     private readonly string _baseUrl;
+    private readonly string _apiToken;
 
     public ModelSourceKind SourceKind => ModelSourceKind.CivitAi;
     public string DisplayName => "CivitAI";
     public bool IsEnabled { get; set; } = true;
 
-    public CivitAiModelSource(HttpClient http, string baseUrl, AppLogger? logger = null)
+    public CivitAiModelSource(HttpClient http, string baseUrl, string apiToken, AppLogger? logger = null)
     {
         _http = http;
         _baseUrl = baseUrl;
+        _apiToken = apiToken ?? "";
         _logger = logger;
         if (baseUrl != "https://civitai.com")
         {
@@ -71,7 +77,14 @@ public class CivitAiModelSource : IModelSource
         var cursorLabel = string.IsNullOrEmpty(cursor) ? "(none)" : cursor;
         _logger?.Info("model-civitai", $"fetch page cursor={cursorLabel} sort={sort} period={period}: {url}");
 
-        var resp = await _http.GetAsync(url, ct).ConfigureAwait(false);
+        // v0.6.22+:per-request Authorization: Bearer(token 跟 HuggingFaceModelSource 同模式)。
+        // 仅 HTTPS baseUrl 注入 — 防 HTTP 镜像明文泄露 token。
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrEmpty(_apiToken) && _baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        }
+        var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 

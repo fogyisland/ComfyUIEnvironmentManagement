@@ -20,7 +20,7 @@ public class ModelSourceFactoryTests
 {
     private static Settings MakeSettings(
         bool civitai = true, bool civitaiMirror = false, string civitaiMirrorUrl = "",
-        bool civitaiUseProxy = false,
+        bool civitaiUseProxy = false, string civitaiToken = "",
         bool hf = false, string hfToken = "", bool hfMirror = true, string hfMirrorUrl = "https://hf-mirror.com",
         bool hfUseProxy = false,
         bool httpProxyEnabled = false, string httpProxyUrl = "http://127.0.0.1", int httpProxyPort = 7890)
@@ -30,6 +30,7 @@ public class ModelSourceFactoryTests
             ModelSourceCivitAiUseMirror = civitaiMirror,
             ModelSourceCivitAiMirrorUrl = civitaiMirrorUrl,
             ModelSourceCivitAiUseProxy = civitaiUseProxy,
+            CivitAiApiToken = civitaiToken,
             ModelSourceHuggingFaceEnabled = hf,
             HuggingFaceApiToken = hfToken,
             ModelSourceHuggingFaceUseMirror = hfMirror,
@@ -162,5 +163,30 @@ public class ModelSourceFactoryTests
             apiToken: "",
             timeoutSeconds: 1).GetAwaiter().GetResult();
         Assert.False(ok);
+    }
+
+    // —— v0.6.22+:CivitAI token 透传到 CivitAiModelSource ——
+    // 注:CivitAiModelSource 没有公开 getter 给 _apiToken,只能通过 SearchPageAsync 发出的
+    // request header 验证。完整 token 注入测试见 ModelSourceCivitAiTests。
+    // 此处验证 factory 把 token 从 Settings 字段透传给 source ctor(无 throw = 成功)。
+
+    [Fact]
+    public void CreateCivitAi_WithApiToken_ConstructsWithoutError()
+    {
+        var settings = MakeSettings(civitai: true, civitaiToken: "civ_test_token");
+        var b = new RecordingBuilder();
+        var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
+        Assert.NotNull(src);
+        Assert.NotNull(src!.DisplayName);  // sanity check — source 已构造
+    }
+
+    [Fact]
+    public void CreateCivitAi_WithEmptyToken_ConstructsWithoutError()
+    {
+        // 空 token 是合法状态(用户未配置),不应 throw
+        var settings = MakeSettings(civitai: true, civitaiToken: "");
+        var b = new RecordingBuilder();
+        var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
+        Assert.NotNull(src);
     }
 }

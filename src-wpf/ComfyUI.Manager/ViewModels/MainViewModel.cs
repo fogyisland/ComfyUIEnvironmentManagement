@@ -622,9 +622,9 @@ public class MainViewModel : ViewModelBase
             // per-source mirror 解析)。Factory 内部 skip disabled source → aggregator 永远只看 enabled。
             // v0.6.22+:builder 决定 per-source HttpClient + proxy 应用。
             var marketplace = new ModelMarketplaceService(
-                ModelSourceFactory.CreateAll(_settings, builder),
+                ModelSourceFactory.CreateAll(_settings, builder, logger: _logger),
                 logger: _logger);
-            var downloader = new ModelDownloader(http, logger: _logger);
+            var downloader = new ModelDownloader(http, logger: _logger, civitaiToken: _settings.CivitAiApiToken);
             var scanner = new ModelFilesystemScanner(logger: _logger);
             // v0.6.22+:注入 SettingsRepository 让 model marketplace view 中的 proxy toggle
             // 勾选时立即 Save 到 .manager/settings.json(用户期待持久化)。HttpClient 仍用

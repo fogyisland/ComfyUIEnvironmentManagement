@@ -22,7 +22,8 @@ public static class ModelSourceFactory
     public const string HuggingFaceOfficial = "https://huggingface.co";
 
     public static CivitAiModelSource? CreateCivitAi(
-        Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder)
+        Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder,
+        AppLogger? logger = null)
     {
         if (!settings.ModelSourceCivitAiEnabled) return null;
         var baseUrl = ResolveBaseUrl(settings.ModelSourceCivitAiUseMirror,
@@ -30,11 +31,12 @@ public static class ModelSourceFactory
                                      CivitAiOfficial);
         var proxy = ResolveProxy(settings.HttpProxyEnabled && settings.ModelSourceCivitAiUseProxy, settings);
         var http = httpBuilder(proxy);
-        return new CivitAiModelSource(http, baseUrl);
+        return new CivitAiModelSource(http, baseUrl, settings.CivitAiApiToken, logger);
     }
 
     public static HuggingFaceModelSource? CreateHuggingFace(
-        Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder)
+        Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder,
+        AppLogger? logger = null)
     {
         if (!settings.ModelSourceHuggingFaceEnabled) return null;
         var baseUrl = ResolveBaseUrl(settings.ModelSourceHuggingFaceUseMirror,
@@ -42,16 +44,17 @@ public static class ModelSourceFactory
                                      HuggingFaceOfficial);
         var proxy = ResolveProxy(settings.HttpProxyEnabled && settings.ModelSourceHuggingFaceUseProxy, settings);
         var http = httpBuilder(proxy);
-        return new HuggingFaceModelSource(http, baseUrl, settings.HuggingFaceApiToken);
+        return new HuggingFaceModelSource(http, baseUrl, settings.HuggingFaceApiToken, logger);
     }
 
     public static IEnumerable<IModelSource> CreateAll(
-        Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder)
+        Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder,
+        AppLogger? logger = null)
     {
         var sources = new List<IModelSource>();
-        var civitai = CreateCivitAi(settings, httpBuilder);
+        var civitai = CreateCivitAi(settings, httpBuilder, logger);
         if (civitai is not null) sources.Add(civitai);
-        var hf = CreateHuggingFace(settings, httpBuilder);
+        var hf = CreateHuggingFace(settings, httpBuilder, logger);
         if (hf is not null) sources.Add(hf);
         return sources;
     }

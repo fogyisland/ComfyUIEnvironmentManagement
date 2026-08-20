@@ -67,6 +67,12 @@ public class Settings
     // v0.6.20:模型市场 — CivitAI source enabled bool(共享 models 目录 = DefaultModelsDirectory,v0.6.22+ 硬删 models_directory 字段)
     [JsonPropertyName("model_source_civitai_enabled")]
     public bool ModelSourceCivitAiEnabled { get; set; } = true;
+    // v0.6.22+:CivitAI API key — 部分受限 / NSFW / 标记敏感模型,无 token 时直接调 API
+    // 和 download URL 会返 401/403。token 走 Authorization: Bearer header 注入所有
+    // CivitAI HTTP 请求(API search + 模型下载),不走 URL ?token= query 避免剪贴板暴露。
+    // 获取 token:https://civitai.com/user/account → API Keys → Add API key。
+    [JsonPropertyName("civitai_api_token")]
+    public string CivitAiApiToken { get; set; } = "";
     // v0.6.21: 模型市场 per-source mirror + HuggingFace source + API token
     [JsonPropertyName("model_source_civitai_use_mirror")]
     public bool ModelSourceCivitAiUseMirror { get; set; } = false;
@@ -82,10 +88,13 @@ public class Settings
     public string ModelSourceHuggingFaceMirrorUrl { get; set; } = "https://hf-mirror.com";
     // v0.6.22+:per-source 是否经全局代理访问。当 HttpProxyEnabled + 此项双 true 时,
     // 该 source 自己的 HttpClient 配 WebProxy。改动需重启应用生效(同 mirror toggle)。
+    // v0.6.22 T7+:默认 = true(用户期望全局代理开关一键启用,per-source 仅作为 opt-out)。
+    // 历史 settings.json 显式 false 由 SettingsRepository.Load() 一次性迁移到 true
+    // (前提 HttpProxyEnabled=true,否则 per-source 默认无意义)。
     [JsonPropertyName("model_source_civitai_use_proxy")]
-    public bool ModelSourceCivitAiUseProxy { get; set; }
+    public bool ModelSourceCivitAiUseProxy { get; set; } = true;
     [JsonPropertyName("model_source_huggingface_use_proxy")]
-    public bool ModelSourceHuggingFaceUseProxy { get; set; }
+    public bool ModelSourceHuggingFaceUseProxy { get; set; } = true;
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
@@ -185,6 +194,7 @@ public class Settings
         target.WorkflowSourceCivitAiEnabled = source.WorkflowSourceCivitAiEnabled;
         target.WorkflowSourceOpenArtEnabled = source.WorkflowSourceOpenArtEnabled;
         target.ModelSourceCivitAiEnabled = source.ModelSourceCivitAiEnabled;
+        target.CivitAiApiToken = source.CivitAiApiToken;
         target.ModelSourceCivitAiUseMirror = source.ModelSourceCivitAiUseMirror;
         target.ModelSourceCivitAiMirrorUrl = source.ModelSourceCivitAiMirrorUrl;
         target.ModelSourceHuggingFaceEnabled = source.ModelSourceHuggingFaceEnabled;
