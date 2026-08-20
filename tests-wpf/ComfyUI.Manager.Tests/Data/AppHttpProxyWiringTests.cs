@@ -15,7 +15,7 @@ public class AppHttpProxyWiringTests
     {
         var settings = new Settings
         {
-            HttpProxyEnabled = true,
+            HttpProxyMode = HttpProxyMode.Custom,
             HttpProxyUrl = "127.0.0.1",
             HttpProxyPort = 7890,
         };

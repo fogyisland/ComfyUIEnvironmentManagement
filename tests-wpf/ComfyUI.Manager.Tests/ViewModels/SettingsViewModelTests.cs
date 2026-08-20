@@ -201,6 +201,63 @@ public class SettingsViewModelTests : IDisposable
         Assert.False(vm.ShowsIgnoredProxyUrlWarning);
     }
 
+    // v0.6.22++:HttpProxyMode setter 同步 _proxy.Enabled/UseSystemProxy(运行期 live)。
+    [Fact]
+    public void HttpProxyMode_Set_Off_SyncsProxyToDisabled()
+    {
+        var proxy = new HttpProxyConfig { Enabled = true, UseSystemProxy = true, Url = "x", Port = 1 };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        vm.HttpProxyMode = HttpProxyMode.Off;
+        Assert.False(proxy.Enabled);
+        Assert.False(proxy.UseSystemProxy);
+    }
+
+    [Fact]
+    public void HttpProxyMode_Set_InheritSystem_SyncsProxyToSystem()
+    {
+        // 默认 Settings.HttpProxyMode=InheritSystem — 改前先 Off 才能让 setter 触发 sync。
+        var proxy = new HttpProxyConfig { Enabled = false, UseSystemProxy = false };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        vm.HttpProxyMode = HttpProxyMode.Off;  // first transition out of default
+        Assert.False(proxy.Enabled);
+        vm.HttpProxyMode = HttpProxyMode.InheritSystem;
+        Assert.True(proxy.Enabled);
+        Assert.True(proxy.UseSystemProxy);
+    }
+
+    [Fact]
+    public void HttpProxyMode_Set_Custom_SyncsProxyToEnabledNoSystem()
+    {
+        var proxy = new HttpProxyConfig { Enabled = false, UseSystemProxy = true };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        vm.HttpProxyMode = HttpProxyMode.Off;
+        vm.HttpProxyMode = HttpProxyMode.Custom;
+        Assert.True(proxy.Enabled);
+        Assert.False(proxy.UseSystemProxy);
+    }
+
+    [Fact]
+    public void HttpProxyMode_Default_Is_InheritSystem()
+    {
+        // 全新 settings.json → new Settings() → 默认 HttpProxyMode = InheritSystem
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
+        Assert.Equal(HttpProxyMode.InheritSystem, vm.HttpProxyMode);
+    }
+
+    [Fact]
+    public void ModelSourceCivitAiProxyMode_Default_Is_InheritGlobal()
+    {
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
+        Assert.Equal(ModelSourceProxyMode.InheritGlobal, vm.ModelSourceCivitAiProxyMode);
+    }
+
+    [Fact]
+    public void ModelSourceHuggingFaceProxyMode_Default_Is_InheritGlobal()
+    {
+        var vm = new SettingsViewModel(new SettingsRepository(_path), HttpProxyConfig.Disabled, new FakeValidator(isValid: true));
+        Assert.Equal(ModelSourceProxyMode.InheritGlobal, vm.ModelSourceHuggingFaceProxyMode);
+    }
+
     [Fact]
     public void ConfirmAddDownloadSourceCommand_AppendsAndSetsActive()
     {

@@ -593,16 +593,19 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    // v0.6.22+:per-source "使用代理" 开关 — 仅在 HttpProxyEnabled=true 时生效。
-    // 同 mirror toggle:改完需重启应用才能让该 source 重新创建带 WebProxy 的 HttpClient。
-    public bool ModelSourceCivitAiUseProxy
+    // v0.6.22++:per-source 代理三态 — Off / InheritGlobal / AlwaysOn。
+    // 决策见 ModelSourceProxyDecision.Resolve(globalMode, sourceMode, settings)。
+    // 默认 = InheritGlobal(全局开关一键代理,per-source 跟全局走;Opt-out 显式设 Off;
+    // AlwaysOn 用于强制走代理场景)。
+    // 改完需重启应用才能让该 source 重新创建带 WebProxy 的 HttpClient。
+    public ModelSourceProxyMode ModelSourceCivitAiProxyMode
     {
-        get => _settings.ModelSourceCivitAiUseProxy;
+        get => _settings.ModelSourceCivitAiProxyMode;
         set
         {
-            if (_settings.ModelSourceCivitAiUseProxy == value) return;
-            _settings.ModelSourceCivitAiUseProxy = value;
-            MarkDirty(nameof(ModelSourceCivitAiUseProxy));
+            if (_settings.ModelSourceCivitAiProxyMode == value) return;
+            _settings.ModelSourceCivitAiProxyMode = value;
+            MarkDirty(nameof(ModelSourceCivitAiProxyMode));
             RaisePropertyChanged();
         }
     }
@@ -660,14 +663,14 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public bool ModelSourceHuggingFaceUseProxy
+    public ModelSourceProxyMode ModelSourceHuggingFaceProxyMode
     {
-        get => _settings.ModelSourceHuggingFaceUseProxy;
+        get => _settings.ModelSourceHuggingFaceProxyMode;
         set
         {
-            if (_settings.ModelSourceHuggingFaceUseProxy == value) return;
-            _settings.ModelSourceHuggingFaceUseProxy = value;
-            MarkDirty(nameof(ModelSourceHuggingFaceUseProxy));
+            if (_settings.ModelSourceHuggingFaceProxyMode == value) return;
+            _settings.ModelSourceHuggingFaceProxyMode = value;
+            MarkDirty(nameof(ModelSourceHuggingFaceProxyMode));
             RaisePropertyChanged();
         }
     }
@@ -745,29 +748,18 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         }
     }
-    public bool HttpProxyEnabled
+    public HttpProxyMode HttpProxyMode
     {
-        get => _proxy.Enabled;
+        get => _settings.HttpProxyMode;
         set
         {
-            _proxy.Enabled = value;
-            _settings.HttpProxyEnabled = value;
-            MarkDirty(nameof(HttpProxyEnabled));
-            RaisePropertyChanged();
-            RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
-        }
-    }
-    // v0.6.22+:继承系统代理(OS-level IE settings / WPAD / PAC)。
-    // true → handler.UseProxy=true 但不设 Proxy,WinHTTP 自动走系统默认;URL/Port 字段被忽略。
-    // 改动仍走 SettingsViewModel "重启后生效" 的 tooltip — HttpClient handler 在 OnStartup 一次性构造。
-    public bool HttpProxyUseSystemProxy
-    {
-        get => _proxy.UseSystemProxy;
-        set
-        {
-            _proxy.UseSystemProxy = value;
-            _settings.HttpProxyUseSystemProxy = value;
-            MarkDirty(nameof(HttpProxyUseSystemProxy));
+            var v = value;
+            if (_settings.HttpProxyMode == v) return;
+            _settings.HttpProxyMode = v;
+            // 同步 live HttpProxyConfig(运行时立即生效)
+            _proxy.Enabled = v != HttpProxyMode.Off;
+            _proxy.UseSystemProxy = v == HttpProxyMode.InheritSystem;
+            MarkDirty(nameof(HttpProxyMode));
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         }
@@ -1094,8 +1086,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(GitExe));
         RaisePropertyChanged(nameof(HttpProxyUrl));
         RaisePropertyChanged(nameof(HttpProxyPort));
-        RaisePropertyChanged(nameof(HttpProxyEnabled));
-        RaisePropertyChanged(nameof(HttpProxyUseSystemProxy));
+        RaisePropertyChanged(nameof(HttpProxyMode));
         RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));

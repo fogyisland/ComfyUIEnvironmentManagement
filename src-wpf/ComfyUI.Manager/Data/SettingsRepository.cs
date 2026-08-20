@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 
@@ -18,6 +19,10 @@ public class SettingsRepository
     {
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
+        // v0.6.22++:HttpProxyMode / ModelSourceProxyMode 枚举 → JSON 字符串(否则
+        // 反序列化时未知 enum 字段会落到 0/Off,违反"默认 InheritSystem"语义)。
+        // 老 JSON 数字格式(0/1/2)也能容错:JsonStringEnumConverter 默认接受数字。
+        Converters = { new JsonStringEnumConverter() },
     };
 
     private readonly string _settingsPath;
@@ -73,6 +78,22 @@ public class SettingsRepository
             json = migratedJson;
         }
 
+        // v0.6.22++:迁移 2-bool(http_proxy_enabled + http_proxy_use_system)→ HttpProxyMode enum。
+        // 同时迁移 per-source use_proxy bool → ModelSourceProxyMode enum。首次启动 v0.6.22++ 时
+        // 触发一次,后续启动走新 schema 没迁移开销。
+        var (migratedJsonV22, migratedV22) = TryMigrateOldProxyBoolFields(json);
+        if (migratedV22)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(_settingsPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(_settingsPath, migratedJsonV22);
+            }
+            catch { }
+            json = migratedJsonV22;
+        }
+
         var s = JsonSerializer.Deserialize<Settings>(json, JsonOptions)
             ?? new Settings();
 
@@ -84,15 +105,6 @@ public class SettingsRepository
             s.ThemeMode = "dark";
         }
 
-        // v0.6.22 T7+:per-source UseProxy 一键跟随全局代理。
-        // 旧 v0.6.22 默认 false,用户开启全局代理但未触 per-source → AND 失败 → request 直连 →
-        // Cloudflare 返 HTML 反爬页(2026-08-20 用户反馈"勾选了使用代理但模型市场没走代理")。
-        // 一次性迁移:全局开 + 任意 per-source = false → 提升为 true(opt-out 须用户手动设回 false)。
-        if (s.HttpProxyEnabled)
-        {
-            if (!s.ModelSourceCivitAiUseProxy) s.ModelSourceCivitAiUseProxy = true;
-            if (!s.ModelSourceHuggingFaceUseProxy) s.ModelSourceHuggingFaceUseProxy = true;
-        }
         return s;
     }
 
@@ -127,6 +139,69 @@ public class SettingsRepository
             node["http_proxy_enabled"] = enabled;
             node["http_proxy_url"] = url;
             node["http_proxy_port"] = port;
+            return (node.ToJsonString(JsonOptions), true);
+        }
+        catch
+        {
+            return (json, false);
+        }
+    }
+
+    /// <summary>
+    /// v0.6.22++: 旧 settings.json 含 bool 字段(http_proxy_enabled / http_proxy_use_system +
+    /// model_source_{civitai,huggingface}_use_proxy)迁移到新 enum 字段
+    /// (http_proxy_mode / model_source_{civitai,huggingface}_proxy_mode)。
+    ///
+    /// 旧 bool 含义:
+    /// - http_proxy_enabled=false → HttpProxyMode.Off
+    /// - http_proxy_enabled=true + http_proxy_use_system=true → HttpProxyMode.InheritSystem
+    /// - http_proxy_enabled=true + http_proxy_use_system=false → HttpProxyMode.Custom
+    /// - model_source_*_use_proxy=true → ModelSourceProxyMode.InheritGlobal
+    /// - model_source_*_use_proxy=false → ModelSourceProxyMode.Off
+    /// </summary>
+    private static (string Json, bool Migrated) TryMigrateOldProxyBoolFields(string json)
+    {
+        if (string.IsNullOrEmpty(json)) return (json, false);
+        var hasOldGlobal = json.Contains("\"http_proxy_enabled\"", StringComparison.Ordinal)
+                        || json.Contains("\"http_proxy_use_system\"", StringComparison.Ordinal);
+        var hasOldCivit = json.Contains("\"model_source_civitai_use_proxy\"", StringComparison.Ordinal);
+        var hasOldHf = json.Contains("\"model_source_huggingface_use_proxy\"", StringComparison.Ordinal);
+        if (!hasOldGlobal && !hasOldCivit && !hasOldHf) return (json, false);
+
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+
+            if (hasOldGlobal)
+            {
+                var enabled = node["http_proxy_enabled"]?.GetValue<bool>() ?? false;
+                var useSystem = node["http_proxy_use_system"]?.GetValue<bool>() ?? false;
+                node.Remove("http_proxy_enabled");
+                node.Remove("http_proxy_use_system");
+                HttpProxyMode mode;
+                if (!enabled) mode = HttpProxyMode.Off;
+                else if (useSystem) mode = HttpProxyMode.InheritSystem;
+                else mode = HttpProxyMode.Custom;
+                node["http_proxy_mode"] = mode.ToString();
+            }
+
+            if (hasOldCivit)
+            {
+                var useProxy = node["model_source_civitai_use_proxy"]?.GetValue<bool>() ?? true;
+                node.Remove("model_source_civitai_use_proxy");
+                node["model_source_civitai_proxy_mode"] = (useProxy
+                    ? ModelSourceProxyMode.InheritGlobal
+                    : ModelSourceProxyMode.Off).ToString();
+            }
+            if (hasOldHf)
+            {
+                var useProxy = node["model_source_huggingface_use_proxy"]?.GetValue<bool>() ?? true;
+                node.Remove("model_source_huggingface_use_proxy");
+                node["model_source_huggingface_proxy_mode"] = (useProxy
+                    ? ModelSourceProxyMode.InheritGlobal
+                    : ModelSourceProxyMode.Off).ToString();
+            }
+
             return (node.ToJsonString(JsonOptions), true);
         }
         catch

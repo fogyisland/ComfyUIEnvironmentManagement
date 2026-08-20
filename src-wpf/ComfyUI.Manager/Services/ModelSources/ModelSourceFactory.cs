@@ -29,7 +29,10 @@ public static class ModelSourceFactory
         var baseUrl = ResolveBaseUrl(settings.ModelSourceCivitAiUseMirror,
                                      settings.ModelSourceCivitAiMirrorUrl,
                                      CivitAiOfficial);
-        var proxy = ResolveProxy(settings.HttpProxyEnabled && settings.ModelSourceCivitAiUseProxy, settings);
+        var proxy = ModelSourceProxyDecision.Resolve(
+            settings.HttpProxyMode,
+            settings.ModelSourceCivitAiProxyMode,
+            settings);
         var http = httpBuilder(proxy);
         return new CivitAiModelSource(http, baseUrl, settings.CivitAiApiToken, logger);
     }
@@ -42,7 +45,10 @@ public static class ModelSourceFactory
         var baseUrl = ResolveBaseUrl(settings.ModelSourceHuggingFaceUseMirror,
                                      settings.ModelSourceHuggingFaceMirrorUrl,
                                      HuggingFaceOfficial);
-        var proxy = ResolveProxy(settings.HttpProxyEnabled && settings.ModelSourceHuggingFaceUseProxy, settings);
+        var proxy = ModelSourceProxyDecision.Resolve(
+            settings.HttpProxyMode,
+            settings.ModelSourceHuggingFaceProxyMode,
+            settings);
         var http = httpBuilder(proxy);
         return new HuggingFaceModelSource(http, baseUrl, settings.HuggingFaceApiToken, logger);
     }
@@ -85,7 +91,4 @@ public static class ModelSourceFactory
         => useMirror && !string.IsNullOrWhiteSpace(mirrorUrl)
             ? mirrorUrl.TrimEnd('/')
             : officialUrl;
-
-    private static HttpProxyConfig? ResolveProxy(bool useProxy, Settings settings)
-        => useProxy ? HttpProxyConfig.From(settings) : null;
 }

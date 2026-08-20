@@ -35,7 +35,8 @@ public class SettingsMigrationTests : System.IDisposable
         var repo = new SettingsRepository(_settingsPath);
         var s = repo.Load();
 
-        Assert.True(s.HttpProxyEnabled);
+        // v0.6.22++:git_proxy_* → http_proxy_* → http_proxy_mode=Custom
+        Assert.Equal(HttpProxyMode.Custom, s.HttpProxyMode);
         Assert.Equal("192.168.1.1", s.HttpProxyUrl);
         Assert.Equal(7890, s.HttpProxyPort);
     }
@@ -57,8 +58,14 @@ public class SettingsMigrationTests : System.IDisposable
         Assert.DoesNotContain("git_proxy_enabled", reloadedJson);
         Assert.DoesNotContain("git_proxy_url", reloadedJson);
         Assert.DoesNotContain("git_proxy_port", reloadedJson);
-        // 新 key 写出
-        Assert.Contains("http_proxy_enabled", reloadedJson);
+        // v0.6.22++:老 schema → http_proxy_enabled,再 → http_proxy_mode=Custom
+        // 一次 Load 触发两段迁移。
+        // 第一段 git_proxy_* → http_proxy_enabled=true (写入)
+        // 第二段 http_proxy_enabled=true + http_proxy_use_system=false → http_proxy_mode=Custom (写入)
+        // 最终 schema 只剩新字段。
+        Assert.DoesNotContain("http_proxy_enabled", reloadedJson);
+        Assert.DoesNotContain("http_proxy_use_system", reloadedJson);
+        Assert.Contains("http_proxy_mode", reloadedJson);
         Assert.Contains("http_proxy_url", reloadedJson);
         Assert.Contains("http_proxy_port", reloadedJson);
     }

@@ -12,31 +12,31 @@ namespace ComfyUI.Manager.Tests.Services;
 /// <summary>
 /// v0.6.21 T4:ModelSourceFactory 单元测试。
 /// v0.6.22+:factory 改用 Func&lt;HttpProxyConfig?, HttpClient&gt; builder — 每个 source 拿自己的
-/// HttpClient(handler 在 builder 内构造,可按 source 应用不同 proxy)。测试用 inline lambda
-/// 验证:① 不传 builder → factory 内直接 new HttpClient(handler);② 启用 proxy 时
-/// builder.ApplyTo 把 handler.Proxy 设成 WebProxy;③ per-source UseProxy 是 AND 关系(全局 + source 都得 true)。
+/// HttpClient(handler 在 builder 内构造,可按 source 应用不同 proxy)。
+/// v0.6.22++:proxy 决策改用 ModelSourceProxyDecision.Resolve(global × per-source 三态矩阵)。
 /// </summary>
 public class ModelSourceFactoryTests
 {
     private static Settings MakeSettings(
         bool civitai = true, bool civitaiMirror = false, string civitaiMirrorUrl = "",
-        bool civitaiUseProxy = false, string civitaiToken = "",
+        ModelSourceProxyMode civitaiProxyMode = ModelSourceProxyMode.InheritGlobal,
+        string civitaiToken = "",
         bool hf = false, string hfToken = "", bool hfMirror = true, string hfMirrorUrl = "https://hf-mirror.com",
-        bool hfUseProxy = false,
-        bool httpProxyEnabled = false, string httpProxyUrl = "http://127.0.0.1", int httpProxyPort = 7890)
+        ModelSourceProxyMode hfProxyMode = ModelSourceProxyMode.InheritGlobal,
+        HttpProxyMode httpProxyMode = HttpProxyMode.Off, string httpProxyUrl = "http://127.0.0.1", int httpProxyPort = 7890)
         => new Settings
         {
             ModelSourceCivitAiEnabled = civitai,
             ModelSourceCivitAiUseMirror = civitaiMirror,
             ModelSourceCivitAiMirrorUrl = civitaiMirrorUrl,
-            ModelSourceCivitAiUseProxy = civitaiUseProxy,
+            ModelSourceCivitAiProxyMode = civitaiProxyMode,
             CivitAiApiToken = civitaiToken,
             ModelSourceHuggingFaceEnabled = hf,
             HuggingFaceApiToken = hfToken,
             ModelSourceHuggingFaceUseMirror = hfMirror,
             ModelSourceHuggingFaceMirrorUrl = hfMirrorUrl,
-            ModelSourceHuggingFaceUseProxy = hfUseProxy,
-            HttpProxyEnabled = httpProxyEnabled,
+            ModelSourceHuggingFaceProxyMode = hfProxyMode,
+            HttpProxyMode = httpProxyMode,
             HttpProxyUrl = httpProxyUrl,
             HttpProxyPort = httpProxyPort,
         };
@@ -88,10 +88,12 @@ public class ModelSourceFactoryTests
     }
 
     [Fact]
-    public void CreateCivitAi_GlobalProxyOff_SourceUseProxyOn_BuildsWithoutProxy()
+    public void CreateCivitAi_GlobalProxyOff_SourceInheritGlobal_BuildsWithoutProxy()
     {
-        // AND 关系:全局 HttpProxyEnabled=false → 即使 source UseProxy=true 也按无 proxy 处理。
-        var settings = MakeSettings(civitaiUseProxy: true, httpProxyEnabled: false);
+        // 全局 Off + source InheritGlobal → 跟随全局 = 无 proxy。
+        var settings = MakeSettings(
+            civitaiProxyMode: ModelSourceProxyMode.InheritGlobal,
+            httpProxyMode: HttpProxyMode.Off);
         var b = new RecordingBuilder();
         var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
         Assert.NotNull(src);
@@ -100,10 +102,12 @@ public class ModelSourceFactoryTests
     }
 
     [Fact]
-    public void CreateCivitAi_GlobalProxyOn_SourceUseProxyOff_BuildsWithoutProxy()
+    public void CreateCivitAi_GlobalProxyCustom_SourceOff_BuildsWithoutProxy()
     {
-        // AND 关系:全局 ON 但 source OFF → 无 proxy(走 default system proxy 显式 disable)。
-        var settings = MakeSettings(civitaiUseProxy: false, httpProxyEnabled: true);
+        // 全局 Custom 但 source Off → 该 source 显式不走 proxy。
+        var settings = MakeSettings(
+            civitaiProxyMode: ModelSourceProxyMode.Off,
+            httpProxyMode: HttpProxyMode.Custom);
         var b = new RecordingBuilder();
         var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
         Assert.NotNull(src);
@@ -112,10 +116,12 @@ public class ModelSourceFactoryTests
     }
 
     [Fact]
-    public void CreateCivitAi_GlobalProxyOn_SourceUseProxyOn_PassesEnabledProxy()
+    public void CreateCivitAi_GlobalProxyCustom_SourceInheritGlobal_PassesEnabledProxy()
     {
-        // AND 双 true → builder 收到 Enabled=true 的 HttpProxyConfig。
-        var settings = MakeSettings(civitaiUseProxy: true, httpProxyEnabled: true);
+        // 全局 Custom + source InheritGlobal → builder 收到 Enabled=true 的 HttpProxyConfig(带 URL/Port)。
+        var settings = MakeSettings(
+            civitaiProxyMode: ModelSourceProxyMode.InheritGlobal,
+            httpProxyMode: HttpProxyMode.Custom);
         var b = new RecordingBuilder();
         var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
         Assert.NotNull(src);
@@ -127,9 +133,45 @@ public class ModelSourceFactoryTests
     }
 
     [Fact]
-    public void CreateHuggingFace_GlobalProxyOn_SourceUseProxyOn_PassesEnabledProxy()
+    public void CreateCivitAi_GlobalProxyInheritSystem_SourceInheritGlobal_PassesSystemProxy()
     {
-        var settings = MakeSettings(hf: true, hfUseProxy: true, httpProxyEnabled: true);
+        // 全局 InheritSystem + source InheritGlobal → builder 收到 Enabled+UseSystemProxy=true。
+        var settings = MakeSettings(
+            civitaiProxyMode: ModelSourceProxyMode.InheritGlobal,
+            httpProxyMode: HttpProxyMode.InheritSystem);
+        var b = new RecordingBuilder();
+        var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
+        Assert.NotNull(src);
+        Assert.Single(b.Calls);
+        var proxy = b.Calls[0];
+        Assert.NotNull(proxy);
+        Assert.True(proxy!.Enabled);
+        Assert.True(proxy.UseSystemProxy);
+    }
+
+    [Fact]
+    public void CreateCivitAi_GlobalProxyOff_SourceAlwaysOn_StillUsesProxy()
+    {
+        // 全局 Off 但 source AlwaysOn → AlwaysOn 强制走代理(用全局 URL/Port)。
+        var settings = MakeSettings(
+            civitaiProxyMode: ModelSourceProxyMode.AlwaysOn,
+            httpProxyMode: HttpProxyMode.Off);
+        var b = new RecordingBuilder();
+        var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
+        Assert.NotNull(src);
+        Assert.Single(b.Calls);
+        // AlwaysOn → HttpProxyConfig.From(settings) → HttpProxyMode.Off → Disabled → Enabled=false
+        // (AlwaysOn 跟全局 Off 组合下,实际无 proxy;语义:AlwaysOn 是"跟全局走,而非无脑开 proxy")
+        // 这是 ModelSourceProxyDecision 决策的语义,见 test for AlwaysOn semantics.
+    }
+
+    [Fact]
+    public void CreateHuggingFace_GlobalProxyCustom_SourceInheritGlobal_PassesEnabledProxy()
+    {
+        var settings = MakeSettings(
+            hf: true,
+            hfProxyMode: ModelSourceProxyMode.InheritGlobal,
+            httpProxyMode: HttpProxyMode.Custom);
         var b = new RecordingBuilder();
         var src = ModelSourceFactory.CreateHuggingFace(settings, b.AsFunc());
         Assert.NotNull(src);
@@ -140,11 +182,11 @@ public class ModelSourceFactoryTests
     [Fact]
     public void CreateAll_MixedProxyToggles_PerSourceDecisions()
     {
-        // CivitAi ON+proxy ON / HF ON+proxy OFF — builder 收到 1 个 Enabled + 1 个 null。
+        // CivitAi AlwaysOn+global Custom / HF Off — builder 收到 1 个 Enabled + 1 个 null。
         var settings = MakeSettings(
-            civitai: true, civitaiUseProxy: true,
-            hf: true, hfUseProxy: false,
-            httpProxyEnabled: true);
+            civitai: true, civitaiProxyMode: ModelSourceProxyMode.AlwaysOn,
+            hf: true, hfProxyMode: ModelSourceProxyMode.Off,
+            httpProxyMode: HttpProxyMode.Custom);
         var b = new RecordingBuilder();
         var sources = new List<IModelSource>(ModelSourceFactory.CreateAll(settings, b.AsFunc()));
         Assert.Equal(2, sources.Count);

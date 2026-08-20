@@ -88,7 +88,7 @@ public class HttpProxyConfigTests
     {
         var s = new Settings
         {
-            HttpProxyEnabled = true,
+            HttpProxyMode = HttpProxyMode.Custom,
             HttpProxyUrl = "10.0.0.1",
             HttpProxyPort = 8888,
         };
@@ -96,8 +96,38 @@ public class HttpProxyConfigTests
         var cfg = HttpProxyConfig.From(s);
 
         Assert.True(cfg.Enabled);
+        Assert.False(cfg.UseSystemProxy);
         Assert.Equal("10.0.0.1", cfg.Url);
         Assert.Equal(8888, cfg.Port);
+    }
+
+    [Fact]
+    public void From_Settings_InheritSystem_MapsUseSystemProxy()
+    {
+        var s = new Settings
+        {
+            HttpProxyMode = HttpProxyMode.InheritSystem,
+        };
+
+        var cfg = HttpProxyConfig.From(s);
+
+        Assert.True(cfg.Enabled);
+        Assert.True(cfg.UseSystemProxy);
+    }
+
+    [Fact]
+    public void From_Settings_Off_ReturnsDisabled()
+    {
+        var s = new Settings
+        {
+            HttpProxyMode = HttpProxyMode.Off,
+            HttpProxyUrl = "10.0.0.1",
+            HttpProxyPort = 8888,
+        };
+
+        var cfg = HttpProxyConfig.From(s);
+
+        Assert.False(cfg.Enabled);
     }
 
     [Fact]

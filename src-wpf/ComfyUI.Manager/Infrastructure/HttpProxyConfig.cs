@@ -34,12 +34,13 @@ public sealed class HttpProxyConfig
     public static HttpProxyConfig From(Settings s)
     {
         if (s is null) return Disabled;
+        if (s.HttpProxyMode == HttpProxyMode.Off) return Disabled;
         return new HttpProxyConfig
         {
-            Enabled = s.HttpProxyEnabled,
+            Enabled = true,
+            UseSystemProxy = s.HttpProxyMode == HttpProxyMode.InheritSystem,
             Url = s.HttpProxyUrl,
             Port = s.HttpProxyPort,
-            UseSystemProxy = s.HttpProxyUseSystemProxy,
         };
     }
 

@@ -22,6 +22,18 @@ public enum PipMirrorKind
     Custom,
 }
 
+/// <summary>v0.6.22++:全局代理三态。
+/// Off = 不走代理(handler.Proxy=null, UseProxy=false, 也不走 WinHTTP default system proxy);
+/// InheritSystem = 走 OS-level(IE settings / WPAD / PAC 自动检测) — handler.UseProxy=true 但不设 Proxy;
+/// Custom = 用 URL/Port 自定义 WebProxy。</summary>
+public enum HttpProxyMode { Off, InheritSystem, Custom }
+
+/// <summary>v0.6.22++:per-source 代理三态。
+/// Off = this source 完全不走代理(handler.Proxy=null, UseProxy=false);
+/// InheritGlobal = 跟随全局 HttpProxyMode(Off → 无代理;InheritSystem → 走 OS;Custom → 用全局 URL/Port);
+/// AlwaysOn = this source 总是走代理(用全局 URL/Port;若全局 InheritSystem 则 fall back to OS 自动检测)。</summary>
+public enum ModelSourceProxyMode { Off, InheritGlobal, AlwaysOn }
+
 public class Settings
 {
     // —— 基础 / 显示 ——
@@ -86,26 +98,28 @@ public class Settings
     public bool ModelSourceHuggingFaceUseMirror { get; set; } = true;
     [JsonPropertyName("model_source_huggingface_mirror_url")]
     public string ModelSourceHuggingFaceMirrorUrl { get; set; } = "https://hf-mirror.com";
-    // v0.6.22+:per-source 是否经全局代理访问。当 HttpProxyEnabled + 此项双 true 时,
-    // 该 source 自己的 HttpClient 配 WebProxy。改动需重启应用生效(同 mirror toggle)。
-    // v0.6.22 T7+:默认 = true(用户期望全局代理开关一键启用,per-source 仅作为 opt-out)。
-    // 历史 settings.json 显式 false 由 SettingsRepository.Load() 一次性迁移到 true
-    // (前提 HttpProxyEnabled=true,否则 per-source 默认无意义)。
-    [JsonPropertyName("model_source_civitai_use_proxy")]
-    public bool ModelSourceCivitAiUseProxy { get; set; } = true;
-    [JsonPropertyName("model_source_huggingface_use_proxy")]
-    public bool ModelSourceHuggingFaceUseProxy { get; set; } = true;
+    // v0.6.22++:per-source 代理三态 — Off / InheritGlobal / AlwaysOn。
+    // 决策见 ModelSourceProxyDecision.Resolve(globalMode, sourceMode, settings)。
+    // 默认 = InheritGlobal(全局开关一键代理,per-source 跟全局走;Opt-out 显式设 Off;
+    // AlwaysOn 用于强制走代理场景)。
+    // 改动需重启应用生效(handler 在 OnStartup 一次性构造)。
+    // 老 settings.json 含 bool `model_source_*_use_proxy` 由 SettingsRepository.Load()
+    // 一次性迁移到 enum(true → InheritGlobal, false → Off)。
+    [JsonPropertyName("model_source_civitai_proxy_mode")]
+    public ModelSourceProxyMode ModelSourceCivitAiProxyMode { get; set; } = ModelSourceProxyMode.InheritGlobal;
+    [JsonPropertyName("model_source_huggingface_proxy_mode")]
+    public ModelSourceProxyMode ModelSourceHuggingFaceProxyMode { get; set; } = ModelSourceProxyMode.InheritGlobal;
 
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
-    [JsonPropertyName("http_proxy_enabled")] public bool HttpProxyEnabled { get; set; }
+    // v0.6.22++:全局代理三态 — Off / InheritSystem / Custom。
+    // 默认 = InheritSystem(企业 VPN 用户开箱即用 — 走 OS 默认 proxy / WPAD / PAC)。
+    // 老 settings.json 含 bool `http_proxy_enabled` + `http_proxy_use_system`
+    // 由 SettingsRepository.Load() 一次性迁移到 enum。
+    [JsonPropertyName("http_proxy_mode")]
+    public HttpProxyMode HttpProxyMode { get; set; } = HttpProxyMode.InheritSystem;
     [JsonPropertyName("http_proxy_url")] public string HttpProxyUrl { get; set; } = "";
     [JsonPropertyName("http_proxy_port")] public int HttpProxyPort { get; set; }
-    // v0.6.22+:继承系统代理(OS-level IE settings / WPAD / PAC)。
-    // true → handler.UseProxy=true 但不设 Proxy,WinHTTP 自动走系统默认;URL/Port 字段被忽略。
-    // false → 用 URL/Port 自定义代理(默认,v0.6.22+ 之前的语义)。
-    [JsonPropertyName("http_proxy_use_system")]
-    public bool HttpProxyUseSystemProxy { get; set; }
     [JsonPropertyName("git_exe")] public string GitExe { get; set; } = "";
     // v0.6.7.1: ComfyUI 启动就绪等待上限(秒)。默认 600(10 分钟)—— 大模型/首次
     // 编译 kernel 时几分钟很正常,30s 硬编码会误判失败。
@@ -201,14 +215,14 @@ public class Settings
         target.HuggingFaceApiToken = source.HuggingFaceApiToken;
         target.ModelSourceHuggingFaceUseMirror = source.ModelSourceHuggingFaceUseMirror;
         target.ModelSourceHuggingFaceMirrorUrl = source.ModelSourceHuggingFaceMirrorUrl;
-        target.ModelSourceCivitAiUseProxy = source.ModelSourceCivitAiUseProxy;
-        target.ModelSourceHuggingFaceUseProxy = source.ModelSourceHuggingFaceUseProxy;
+        target.ModelSourceCivitAiProxyMode = source.ModelSourceCivitAiProxyMode;
+        target.ModelSourceHuggingFaceProxyMode = source.ModelSourceHuggingFaceProxyMode;
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;
         target.ComfyUiStartupTimeoutSeconds = source.ComfyUiStartupTimeoutSeconds;
         target.ComfyUiLocale = source.ComfyUiLocale;
-        target.HttpProxyUseSystemProxy = source.HttpProxyUseSystemProxy;
+        target.HttpProxyMode = source.HttpProxyMode;
         // —— Catalog 视图 ——
         target.CatalogViewMode = source.CatalogViewMode;
         target.CatalogPageSize = source.CatalogPageSize;

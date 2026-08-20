@@ -627,17 +627,23 @@
                            Visibility="{Binding Dirty[ModelSourceCivitAiMirrorUrl], Converter={StaticResource BoolToVisibility}}"/>
             </DockPanel>
 
-            <!-- v0.6.22+:CivitAI 使用代理(需全局 HttpProxyEnabled=true)。重启生效 -->
+            <!-- v0.6.22++:CivitAI 代理三态 — 关闭 / 跟随全局 / 总是启用。重启生效 -->
             <StackPanel Orientation="Horizontal" Margin="20,8,0,0">
-                <CheckBox Content="使用代理" IsChecked="{Binding ModelSourceCivitAiUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                          VerticalAlignment="Center"
-                          IsEnabled="{Binding HttpProxyEnabled}"
-                          ToolTip="勾选后该源经全局代理访问。需在 环境/工具 段启用 HTTP 代理。重启应用生效。" />
+                <TextBlock Text="代理" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <RadioButton Content="关闭" GroupName="CivitAiProxyMode"
+                             IsChecked="{Binding ModelSourceCivitAiProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Off, Mode=TwoWay}"
+                             VerticalAlignment="Center" Margin="0,0,8,0" />
+                <RadioButton Content="跟随全局" GroupName="CivitAiProxyMode"
+                             IsChecked="{Binding ModelSourceCivitAiProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=InheritGlobal, Mode=TwoWay}"
+                             VerticalAlignment="Center" Margin="0,0,8,0" />
+                <RadioButton Content="总是启用" GroupName="CivitAiProxyMode"
+                             IsChecked="{Binding ModelSourceCivitAiProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=AlwaysOn, Mode=TwoWay}"
+                             VerticalAlignment="Center" />
                 <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource WarningBrush}"
                            ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[ModelSourceCivitAiUseProxy], Converter={StaticResource BoolToVisibility}}"/>
+                           Visibility="{Binding Dirty[ModelSourceCivitAiProxyMode], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
 
             <!-- HuggingFace enabled checkbox -->
@@ -708,17 +714,23 @@
                            Foreground="{DynamicResource WarningBrush}" FontSize="11" Margin="0,4,0,0"
                            Visibility="{Binding IsHuggingFaceMirrorInsecure, Converter={StaticResource BoolToVisibility}}" />
 
-                <!-- v0.6.22+:HF 使用代理(需全局 HttpProxyEnabled=true)。重启生效 -->
+                <!-- v0.6.22++:HF 代理三态 — 关闭 / 跟随全局 / 总是启用。重启生效 -->
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <CheckBox Content="使用代理" IsChecked="{Binding ModelSourceHuggingFaceUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                              VerticalAlignment="Center"
-                              IsEnabled="{Binding HttpProxyEnabled}"
-                              ToolTip="勾选后该源经全局代理访问。需在 环境/工具 段启用 HTTP 代理。重启应用生效。" />
+                    <TextBlock Text="代理" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <RadioButton Content="关闭" GroupName="HuggingFaceProxyMode"
+                                 IsChecked="{Binding ModelSourceHuggingFaceProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Off, Mode=TwoWay}"
+                                 VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <RadioButton Content="跟随全局" GroupName="HuggingFaceProxyMode"
+                                 IsChecked="{Binding ModelSourceHuggingFaceProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=InheritGlobal, Mode=TwoWay}"
+                                 VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <RadioButton Content="总是启用" GroupName="HuggingFaceProxyMode"
+                                 IsChecked="{Binding ModelSourceHuggingFaceProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=AlwaysOn, Mode=TwoWay}"
+                                 VerticalAlignment="Center" />
                     <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                                VerticalAlignment="Center"
                                Foreground="{DynamicResource WarningBrush}"
                                ToolTip="尚未保存"
-                               Visibility="{Binding Dirty[ModelSourceHuggingFaceUseProxy], Converter={StaticResource BoolToVisibility}}"/>
+                               Visibility="{Binding Dirty[ModelSourceHuggingFaceProxyMode], Converter={StaticResource BoolToVisibility}}"/>
                 </StackPanel>
             </StackPanel>
 
@@ -839,36 +851,30 @@
                 <TextBlock Text="驱动 Git 拉取 + HTTP catalog 拉取。重启后生效(handler 在 OnStartup 一次性构造)。" Margin="8,0,0,0"
                            VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
             </StackPanel>
+            <!-- v0.6.22++:全局代理三态 — 关闭 / 继承系统 / 自定义(URL/Port)。 -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <CheckBox Content="启用代理" IsChecked="{Binding HttpProxyEnabled}"
-                          VerticalAlignment="Center"/>
+                <RadioButton Content="关闭" GroupName="HttpProxyMode"
+                             IsChecked="{Binding HttpProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Off, Mode=TwoWay}"
+                             VerticalAlignment="Center" Margin="0,0,16,0"
+                             ToolTip="不走代理(handler.Proxy=null, UseProxy=false, 也不走 WinHTTP 默认系统代理)。" />
+                <RadioButton Content="继承系统" GroupName="HttpProxyMode"
+                             IsChecked="{Binding HttpProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=InheritSystem, Mode=TwoWay}"
+                             VerticalAlignment="Center" Margin="0,0,16,0"
+                             ToolTip="走 OS-level 代理(IE settings / WPAD / PAC 自动检测)。URL/Port 字段被忽略。" />
+                <RadioButton Content="自定义" GroupName="HttpProxyMode"
+                             IsChecked="{Binding HttpProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Custom, Mode=TwoWay}"
+                             VerticalAlignment="Center"
+                             ToolTip="使用下方 URL/Port 自定义代理。" />
                 <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource WarningBrush}"
                            ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[HttpProxyEnabled], Converter={StaticResource BoolToVisibility}}"/>
+                           Visibility="{Binding Dirty[HttpProxyMode], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
-            <!-- v0.6.22+:继承系统代理 — 启用代理时勾选此 toggle 改走 OS 默认 proxy(IE settings / WPAD / PAC)。
-                 勾选后 URL/Port 输入框灰显(handler 走 WinHTTP 自动检测,不读这两个字段)。 -->
-            <StackPanel Orientation="Horizontal" Margin="0,2,0,4"
-                        IsEnabled="{Binding HttpProxyEnabled}">
-                <CheckBox Content="继承系统代理" IsChecked="{Binding HttpProxyUseSystemProxy}"
-                          VerticalAlignment="Center"
-                          ToolTip="勾选后使用 Windows 系统级代理设置(IE / WPAD / PAC 自动检测)。URL/Port 字段被忽略。" />
-                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource WarningBrush}"
-                           ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[HttpProxyUseSystemProxy], Converter={StaticResource BoolToVisibility}}"/>
-            </StackPanel>
-            <!-- URL + Port 字段 — UseSystemProxy=true 时灰显 -->
+            <!-- URL + Port 字段 — 仅在 HttpProxyMode=Custom 时启用 -->
             <Grid Margin="0,2,0,0">
                 <Grid.IsEnabled>
-                    <MultiBinding Converter="{StaticResource AndBool}">
-                        <Binding Path="HttpProxyEnabled" />
-                        <Binding Path="HttpProxyUseSystemProxy"
-                                 Converter="{StaticResource InvertBool}" />
-                    </MultiBinding>
+                    <Binding Path="HttpProxyMode" Converter="{StaticResource EnumEqualsConverter}" ConverterParameter="Custom" />
                 </Grid.IsEnabled>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -906,7 +912,7 @@
                     <TextBlock Margin="6,0,0,0" FontSize="11" TextWrapping="Wrap"
                                Foreground="{DynamicResource OnWarningBrush}"
                                VerticalAlignment="Center"
-                               Text="继承系统代理模式下，URL/Port 字段被忽略(handler 走 OS 自动检测)。如需使用自定义代理，请取消勾选「继承系统代理」。"/>
+                               Text="继承系统代理模式下，URL/Port 字段被忽略(handler 走 OS 自动检测)。如需使用自定义代理，请切换到「自定义」。"/>
                 </StackPanel>
             </Border>
 
