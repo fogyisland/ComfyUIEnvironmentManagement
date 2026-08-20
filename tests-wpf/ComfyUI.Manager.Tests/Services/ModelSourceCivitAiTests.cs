@@ -428,6 +428,56 @@ public class ModelSourceCivitAiTests
         Assert.True(req.RequestUri!.Query.Contains("nsfw=true") || req.RequestUri!.Query.Contains("nsfw=True"),
             $"URL 应包含 nsfw=true,实际: {req.RequestUri.Query}");
     }
+
+    [Fact]
+    public async Task SearchPageAsync_ReportsUrlToProgress()
+    {
+        // v0.6.22+:用户反馈"感觉还是筛选,并没有将模型类型传递给 search api" —
+        // SearchPageAsync 必须通过 progress.Report 把 URL 暴露给 VM Console 面板,
+        // 让用户看到 baseModels=SDXL 1.0 真的出现在 query string 上。
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        var lines = new List<string>();
+        var progress = new Progress<string>(line => lines.Add(line));
+
+        await source.SearchPageAsync(
+            "sdxl lora", cursor: null, pageSize: 100,
+            CivitAiSort.Newest, CivitAiPeriod.AllTime, default,
+            includeNsfw: true, baseModel: "SDXL 1.0", progress);
+
+        // Wait for Progress<T> callback to flush (captures SynchronizationContext,
+        // but in test there's no SyncContext — Report is synchronous via ThreadPool).
+        await Task.Delay(50);
+
+        var urlLine = Assert.Single(lines, l => l.StartsWith("[URL] "));
+        Assert.Contains("baseModels=", urlLine);
+        Assert.True(urlLine.Contains("SDXL 1.0") || urlLine.Contains("SDXL%201.0"),
+            $"URL 应包含 SDXL 1.0 编码形式,实际: {urlLine}");
+    }
+
+    [Fact]
+    public async Task SearchAsync_LoopsThroughPages_OnlyReportsUrlOnce()
+    {
+        // v0.6.22+:SearchAsync 循环 SearchPageAsync 应只在首次 page 上 report URL,
+        // 避免每次翻页都刷一行让 Console 屏刷。
+        var json1 = """{"items": [], "metadata": {"nextPage": "2"}}""";
+        var json2 = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json1, json2);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        var lines = new List<string>();
+        var progress = new Progress<string>(line => lines.Add(line));
+
+        await source.SearchAsync("test", maxResults: 200, ct: default,
+            includeNsfw: true, baseModel: null, progress);
+
+        await Task.Delay(50);
+
+        var urlLines = lines.Where(l => l.StartsWith("[URL] ")).ToList();
+        Assert.Single(urlLines);
+    }
 }
 
 internal class DelegatingHandlerStub : HttpMessageHandler

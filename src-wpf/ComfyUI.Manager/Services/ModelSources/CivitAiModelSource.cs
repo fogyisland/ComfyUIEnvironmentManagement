@@ -43,11 +43,13 @@ public class CivitAiModelSource : IModelSource
         }
     }
 
-    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null)
+    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null, IProgress<string>? progress = null)
     {
         // v0.6.22+:改成 SearchPageAsync 的循环包装 — 保留向后兼容(老 service code 仍可用)。
         // SearchAsync 是无 UI 上下文调用,使用 CivitAI 默认 Newest + AllTime(对 HF 无意义)。
         // includeNsfw / baseModel 透传到 SearchPageAsync。
+        // progress(0.6.22+)透传给 SearchPageAsync — 只在首次 page 报告 URL,避免重复刷屏
+        // (循环内的 next page 调 progress=null 跳过 Report)。
         var results = new List<ModelEntry>();
         string? cursor = null;
         const int maxPages = 10;  // hard cap to prevent runaway
@@ -55,7 +57,8 @@ public class CivitAiModelSource : IModelSource
         for (var pageCount = 1; pageCount <= maxPages && results.Count < maxResults; pageCount++)
         {
             var (entries, nextCursor) = await SearchPageAsync(
-                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct, includeNsfw, baseModel);
+                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct, includeNsfw, baseModel,
+                progress: pageCount == 1 ? progress : null);
             results.AddRange(entries);
             cursor = nextCursor;
             if (string.IsNullOrEmpty(cursor)) break;
@@ -74,10 +77,15 @@ public class CivitAiModelSource : IModelSource
     public async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
         string query, string? cursor, int pageSize,
         CivitAiSort sort, CivitAiPeriod period, CancellationToken ct,
-        bool includeNsfw = true, string? baseModel = null)
+        bool includeNsfw = true, string? baseModel = null,
+        IProgress<string>? progress = null)
     {
         var url = BuildUrl(query, cursor, pageSize, sort, period, includeNsfw, baseModel);
         var cursorLabel = string.IsNullOrEmpty(cursor) ? "(none)" : cursor;
+        // v0.6.22+:report URL via progress sink — visible in VM Console panel,
+        // 给用户"我真的把 baseModels=SDXL 1.0 传到 API 了"的可见证据(用户 2026-08-20
+        // 反馈"感觉还是筛选,并没有将模型类型传递给 search api")。
+        progress?.Report($"[URL] {url}");
         _logger?.Info("model-civitai", $"fetch page cursor={cursorLabel} sort={sort} period={period} nsfw={includeNsfw} bm={baseModel}: {url}");
 
         // v0.6.22+:per-request Authorization: Bearer(token 跟 HuggingFaceModelSource 同模式)。

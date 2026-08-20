@@ -40,7 +40,7 @@ public class HuggingFaceModelSource : IModelSource
         }
     }
 
-    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null)
+    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null, IProgress<string>? progress = null)
     {
         // v0.6.22+:SearchPageAsync 的循环包装,保持向后兼容。
         var results = new List<ModelEntry>();
@@ -50,7 +50,8 @@ public class HuggingFaceModelSource : IModelSource
         for (var pageCount = 1; pageCount <= maxPages && results.Count < maxResults; pageCount++)
         {
             var (entries, nextCursor) = await SearchPageAsync(
-                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct, includeNsfw, baseModel);
+                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct, includeNsfw, baseModel,
+                progress: pageCount == 1 ? progress : null);
             results.AddRange(entries);
             cursor = nextCursor;
             if (string.IsNullOrEmpty(cursor)) break;
@@ -68,7 +69,8 @@ public class HuggingFaceModelSource : IModelSource
     public async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
         string query, string? cursor, int pageSize,
         CivitAiSort sort, CivitAiPeriod period, CancellationToken ct,
-        bool includeNsfw = true, string? baseModel = null)
+        bool includeNsfw = true, string? baseModel = null,
+        IProgress<string>? progress = null)
     {
         var results = new List<ModelEntry>();
         var qs = new List<string>
@@ -79,6 +81,8 @@ public class HuggingFaceModelSource : IModelSource
         if (!string.IsNullOrWhiteSpace(query)) qs.Add($"search={Uri.EscapeDataString(query)}");
         // v0.6.22+:HF 不支持 baseModel API 参数(只通过 tag 标记)— 接收参数但忽略。
         var url = $"{_baseUrl}/api/models?{string.Join("&", qs)}";
+        // v0.6.22+:report URL via progress — 同 CivitAI 模式,用户可见。
+        progress?.Report($"[URL] {url}");
         _logger?.Info("model-huggingface", $"search page nsfw={includeNsfw} bm={baseModel}: {url}");
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);

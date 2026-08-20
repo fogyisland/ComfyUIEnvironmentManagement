@@ -60,7 +60,7 @@ public class ModelMarketplaceService
         {
             try
             {
-                var entries = await src.SearchAsync(query, maxResultsPerSource, ct, includeNsfw, baseModel);
+                var entries = await src.SearchAsync(query, maxResultsPerSource, ct, includeNsfw, baseModel, progress);
                 progress?.Report($"[{src.DisplayName}] 完成, {entries.Count} 条");
                 _logger?.Info("model-marketplace", $"[{src.DisplayName}] fetched {entries.Count} entries (nsfw={includeNsfw} bm={baseModel})");
                 return (src.SourceKind, entries);
@@ -112,7 +112,7 @@ public class ModelMarketplaceService
         var src = enabled[0];
         try
         {
-            var (entries, nextCursor) = await src.SearchPageAsync(query, cursor, pageSize, sort, period, ct, includeNsfw, baseModel);
+            var (entries, nextCursor) = await src.SearchPageAsync(query, cursor, pageSize, sort, period, ct, includeNsfw, baseModel, progress);
             progress?.Report($"[{src.DisplayName}] +{entries.Count} 条, 下一页={(nextCursor is null ? "(无)" : "有")}");
             return (entries, nextCursor);
         }

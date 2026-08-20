@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,11 +35,16 @@ public interface IModelSource
     /// "模型参数是不是也可以传递?也就是 base model 列出常规可用的 Model 类型")。
     /// null/空 = 不附加显式 base model filter(只靠 query 自动识别)。
     /// CivitAI 与 query-detected baseModels 合并作为 <c>?baseModels=</c> filter。
-    /// 默认 <c>null</c> 保持向后兼容。</summary>
+    /// 默认 <c>null</c> 保持向后兼容。
+    /// progress(0.6.22+):可选 progress sink — source 应在构造完 URL 后
+    /// <c>progress?.Report($"[URL] {url}")</c> 报告真实 HTTP URL,让 VM Console
+    /// 面板展示给用户(用户 2026-08-20 反馈"感觉还是筛选,并没有将模型类型传递
+    /// 给 search api" — 需要可见的 URL 证据)。null = 静默(向后兼容)。</summary>
     Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
         string query, string? cursor, int pageSize,
         CivitAiSort sort, CivitAiPeriod period, CancellationToken ct,
-        bool includeNsfw = true, string? baseModel = null);
+        bool includeNsfw = true, string? baseModel = null,
+        IProgress<string>? progress = null);
 
     /// <summary>便捷搜索:内部循环 SearchPageAsync 直到 results.Count == maxResults 或 cursor=null。
     /// 保留向后兼容 — 旧 service code 仍可用,新 service code 应优先用 SearchPageAsync 做 UI 显式分页。
@@ -46,5 +52,5 @@ public interface IModelSource
     /// includeNsfw(0.6.22+)透传到 SearchPageAsync — 默认 true 保持向后兼容。
     /// baseModel(0.6.22+)透传到 SearchPageAsync — CivitAI 跟 query-detected 合并作为
     /// <c>?baseModels=</c> filter,HF 接收但 no-op。</summary>
-    Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null);
+    Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null, IProgress<string>? progress = null);
 }
