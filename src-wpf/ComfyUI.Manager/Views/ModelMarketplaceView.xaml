@@ -267,12 +267,15 @@
       </ItemsControl>
     </StackPanel>
 
-    <!-- v0.6.22+:3-per-row card grid + loading overlay + empty state overlay。
-         用户 2026-08-20 反馈"可以一行 3 个,后面大段留白感觉不符合设计要求"。
-         卡片 Width=340 Height=540(放大)+ preview Height=200(更大预览图)+
-         description MaxHeight=60(3 行文本)。Border Width=1056 = 3 × (340 + Margin 6×2)
-         = 3 × 352 = 1056px 固定 3 列布局,容器 HorizontalAlignment=Center 居中显示。
-         窗口 < 1056 时 ScrollViewer 触发水平滚动条 HorizontalScrollBarVisibility=Auto。
+    <!-- v0.6.22++:2-per-row landscape card grid + loading overlay + empty state overlay。
+         v0.6.22 T6 早期是 3-per-row portrait 340×540(用户 2026-08-20 反馈"一行 3 个,
+         后面大段留白")。v0.6.22++ 反向改:landscape 540×220(2.45:1 宽高比,用户 2026-08-21
+         反馈"卡片图的内容,目前存在太长的问题,实际的模型是否可以以小卡片图方式展现,
+         当前卡片其实应该是宽度比高度大")。
+         卡片 = Grid 2 列:左 120 缩略图 + 右 * 信息列(badges + title + author · baseModel
+         + description 2 行 + 版本列表)。
+         Border Width=1104 = 2 × (540 + Margin 6×2) = 2 × 552 = 1104px 固定 2 列布局。
+         窗口 < 1104 时 ScrollViewer 触发水平滚动条。
          镜像 WorkflowMarketplaceView (lines 177-294) 的 3-层 overlay 结构:
          第 1 层 ScrollViewer(Border 容器)+ 第 2 层 loading 半透明黑 overlay
          + 第 3 层 empty state overlay — 后画覆盖前面。-->
@@ -280,102 +283,123 @@
       <ScrollViewer VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Auto"
                     IsEnabled="{Binding NotIsBusy}">
-        <Border HorizontalAlignment="Center" Width="1056">
+        <Border HorizontalAlignment="Center" Width="1104">
           <ItemsControl ItemsSource="{Binding Models}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate DataType="{x:Type models:ModelEntry}">
-                <Border Width="340" Height="540" Margin="6" Padding="10" CornerRadius="8"
+                <!-- v0.6.22++:landscape card(540×220, 2.45:1 宽高比)+ 小缩略图 120×200 在左侧。
+                     用户 2026-08-21 反馈"卡片图的内容,目前存在太长的问题,实际的模型是否
+                     可以以小卡片图方式展现,当前卡片其实应该是宽度比高度大"——
+                     把 hero 图缩成左侧小缩略图,右侧紧凑放标题/作者/简介/版本列表,
+                     视觉重心从"图片 → 文字信息"。
+                     Border Width=1104 = 2 × (540 + 12 margin) — 固定 2 列,窗口 ≥1104 不滚动。
+                     Grid 2 列:左 120 缩略图 + 右 * 内容列。
+                     ToolTip 仍显示完整 Description(hover 整个 Border)。-->
+                <Border Width="540" Height="220" Margin="6" Padding="10" CornerRadius="8"
                         Background="{DynamicResource SurfaceBrush}"
                         BorderBrush="{DynamicResource OutlineBrush}"
                         BorderThickness="1"
                         ToolTip="{Binding Description}">
-                  <StackPanel>
-                    <!-- v0.6.20 T10 polish:preview image at top of card.
-                         CivitAI provides image URL via ModelEntry.PreviewImageUrl;
-                         empty URL = Image fails silently, Border background shows.
-                         v0.6.22+:Height 140→200(更大预览图,3-per-row 卡片变宽后视觉权重更高)。-->
-                    <Border Height="200" Margin="0,0,0,8" CornerRadius="6"
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="120" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <!-- 左:小缩略图 120×200 — 替代原来 340×200 hero 图,腾出 220 px 给文字信息列 -->
+                    <Border Grid.Column="0" Height="200" CornerRadius="6"
                             Background="{DynamicResource SurfaceBrush}"
                             BorderBrush="{DynamicResource OutlineBrush}"
                             BorderThickness="1">
-                      <Grid>
-                        <Image Source="{Binding PreviewImageUrl}" Stretch="UniformToFill" />
-                      </Grid>
+                      <Image Source="{Binding PreviewImageUrl}" Stretch="UniformToFill" />
                     </Border>
-                    <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14"
-                               TextWrapping="Wrap" MaxHeight="40"
-                               TextTrimming="CharacterEllipsis"
-                               Foreground="{DynamicResource OnSurfaceBrush}" />
-                    <!-- v0.6.22+:Model description 简介 — 2 行截断(CharacterEllipsis),完整内容 hover Border 触发 ToolTip
-                         (Description 是 HTML 片段含 &lt;p&gt;/&lt;br/&gt;,UI 不渲染 HTML 只显示原文)。
-                         用户 2026-08-20 反馈"这个界面怎么没有模型介绍"。
-                         v0.6.22+ MaxHeight 44→60(340 宽下能显示 3 行,信息更完整)。-->
-                    <TextBlock Text="{Binding Description}"
-                               FontSize="11" MaxHeight="60"
-                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                               Margin="0,4,0,0"
-                               Foreground="{DynamicResource OutlineBrush}" />
-                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                  <Border CornerRadius="4" Padding="6,2" Margin="0,0,4,0"
-                          Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}">
-                    <TextBlock Text="{Binding Kind}" Foreground="White" FontSize="11" />
-                  </Border>
-                  <Border CornerRadius="4" Padding="6,2"
-                          Background="{Binding NsfwKind, Converter={StaticResource ModelNsfwBadgeBrush}}">
-                    <TextBlock Text="{Binding NsfwKind, Converter={StaticResource ModelNsfwBadgeText}}"
-                               Foreground="White" FontSize="11" />
-                  </Border>
-                </StackPanel>
-                <ItemsControl ItemsSource="{Binding Versions}" Margin="0,8,0,0">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type models:ModelVersionEntry}">
-                      <!-- v0.6.22+:每个 version 行加文件名 + 大小 + 📋 复制 URL 按钮。
-                           Border ToolTip 显示完整下载 URL(用户 hover 即可看到)。
-                           Border 不用 hover — WPF ToolTip 自动在鼠标停 ~500ms 后弹出。
-                           用户 2026-08-20 反馈"没有下载的地址"。-->
-                      <Border Margin="0,2" Padding="4,2" CornerRadius="3"
-                              Background="{DynamicResource SurfaceBrush}"
-                              BorderBrush="{DynamicResource OutlineBrush}"
-                              BorderThickness="1"
-                              ToolTip="{Binding PrimaryDownloadUrl}">
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                          </Grid.ColumnDefinitions>
-                          <StackPanel Grid.Column="0">
-                            <CheckBox Content="{Binding Name}" FontSize="12"
-                                      Foreground="{DynamicResource OnSurfaceBrush}"
-                                      Command="{Binding DataContext.ToggleVersionSelectionCommand,
+                    <!-- 右:信息列 StackPanel,水平居左垂直居顶 -->
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                      <!-- 第 1 行:Kind + NSFW badge + 版本数(右对齐)— 单行高 22px -->
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                          <Border CornerRadius="4" Padding="6,2" Margin="0,0,4,0"
+                                  Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}">
+                            <TextBlock Text="{Binding Kind}" Foreground="White" FontSize="11" />
+                          </Border>
+                          <Border CornerRadius="4" Padding="6,2"
+                                  Background="{Binding NsfwKind, Converter={StaticResource ModelNsfwBadgeBrush}}">
+                            <TextBlock Text="{Binding NsfwKind, Converter={StaticResource ModelNsfwBadgeText}}"
+                                       Foreground="White" FontSize="11" />
+                          </Border>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                   FontSize="11" Foreground="{DynamicResource OutlineBrush}">
+                          <Run Text="{Binding Versions.Count, Mode=OneWay}" />
+                          <Run Text=" 个版本" />
+                        </TextBlock>
+                      </Grid>
+                      <!-- 标题 — FontSize 15 bold,MaxHeight=36(2 行),CharacterEllipsis 截断 -->
+                      <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="15"
+                                 TextWrapping="Wrap" MaxHeight="36"
+                                 TextTrimming="CharacterEllipsis"
+                                 Margin="0,6,0,0"
+                                 Foreground="{DynamicResource OnSurfaceBrush}" />
+                      <!-- 作者 + baseModel — 1 行,小灰字 -->
+                      <TextBlock FontSize="11" Margin="0,2,0,0"
+                                 Foreground="{DynamicResource OutlineBrush}"
+                                 TextTrimming="CharacterEllipsis">
+                        <Run Text="{Binding Author, Mode=OneWay, TargetNullValue=未知}" />
+                        <Run Text=" · " />
+                        <Run Text="{Binding BaseModel, Mode=OneWay, TargetNullValue=未指定}" />
+                      </TextBlock>
+                      <!-- 简介 — FontSize 11,MaxHeight=30(2 行),过长 hover Border ToolTip 看完整 HTML -->
+                      <TextBlock Text="{Binding Description}"
+                                 FontSize="11" MaxHeight="30"
+                                 TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                 Margin="0,2,0,0"
+                                 Foreground="{DynamicResource OutlineBrush}" />
+                      <!-- 版本列表 — 紧凑单行 ☐ Name · Size + 📋 复制,无 border 包裹,占剩余 ~90px 高 -->
+                      <ItemsControl ItemsSource="{Binding Versions}" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate DataType="{x:Type models:ModelVersionEntry}">
+                            <Grid Margin="0,2">
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                              </Grid.ColumnDefinitions>
+                              <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <CheckBox Content="{Binding Name}" FontSize="12"
+                                          Foreground="{DynamicResource OnSurfaceBrush}"
+                                          VerticalAlignment="Center"
+                                          Command="{Binding DataContext.ToggleVersionSelectionCommand,
+                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          CommandParameter="{Binding}" />
+                                <TextBlock FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource OutlineBrush}"
+                                           TextTrimming="CharacterEllipsis">
+                                  <Run Text="{Binding PrimaryFileName, Mode=OneWay}" />
+                                  <Run Text=" · " />
+                                  <Run Text="{Binding SizeDisplay, Mode=OneWay}" />
+                                </TextBlock>
+                              </StackPanel>
+                              <Button Grid.Column="1" Content="📋"
+                                      Padding="4,0" Margin="2,0,0,0"
+                                      VerticalAlignment="Center"
+                                      ToolTip="复制下载链接到剪贴板"
+                                      Command="{Binding DataContext.CopyDownloadUrlCommand,
                                                 RelativeSource={RelativeSource AncestorType=UserControl}}"
                                       CommandParameter="{Binding}" />
-                            <TextBlock FontSize="10" Margin="20,0,0,0"
-                                       Foreground="{DynamicResource OutlineBrush}"
-                                       TextTrimming="CharacterEllipsis">
-                              <Run Text="{Binding PrimaryFileName, Mode=OneWay}" />
-                              <Run Text=" · " />
-                              <Run Text="{Binding SizeDisplay, Mode=OneWay}" />
-                            </TextBlock>
-                          </StackPanel>
-                          <Button Grid.Column="1" Content="📋"
-                                  Padding="4,0" Margin="2,0,0,0"
-                                  VerticalAlignment="Center"
-                                  ToolTip="复制下载链接到剪贴板"
-                                  Command="{Binding DataContext.CopyDownloadUrlCommand,
-                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  CommandParameter="{Binding}" />
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
       </ItemsControl>
         </Border>
       </ScrollViewer>
