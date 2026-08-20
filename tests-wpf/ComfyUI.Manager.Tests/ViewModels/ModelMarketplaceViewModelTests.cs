@@ -283,6 +283,37 @@ public class ModelMarketplaceViewModelTests
     }
 
     [Fact]
+    public void IsEmpty_DefaultsTrueWhenNoModelsLoaded()
+    {
+        // v0.6.22+:empty state overlay IsEmpty 计算属性 — 初始 Models.Count==0 → true,
+        // 配合 loading overlay IsBusy=true 时 empty 自动隐藏(IsBusy setter 同步 fire)。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.Empty(vm.Models);
+        Assert.True(vm.IsEmpty);
+    }
+
+    [Fact]
+    public async Task IsEmpty_BecomesFalseAfterRefreshWithResults()
+    {
+        // refresh 后 Models 有数据 → IsEmpty 应转 false(Models.CollectionChanged hook 触发)。
+        var marketplace = new MockModelMarketplaceService(
+            MakeModel(1, ModelKind.Checkpoint, ("v1", "1.0")));
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        Assert.True(vm.IsEmpty);
+        await vm.RefreshAsync();
+        Assert.False(vm.IsEmpty);
+    }
+
+    [Fact]
+    public void NotIsBusy_DefaultsTrue()
+    {
+        // v0.6.22+:loading overlay ScrollViewer.IsEnabled 绑 NotIsBusy — 初始空闲时应为 true。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.False(vm.IsBusy);
+        Assert.True(vm.NotIsBusy);
+    }
+
+    [Fact]
     public void ToggleConsoleVisibilityCommand_FlipsVisibility()
     {
         // v0.6.22+:toolbar "Console" 按钮 — 可见时点 → 隐藏;隐藏时点 → 显示。

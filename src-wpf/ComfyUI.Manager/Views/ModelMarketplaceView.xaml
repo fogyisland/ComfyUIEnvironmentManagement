@@ -209,43 +209,57 @@
       </ItemsControl>
     </StackPanel>
 
-    <!-- Card grid:WrapPanel of 220x340 cards -->
-    <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
-      <ItemsControl ItemsSource="{Binding Models}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate DataType="{x:Type models:ModelEntry}">
-            <Border Width="220" Height="480" Margin="6" Padding="10" CornerRadius="8"
-                    Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}"
-                    BorderThickness="1"
-                    ToolTip="{Binding Description}">
-              <StackPanel>
-                <!-- v0.6.20 T10 polish:preview image at top of card.
-                     CivitAI provides image URL via ModelEntry.PreviewImageUrl;
-                     empty URL = Image fails silently, Border background shows. -->
-                <Border Height="140" Margin="0,0,0,8" CornerRadius="6"
+    <!-- v0.6.22+:3-per-row card grid + loading overlay + empty state overlay。
+         用户 2026-08-20 反馈"可以一行 3 个,后面大段留白感觉不符合设计要求"。
+         卡片 Width=340 Height=540(放大)+ preview Height=200(更大预览图)+
+         description MaxHeight=60(3 行文本)。Border Width=1056 = 3 × (340 + Margin 6×2)
+         = 3 × 352 = 1056px 固定 3 列布局,容器 HorizontalAlignment=Center 居中显示。
+         窗口 < 1056 时 ScrollViewer 触发水平滚动条 HorizontalScrollBarVisibility=Auto。
+         镜像 WorkflowMarketplaceView (lines 177-294) 的 3-层 overlay 结构:
+         第 1 层 ScrollViewer(Border 容器)+ 第 2 层 loading 半透明黑 overlay
+         + 第 3 层 empty state overlay — 后画覆盖前面。-->
+    <Grid Grid.Row="4">
+      <ScrollViewer VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Auto"
+                    IsEnabled="{Binding NotIsBusy}">
+        <Border HorizontalAlignment="Center" Width="1056">
+          <ItemsControl ItemsSource="{Binding Models}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="{x:Type models:ModelEntry}">
+                <Border Width="340" Height="540" Margin="6" Padding="10" CornerRadius="8"
                         Background="{DynamicResource SurfaceBrush}"
                         BorderBrush="{DynamicResource OutlineBrush}"
-                        BorderThickness="1">
-                  <Grid>
-                    <Image Source="{Binding PreviewImageUrl}" Stretch="UniformToFill" />
-                  </Grid>
-                </Border>
-                <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14"
-                           TextWrapping="Wrap" MaxHeight="40"
-                           TextTrimming="CharacterEllipsis"
-                           Foreground="{DynamicResource OnSurfaceBrush}" />
-                <!-- v0.6.22+:Model description 简介 — 2 行截断(CharacterEllipsis),完整内容 hover Border 触发 ToolTip
-                     (Description 是 HTML 片段含 &lt;p&gt;/&lt;br/&gt;,UI 不渲染 HTML 只显示原文)。
-                     用户 2026-08-20 反馈"这个界面怎么没有模型介绍"。-->
-                <TextBlock Text="{Binding Description}"
-                           FontSize="11" MaxHeight="44"
-                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                           Margin="0,4,0,0"
-                           Foreground="{DynamicResource OutlineBrush}" />
+                        BorderThickness="1"
+                        ToolTip="{Binding Description}">
+                  <StackPanel>
+                    <!-- v0.6.20 T10 polish:preview image at top of card.
+                         CivitAI provides image URL via ModelEntry.PreviewImageUrl;
+                         empty URL = Image fails silently, Border background shows.
+                         v0.6.22+:Height 140→200(更大预览图,3-per-row 卡片变宽后视觉权重更高)。-->
+                    <Border Height="200" Margin="0,0,0,8" CornerRadius="6"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource OutlineBrush}"
+                            BorderThickness="1">
+                      <Grid>
+                        <Image Source="{Binding PreviewImageUrl}" Stretch="UniformToFill" />
+                      </Grid>
+                    </Border>
+                    <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14"
+                               TextWrapping="Wrap" MaxHeight="40"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource OnSurfaceBrush}" />
+                    <!-- v0.6.22+:Model description 简介 — 2 行截断(CharacterEllipsis),完整内容 hover Border 触发 ToolTip
+                         (Description 是 HTML 片段含 &lt;p&gt;/&lt;br/&gt;,UI 不渲染 HTML 只显示原文)。
+                         用户 2026-08-20 反馈"这个界面怎么没有模型介绍"。
+                         v0.6.22+ MaxHeight 44→60(340 宽下能显示 3 行,信息更完整)。-->
+                    <TextBlock Text="{Binding Description}"
+                               FontSize="11" MaxHeight="60"
+                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                               Margin="0,4,0,0"
+                               Foreground="{DynamicResource OutlineBrush}" />
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                   <Border CornerRadius="4" Padding="6,2" Margin="0,0,4,0"
                           Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}">
@@ -305,7 +319,39 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
-    </ScrollViewer>
+        </Border>
+      </ScrollViewer>
+
+      <!-- v0.6.22+:Loading overlay — IsBusy=true 时半透明黑底覆盖整个卡片区域,
+           ProgressBar 居中显示进度,文字 "加载中…" 提示。ScrollViewer IsEnabled=false
+           已禁用卡片交互(防双击重复触发 SearchCommand),overlay 是视觉反馈。-->
+      <Grid Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+            Background="#80000000">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ProgressBar IsIndeterminate="True" Width="200" Height="6" />
+          <TextBlock Text="加载中…" HorizontalAlignment="Center" Margin="0,12,0,0"
+                     Foreground="{DynamicResource OnSurfaceBrush}" />
+        </StackPanel>
+      </Grid>
+
+      <!-- v0.6.22+:Empty state overlay — Models.Count==0 且不在加载时显示,
+           镜像 WorkflowMarketplaceView (line 281) 同款 UX。
+           "—" 视觉占位 + "未找到匹配模型" 提示 + "重新刷新" MaterialButton 兜底入口
+           (用户切 HuggingFace 后空结果 / 关键词无匹配都能看到)。-->
+      <Grid Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock Text="—" FontSize="48" Opacity="0.4"
+                     Foreground="{DynamicResource OutlineBrush}"
+                     HorizontalAlignment="Center" />
+          <TextBlock Text="未找到匹配模型" FontSize="14"
+                     Foreground="{DynamicResource OnSurfaceBrush}"
+                     Margin="0,8,0,0" HorizontalAlignment="Center" />
+          <Button Content="重新刷新" Command="{Binding RefreshCommand}"
+                  Margin="0,12,0,0"
+                  Style="{StaticResource MaterialButton}" />
+        </StackPanel>
+      </Grid>
+    </Grid>
 
     <!-- Console panel (3-state visibility) -->
     <Border Grid.Row="5" Margin="0,8,0,0" Padding="0"

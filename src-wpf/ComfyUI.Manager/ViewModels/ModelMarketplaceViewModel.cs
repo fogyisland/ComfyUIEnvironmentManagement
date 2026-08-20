@@ -156,6 +156,8 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
 
         // 3-state console visibility:任何 ConsoleLog 变化触发 IsConsoleVisible 重算
         ConsoleLog.CollectionChanged += OnConsoleLogChanged;
+        // v0.6.22+:Models 集合变化触发 IsEmpty 重算 — empty overlay Visibility 用。
+        Models.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsEmpty));
     }
 
     // —— Bindable properties ——
@@ -231,12 +233,27 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             _isBusy = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsConsoleVisible));
+            // v0.6.22+:loading overlay 用 NotIsBusy / empty overlay IsEmpty 用 — IsBusy 翻转时同步通知。
+            OnPropertyChanged(nameof(NotIsBusy));
+            OnPropertyChanged(nameof(IsEmpty));
             (RefreshCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (SearchCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DownloadSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (LoadMoreCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
     }
+
+    /// <summary>
+    /// v0.6.22+:loading overlay IsEnabled 状态 — true = 不在加载,卡片 grid 可交互。
+    /// IsBusy 翻转时 setter 内同步 fire(同 WorkflowMarketplaceViewModel 模式)。
+    /// </summary>
+    public bool NotIsBusy => !IsBusy;
+
+    /// <summary>
+    /// v0.6.22+:empty overlay 状态 — Models 0 条且不在加载时显示 "未找到匹配模型"。
+    /// Models.CollectionChanged hook 同步 fire;IsBusy 翻转时也 fire(加载中永远不显示 empty)。
+    /// </summary>
+    public bool IsEmpty => Models.Count == 0;
 
     /// <summary>
     /// 3-state console visibility:!userHidden &amp;&amp; (IsBusy || hasContent)。
