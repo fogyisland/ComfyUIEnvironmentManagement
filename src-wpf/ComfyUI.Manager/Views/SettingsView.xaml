@@ -867,6 +867,23 @@
                 </Grid>
             </Grid>
 
+            <!-- v0.6.22.1+:继承系统代理 + URL/Port 都填时告警 — 防止用户以为配置生效但实际 URL/Port 被忽略 -->
+            <Border Margin="0,6,0,0" Padding="10,6"
+                    Background="{DynamicResource WarningContainerBrush}"
+                    BorderBrush="{DynamicResource WarningBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Visibility="{Binding ShowsIgnoredProxyUrlWarning, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="⚠" FontSize="13" Foreground="{DynamicResource WarningBrush}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Margin="6,0,0,0" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource OnWarningBrush}"
+                               VerticalAlignment="Center"
+                               Text="继承系统代理模式下，URL/Port 字段被忽略(handler 走 OS 自动检测)。如需使用自定义代理，请取消勾选「继承系统代理」。"/>
+                </StackPanel>
+            </Border>
+
             <!-- ============ 高级:额外 paths 表格 ============ -->
             <TextBlock x:Name="SectionExtraPaths" Text="高级 — 额外路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <ItemsControl ItemsSource="{Binding ExtraPaths}">

@@ -159,6 +159,48 @@ public class SettingsViewModelTests : IDisposable
         Assert.Equal("comfyui manager", reloaded.ActiveQuerySourceName);
     }
 
+    // v0.6.22.1+:ShowsIgnoredProxyUrlWarning — 用户启用了「继承系统代理」但 URL/Port 仍填,
+    // 此时 ApplyTo 默默忽略 URL/Port。Banner 提醒用户去清。
+    [Fact]
+    public void ShowsIgnoredProxyUrlWarning_True_When_Enabled_UseSystem_And_Url()
+    {
+        var proxy = new HttpProxyConfig { Enabled = true, UseSystemProxy = true, Url = "127.0.0.1" };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        Assert.True(vm.ShowsIgnoredProxyUrlWarning);
+    }
+
+    [Fact]
+    public void ShowsIgnoredProxyUrlWarning_True_When_Enabled_UseSystem_And_PortOnly()
+    {
+        var proxy = new HttpProxyConfig { Enabled = true, UseSystemProxy = true, Port = 10808 };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        Assert.True(vm.ShowsIgnoredProxyUrlWarning);
+    }
+
+    [Fact]
+    public void ShowsIgnoredProxyUrlWarning_False_When_UseSystemProxy_Off()
+    {
+        var proxy = new HttpProxyConfig { Enabled = true, UseSystemProxy = false, Url = "127.0.0.1", Port = 10808 };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        Assert.False(vm.ShowsIgnoredProxyUrlWarning);
+    }
+
+    [Fact]
+    public void ShowsIgnoredProxyUrlWarning_False_When_ProxyDisabled()
+    {
+        var proxy = new HttpProxyConfig { Enabled = false, UseSystemProxy = true, Url = "127.0.0.1", Port = 10808 };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        Assert.False(vm.ShowsIgnoredProxyUrlWarning);
+    }
+
+    [Fact]
+    public void ShowsIgnoredProxyUrlWarning_False_When_NoUrlOrPort()
+    {
+        var proxy = new HttpProxyConfig { Enabled = true, UseSystemProxy = true };
+        var vm = new SettingsViewModel(new SettingsRepository(_path), proxy, new FakeValidator(isValid: true));
+        Assert.False(vm.ShowsIgnoredProxyUrlWarning);
+    }
+
     [Fact]
     public void ConfirmAddDownloadSourceCommand_AppendsAndSetsActive()
     {

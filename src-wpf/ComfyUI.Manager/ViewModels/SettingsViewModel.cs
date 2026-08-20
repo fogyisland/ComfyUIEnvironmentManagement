@@ -714,6 +714,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             _settings.HttpProxyUrl = value;
             MarkDirty(nameof(HttpProxyUrl));
             RaisePropertyChanged();
+            RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         }
     }
     public int HttpProxyPort
@@ -725,6 +726,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             _settings.HttpProxyPort = value;
             MarkDirty(nameof(HttpProxyPort));
             RaisePropertyChanged();
+            RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         }
     }
     public bool HttpProxyEnabled
@@ -736,6 +738,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             _settings.HttpProxyEnabled = value;
             MarkDirty(nameof(HttpProxyEnabled));
             RaisePropertyChanged();
+            RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         }
     }
     // v0.6.22+:继承系统代理(OS-level IE settings / WPAD / PAC)。
@@ -750,8 +753,19 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             _settings.HttpProxyUseSystemProxy = value;
             MarkDirty(nameof(HttpProxyUseSystemProxy));
             RaisePropertyChanged();
+            RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         }
     }
+
+    /// <summary>
+    /// v0.6.22.1+:派生告警 — 当用户启用了「继承系统代理」但 URL/Port 仍填了值时为 true。
+    /// URL/Port 在 UseSystemProxy=true 时被 HttpProxyConfig.ApplyTo 默默忽略,无告警用户
+    /// 会以为配置生效 → 实际直连超时。XAML 绑这个属性显示一条 ⚠️ Banner 提醒用户去清字段。
+    /// </summary>
+    public bool ShowsIgnoredProxyUrlWarning =>
+        _proxy.Enabled
+        && _proxy.UseSystemProxy
+        && (!string.IsNullOrWhiteSpace(_proxy.Url) || _proxy.Port > 0);
 
     // —— 高级:用户自定义 path 表 ——
     public ObservableCollection<ExtraPath> ExtraPaths { get; }
@@ -1065,6 +1079,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(HttpProxyPort));
         RaisePropertyChanged(nameof(HttpProxyEnabled));
         RaisePropertyChanged(nameof(HttpProxyUseSystemProxy));
+        RaisePropertyChanged(nameof(ShowsIgnoredProxyUrlWarning));
         RaisePropertyChanged(nameof(ActiveQuerySource));
         RaisePropertyChanged(nameof(ActiveDownloadSource));
         RaisePropertyChanged(nameof(FetchNodeVersionsOnRefresh));
