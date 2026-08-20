@@ -470,7 +470,10 @@ public class ModelSourceCivitAiTests
               "id": 1, "name": "T", "type": "Checkpoint", "nsfw": false, "nsfwLevel": 0,
               "modelVersions": [{"id": 11, "files": [{"name": "a.safetensors", "sizeKB": 1024, "downloadUrl": "https://x/a", "primary": true}], "images": []}]
             },
-            {"id": 2, "name": "U", "type": "Checkpoint", "nsfw": false, "nsfwLevel": 0, "modelVersions": []}
+            {
+              "id": 2, "name": "U", "type": "Checkpoint", "nsfw": false, "nsfwLevel": 0,
+              "modelVersions": [{"id": 22, "files": [{"name": "b.safetensors", "sizeKB": 2048, "downloadUrl": "https://x/b", "primary": true}], "images": []}]
+            }
           ],
           "metadata": {"nextPage": null}
         }
@@ -500,7 +503,7 @@ public class ModelSourceCivitAiTests
 
         // ✓ 行:item count + 下一页: 无
         var okLine = Assert.Single(lines, l => l.StartsWith("[CivitAI] ✓ "));
-        Assert.Contains("1 项", okLine);  // 第 2 条 modelVersions 空被过滤
+        Assert.Contains("2 项", okLine);
         Assert.Contains("下一页: 无", okLine);
     }
 
