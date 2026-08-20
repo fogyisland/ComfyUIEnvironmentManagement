@@ -86,12 +86,96 @@ public class ModelMarketplaceViewModelSourceFilterTests
         Assert.Equal(before, vm.Models.Count);
     }
 
-    /// <summary>Recording mock — 记录每次 LoadAllAsync 的入参(query / sourceFilter / call count)。</summary>
+    // —— v0.6.22+:CivitAI sort + period 过滤 ——
+
+    [Fact]
+    public void ActiveSort_Default_IsNewest()
+    {
+        // 默认 Newest(API 默认值),UI 首次显示高亮 "Newest" chip。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.Equal(CivitAiSort.Newest, vm.ActiveSort);
+    }
+
+    [Fact]
+    public void ActivePeriod_Default_IsAllTime()
+    {
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.Equal(CivitAiPeriod.AllTime, vm.ActivePeriod);
+    }
+
+    [Fact]
+    public void SortOptions_ContainsAllEnumValues()
+    {
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.Equal(5, vm.SortOptions.Count);
+        Assert.Contains(CivitAiSort.Newest, vm.SortOptions);
+        Assert.Contains(CivitAiSort.MostDownloaded, vm.SortOptions);
+        Assert.Contains(CivitAiSort.TopRated, vm.SortOptions);
+        Assert.Contains(CivitAiSort.MostLiked, vm.SortOptions);
+        Assert.Contains(CivitAiSort.MostDiscussed, vm.SortOptions);
+    }
+
+    [Fact]
+    public void PeriodOptions_ContainsAllEnumValues()
+    {
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.Equal(5, vm.PeriodOptions.Count);
+        Assert.Contains(CivitAiPeriod.AllTime, vm.PeriodOptions);
+        Assert.Contains(CivitAiPeriod.Year, vm.PeriodOptions);
+        Assert.Contains(CivitAiPeriod.Month, vm.PeriodOptions);
+        Assert.Contains(CivitAiPeriod.Week, vm.PeriodOptions);
+        Assert.Contains(CivitAiPeriod.Day, vm.PeriodOptions);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_PassesDefaultSortAndPeriod()
+    {
+        // 第一次 refresh(未改 ActiveSort/ActivePeriod)应透传 Newest/AllTime。
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.Equal(CivitAiSort.Newest, mock.LastSort);
+        Assert.Equal(CivitAiPeriod.AllTime, mock.LastPeriod);
+    }
+
+    [Fact]
+    public async Task ActiveSort_Set_TriggersRefreshWithNewSort()
+    {
+        // v0.6.22+:切 sort chip → setter 自动 fire-and-forget RefreshAsync,新 sort 必须透传。
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        var baseline = mock.CallCount;
+        mock.LastSort = CivitAiSort.Newest;  // 重置 baseline
+        vm.ActiveSort = CivitAiSort.MostDownloaded;
+        // fire-and-forget 必触发一次 RefreshAsync — 等它跑完
+        for (var i = 0; i < 100 && mock.CallCount <= baseline; i++) await Task.Delay(10);
+        Assert.True(mock.CallCount > baseline);
+        Assert.Equal(CivitAiSort.MostDownloaded, mock.LastSort);
+    }
+
+    [Fact]
+    public async Task ActivePeriod_Set_TriggersRefreshWithNewPeriod()
+    {
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        var baseline = mock.CallCount;
+        vm.ActivePeriod = CivitAiPeriod.Week;
+        for (var i = 0; i < 100 && mock.CallCount <= baseline; i++) await Task.Delay(10);
+        Assert.Equal(CivitAiPeriod.Week, mock.LastPeriod);
+    }
+
+    /// <summary>Recording mock — 记录每次 LoadPageAsync / LoadAllAsync 的入参(query / sourceFilter / call count)。
+/// v0.6.22+:RefreshAsync 改走 LoadPageAsync(走 cursor),所以 mock 同时 override 两个方法
+/// 让 LoadAllAsync-based 老测试还能记录 call count。</summary>
     private sealed class RecordingMockMarketplace : ModelMarketplaceService
     {
         public int CallCount { get; set; }
         public string? LastQuery { get; set; }
         public ModelSourceKind? LastSourceFilter { get; set; }
+        public CivitAiSort LastSort { get; set; }
+        public CivitAiPeriod LastPeriod { get; set; }
 
         public RecordingMockMarketplace()
             : base(Enumerable.Empty<IModelSource>(), null) { }
@@ -104,6 +188,20 @@ public class ModelMarketplaceViewModelSourceFilterTests
             LastQuery = query;
             LastSourceFilter = sourceFilter;
             return Task.FromResult<IReadOnlyList<ModelEntry>>(Array.Empty<ModelEntry>());
+        }
+
+        public override Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> LoadPageAsync(
+            string query, string? cursor, int pageSize, ModelSourceKind? sourceFilter,
+            CivitAiSort sort, CivitAiPeriod period,
+            IProgress<string>? progress, CancellationToken ct = default)
+        {
+            CallCount++;
+            LastQuery = query;
+            LastSourceFilter = sourceFilter;
+            LastSort = sort;
+            LastPeriod = period;
+            return Task.FromResult<(IReadOnlyList<ModelEntry>, string?)>(
+                (Array.Empty<ModelEntry>(), (string?)null));
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
@@ -35,9 +36,20 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     private bool _userHiddenConsole;
     private string _query = "";
     private ModelKind? _activeKindFilter;
+    // v0.6.22+:是否显示 NSFW/Mature 模型。默认 true(用户开启 marketplace 的预期就是看到所有内容,
+    // CivitAI API 已 nsfw=true 全部拉回);UI 提供 CheckBox 切换,filter 在 ApplyFilter 内做。
+    // 不影响 service 层(始终全量 fetch),只影响 _allModels → Models 投影。
+    private bool _includeNsfw = true;
     private bool _isBusy;
     // v0.6.22 T6:source 单选 radio — 默认 CivitAI,切换自动重跑当前 query。
     private ModelSourceKind _activeSource = ModelSourceKind.CivitAi;
+    // v0.6.22+:分页状态 — _nextCursor=null 表示已无更多(HasNextPage=false)。
+    // RefreshAsync / 切 source 都会重置;LoadMoreAsync 拿下一页 + 更新 cursor。
+    private string? _nextCursor;
+    // v0.6.22+:CivitAI sort + period 过滤 — 用户 2026-08-20 反馈"搜索似乎只传关键词,
+    // 不传递其他参数"。HF 不支持这两个参数,VM 仍保持状态但切到 HF 时不影响 API 请求。
+    private CivitAiSort _activeSort = CivitAiSort.Newest;
+    private CivitAiPeriod _activePeriod = CivitAiPeriod.AllTime;
 
     /// <summary>底层 fetch 后被 filter strip 处理的"全集"。</summary>
     public ObservableCollection<ModelEntry> Models { get; } = new();
@@ -52,6 +64,13 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     public ObservableCollection<ModelKind> KindFilters { get; } = new(
         Enum.GetValues<ModelKind>().Where(k => k != ModelKind.Unknown));
 
+    // v0.6.22+:CivitAI sort + period filter chip 选项 — 用户 2026-08-20 反馈
+    // "搜索似乎只传关键词"。枚举值驱动 API 参数,UI chip 直接绑。
+    public ObservableCollection<CivitAiSort> SortOptions { get; } = new(
+        Enum.GetValues<CivitAiSort>());
+    public ObservableCollection<CivitAiPeriod> PeriodOptions { get; } = new(
+        Enum.GetValues<CivitAiPeriod>());
+
     // —— Commands ——
     public ICommand RefreshCommand { get; }
     // v0.6.22 T6:SearchCommand — 输入框 Enter 键 + 工具栏 "搜索" 按钮绑的同一命令。
@@ -59,7 +78,14 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     public ICommand DownloadSelectedCommand { get; }
     public ICommand ClearConsoleLogCommand { get; }
     public ICommand HideConsoleCommand { get; }
+    // v0.6.22+:toolbar "Console" toggle 按钮 — ✕ 后能再开。
+    public ICommand ToggleConsoleVisibilityCommand { get; }
     public ICommand ToggleVersionSelectionCommand { get; }
+    // v0.6.22+:分页"加载更多"按钮 — HasNextPage=true 时可点。
+    public ICommand LoadMoreCommand { get; }
+    // v0.6.22+:卡片每行 📋 按钮 — 把 ModelVersionEntry.PrimaryDownloadUrl 复制到系统剪贴板。
+    // 用户 2026-08-20 反馈"没有下载的地址"。
+    public ICommand CopyDownloadUrlCommand { get; }
 
     public ModelMarketplaceViewModel(
         ModelMarketplaceService marketplace,
@@ -90,12 +116,41 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             _userHiddenConsole = true;
             OnPropertyChanged(nameof(IsConsoleVisible));
         });
+        // v0.6.22+:toolbar Console toggle — 可见 → 隐藏;隐藏 → 显示(有内容/busy 时)。
+        // 注意:!IsConsoleVisible 的写法是错的 — 它只会在已隐藏时再设隐藏(无变化)。
+        // 正确:把当前 visibility 状态映射到 _userHiddenConsole(可见→true 隐藏,隐藏→false 再显)。
+        ToggleConsoleVisibilityCommand = new RelayCommand(_ =>
+        {
+            _userHiddenConsole = IsConsoleVisible;
+            OnPropertyChanged(nameof(IsConsoleVisible));
+        });
         ToggleVersionSelectionCommand = new RelayCommand(p =>
         {
             if (p is ModelVersionEntry v)
             {
                 if (SelectedVersions.Contains(v)) SelectedVersions.Remove(v);
                 else SelectedVersions.Add(v);
+            }
+        });
+        // v0.6.22+:LoadMoreCommand — Cursor!=null 时可点,LoadMoreAsync 取下一页 append 到 _allModels。
+        LoadMoreCommand = new RelayCommand(
+            async _ => await LoadMoreAsync(),
+            _ => !IsBusy && HasNextPage);
+        // v0.6.22+:CopyDownloadUrlCommand — 参数是 ModelVersionEntry,clipboard 写 PrimaryDownloadUrl。
+        // 失败(测试环境无 clipboard / STA 异常)catch 不抛 — UX 不强制成功。
+        CopyDownloadUrlCommand = new RelayCommand(p =>
+        {
+            if (p is ModelVersionEntry v && !string.IsNullOrEmpty(v.PrimaryDownloadUrl))
+            {
+                try
+                {
+                    Clipboard.SetText(v.PrimaryDownloadUrl);
+                    ConsoleLog.Add($"[复制] {v.PrimaryDownloadUrl}");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("model-marketplace", $"clipboard 写入失败: {ex.Message}");
+                }
             }
         });
 
@@ -129,6 +184,22 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// v0.6.22+:NSFW/Mature 内容开关。默认 true(全显示),设 false 时 ApplyFilter 排除
+    /// NsfwKind != SFW 的条目(Mature/NSFW)。切换立即 ApplyFilter — 不重 fetch(_allModels 已是全量)。
+    /// </summary>
+    public bool IncludeNsfw
+    {
+        get => _includeNsfw;
+        set
+        {
+            if (_includeNsfw == value) return;
+            _includeNsfw = value;
+            OnPropertyChanged();
+            ApplyFilter();
+        }
+    }
+
+    /// <summary>
     /// v0.6.22 T6:toolbar source 单选 radio — 默认 CivitAI,切换 radio 自动用当前 query
     /// 重跑拉取(走 service-layer sourceFilter,避免 view-time 过滤造成的"看不到被禁 source")。
     /// PropertyChanged → fire-and-forget RefreshAsync;IsBusy 守卫防止并发。
@@ -145,47 +216,11 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>
-    /// v0.6.22+:CivitAI 源是否经全局代理访问。TwoWay 绑到 model marketplace view 中
-    /// "使用代理" CheckBox — 直接修改共享 _settings 实例 + 立即 Save 到 settings.json
-    /// (SettingsViewModel 也用同一份 sharedSettings 实例,此处写入对它可见)。
-    /// 注:实际 proxy 应用要在下次 app 启动时 factory 重建 per-source HttpClient 才生效
-    /// (HttpClient handler 在 OnStartup 一次性构造)。ToolTip 已说明重启生效。
-    /// </summary>
-    public bool CivitAiUseProxy
-    {
-        get => _settings.ModelSourceCivitAiUseProxy;
-        set
-        {
-            if (_settings.ModelSourceCivitAiUseProxy == value) return;
-            _settings.ModelSourceCivitAiUseProxy = value;
-            OnPropertyChanged();
-            PersistSettings();
-        }
-    }
-
-    /// <summary>v0.6.22+:同上,HuggingFace 源 "使用代理" toggle。</summary>
-    public bool HuggingFaceUseProxy
-    {
-        get => _settings.ModelSourceHuggingFaceUseProxy;
-        set
-        {
-            if (_settings.ModelSourceHuggingFaceUseProxy == value) return;
-            _settings.ModelSourceHuggingFaceUseProxy = value;
-            OnPropertyChanged();
-            PersistSettings();
-        }
-    }
-
-    /// <summary>v0.6.22+:全局代理未启用时禁用 per-source 勾选(checkBox IsEnabled=false)。</summary>
-    public bool IsGlobalProxyEnabled => _settings.HttpProxyEnabled;
-
-    private void PersistSettings()
-    {
-        if (_settingsRepo is null) return;
-        try { _settingsRepo.Save(_settings); }
-        catch (Exception ex) { _logger?.Warn("model-marketplace", $"保存 proxy 设置失败: {ex.Message}"); }
-    }
+    // v0.6.22+: per-source "使用代理" toggle 移出 model marketplace view(用户 2026-08-20
+    // 反馈 "勾选代理直接在设置中勾选就好了,就不要在界面中选择是否使用代理")。
+    // Per-source proxy 设置仍通过 SettingsView → 模型市场 段(对应 SettingsViewModel 属性
+    // ModelSourceCivitAiUseProxy / ModelSourceHuggingFaceUseProxy)配置。此 VM 内的
+    // CivitAiUseProxy / HuggingFaceUseProxy / IsGlobalProxyEnabled 已删除。
 
     public bool IsBusy
     {
@@ -199,6 +234,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             (RefreshCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (SearchCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DownloadSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (LoadMoreCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
     }
 
@@ -208,12 +244,60 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     /// </summary>
     public bool IsConsoleVisible => !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0);
 
+    /// <summary>
+    /// v0.6.22+:还有更多可加载 = 当前 source 返回过 nextCursor,且不是空。
+    /// 切换 query/source 后下次 RefreshAsync 重置。
+    /// </summary>
+    public bool HasNextPage => !string.IsNullOrEmpty(_nextCursor);
+
+    /// <summary>
+    /// v0.6.22+:当前已加载总条数 — UI 显示 "已加载 N 条"。
+    /// </summary>
+    public int LoadedCount => _allModels.Count;
+
+    /// <summary>
+    /// v0.6.22+:CivitAI 排序方式 — chip 点击触发 RefreshAsync 重新拉取(切 sort 必重 fetch)。
+    /// 默认 Newest(API 默认值);切换到 HuggingFace 时 chip 隐藏,但属性保留 — 不影响 HF 请求。
+    /// </summary>
+    public CivitAiSort ActiveSort
+    {
+        get => _activeSort;
+        set
+        {
+            if (_activeSort == value) return;
+            _activeSort = value;
+            OnPropertyChanged();
+            _ = RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// v0.6.22+:CivitAI 时间窗口 — chip 点击触发 RefreshAsync 重新拉取。
+    /// 默认 AllTime;同 ActiveSort,切到 HF 时 chip 隐藏但属性保留。
+    /// </summary>
+    public CivitAiPeriod ActivePeriod
+    {
+        get => _activePeriod;
+        set
+        {
+            if (_activePeriod == value) return;
+            _activePeriod = value;
+            OnPropertyChanged();
+            _ = RefreshAsync();
+        }
+    }
+
     // —— Operations ——
     public async Task RefreshAsync()
     {
         if (IsBusy) return;
         IsBusy = true;
         _userHiddenConsole = false;  // reset user-hidden on new refresh
+        // v0.6.22+:分页 — 切 query/source/filter 都从第一页开始。RefreshAsync 用 LoadPageAsync
+        // 而不是 LoadAllAsync 是关键:LoadAllAsync 内部循环 maxResults=50 后就停,根本不知道
+        // "还有更多" — UI 上 Load more 按钮永远 disabled。LoadPageAsync 返回 nextCursor,
+        // source 还有更多时 _nextCursor 非空 → HasNextPage=true → 按钮可点。
+        _nextCursor = null;
         try
         {
             // v0.6.22 T6+:Progress<string> 在 VM 端构造 — ctor 捕获 UI SynchronizationContext,
@@ -221,16 +305,56 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             var progress = new Progress<string>(line => ConsoleLog.Add(line));
             // VM-side await MUST NOT use .ConfigureAwait(false) — continuation runs on UI sync ctx,
             // touching Models.Clear() / Add() requires WPF-friendly context.
-            var results = await _marketplace.LoadAllAsync(_query, maxResultsPerSource: 50,
-                sourceFilter: _activeSource, progress: progress, ct: CancellationToken.None);
+            var (entries, nextCursor) = await _marketplace.LoadPageAsync(
+                _query, cursor: null, pageSize: 50, sourceFilter: _activeSource,
+                sort: _activeSort, period: _activePeriod,
+                progress: progress, ct: CancellationToken.None);
             _allModels.Clear();
-            _allModels.AddRange(results);
+            _allModels.AddRange(entries);
+            _nextCursor = nextCursor;
             ApplyFilter();
+            OnPropertyChanged(nameof(HasNextPage));
+            OnPropertyChanged(nameof(LoadedCount));
+            (LoadMoreCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
         catch (Exception ex)
         {
             _logger?.Warn("model-marketplace", $"刷新失败: {ex.Message}");
             ConsoleLog.Add($"[错误] 刷新失败: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// v0.6.22+:分页"加载更多" — 拿下一页 append 到 _allModels,更新 _nextCursor。
+    /// 不重置现有数据(append 而非 replace),用户可看到逐渐累积的结果。
+    /// HasNextPage=false 时按钮禁用。
+    /// </summary>
+    public async Task LoadMoreAsync()
+    {
+        if (IsBusy || !HasNextPage) return;
+        IsBusy = true;
+        try
+        {
+            var progress = new Progress<string>(line => ConsoleLog.Add(line));
+            var (entries, nextCursor) = await _marketplace.LoadPageAsync(
+                _query, _nextCursor, pageSize: 100, sourceFilter: _activeSource,
+                sort: _activeSort, period: _activePeriod,
+                progress: progress, ct: CancellationToken.None);
+            _allModels.AddRange(entries);
+            _nextCursor = nextCursor;
+            ApplyFilter();
+            OnPropertyChanged(nameof(HasNextPage));
+            OnPropertyChanged(nameof(LoadedCount));
+            (LoadMoreCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("model-marketplace", $"加载更多失败: {ex.Message}");
+            ConsoleLog.Add($"[错误] 加载更多失败: {ex.Message}");
         }
         finally
         {
@@ -278,6 +402,11 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         if (_activeKindFilter is { } k)
         {
             filtered = filtered.Where(m => m.Kind == k);
+        }
+        // v0.6.22+:NSFW filter — IncludeNsfw=false 时只保留 SFW(Mature/NSFW 隐藏)。
+        if (!_includeNsfw)
+        {
+            filtered = filtered.Where(m => m.NsfwKind == ModelNsfwKind.SFW);
         }
         Models.Clear();
         foreach (var m in filtered) Models.Add(m);

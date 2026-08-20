@@ -200,73 +200,131 @@ public class ModelMarketplaceViewModelTests
         Assert.False(vm.IsConsoleVisible);
     }
 
+    // v0.6.22+:Per-source proxy CheckBox 从 model marketplace view 移除(用户 2026-08-20
+    // 反馈 "勾选代理直接在设置中勾选就好了,就不要在界面中选择是否使用代理")。
+    // 对应 VM 属性 CivitAiUseProxy / HuggingFaceUseProxy / IsGlobalProxyEnabled 已删除。
+    // Proxy 配置仍走 SettingsViewModel.ModelSourceCivitAiUseProxy / ModelSourceHuggingFaceUseProxy。
+
+    // —— v0.6.22+ 新增功能测试 ——
+
     [Fact]
-    public void CivitAiUseProxy_DefaultFalse_MirrorsSettings()
+    public void IncludeNsfw_DefaultsTrue_ShowsAllModels()
     {
-        var settings = new Settings { ModelSourceCivitAiUseProxy = false };
-        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
-        Assert.False(vm.CivitAiUseProxy);
+        // 默认 IncludeNsfw=true 时 Models 包含 SFW + Mature + NSFW。
+        var marketplace = new MockModelMarketplaceService(
+            MakeNsfwModel(1, ModelNsfwKind.SFW),
+            MakeNsfwModel(2, ModelNsfwKind.Mature),
+            MakeNsfwModel(3, ModelNsfwKind.NSFW));
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        vm.RefreshAsync().GetAwaiter().GetResult();
+        Assert.True(vm.IncludeNsfw);
+        Assert.Equal(3, vm.Models.Count);
     }
 
     [Fact]
-    public void CivitAiUseProxy_Setter_MutatesSettingsAndRaisesPropertyChanged()
+    public async Task IncludeNsfw_SetFalse_HidesNonSfwModels()
     {
-        var settings = new Settings { ModelSourceCivitAiUseProxy = false };
-        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
-        var changed = false;
-        vm.PropertyChanged += (_, e) =>
+        // 用户 2026-08-20 反馈"NSFW 是否可以有一个复选框,用来过滤"。
+        var marketplace = new MockModelMarketplaceService(
+            MakeNsfwModel(1, ModelNsfwKind.SFW),
+            MakeNsfwModel(2, ModelNsfwKind.Mature),
+            MakeNsfwModel(3, ModelNsfwKind.NSFW));
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        vm.IncludeNsfw = false;
+        Assert.Single(vm.Models);
+        Assert.Equal(ModelNsfwKind.SFW, vm.Models[0].NsfwKind);
+    }
+
+    [Fact]
+    public async Task IncludeNsfw_ToggleRoundTrip_RestoresAll()
+    {
+        var marketplace = new MockModelMarketplaceService(
+            MakeNsfwModel(1, ModelNsfwKind.SFW),
+            MakeNsfwModel(2, ModelNsfwKind.NSFW));
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        vm.IncludeNsfw = false;
+        Assert.Single(vm.Models);
+        vm.IncludeNsfw = true;
+        Assert.Equal(2, vm.Models.Count);
+    }
+
+    [Fact]
+    public async Task LoadMoreCommand_AppendsPageResults()
+    {
+        // Mock 同时支持 LoadPageAsync — 第一页 2 条 + cursor "next",
+        // 第二页 1 条 + cursor null。点 LoadMore 后 _allModels 累计。
+        var marketplace = new MockModelMarketplaceService(
+            MakeModel(1, ModelKind.Checkpoint, ("v1", "1.0")),
+            MakeModel(2, ModelKind.LORA, ("v1", "1.0")))
+        { NextPageResults = new[] { MakeModel(3, ModelKind.Checkpoint, ("v1", "1.0")) } };
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.Equal(2, vm.LoadedCount);
+        Assert.True(vm.HasNextPage);  // mock 第一页返 cursor "next"
+        Assert.True(vm.LoadMoreCommand.CanExecute(null));
+        await vm.LoadMoreAsync();
+        Assert.Equal(3, vm.LoadedCount);
+        Assert.False(vm.HasNextPage);  // 第二页 cursor=null
+        Assert.False(vm.LoadMoreCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task LoadMoreCommand_DisabledWhenNoMore()
+    {
+        var marketplace = new MockModelMarketplaceService(
+            MakeModel(1, ModelKind.Checkpoint, ("v1", "1.0")))
+        { NextCursorResult = null };  // 第一页就耗尽
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.False(vm.HasNextPage);
+        Assert.False(vm.LoadMoreCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void ToggleConsoleVisibilityCommand_FlipsVisibility()
+    {
+        // v0.6.22+:toolbar "Console" 按钮 — 可见时点 → 隐藏;隐藏时点 → 显示。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        vm.ConsoleLog.Add("hello");  // 让 IsConsoleVisible=true
+        Assert.True(vm.IsConsoleVisible);
+        vm.ToggleConsoleVisibilityCommand.Execute(null);
+        Assert.False(vm.IsConsoleVisible);  // → 隐藏
+        vm.ToggleConsoleVisibilityCommand.Execute(null);
+        Assert.True(vm.IsConsoleVisible);  // → 再显示
+    }
+
+    private static ModelEntry MakeNsfwModel(int id, ModelNsfwKind nsfwKind)
+    {
+        var entry = MakeModel(id, ModelKind.Checkpoint, ("v1", "1.0"));
+        return new ModelEntry
         {
-            if (e.PropertyName == nameof(vm.CivitAiUseProxy)) changed = true;
+            Source = entry.Source,
+            SourceId = entry.SourceId,
+            SourceUrl = entry.SourceUrl,
+            Title = entry.Title,
+            Description = entry.Description,
+            Kind = entry.Kind,
+            NsfwKind = nsfwKind,
+            PreviewImageUrl = entry.PreviewImageUrl,
+            Tags = entry.Tags,
+            Versions = entry.Versions,
         };
-        vm.CivitAiUseProxy = true;
-        Assert.True(vm.CivitAiUseProxy);
-        Assert.True(settings.ModelSourceCivitAiUseProxy);
-        Assert.True(changed);
-    }
-
-    [Fact]
-    public void CivitAiUseProxy_SameValue_NoPropertyChanged()
-    {
-        var settings = new Settings { ModelSourceCivitAiUseProxy = true };
-        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
-        var changed = false;
-        vm.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(vm.CivitAiUseProxy)) changed = true;
-        };
-        vm.CivitAiUseProxy = true;  // same value — should not fire
-        Assert.False(changed);
-    }
-
-    [Fact]
-    public void HuggingFaceUseProxy_Setter_MutatesSettings()
-    {
-        var settings = new Settings { ModelSourceHuggingFaceUseProxy = false };
-        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
-        vm.HuggingFaceUseProxy = true;
-        Assert.True(vm.HuggingFaceUseProxy);
-        Assert.True(settings.ModelSourceHuggingFaceUseProxy);
-    }
-
-    [Fact]
-    public void IsGlobalProxyEnabled_TracksSettingsHttpProxyEnabled()
-    {
-        var settings = new Settings { HttpProxyEnabled = false };
-        var vm = new ModelMarketplaceViewModel(null!, null!, null!, settings, null);
-        Assert.False(vm.IsGlobalProxyEnabled);
-        settings.HttpProxyEnabled = true;
-        Assert.True(vm.IsGlobalProxyEnabled);
     }
 
     /// <summary>
     /// v0.6.20 T8:Mock marketplace — 返回固定模型列表。
     /// v0.6.22 T6+ override 5 参版 LoadAllAsync(VM 走 sourceFilter + IProgress 入参),
     /// 记录 CallCount / LastSourceFilter / ProgressLines。
+    /// v0.6.22+ override LoadPageAsync — 首返 _entries + cursor "next",
+    /// 二次返 NextPageResults + cursor null(模拟分页耗尽)。
     /// DelayMs 属性让调用方在 IsBusy=true 期间留出观察窗口(否则同步 mock 立即回落)。
     /// </summary>
     private sealed class MockModelMarketplaceService : ModelMarketplaceService
     {
         private readonly List<ModelEntry> _entries;
+        private int _pageCallCount;
 
         public MockModelMarketplaceService(params ModelEntry[] entries)
             : base(Enumerable.Empty<IModelSource>(), null)
@@ -276,8 +334,15 @@ public class ModelMarketplaceViewModelTests
 
         public int CallCount { get; private set; }
         public ModelSourceKind? LastSourceFilter { get; private set; }
+        public CivitAiSort LastSort { get; private set; }
+        public CivitAiPeriod LastPeriod { get; private set; }
         public int DelayMs { get; set; }
         public List<string> ProgressLines { get; } = new();
+
+        // v0.6.22+:分页 mock — 默认首返 cursor="next", 二次返 cursor=null 模拟耗尽。
+        // 调用方可设 NextPageResults 自定义第二页内容 + NextCursorResult=null 测试"无更多"场景。
+        public ModelEntry[]? NextPageResults { get; set; }
+        public string? NextCursorResult { get; set; } = "next";
 
         public override async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
             string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
@@ -289,6 +354,30 @@ public class ModelMarketplaceViewModelTests
             if (DelayMs > 0) await Task.Delay(DelayMs);
             progress?.Report($"[mock] 完成 {_entries.Count} 条");
             return _entries;
+        }
+
+        public override async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> LoadPageAsync(
+            string query, string? cursor, int pageSize, ModelSourceKind? sourceFilter,
+            CivitAiSort sort, CivitAiPeriod period,
+            IProgress<string>? progress, CancellationToken ct = default)
+        {
+            _pageCallCount++;
+            CallCount++;
+            LastSort = sort;
+            LastPeriod = period;
+            if (DelayMs > 0) await Task.Delay(DelayMs);
+
+            // cursor=null 第一页 → 返 _entries + "next"
+            // cursor="next" 第二页 → 返 NextPageResults + null(耗尽)
+            // 之后 cursor="next" 也按第二页返(测试不需要第三次)
+            if (cursor is null && _pageCallCount == 1)
+            {
+                progress?.Report($"[mock] page 1: {_entries.Count} 条, next={NextCursorResult} sort={sort} period={period}");
+                return (_entries, NextCursorResult);
+            }
+            var nextEntries = NextPageResults ?? Array.Empty<ModelEntry>();
+            progress?.Report($"[mock] page 2: {nextEntries.Length} 条");
+            return (nextEntries, null);
         }
     }
 }

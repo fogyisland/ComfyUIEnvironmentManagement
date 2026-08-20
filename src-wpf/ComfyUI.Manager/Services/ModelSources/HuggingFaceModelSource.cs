@@ -42,15 +42,42 @@ public class HuggingFaceModelSource : IModelSource
 
     public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct)
     {
+        // v0.6.22+:SearchPageAsync 的循环包装,保持向后兼容。
+        var results = new List<ModelEntry>();
+        string? cursor = null;
+        const int maxPages = 10;
+
+        for (var pageCount = 1; pageCount <= maxPages && results.Count < maxResults; pageCount++)
+        {
+            var (entries, nextCursor) = await SearchPageAsync(
+                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct);
+            results.AddRange(entries);
+            cursor = nextCursor;
+            if (string.IsNullOrEmpty(cursor)) break;
+        }
+
+        return results.Take(maxResults).ToList();
+    }
+
+    /// <summary>
+    /// v0.6.22+:UI 显式分页入口。HF API 不支持 cursor 续接(单页 limit 上限),
+    /// cursor 参数仅留作接口一致 — 始终忽略,固定返回 (本页, nextCursor=null)。
+    /// sort/period 参数 HF 不支持,直接忽略(对结果无影响)。
+    /// SearchAsync 内循环调用本接口也是为对齐 IModelSource 协议,实际上不会真正续接。
+    /// </summary>
+    public async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
+        string query, string? cursor, int pageSize,
+        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct)
+    {
         var results = new List<ModelEntry>();
         var qs = new List<string>
         {
-            $"limit={Math.Min(maxResults, PageSize)}",
+            $"limit={pageSize}",
             "full=true",
         };
         if (!string.IsNullOrWhiteSpace(query)) qs.Add($"search={Uri.EscapeDataString(query)}");
         var url = $"{_baseUrl}/api/models?{string.Join("&", qs)}";
-        _logger?.Info("model-huggingface", $"search: {url}");
+        _logger?.Info("model-huggingface", $"search page: {url}");
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         if (!string.IsNullOrEmpty(_apiToken) && _baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
@@ -62,15 +89,15 @@ public class HuggingFaceModelSource : IModelSource
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
         var items = JsonSerializer.Deserialize<List<HfModelSummary>>(body, JsonOpts);
-        if (items is null) return results;
+        if (items is null) return (results, null);
 
-        foreach (var item in items.Take(maxResults))
+        foreach (var item in items)
         {
             if (string.IsNullOrEmpty(item.Id)) continue;
             var entry = await MapToModelEntryAsync(item, ct).ConfigureAwait(false);
             if (entry is not null) results.Add(entry);
         }
-        return results;
+        return (results, null);
     }
 
     private async Task<ModelEntry?> MapToModelEntryAsync(HfModelSummary summary, CancellationToken ct)

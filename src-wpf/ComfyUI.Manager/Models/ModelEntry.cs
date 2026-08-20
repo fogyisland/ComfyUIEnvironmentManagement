@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace ComfyUI.Manager.Models;
@@ -45,6 +46,13 @@ public enum ModelKind
 
 public enum ModelNsfwKind { SFW = 0, Mature, NSFW }
 
+/// <summary>v0.6.22+:CivitAI sort 参数 — 用户 2026-08-20 反馈"搜索似乎只传递关键词,
+/// 不传递其他参数"。CivitAI API 的 sort 值大小写敏感 — 直接用 enum 名当 API value。</summary>
+public enum CivitAiSort { Newest, MostDownloaded, TopRated, MostLiked, MostDiscussed }
+
+/// <summary>v0.6.22+:CivitAI period 参数 — 跟 sort 配合缩小时间范围。</summary>
+public enum CivitAiPeriod { AllTime, Year, Month, Week, Day }
+
 /// <summary>v0.6.20:per-version 选中单位。Id 全局唯一 = "{SourceKind}:{ModelId}:{VersionId}"。
 /// 1 个 ModelVersionEntry 对应 1 个可下载的具体文件 + meta.json sidecar。</summary>
 public class ModelVersionEntry
@@ -59,6 +67,22 @@ public class ModelVersionEntry
     public IReadOnlyList<ModelFile> Files { get; init; } = Array.Empty<ModelFile>();
     public DateTimeOffset? PublishedAt { get; init; }
     public bool IsEarlyAccess { get; init; }
+
+    // v0.6.22+:UI 显示辅助 — 主文件名(从 Files[0] 取) + 可读大小。XAML 卡片直接绑。
+    // 用户 2026-08-20 反馈"没有下载的地址" — 卡片需要显示文件信息 + URL 入口。
+    public string PrimaryFileName => Files?.FirstOrDefault()?.Name ?? "";
+    public string PrimaryFileFormat => Files?.FirstOrDefault()?.Format ?? "";
+
+    /// <summary>人类可读文件大小(B / KB / MB / GB)。空时返 "" 让 XAML 跳过显示。</summary>
+    public string SizeDisplay => SizeBytes <= 0 ? "" : FormatSize(SizeBytes);
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / 1024.0 / 1024:F1} MB";
+        return $"{bytes / 1024.0 / 1024 / 1024:F2} GB";
+    }
 }
 
 public class ModelFile

@@ -25,47 +25,82 @@
   -->
   <Grid Margin="12">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>  <!-- toolbar -->
-      <RowDefinition Height="Auto"/>  <!-- filter strip -->
+      <RowDefinition Height="Auto"/>  <!-- header "模型下载" -->
+      <RowDefinition Height="Auto"/>  <!-- search row:搜索框 + 搜索按钮 + 下载选中 + 选中数 -->
+      <RowDefinition Height="Auto"/>  <!-- filter strip:kind chips + source radio -->
+      <RowDefinition Height="Auto"/>  <!-- v0.6.22+:sort + period filter chips(CivitAI only,HF 隐藏) -->
       <RowDefinition Height="*"/>     <!-- card grid -->
       <RowDefinition Height="Auto"/>  <!-- console -->
     </Grid.RowDefinitions>
 
-    <!-- Toolbar (v0.6.22 T6):刷新 + 下载选中 + 选中数 + Search input + 搜索 button
-         Enter 键绑 SearchCommand 显式触发,文本框不再 auto-filter on type。
-         search input 放右:刷新/下载在左操作区,搜索区右聚。-->
-    <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="True">
-      <Button DockPanel.Dock="Right" Content="搜索"
-              Command="{Binding SearchCommand}"
-              Margin="8,0,0,0" Padding="14,4" />
-      <TextBox DockPanel.Dock="Right" Width="360" Margin="8,0,0,0"
-               Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
-               VerticalContentAlignment="Center"
-               Background="{DynamicResource SurfaceBrush}"
-               BorderBrush="{DynamicResource OutlineBrush}"
-               BorderThickness="1"
-               ToolTip="输入模型名称,按 Enter 或点右侧 搜索 按钮">
-        <TextBox.InputBindings>
-          <KeyBinding Key="Return" Command="{Binding SearchCommand}" />
-        </TextBox.InputBindings>
-      </TextBox>
-      <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,8,0">
+    <!-- v0.6.22+:header "模型下载" — 大字标题,让用户一眼看清当前 view 的用途。
+         前置背景无 card,简单 TextBlock + 字号 20 Bold + OnSurfaceBrush 即可。-->
+    <TextBlock Grid.Row="0" Text="模型下载"
+               FontSize="20" FontWeight="Bold"
+               Margin="0,0,0,10"
+               Foreground="{DynamicResource OnSurfaceBrush}" />
+
+    <!-- v0.6.22+:Search row — 整条操作栏从左到右:[搜索框] [搜索] [下载选中] [选中:N 贴右] [加载更多] [已加载:N]。
+         之前用 DockPanel LastChildFill=True + 全 Dock=Right,TextBox 作为 last child
+         撑满剩余空间 + Width=360 限制 → 视觉上 TextBox 虽在最左但 Margin="8,0,0,0" 偏 8px,
+         中间大片空白 + 按钮贴右远,读起来不像个整体操作条(用户 2026-08-20 反馈
+         "搜索框不是左对齐,界面有些问题")。
+         改成 StackPanel Horizontal 顺序排列 → TextBox 贴 position(0,0),按钮紧跟其后,
+         选中:N 用 DockPanel.Dock=Right 推到最右,左右对齐都明确。
+         取消 刷新 按钮(用户 2026-08-20 反馈"刷新在这里看不懂作用")。
+         Per-source "使用代理" CheckBox 已删除(proxy 走 Settings 页统一管理)。
+         加载更多 + 已加载计数 是 v0.6.22+ 新增的分页 UI(用户 2026-08-20 反馈
+         "针对分页的数据是否有做")。-->
+    <DockPanel Grid.Row="1" Margin="0,0,0,8">
+      <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0">
         <Run Text="选中: " />
         <Run Text="{Binding SelectedVersions.Count, Mode=OneWay}" FontWeight="Bold" />
       </TextBlock>
-      <Button DockPanel.Dock="Right" Content="下载选中"
-              Command="{Binding DownloadSelectedCommand}"
-              Margin="8,0,8,0" />
-      <Button DockPanel.Dock="Right" Content="刷新"
-              Command="{Binding RefreshCommand}"
-              Margin="8,0,0,0" />
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBox Width="360"
+                 Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
+                 VerticalContentAlignment="Center"
+                 Background="{DynamicResource SurfaceBrush}"
+                 BorderBrush="{DynamicResource OutlineBrush}"
+                 BorderThickness="1"
+                 ToolTip="输入模型名称,按 Enter 或点右侧 搜索 按钮">
+          <TextBox.InputBindings>
+            <KeyBinding Key="Return" Command="{Binding SearchCommand}" />
+          </TextBox.InputBindings>
+        </TextBox>
+        <Button Content="搜索"
+                Command="{Binding SearchCommand}"
+                Margin="8,0,0,0" Padding="14,4" />
+        <Button Content="下载选中"
+                Command="{Binding DownloadSelectedCommand}"
+                Margin="8,0,0,0" Padding="14,4" />
+        <!-- v0.6.22+:分页"加载更多"按钮 — HasNextPage=false 时自动 IsEnabled=false(CanExecute)。-->
+        <Button Content="加载更多"
+                Command="{Binding LoadMoreCommand}"
+                Margin="8,0,0,0" Padding="14,4"
+                ToolTip="获取下一页结果 append 到当前列表(已无更多时禁用)" />
+        <!-- 已加载计数 — 始终可见,即使 HasNextPage=false 也能看到总数。-->
+        <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
+                   Foreground="{DynamicResource OutlineBrush}" FontSize="11">
+          <Run Text="已加载 " />
+          <Run Text="{Binding LoadedCount, Mode=OneWay}" />
+          <Run Text=" 条" />
+        </TextBlock>
+        <!-- v0.6.22+:Console 显隐 toggle 按钮 — 已隐藏时显示 "显示 Console",可见时显示 "隐藏 Console"。
+             让用户在 ✕ 后还能再开(之前 ✕ 后只能等下次 RefreshAsync 重置 _userHiddenConsole)。
+             用户 2026-08-20 反馈"Console 在这个界面也是需要可以隐藏"。-->
+        <Button Content="Console"
+                Command="{Binding ToggleConsoleVisibilityCommand}"
+                Margin="12,0,0,0" Padding="14,4"
+                ToolTip="显示 / 隐藏 Console 面板(跟 ✕ 等价,但能再开)" />
+      </StackPanel>
     </DockPanel>
 
-    <!-- Filter strip (v0.6.22 T6):kind chips + source 单选 radio (替换 v0.6.21 view-time 2 CheckBox)。
-         v0.6.22+:每个 source radio 右侧挂 "使用代理" CheckBox — 全局 HTTP 代理未启用时灰显。
-         proxy 改完需重启应用才让 ModelSourceFactory 重建带 WebProxy 的 HttpClient(handler 在
-         OnStartup 一次性构造,本 view 改完只写 settings.json)。-->
-    <DockPanel Grid.Row="1" Margin="0,0,0,8" LastChildFill="True">
+    <!-- v0.6.22+:类型筛选 row — kind chips + source 单选 radio + NSFW 过滤 CheckBox。
+         Source radio 保留(功能必要),per-source "使用代理" CheckBox 已删除。
+         NSFW 过滤 CheckBox 位于 kind chips 后、source radio 前(用户 2026-08-20 反馈)。
+         Proxy 设置改走 Settings → 模型市场 段。-->
+    <DockPanel Grid.Row="2" Margin="0,0,0,8" LastChildFill="True">
       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock Text="源" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" />
         <RadioButton Content="CivitAI" GroupName="ActiveSource"
@@ -73,19 +108,11 @@
                      IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=CivitAi}"
                      Click="OnSourceRadioClicked"
                      Margin="4,0,0,0" VerticalAlignment="Center" />
-        <CheckBox Content="使用代理" Margin="4,0,0,0" VerticalAlignment="Center"
-                  IsEnabled="{Binding IsGlobalProxyEnabled}"
-                  IsChecked="{Binding CivitAiUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                  ToolTip="勾选后该源经全局代理访问。需在 Settings → 环境/工具 段启用 HTTP 代理。重启应用生效。" />
         <RadioButton Content="HuggingFace" GroupName="ActiveSource"
                      Tag="{x:Static models:ModelSourceKind.HuggingFace}"
                      IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=HuggingFace}"
                      Click="OnSourceRadioClicked"
                      Margin="12,0,0,0" VerticalAlignment="Center" />
-        <CheckBox Content="使用代理" Margin="4,0,0,0" VerticalAlignment="Center"
-                  IsEnabled="{Binding IsGlobalProxyEnabled}"
-                  IsChecked="{Binding HuggingFaceUseProxy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                  ToolTip="勾选后该源经全局代理访问。需在 Settings → 环境/工具 段启用 HTTP 代理。重启应用生效。" />
       </StackPanel>
       <ItemsControl x:Name="KindFilterHost" ItemsSource="{Binding KindFilters}">
         <ItemsControl.ItemsPanel>
@@ -99,20 +126,102 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+      <!-- v0.6.22+:NSFW 过滤 CheckBox — 默认勾选(显示全部),取消勾选 = 只显示 SFW。
+           位置在 kind chips 末尾之后(分隔 8px margin),跟 source radio 区分开。-->
+      <CheckBox Content="显示 NSFW"
+                IsChecked="{Binding IncludeNsfw}"
+                Margin="12,0,0,0" VerticalAlignment="Center"
+                ToolTip="取消勾选只显示 SFW 模型(Mature/NSFW 隐藏)" />
     </DockPanel>
 
+    <!-- v0.6.22+:Sort + Period filter row — CivitAI API 参数(用户 2026-08-20 反馈
+         "搜索似乎只传关键词")。HF source 不支持这两个参数,整行 Visibility 折叠。
+         两段 chip strip:左 "排序"(5 个 sort 选项)+ "时间窗"(5 个 period 选项)。
+         chip 风格跟 kind chips 一致(ToggleButton 群组单选语义) — 用 Click handler
+         直接 set VM.ActiveSort/ActivePeriod,setter 自动 fire-and-forget RefreshAsync。
+         选中状态通过 DataTrigger 高亮(IsChecked + ActiveSort 比较)。-->
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8"
+                Visibility="{Binding ActiveSource, Converter={StaticResource EnumEqualsVisibility},
+                                     ConverterParameter=CivitAi}">
+      <TextBlock Text="排序" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="Bold" />
+      <ItemsControl x:Name="SortFilterHost" ItemsSource="{Binding SortOptions}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <ToggleButton x:Name="SortChip" Content="{Binding}" Margin="2" Padding="8,4"
+                          Tag="{Binding}"
+                          Click="OnSortChipClicked">
+              <ToggleButton.Style>
+                <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                  <Style.Triggers>
+                    <DataTrigger Value="True">
+                      <DataTrigger.Binding>
+                        <MultiBinding Converter="{StaticResource EnumEqualsMultiConverter}">
+                          <Binding />
+                          <Binding Path="DataContext.ActiveSort"
+                          RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                        </MultiBinding>
+                      </DataTrigger.Binding>
+                      <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+                      <Setter Property="Foreground" Value="White" />
+                      <Setter Property="FontWeight" Value="Bold" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </ToggleButton.Style>
+            </ToggleButton>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock Text="时间窗" VerticalAlignment="Center" Margin="16,0,8,0" FontWeight="Bold" />
+      <ItemsControl x:Name="PeriodFilterHost" ItemsSource="{Binding PeriodOptions}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <ToggleButton x:Name="PeriodChip" Content="{Binding}" Margin="2" Padding="8,4"
+                          Tag="{Binding}"
+                          Click="OnPeriodChipClicked">
+              <ToggleButton.Style>
+                <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                  <Style.Triggers>
+                    <DataTrigger Value="True">
+                      <DataTrigger.Binding>
+                        <MultiBinding Converter="{StaticResource EnumEqualsMultiConverter}">
+                          <Binding />
+                          <Binding Path="DataContext.ActivePeriod"
+                          RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                        </MultiBinding>
+                      </DataTrigger.Binding>
+                      <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+                      <Setter Property="Foreground" Value="White" />
+                      <Setter Property="FontWeight" Value="Bold" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </ToggleButton.Style>
+            </ToggleButton>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
     <!-- Card grid:WrapPanel of 220x340 cards -->
-    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+    <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
       <ItemsControl ItemsSource="{Binding Models}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate DataType="{x:Type models:ModelEntry}">
-            <Border Width="220" Height="420" Margin="6" Padding="10" CornerRadius="8"
+            <Border Width="220" Height="480" Margin="6" Padding="10" CornerRadius="8"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}"
-                    BorderThickness="1">
+                    BorderThickness="1"
+                    ToolTip="{Binding Description}">
               <StackPanel>
                 <!-- v0.6.20 T10 polish:preview image at top of card.
                      CivitAI provides image URL via ModelEntry.PreviewImageUrl;
@@ -129,6 +238,14 @@
                            TextWrapping="Wrap" MaxHeight="40"
                            TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource OnSurfaceBrush}" />
+                <!-- v0.6.22+:Model description 简介 — 2 行截断(CharacterEllipsis),完整内容 hover Border 触发 ToolTip
+                     (Description 是 HTML 片段含 &lt;p&gt;/&lt;br/&gt;,UI 不渲染 HTML 只显示原文)。
+                     用户 2026-08-20 反馈"这个界面怎么没有模型介绍"。-->
+                <TextBlock Text="{Binding Description}"
+                           FontSize="11" MaxHeight="44"
+                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                           Margin="0,4,0,0"
+                           Foreground="{DynamicResource OutlineBrush}" />
                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                   <Border CornerRadius="4" Padding="6,2" Margin="0,0,4,0"
                           Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}">
@@ -143,11 +260,43 @@
                 <ItemsControl ItemsSource="{Binding Versions}" Margin="0,8,0,0">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:ModelVersionEntry}">
-                      <CheckBox Content="{Binding Name}" Margin="0,2"
-                                Foreground="{DynamicResource OnSurfaceBrush}"
-                                Command="{Binding DataContext.ToggleVersionSelectionCommand,
-                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                CommandParameter="{Binding}" />
+                      <!-- v0.6.22+:每个 version 行加文件名 + 大小 + 📋 复制 URL 按钮。
+                           Border ToolTip 显示完整下载 URL(用户 hover 即可看到)。
+                           Border 不用 hover — WPF ToolTip 自动在鼠标停 ~500ms 后弹出。
+                           用户 2026-08-20 反馈"没有下载的地址"。-->
+                      <Border Margin="0,2" Padding="4,2" CornerRadius="3"
+                              Background="{DynamicResource SurfaceBrush}"
+                              BorderBrush="{DynamicResource OutlineBrush}"
+                              BorderThickness="1"
+                              ToolTip="{Binding PrimaryDownloadUrl}">
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
+                          <StackPanel Grid.Column="0">
+                            <CheckBox Content="{Binding Name}" FontSize="12"
+                                      Foreground="{DynamicResource OnSurfaceBrush}"
+                                      Command="{Binding DataContext.ToggleVersionSelectionCommand,
+                                                RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      CommandParameter="{Binding}" />
+                            <TextBlock FontSize="10" Margin="20,0,0,0"
+                                       Foreground="{DynamicResource OutlineBrush}"
+                                       TextTrimming="CharacterEllipsis">
+                              <Run Text="{Binding PrimaryFileName, Mode=OneWay}" />
+                              <Run Text=" · " />
+                              <Run Text="{Binding SizeDisplay, Mode=OneWay}" />
+                            </TextBlock>
+                          </StackPanel>
+                          <Button Grid.Column="1" Content="📋"
+                                  Padding="4,0" Margin="2,0,0,0"
+                                  VerticalAlignment="Center"
+                                  ToolTip="复制下载链接到剪贴板"
+                                  Command="{Binding DataContext.CopyDownloadUrlCommand,
+                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                  CommandParameter="{Binding}" />
+                        </Grid>
+                      </Border>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -159,7 +308,7 @@
     </ScrollViewer>
 
     <!-- Console panel (3-state visibility) -->
-    <Border Grid.Row="3" Margin="0,8,0,0" Padding="0"
+    <Border Grid.Row="5" Margin="0,8,0,0" Padding="0"
             Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource OutlineBrush}"
             BorderThickness="1" CornerRadius="6"

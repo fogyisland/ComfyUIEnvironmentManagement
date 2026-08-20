@@ -51,6 +51,43 @@ public partial class ModelMarketplaceView : UserControl
         }
     }
 
+    private void OnSortChipClicked(object sender, RoutedEventArgs e)
+    {
+        // v0.6.22+:CivitAI sort chip — 单选语义(不能像 kind chip 那样 uncheck 自身,
+        // sort 必须始终有选中值)。点击直接 set VM.ActiveSort,setter 自动 fire-and-forget
+        // RefreshAsync。同时 uncheck 其他 chip 让 IsChecked 跟 DataTrigger 一致。
+        if (sender is not ToggleButton tb) return;
+        if (tb.Tag is not CivitAiSort sort) return;
+        if (DataContext is not ModelMarketplaceViewModel vm) return;
+        vm.ActiveSort = sort;
+        UncheckOtherChipsInItemsControl(tb, "SortFilterHost");
+    }
+
+    private void OnPeriodChipClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton tb) return;
+        if (tb.Tag is not CivitAiPeriod period) return;
+        if (DataContext is not ModelMarketplaceViewModel vm) return;
+        vm.ActivePeriod = period;
+        UncheckOtherChipsInItemsControl(tb, "PeriodFilterHost");
+    }
+
+    private void UncheckOtherChipsInItemsControl(ToggleButton clicked, string hostName)
+    {
+        if (FindName(hostName) is not ItemsControl host) return;
+        foreach (var item in host.Items)
+        {
+            if (host.ItemContainerGenerator.ContainerFromItem(item) is FrameworkElement container)
+            {
+                var chip = FindVisualChild<ToggleButton>(container);
+                if (chip is not null && chip != clicked)
+                {
+                    chip.IsChecked = false;
+                }
+            }
+        }
+    }
+
     private void UncheckOtherKindChips(ToggleButton clicked)
     {
         if (FindName("KindFilterHost") is not ItemsControl host) return;

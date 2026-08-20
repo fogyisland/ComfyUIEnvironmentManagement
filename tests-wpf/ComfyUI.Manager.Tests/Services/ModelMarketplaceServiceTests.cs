@@ -87,6 +87,12 @@ internal class FakeSource : IModelSource
 
     public Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<ModelEntry>>(_entries);
+
+    public Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
+        string query, string? cursor, int pageSize,
+        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct) =>
+        Task.FromResult<(IReadOnlyList<ModelEntry>, string?)>(
+            ((IReadOnlyList<ModelEntry>)_entries, (string?)null));
 }
 
 internal class ThrowingSource : IModelSource
@@ -95,5 +101,9 @@ internal class ThrowingSource : IModelSource
     public string DisplayName => "Throwing";
     public bool IsEnabled { get; set; } = true;
     public Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct) =>
+        throw new InvalidOperationException("boom");
+    public Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
+        string query, string? cursor, int pageSize,
+        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct) =>
         throw new InvalidOperationException("boom");
 }

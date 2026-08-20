@@ -76,4 +76,40 @@ public class ModelMarketplaceService
         progress?.Report($"[合并] 共 {merged.Count} 条(去重后)");
         return merged;
     }
+
+    /// <summary>
+    /// v0.6.22+:UI 显式分页入口 — 单页 fetch + nextCursor 透传。
+    /// 与 <see cref="LoadAllAsync"/> 区别:不内部循环 paginate,只 fetch 一页,
+    /// 由 VM 维护 cursor 状态在用户点击 "加载更多" 时再调一次。
+    /// cursor=null 表示第一页;返回的 nextCursor=null 表示当前 source 已无更多。
+    /// dedup 跟 <see cref="LoadAllAsync"/> 一样(per-source 自动 dedup,但 UI 跨多次调用需 VM 自己合并 —
+    /// 这次接口暂不返回 dedup'd key,VM 端用 HashSet 跟踪已显示 id 即可)。
+    /// sort/period 参数透传给 enabled sources(用户 2026-08-20 反馈"搜索似乎只传关键词")。
+    /// </summary>
+    public virtual async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> LoadPageAsync(
+        string query, string? cursor, int pageSize, ModelSourceKind? sourceFilter,
+        CivitAiSort sort, CivitAiPeriod period,
+        IProgress<string>? progress, CancellationToken ct = default)
+    {
+        var enabled = _sources.Where(s => s.IsEnabled && (sourceFilter is null || s.SourceKind == sourceFilter)).ToList();
+        progress?.Report($"[加载更多] 源: {(enabled.Count == 0 ? "(无)" : string.Join(", ", enabled.Select(s => s.DisplayName)))}");
+        if (enabled.Count == 0) return (Array.Empty<ModelEntry>(), null);
+
+        // 单源场景(当前 UI radio 永远只选一个 source):直接返回该 source 的 (entries, nextCursor)。
+        // 多源场景 future work — 现在聚合语义不明确("merge 多 source 的 cursor" 没意义),
+        // 此处退化为只取第一个 enabled source 的结果。
+        var src = enabled[0];
+        try
+        {
+            var (entries, nextCursor) = await src.SearchPageAsync(query, cursor, pageSize, sort, period, ct);
+            progress?.Report($"[{src.DisplayName}] +{entries.Count} 条, 下一页={(nextCursor is null ? "(无)" : "有")}");
+            return (entries, nextCursor);
+        }
+        catch (Exception ex)
+        {
+            progress?.Report($"[{src.DisplayName}] 失败: {ex.Message}");
+            _logger?.Error("model-marketplace", $"[{src.DisplayName}] page fetch failed: {ex.Message}");
+            return (Array.Empty<ModelEntry>(), null);
+        }
+    }
 }

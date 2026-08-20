@@ -27,6 +27,11 @@
          env 行 🪵 图标 deep/dim 切换:values[0]=VM ActiveStartStatusEnvId,values[1]=this.Id,
          相等 → true → Foreground 切 OnSurfaceBrush(深)。 -->
     <converters:StringEqualityMultiConverter x:Key="StringEqualityMulti" />
+    <!-- v0.6.22+:model marketplace sort/period chip 高亮 — values[0]=chip item, values[1]=VM.ActiveSort,
+         类型相同时返 bool 给 DataTrigger.Value(必须字面量,不能挂 {Binding} — v0.6.17.1 lesson)。 -->
+    <converters:EnumEqualsMultiConverter x:Key="EnumEqualsMultiConverter" />
+    <!-- v0.6.22+:model marketplace sort/period row 在 ActiveSource=CivitAi 时显示,HF 隐藏。 -->
+    <converters:EnumEqualsVisibilityConverter x:Key="EnumEqualsVisibility" />
     <!-- v0.6.15.10:bool → "trueText|falseText",node-mgmt row details 用 "存在|无"。 -->
     <converters:BoolToTextConverter x:Key="BoolToText" />
     <views:BoolToBrushConverter x:Key="BoolToBrush" />
