@@ -29,6 +29,7 @@
       <RowDefinition Height="Auto"/>  <!-- search row:搜索框 + 搜索按钮 + 下载选中 + 选中数 -->
       <RowDefinition Height="Auto"/>  <!-- filter strip:kind chips + source radio -->
       <RowDefinition Height="Auto"/>  <!-- v0.6.22+:sort + period filter chips(CivitAI only,HF 隐藏) -->
+      <RowDefinition Height="Auto"/>  <!-- v0.6.22+:baseModel chip strip(CivitAI only,HF 隐藏) -->
       <RowDefinition Height="*"/>     <!-- card grid -->
       <RowDefinition Height="Auto"/>  <!-- console -->
     </Grid.RowDefinitions>
@@ -74,16 +75,29 @@
         <Button Content="下载选中"
                 Command="{Binding DownloadSelectedCommand}"
                 Margin="8,0,0,0" Padding="14,4" />
-        <!-- v0.6.22+:分页"加载更多"按钮 — HasNextPage=false 时自动 IsEnabled=false(CanExecute)。-->
-        <Button Content="加载更多"
-                Command="{Binding LoadMoreCommand}"
-                Margin="8,0,0,0" Padding="14,4"
-                ToolTip="获取下一页结果 append 到当前列表(已无更多时禁用)" />
-        <!-- 已加载计数 — 始终可见,即使 HasNextPage=false 也能看到总数。-->
+        <!-- v0.6.22+:页码式分页 — 上一页走本地缓存,下一页缓存到底时自动补拉一页。
+             页数按「筛选后」的条数算:勾 kind chip / 关 NSFW 会立刻重算页数并跳回第 1 页。-->
+        <Button Content="« 上一页"
+                Command="{Binding PrevPageCommand}"
+                Margin="12,0,0,0" Padding="12,4"
+                ToolTip="回到上一页(本地缓存,不重新请求)" />
+        <TextBlock VerticalAlignment="Center" Margin="8,0,0,0"
+                   Foreground="{DynamicResource OnSurfaceBrush}" FontSize="12">
+          <Run Text="第 " />
+          <Run Text="{Binding CurrentPageNumber, Mode=OneWay}" FontWeight="Bold" />
+          <Run Text=" / " />
+          <Run Text="{Binding TotalPages, Mode=OneWay}" />
+          <Run Text=" 页" />
+        </TextBlock>
+        <Button Content="下一页 »"
+                Command="{Binding NextPageCommand}"
+                Margin="8,0,0,0" Padding="12,4"
+                ToolTip="下一页(缓存不足时自动向来源多拉一页)" />
+        <!-- 筛选后的条数 — 跟页数同源,勾筛选后跟着变小。-->
         <TextBlock VerticalAlignment="Center" Margin="12,0,0,0"
                    Foreground="{DynamicResource OutlineBrush}" FontSize="11">
-          <Run Text="已加载 " />
-          <Run Text="{Binding LoadedCount, Mode=OneWay}" />
+          <Run Text="共 " />
+          <Run Text="{Binding TotalFilteredCount, Mode=OneWay}" />
           <Run Text=" 条" />
         </TextBlock>
         <!-- v0.6.22+:Console 显隐 toggle 按钮 — 已隐藏时显示 "显示 Console",可见时显示 "隐藏 Console"。
@@ -209,6 +223,50 @@
       </ItemsControl>
     </StackPanel>
 
+    <!-- v0.6.22+:BaseModel chip strip — CivitAI 专用(用户 2026-08-20 反馈"模型参数是不是
+         也可以传递?也就是 base model 列出常规可用的 Model 类型")。HF source 不支持 baseModel
+         API 参数,整行 Visibility 折叠;切到 CivitAI 时显示 21 个常用 baseModel chip
+         (SD 1.5 / SDXL / Flux / Pony / SD 3.5 / Wan Video ...)。WrapPanel 让选项过多时自动
+         换行(2-3 行)。chip 风格跟 sort/period 一致(ToggleButton 单选 + DataTrigger 高亮)。
+         默认 "All" 选中表示不过滤(不附加 baseModels= URL 参数);切到具体 baseModel 触发
+         setter 自动 fire-and-forget RefreshAsync。-->
+    <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,8"
+                Visibility="{Binding ActiveSource, Converter={StaticResource EnumEqualsVisibility},
+                                     ConverterParameter=CivitAi}">
+      <TextBlock Text="基础模型" VerticalAlignment="Top" Margin="0,4,8,0" FontWeight="Bold" />
+      <ItemsControl x:Name="BaseModelFilterHost" ItemsSource="{Binding BaseModelOptions}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><WrapPanel MaxWidth="1000" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <ToggleButton x:Name="BaseModelChip" Content="{Binding}" Margin="2" Padding="8,4"
+                          Tag="{Binding}"
+                          Click="OnBaseModelChipClicked">
+              <ToggleButton.Style>
+                <Style TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+                  <Style.Triggers>
+                    <DataTrigger Value="True">
+                      <DataTrigger.Binding>
+                        <MultiBinding Converter="{StaticResource EnumEqualsMultiConverter}">
+                          <Binding />
+                          <Binding Path="DataContext.ActiveBaseModel"
+                          RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                        </MultiBinding>
+                      </DataTrigger.Binding>
+                      <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+                      <Setter Property="Foreground" Value="White" />
+                      <Setter Property="FontWeight" Value="Bold" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </ToggleButton.Style>
+            </ToggleButton>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
     <!-- v0.6.22+:3-per-row card grid + loading overlay + empty state overlay。
          用户 2026-08-20 反馈"可以一行 3 个,后面大段留白感觉不符合设计要求"。
          卡片 Width=340 Height=540(放大)+ preview Height=200(更大预览图)+
@@ -218,7 +276,7 @@
          镜像 WorkflowMarketplaceView (lines 177-294) 的 3-层 overlay 结构:
          第 1 层 ScrollViewer(Border 容器)+ 第 2 层 loading 半透明黑 overlay
          + 第 3 层 empty state overlay — 后画覆盖前面。-->
-    <Grid Grid.Row="4">
+    <Grid Grid.Row="5">
       <ScrollViewer VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Auto"
                     IsEnabled="{Binding NotIsBusy}">
@@ -354,7 +412,7 @@
     </Grid>
 
     <!-- Console panel (3-state visibility) -->
-    <Border Grid.Row="5" Margin="0,8,0,0" Padding="0"
+    <Border Grid.Row="6" Margin="0,8,0,0" Padding="0"
             Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource OutlineBrush}"
             BorderThickness="1" CornerRadius="6"

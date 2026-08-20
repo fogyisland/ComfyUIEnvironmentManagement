@@ -80,6 +80,192 @@ public class ModelSourceCivitAiTests
         Assert.Equal("https://cdn.example.com/preview.jpg", e.PreviewImageUrl);
     }
 
+    // —— v0.6.22+ baseModel 智能识别 ——
+
+    [Fact]
+    public void DetectBaseModels_StableDiffusion15_StripsKeywordAndReturnsFilter()
+    {
+        // 用户输入 "stable diffusion 1.5" → baseModels=SD 1.5 filter;query 剥空(原 keyword 已生效)。
+        var (stripped, bases) = CivitAiModelSource.DetectBaseModels("stable diffusion 1.5");
+        Assert.Equal("", stripped);
+        Assert.Equal(new[] { "SD 1.5" }, bases);
+    }
+
+    [Fact]
+    public void DetectBaseModels_StableDiffusion15Lora_KeepsLoraAsQuery()
+    {
+        var (stripped, bases) = CivitAiModelSource.DetectBaseModels("stable diffusion 1.5 lora");
+        Assert.Equal("lora", stripped);
+        Assert.Equal(new[] { "SD 1.5" }, bases);
+    }
+
+    [Fact]
+    public void DetectBaseModels_MultipleKeywords_ReturnsMultipleFilters()
+    {
+        var (stripped, bases) = CivitAiModelSource.DetectBaseModels("sdxl pony checkpoint");
+        Assert.Equal("checkpoint", stripped);
+        Assert.Equal(new[] { "SDXL 1.0", "Pony" }, bases);
+    }
+
+    [Fact]
+    public void DetectBaseModels_NoKeyword_ReturnsOriginalQuery()
+    {
+        var (stripped, bases) = CivitAiModelSource.DetectBaseModels("realistic vision v5");
+        Assert.Equal("realistic vision v5", stripped);
+        Assert.Empty(bases);
+    }
+
+    [Fact]
+    public void DetectBaseModels_EmptyAndNull_ReturnsEmpty()
+    {
+        Assert.Equal(("", System.Array.Empty<string>()), CivitAiModelSource.DetectBaseModels(""));
+        Assert.Equal(("", System.Array.Empty<string>()), CivitAiModelSource.DetectBaseModels(null!));
+    }
+
+    [Fact]
+    public void DetectBaseModels_WordBoundary_DoesNotFalseMatch()
+    {
+        // "cssd 1.5" 不该匹配 "sd 1.5" — \b 防止子串误命中
+        var (stripped, bases) = CivitAiModelSource.DetectBaseModels("cssd 1.5");
+        Assert.Equal("cssd 1.5", stripped);
+        Assert.Empty(bases);
+
+        // "stable diffusion 1.5x" 不该匹配 "stable diffusion 1.5"
+        var (stripped2, bases2) = CivitAiModelSource.DetectBaseModels("stable diffusion 1.5x");
+        Assert.Equal("stable diffusion 1.5x", stripped2);
+        Assert.Empty(bases2);
+    }
+
+    [Fact]
+    public void DetectBaseModels_CaseInsensitive_MatchesAnyCase()
+    {
+        var (_, bases) = CivitAiModelSource.DetectBaseModels("STABLE DIFFUSION 1.5");
+        Assert.Equal(new[] { "SD 1.5" }, bases);
+
+        var (_, bases2) = CivitAiModelSource.DetectBaseModels("Stable Diffusion 1.5");
+        Assert.Equal(new[] { "SD 1.5" }, bases2);
+    }
+
+    [Fact]
+    public void DetectBaseModels_MoreSpecificFirst_DoesNotShadow()
+    {
+        // "stable diffusion 3.5" 必须先于 "stable diffusion 3" 匹配,避免 3.5 被错认成 3。
+        var (stripped, bases) = CivitAiModelSource.DetectBaseModels("stable diffusion 3.5 large lora");
+        Assert.Equal("lora", stripped);
+        Assert.Equal(new[] { "SD 3.5 Large" }, bases);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithBaseModelKeyword_AppendsBaseModelsFilter()
+    {
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("stable diffusion 1.5 lora", 50, default);
+
+        var req = Assert.Single(handler.Requests);
+        var url = req.RequestUri!.ToString();
+        // Uri.ToString() 解码 %20 回空格 — 既校验百分号编码形式,也校验裸空格形式(.NET Uri 行为)。
+        Assert.True(url.Contains("baseModels=SD 1.5") || url.Contains("baseModels=SD%201.5"),
+            $"URL 应包含 baseModels=SD 1.5,实际: {url}");
+        Assert.True(url.Contains("query=lora") || url.Contains("query=lora"),
+            $"URL 应包含 query=lora,实际: {url}");
+        Assert.DoesNotContain("stable", url);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithoutBaseModelKeyword_OmitsBaseModelsFilter()
+    {
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("realistic vision", 50, default);
+
+        var req = Assert.Single(handler.Requests);
+        Assert.DoesNotContain("baseModels=", req.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task SearchAsync_ActiveBaseModel_AppendsBaseModelsFilter()
+    {
+        // v0.6.22+:用户 2026-08-20 反馈"模型参数是不是也可以传递?也就是 base model
+        // 列出常规可用的 Model 类型"。VM chip 选 SDXL_1_0 → SearchAsync baseModel="SDXL 1.0"
+        // → API URL 包含 baseModels=SDXL+1.0。
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("realistic", 50, default, true, "SDXL 1.0");
+
+        var req = Assert.Single(handler.Requests);
+        var url = req.RequestUri!.ToString();
+        Assert.True(url.Contains("baseModels=SDXL 1.0") || url.Contains("baseModels=SDXL%201.0"),
+            $"URL 应包含 baseModels=SDXL 1.0,实际: {url}");
+        Assert.True(url.Contains("query=realistic"), $"URL 应保留 query=realistic,实际: {url}");
+    }
+
+    [Fact]
+    public async Task SearchAsync_ActiveBaseModel_MergedWithQueryDetected()
+    {
+        // v0.6.22+:query 内 "sd 1.5" 自动识别 + activeBaseModel "Pony V6 XL" → 两者合并
+        // baseModels=SD 1.5,Pony V6 XL(API OR 语义),query 已剥除 sd 1.5 关键字。
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("sd 1.5 lora", 50, default, true, "Pony V6 XL");
+
+        var req = Assert.Single(handler.Requests);
+        var url = req.RequestUri!.ToString();
+        // 两个 baseModel 都应在 URL 里(逗号分隔,CivitAI 多选 OR)
+        Assert.Contains("baseModels=", url);
+        Assert.True(url.Contains("SD 1.5") || url.Contains("SD%201.5"),
+            $"URL 应包含 SD 1.5,实际: {url}");
+        Assert.True(url.Contains("Pony V6 XL") || url.Contains("Pony%20V6%20XL"),
+            $"URL 应包含 Pony V6 XL,实际: {url}");
+        // query 内 "sd 1.5" 已剥掉,只剩 "lora"
+        Assert.Contains("query=lora", url);
+        Assert.DoesNotContain("sd%201.5", url);  // 不应再在 query 里出现
+    }
+
+    [Fact]
+    public async Task SearchAsync_ActiveBaseModelSameAsQueryDetected_DedupesInUrl()
+    {
+        // v0.6.22+:query 内 "sd 1.5" + activeBaseModel "SD 1.5" 同值 → URL 里 baseModels 只出现一次。
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("sd 1.5 lora", 50, default, true, "SD 1.5");
+
+        var req = Assert.Single(handler.Requests);
+        var url = req.RequestUri!.ToString();
+        // 1 个 baseModels= 参数(同值去重),不应重复两次
+        var occurrences = System.Text.RegularExpressions.Regex.Matches(url, "baseModels=").Count;
+        Assert.Equal(1, occurrences);
+        Assert.True(url.Contains("SD 1.5") || url.Contains("SD%201.5"),
+            $"URL 应包含 SD 1.5,实际: {url}");
+    }
+
+    [Fact]
+    public async Task SearchAsync_ActiveBaseModelNull_OnlyQueryDetectionUsed()
+    {
+        // activeBaseModel=null → 只用 query 自动识别(SD 1.5)。
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("sd 1.5 lora", 50, default, true, null);
+
+        var req = Assert.Single(handler.Requests);
+        var url = req.RequestUri!.ToString();
+        Assert.True(url.Contains("baseModels=SD 1.5") || url.Contains("baseModels=SD%201.5"),
+            $"URL 应包含 baseModels=SD 1.5,实际: {url}");
+        Assert.Contains("query=lora", url);
+    }
+
     [Fact]
     public async Task SearchAsync_NsfwLevel2_ParsedAsMature()
     {
@@ -207,6 +393,40 @@ public class ModelSourceCivitAiTests
 
         Assert.NotEmpty(handler.Requests);
         Assert.All(handler.Requests, r => Assert.Null(r.Headers.Authorization));
+    }
+
+    // —— v0.6.22+:NSFW 在 API 层透传 ——
+    // 用户 2026-08-20 反馈"因为我们就需要完整的非NSFW数据" — includeNsfw=false 时
+    // 应打 ?nsfw=false,而不是 post-filter 缓存的子集。
+
+    [Fact]
+    public async Task SearchAsync_IncludeNsfwFalse_SendsNsfwFalseQueryString()
+    {
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("test", 1, default, includeNsfw: false);
+
+        var req = Assert.Single(handler.Requests);
+        // nsfw=false(不要 nsfw=true 也不要 nsfw=false 别的值)
+        Assert.True(req.RequestUri!.Query.Contains("nsfw=false") || req.RequestUri!.Query.Contains("nsfw=False"),
+            $"URL 应包含 nsfw=false,实际: {req.RequestUri.Query}");
+        Assert.DoesNotContain("nsfw=true", req.RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task SearchAsync_IncludeNsfwTrue_SendsNsfwTrueQueryString()
+    {
+        var json = """{"items": [], "metadata": {"nextPage": null}}""";
+        var handler = new DelegatingHandlerStub(json);
+        var source = new CivitAiModelSource(CreateClient(handler), "https://civitai.com", "");
+
+        await source.SearchAsync("test", 1, default, includeNsfw: true);
+
+        var req = Assert.Single(handler.Requests);
+        Assert.True(req.RequestUri!.Query.Contains("nsfw=true") || req.RequestUri!.Query.Contains("nsfw=True"),
+            $"URL 应包含 nsfw=true,实际: {req.RequestUri.Query}");
     }
 }
 

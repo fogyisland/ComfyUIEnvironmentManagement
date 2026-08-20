@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
@@ -42,10 +43,11 @@ public class CivitAiModelSource : IModelSource
         }
     }
 
-    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct)
+    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null)
     {
         // v0.6.22+:改成 SearchPageAsync 的循环包装 — 保留向后兼容(老 service code 仍可用)。
         // SearchAsync 是无 UI 上下文调用,使用 CivitAI 默认 Newest + AllTime(对 HF 无意义)。
+        // includeNsfw / baseModel 透传到 SearchPageAsync。
         var results = new List<ModelEntry>();
         string? cursor = null;
         const int maxPages = 10;  // hard cap to prevent runaway
@@ -53,7 +55,7 @@ public class CivitAiModelSource : IModelSource
         for (var pageCount = 1; pageCount <= maxPages && results.Count < maxResults; pageCount++)
         {
             var (entries, nextCursor) = await SearchPageAsync(
-                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct);
+                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct, includeNsfw, baseModel);
             results.AddRange(entries);
             cursor = nextCursor;
             if (string.IsNullOrEmpty(cursor)) break;
@@ -71,11 +73,12 @@ public class CivitAiModelSource : IModelSource
     /// </summary>
     public async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
         string query, string? cursor, int pageSize,
-        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct)
+        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct,
+        bool includeNsfw = true, string? baseModel = null)
     {
-        var url = BuildUrl(query, cursor, pageSize, sort, period);
+        var url = BuildUrl(query, cursor, pageSize, sort, period, includeNsfw, baseModel);
         var cursorLabel = string.IsNullOrEmpty(cursor) ? "(none)" : cursor;
-        _logger?.Info("model-civitai", $"fetch page cursor={cursorLabel} sort={sort} period={period}: {url}");
+        _logger?.Info("model-civitai", $"fetch page cursor={cursorLabel} sort={sort} period={period} nsfw={includeNsfw} bm={baseModel}: {url}");
 
         // v0.6.22+:per-request Authorization: Bearer(token 跟 HuggingFaceModelSource 同模式)。
         // 仅 HTTPS baseUrl 注入 — 防 HTTP 镜像明文泄露 token。
@@ -103,16 +106,38 @@ public class CivitAiModelSource : IModelSource
     }
 
     private string BuildUrl(string query, string? cursor, int pageSize,
-                            CivitAiSort sort, CivitAiPeriod period)
+                            CivitAiSort sort, CivitAiPeriod period, bool includeNsfw, string? activeBaseModel)
     {
         var qs = new List<string>
         {
             $"limit={pageSize}",
             $"sort={sort}",         // v0.6.22+:enum 名 = API value ("Newest" / "Most Downloaded" …)
-            "nsfw=true",            // 全部拉回来,UI 分类
+            $"nsfw={(includeNsfw ? "true" : "false")}",  // v0.6.22+:用户反馈"因为我们就需要完整的非NSFW数据" — NSFW 不光做筛选,还要做 API 透传。false 时 API 只返 Level 1(无 NSFW 内容)
             $"period={period}",     // v0.6.22+:时间窗 ("AllTime" / "Year" / "Month" …)
         };
-        if (!string.IsNullOrWhiteSpace(query)) qs.Add($"query={Uri.EscapeDataString(query)}");
+        // v0.6.22+:baseModel 智能识别 — query 里的 "stable diffusion 1.5" / "sdxl" /
+        // "flux pony" 等会映射到 CivitAI `baseModels=` filter 并从 query 里剥掉。
+        // 根因:/api/v1/models?query=X 只在 name/tags/description 做 LIKE,完全
+        // 不搜 baseModel 字段 → 网页侧栏用 Elasticsearch 全文匹配的结果数远超我们。
+        // 加上 baseModels filter 后 + 把已识别的 keyword 从 query 剥掉(避免双层 narrow),
+        // "stable diffusion 1.5" 命中数从 20+ → 几千。
+        var (strippedQuery, detectedBaseModels) = DetectBaseModels(query);
+        // v0.6.22+:合并 VM-supplied activeBaseModel 与 query-detected,用 HashSet 去重
+        // (同 baseModel value 不重复出现)。activeBaseModel=null/空/"All" 跳过 —
+        // 给用户"不过滤"的回退选项。
+        var baseModels = new List<string>(detectedBaseModels);
+        var seen = new HashSet<string>(detectedBaseModels, StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(activeBaseModel) && !string.Equals(activeBaseModel, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            if (seen.Add(activeBaseModel)) baseModels.Add(activeBaseModel);
+        }
+        if (baseModels.Count > 0)
+        {
+            qs.Add($"baseModels={Uri.EscapeDataString(string.Join(",", baseModels))}");
+            _logger?.Info("model-civitai",
+                $"检测到 base model 过滤: {string.Join(", ", baseModels)}; 剩余关键词: '{strippedQuery}'");
+        }
+        if (!string.IsNullOrWhiteSpace(strippedQuery)) qs.Add($"query={Uri.EscapeDataString(strippedQuery)}");
         if (!string.IsNullOrEmpty(cursor)) qs.Add($"page={Uri.EscapeDataString(cursor)}");
         // v0.6.22+ T7+ fix:_baseUrl 只到 host(offcial="https://civitai.com" 或用户镜像 URL),
         // v0.6.21 T2 commit 350d31f 改 ctor 注入 baseUrl 时漏加 /api/v1/models path,导致
@@ -121,6 +146,99 @@ public class CivitAiModelSource : IModelSource
         // (MirrorUrl 默认值 "https://hf-mirror.com" 已是无 slash,但用户手填可能带)。
         return $"{_baseUrl.TrimEnd('/')}/api/v1/models?{string.Join("&", qs)}";
     }
+
+    /// <summary>
+    /// v0.6.22+:识别用户 query 里的基础模型关键词,返回要附加到 <c>baseModels=</c> filter
+    /// 的值 + 把已识别 keyword 从 query 剥掉剩下的文本(用作 <c>query=</c> 做 name/tag/desc LIKE)。
+    /// 多个 keyword 同时识别 → 用逗号分隔多选(API 是 OR 语义)。
+    /// 用 \b word boundary 防止 "cssd 1.5" 误匹配 "sd 1.5"、"stable diffusion 1.5x" 误匹配 "sd 1.5"。
+    /// </summary>
+    internal static (string StrippedQuery, IReadOnlyList<string> BaseModels) DetectBaseModels(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return (query ?? "", Array.Empty<string>());
+
+        var q = query;
+        var matched = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 数组里较长 / 更具体的 keyword 必须排在前面 — 避免 "stable diffusion 3" 抢先
+        // 匹配掉 "stable diffusion 3.5"。同一 baseModel 只识别一次(seen set)。
+        foreach (var (kw, bm) in BaseModelAliases)
+        {
+            if (seen.Contains(bm)) continue;
+            var pattern = $@"\b{Regex.Escape(kw)}\b";
+            if (Regex.IsMatch(q, pattern, RegexOptions.IgnoreCase))
+            {
+                seen.Add(bm);
+                matched.Add(bm);
+                // Strip keyword + 周围空白(留下单空格让后续 Regex \s+ collapse)
+                q = Regex.Replace(q, $@"\s*{Regex.Escape(kw)}\s*", " ",
+                    RegexOptions.IgnoreCase);
+            }
+        }
+
+        // 折叠剥 keyword 留下的多余空白
+        q = Regex.Replace(q, @"\s+", " ").Trim();
+        return (q, matched);
+    }
+
+    /// <summary>
+    /// 用户输入 keyword → CivitAI baseModel 值的映射表。
+    /// 顺序敏感:更具体 / 更长的 keyword 排前面(见 <see cref="DetectBaseModels"/> 注释)。
+    /// 漏掉的 baseModel 加一行就行 — baseModel 值是 CivitAI 后台枚举控制的,基本稳定。
+    /// </summary>
+    private static readonly (string Keyword, string BaseModel)[] BaseModelAliases =
+    {
+        ("stable diffusion 3.5 large", "SD 3.5 Large"),
+        ("stable diffusion 3.5 medium", "SD 3.5 Medium"),
+        ("stable diffusion 3.5", "SD 3.5"),
+        ("sd 3.5 large", "SD 3.5 Large"),
+        ("sd 3.5 medium", "SD 3.5 Medium"),
+        ("sd 3.5", "SD 3.5"),
+        ("sd3.5", "SD 3.5"),
+        ("stable diffusion 3", "SD 3"),
+        ("sd 3", "SD 3"),
+        ("stable diffusion 1.5", "SD 1.5"),
+        ("sd 1.5", "SD 1.5"),
+        ("sd1.5", "SD 1.5"),
+        ("stable diffusion 1.4", "SD 1.4"),
+        ("sd 1.4", "SD 1.4"),
+        ("sd1.4", "SD 1.4"),
+        ("stable diffusion 2.1", "SD 2.1"),
+        ("sd 2.1", "SD 2.1"),
+        ("sd2.1", "SD 2.1"),
+        ("stable diffusion 2.0", "SD 2.0"),
+        ("sd 2.0", "SD 2.0"),
+        ("sd2.0", "SD 2.0"),
+        ("stable diffusion xl", "SDXL 1.0"),
+        ("sdxl 1.0", "SDXL 1.0"),
+        ("sdxl", "SDXL 1.0"),
+        ("sdxl 0.9", "SDXL 0.9"),
+        ("flux.1 schnell", "Flux.1 Schnell"),
+        ("flux schnell", "Flux.1 Schnell"),
+        ("flux.1 s", "Flux.1 Schnell"),
+        ("flux.1 dev", "Flux.1 D"),
+        ("flux.1 d", "Flux.1 D"),
+        ("flux dev", "Flux.1 D"),
+        ("flux", "Flux.1 D"),  // 默认 flux = dev,用户可细化写 "flux schnell" 选 Schnell
+        ("pony v6 xl", "Pony V6 XL"),
+        ("pony v6", "Pony V6 XL"),
+        ("pony", "Pony"),
+        ("stable cascade", "Stable Cascade"),
+        ("cascade", "Stable Cascade"),
+        ("hidream", "HiDream"),
+        ("kolors", "Kolors"),
+        ("wan video", "Wan Video"),
+        ("wan 2.1", "Wan Video"),
+        ("wan", "Wan Video"),
+        ("hunyuan video", "Hunyuan Video"),
+        ("hunyuan", "Hunyuan Video"),
+        ("cogvideox", "CogVideoX"),
+        ("ltxv", "LTXV"),
+        ("mochi", "Mochi"),
+        ("pixart", "Pixart"),
+        ("auraflow", "AuraFlow"),
+    };
 
     private static ModelEntry? MapItemToEntry(CivitAiItem item)
     {

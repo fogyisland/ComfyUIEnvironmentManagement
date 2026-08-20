@@ -26,32 +26,43 @@ public class ModelMarketplaceService
     }
 
     public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(string query, int maxResultsPerSource, CancellationToken ct = default)
-        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter: null, progress: null, ct);
+        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter: null, progress: null, includeNsfw: true, baseModel: null, ct);
 
     /// <summary>v0.6.22 T6:加 sourceFilter 单源查询 — UI 改成 source 单选 radio 后,
     /// VM 只查选中的 source(避免被禁用的 source 拉白)。null = 查全部 enabled(旧行为兼容)。</summary>
     public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
         string query, int maxResultsPerSource, ModelSourceKind? sourceFilter = null, CancellationToken ct = default)
-        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter, progress: null, ct);
+        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter, progress: null, includeNsfw: true, baseModel: null, ct);
 
     /// <summary>
     /// v0.6.22 T6+:加 <paramref name="progress"/> 可选参数 — VM 用 Progress&lt;string&gt; 推 UI 状态:
     /// 启动 / per-source 完成或失败 / 合并后总数。null = 静默(向后兼容)。
     /// Progress&lt;string&gt;.ctor 捕获 SynchronizationContext — VM 端 await 后 ConsoleLog.Add 自动 marshal 回 UI 线程。
+    /// v0.6.22+:加 includeNsfw — VM.toggle 后重 fetch 把 NSFW 选项透传到所有 source。
     /// </summary>
     public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
         string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
         IProgress<string>? progress, CancellationToken ct = default)
+        => await LoadAllAsync(query, maxResultsPerSource, sourceFilter, progress, includeNsfw: true, baseModel: null, ct);
+
+    /// <summary>
+    /// v0.6.22+:includeNsfw 透传 source 层(用户 2026-08-20 反馈"因为我们就需要完整的非
+    /// NSFW数据")。CivitAI 走 <c>?nsfw=true|false</c>;HF post-filter 等价处理。
+    /// 默认 true 保持向后兼容。
+    /// </summary>
+    public virtual async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
+        string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
+        IProgress<string>? progress, bool includeNsfw, string? baseModel, CancellationToken ct = default)
     {
         var enabled = _sources.Where(s => s.IsEnabled && (sourceFilter is null || s.SourceKind == sourceFilter)).ToList();
-        progress?.Report($"[开始] 启用源: {(enabled.Count == 0 ? "(无)" : string.Join(", ", enabled.Select(s => s.DisplayName)))}");
+        progress?.Report($"[开始] 启用源: {(enabled.Count == 0 ? "(无)" : string.Join(", ", enabled.Select(s => s.DisplayName)))} bm={baseModel ?? "(无)"}");
         var tasks = enabled.Select(async src =>
         {
             try
             {
-                var entries = await src.SearchAsync(query, maxResultsPerSource, ct);
+                var entries = await src.SearchAsync(query, maxResultsPerSource, ct, includeNsfw, baseModel);
                 progress?.Report($"[{src.DisplayName}] 完成, {entries.Count} 条");
-                _logger?.Info("model-marketplace", $"[{src.DisplayName}] fetched {entries.Count} entries");
+                _logger?.Info("model-marketplace", $"[{src.DisplayName}] fetched {entries.Count} entries (nsfw={includeNsfw} bm={baseModel})");
                 return (src.SourceKind, entries);
             }
             catch (Exception ex)
@@ -89,10 +100,10 @@ public class ModelMarketplaceService
     public virtual async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> LoadPageAsync(
         string query, string? cursor, int pageSize, ModelSourceKind? sourceFilter,
         CivitAiSort sort, CivitAiPeriod period,
-        IProgress<string>? progress, CancellationToken ct = default)
+        IProgress<string>? progress, bool includeNsfw = true, string? baseModel = null, CancellationToken ct = default)
     {
         var enabled = _sources.Where(s => s.IsEnabled && (sourceFilter is null || s.SourceKind == sourceFilter)).ToList();
-        progress?.Report($"[加载更多] 源: {(enabled.Count == 0 ? "(无)" : string.Join(", ", enabled.Select(s => s.DisplayName)))}");
+        progress?.Report($"[加载更多] 源: {(enabled.Count == 0 ? "(无)" : string.Join(", ", enabled.Select(s => s.DisplayName)))} nsfw={includeNsfw} bm={baseModel ?? "(无)"}");
         if (enabled.Count == 0) return (Array.Empty<ModelEntry>(), null);
 
         // 单源场景(当前 UI radio 永远只选一个 source):直接返回该 source 的 (entries, nextCursor)。
@@ -101,7 +112,7 @@ public class ModelMarketplaceService
         var src = enabled[0];
         try
         {
-            var (entries, nextCursor) = await src.SearchPageAsync(query, cursor, pageSize, sort, period, ct);
+            var (entries, nextCursor) = await src.SearchPageAsync(query, cursor, pageSize, sort, period, ct, includeNsfw, baseModel);
             progress?.Report($"[{src.DisplayName}] +{entries.Count} 条, 下一页={(nextCursor is null ? "(无)" : "有")}");
             return (entries, nextCursor);
         }

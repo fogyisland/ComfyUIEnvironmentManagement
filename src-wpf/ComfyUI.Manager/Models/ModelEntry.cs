@@ -53,6 +53,81 @@ public enum CivitAiSort { Newest, MostDownloaded, TopRated, MostLiked, MostDiscu
 /// <summary>v0.6.22+:CivitAI period 参数 — 跟 sort 配合缩小时间范围。</summary>
 public enum CivitAiPeriod { AllTime, Year, Month, Week, Day }
 
+/// <summary>
+/// v0.6.22+:CivitAI baseModel chip 选项 — 用户 2026-08-20 反馈"模型参数是不是也可以传递?
+/// 也就是 base model 列出常规可用的 Model 类型"。列出 CivitAI 官方 baseModel 枚举的
+/// 常用值,All = 不过滤(API 不加 baseModels= 参数)。
+/// 每个 enum 名映射到 CivitAI baseModel 字符串(见 <see cref="ApiValue"/>)。
+/// HF 不支持 baseModel API,枚举仍可见以便 VM 状态保留;切到 HF 时 chip 整行折叠。
+/// </summary>
+public enum CivitAiBaseModel
+{
+    All,
+    SD_1_5,
+    SD_2_1,
+    SD_3,
+    SD_3_5,
+    SD_3_5_Large,
+    SDXL_1_0,
+    Flux_1_D,
+    Flux_1_Schnell,
+    Pony,
+    Pony_V6_XL,
+    Stable_Cascade,
+    HiDream,
+    Kolors,
+    Wan_Video,
+    Hunyuan_Video,
+    CogVideoX,
+    LTXV,
+    Mochi,
+    Pixart,
+    AuraFlow,
+}
+
+public static class CivitAiBaseModelExtensions
+{
+    /// <summary>Enum → CivitAI baseModel 字符串。All = null(API 不加 baseModels= 参数)。</summary>
+    public static string? ApiValue(this CivitAiBaseModel m) => m switch
+    {
+        CivitAiBaseModel.All => null,
+        CivitAiBaseModel.SD_1_5 => "SD 1.5",
+        CivitAiBaseModel.SD_2_1 => "SD 2.1",
+        CivitAiBaseModel.SD_3 => "SD 3",
+        CivitAiBaseModel.SD_3_5 => "SD 3.5",
+        CivitAiBaseModel.SD_3_5_Large => "SD 3.5 Large",
+        CivitAiBaseModel.SDXL_1_0 => "SDXL 1.0",
+        CivitAiBaseModel.Flux_1_D => "Flux.1 D",
+        CivitAiBaseModel.Flux_1_Schnell => "Flux.1 Schnell",
+        CivitAiBaseModel.Pony => "Pony",
+        CivitAiBaseModel.Pony_V6_XL => "Pony V6 XL",
+        CivitAiBaseModel.Stable_Cascade => "Stable Cascade",
+        CivitAiBaseModel.HiDream => "HiDream",
+        CivitAiBaseModel.Kolors => "Kolors",
+        CivitAiBaseModel.Wan_Video => "Wan Video",
+        CivitAiBaseModel.Hunyuan_Video => "Hunyuan Video",
+        CivitAiBaseModel.CogVideoX => "CogVideoX",
+        CivitAiBaseModel.LTXV => "LTXV",
+        CivitAiBaseModel.Mochi => "Mochi",
+        CivitAiBaseModel.Pixart => "Pixart",
+        CivitAiBaseModel.AuraFlow => "AuraFlow",
+        _ => null,
+    };
+
+    /// <summary>CivitAI baseModel 字符串 → enum 形式(给 VM 当 chip 默认值)。
+    /// null / 空 / 找不到 → All。</summary>
+    public static CivitAiBaseModel FromApi(string? apiValue)
+    {
+        if (string.IsNullOrWhiteSpace(apiValue)) return CivitAiBaseModel.All;
+        foreach (var m in Enum.GetValues<CivitAiBaseModel>())
+        {
+            if (string.Equals(m.ApiValue(), apiValue, StringComparison.OrdinalIgnoreCase))
+                return m;
+        }
+        return CivitAiBaseModel.All;
+    }
+}
+
 /// <summary>v0.6.20:per-version 选中单位。Id 全局唯一 = "{SourceKind}:{ModelId}:{VersionId}"。
 /// 1 个 ModelVersionEntry 对应 1 个可下载的具体文件 + meta.json sidecar。</summary>
 public class ModelVersionEntry

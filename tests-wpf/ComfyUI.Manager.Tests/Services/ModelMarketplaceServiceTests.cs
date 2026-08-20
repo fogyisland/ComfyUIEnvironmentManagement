@@ -85,12 +85,12 @@ internal class FakeSource : IModelSource
         _entries = entries;
     }
 
-    public Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct) =>
+    public Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null) =>
         Task.FromResult<IReadOnlyList<ModelEntry>>(_entries);
 
     public Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
         string query, string? cursor, int pageSize,
-        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct) =>
+        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct, bool includeNsfw = true, string? baseModel = null) =>
         Task.FromResult<(IReadOnlyList<ModelEntry>, string?)>(
             ((IReadOnlyList<ModelEntry>)_entries, (string?)null));
 }
@@ -100,10 +100,10 @@ internal class ThrowingSource : IModelSource
     public ModelSourceKind SourceKind => ModelSourceKind.CivitAi;
     public string DisplayName => "Throwing";
     public bool IsEnabled { get; set; } = true;
-    public Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct) =>
+    public Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null) =>
         throw new InvalidOperationException("boom");
     public Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
         string query, string? cursor, int pageSize,
-        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct) =>
+        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct, bool includeNsfw = true, string? baseModel = null) =>
         throw new InvalidOperationException("boom");
 }

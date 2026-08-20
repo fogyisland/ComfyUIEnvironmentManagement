@@ -72,6 +72,18 @@ public partial class ModelMarketplaceView : UserControl
         UncheckOtherChipsInItemsControl(tb, "PeriodFilterHost");
     }
 
+    private void OnBaseModelChipClicked(object sender, RoutedEventArgs e)
+    {
+        // v0.6.22+:CivitAI baseModel chip — 跟 sort/period 同款单选语义,默认 All 表示不过滤。
+        // 点击直接 set VM.ActiveBaseModel,setter 自动 fire-and-forget RefreshAsync,
+        // 透传到 service → CivitAI source 的 BuildUrl(合并 query 内自动识别的 keyword)。
+        if (sender is not ToggleButton tb) return;
+        if (tb.Tag is not CivitAiBaseModel baseModel) return;
+        if (DataContext is not ModelMarketplaceViewModel vm) return;
+        vm.ActiveBaseModel = baseModel;
+        UncheckOtherChipsInItemsControl(tb, "BaseModelFilterHost");
+    }
+
     private void UncheckOtherChipsInItemsControl(ToggleButton clicked, string hostName)
     {
         if (FindName(hostName) is not ItemsControl host) return;

@@ -224,14 +224,15 @@ public class ModelMarketplaceViewModelTests
     [Fact]
     public async Task IncludeNsfw_SetFalse_HidesNonSfwModels()
     {
-        // 用户 2026-08-20 反馈"NSFW 是否可以有一个复选框,用来过滤"。
+        // v0.6.22+:NSFW 透传 API(setter 触发 refresh,fire-and-forget)— 用户
+        // 2026-08-20 "因为我们就需要完整的非NSFW数据"。Mock 模拟 source 端过滤逻辑。
         var marketplace = new MockModelMarketplaceService(
             MakeNsfwModel(1, ModelNsfwKind.SFW),
             MakeNsfwModel(2, ModelNsfwKind.Mature),
             MakeNsfwModel(3, ModelNsfwKind.NSFW));
         var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
         await vm.RefreshAsync();
-        vm.IncludeNsfw = false;
+        await marketplacetempToggle(vm, marketplace);
         Assert.Single(vm.Models);
         Assert.Equal(ModelNsfwKind.SFW, vm.Models[0].NsfwKind);
     }
@@ -244,10 +245,33 @@ public class ModelMarketplaceViewModelTests
             MakeNsfwModel(2, ModelNsfwKind.NSFW));
         var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
         await vm.RefreshAsync();
-        vm.IncludeNsfw = false;
+        await marketplacetempToggle(vm, marketplace);
         Assert.Single(vm.Models);
-        vm.IncludeNsfw = true;
+        await marketplacetempToggle(vm, marketplace, includeNsfw: true);
         Assert.Equal(2, vm.Models.Count);
+    }
+
+    [Fact]
+    public async Task IncludeNsfw_SetFalse_TriggersRefreshWithIncludeNsfwFalse()
+    {
+        // v0.6.22+:NSFW 在 API 层透传 — 服务调用应带 includeNsfw=false。
+        // 旧行为只调 ApplyFilter 不重 fetch,source 没机会返回正确的全量 SFW。
+        var marketplace = new MockModelMarketplaceService { DelayMs = 20 };
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.True(marketplace.LastIncludeNsfw);  // 默认 true
+        vm.IncludeNsfw = false;
+        // 等 fire-and-forget 的 refresh 跑完
+        for (var i = 0; i < 100 && marketplace.LastIncludeNsfw; i++) await Task.Delay(10);
+        Assert.False(marketplace.LastIncludeNsfw);
+    }
+
+    /// <summary>v0.6.22+:NSFW 切换是 fire-and-forget 触发 refresh — 等待 mock 收到新 includeNsfw 才断言。</summary>
+    private static async Task marketplacetempToggle(ModelMarketplaceViewModel vm, MockModelMarketplaceService mock, bool includeNsfw = false)
+    {
+        mock.LastIncludeNsfw = !includeNsfw;  // sentinel,会在 refresh 后变成新值
+        vm.IncludeNsfw = includeNsfw;
+        for (var i = 0; i < 100 && mock.LastIncludeNsfw == !includeNsfw; i++) await Task.Delay(10);
     }
 
     [Fact]
@@ -326,8 +350,136 @@ public class ModelMarketplaceViewModelTests
         Assert.True(vm.IsConsoleVisible);  // → 再显示
     }
 
-    private static ModelEntry MakeNsfwModel(int id, ModelNsfwKind nsfwKind)
+    // —— v0.6.22+ 页码式分页 ——
+    // 用户 2026-08-20 提问:"如果进行 checkpoint 筛选了是不是会重新计算页数" —— 会,
+    // 页数分母是筛选后的 _filtered,筛选变化同时把页码归零(见 KindFilter_* 测试)。
+
+    private static ModelEntry[] MakeModels(int count, ModelKind kind, int startId = 1)
+        => Enumerable.Range(startId, count)
+            .Select(i => MakeModel(i, kind, ("v1", "1.0")))
+            .ToArray();
+
+    [Fact]
+    public async Task Refresh_SplitsResultsIntoPagesOfPageSize()
     {
+        var marketplace = new MockModelMarketplaceService(MakeModels(25, ModelKind.Checkpoint));
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.Equal(ModelMarketplaceViewModel.PageSize, vm.Models.Count);
+        Assert.Equal(25, vm.TotalFilteredCount);
+        Assert.Equal(2, vm.TotalPages);
+        Assert.Equal(1, vm.CurrentPageNumber);
+        Assert.False(vm.CanGoPrev);
+        Assert.True(vm.CanGoNext);
+    }
+
+    [Fact]
+    public async Task NextPage_WithCachedResults_DoesNotRefetch()
+    {
+        var marketplace = new MockModelMarketplaceService(MakeModels(25, ModelKind.Checkpoint));
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        var callsAfterRefresh = marketplace.CallCount;
+
+        await vm.NextPageAsync();
+
+        Assert.Equal(2, vm.CurrentPageNumber);
+        Assert.Equal(5, vm.Models.Count);
+        Assert.Equal(callsAfterRefresh, marketplace.CallCount);
+        Assert.True(vm.CanGoPrev);
+    }
+
+    [Fact]
+    public async Task PrevPage_ReturnsToPreviousPageFromCache()
+    {
+        var marketplace = new MockModelMarketplaceService(MakeModels(25, ModelKind.Checkpoint));
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        await vm.NextPageAsync();
+
+        vm.PrevPage();
+
+        Assert.Equal(1, vm.CurrentPageNumber);
+        Assert.Equal(ModelMarketplaceViewModel.PageSize, vm.Models.Count);
+        Assert.False(vm.CanGoPrev);
+    }
+
+    [Fact]
+    public async Task NextPage_WhenCacheExhausted_FetchesAnotherPage()
+    {
+        var marketplace = new MockModelMarketplaceService(MakeModels(10, ModelKind.Checkpoint))
+        {
+            NextPageResults = MakeModels(15, ModelKind.Checkpoint, startId: 100),
+        };
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.Equal(1, vm.TotalPages);
+
+        await vm.NextPageAsync();
+
+        Assert.Equal(25, vm.TotalFilteredCount);
+        Assert.Equal(2, vm.TotalPages);
+        Assert.Equal(2, vm.CurrentPageNumber);
+        Assert.Equal(5, vm.Models.Count);
+    }
+
+    [Fact]
+    public async Task KindFilter_RecalculatesTotalPagesAndResetsToFirstPage()
+    {
+        var marketplace = new MockModelMarketplaceService(
+            MakeModels(25, ModelKind.Checkpoint)
+                .Concat(MakeModels(5, ModelKind.LORA, startId: 100))
+                .ToArray());
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        await vm.NextPageAsync();
+        Assert.Equal(2, vm.CurrentPageNumber);
+
+        vm.ActiveKindFilter = ModelKind.LORA;
+
+        // 筛选后只剩 5 条 → 1 页,页码归零(否则停在已不存在的第 2 页 = 空白)
+        Assert.Equal(5, vm.TotalFilteredCount);
+        Assert.Equal(1, vm.TotalPages);
+        Assert.Equal(1, vm.CurrentPageNumber);
+        Assert.Equal(5, vm.Models.Count);
+        Assert.False(vm.CanGoPrev);
+    }
+
+    [Fact]
+    public async Task LoadMore_KeepsCurrentPage()
+    {
+        var marketplace = new MockModelMarketplaceService(MakeModels(25, ModelKind.Checkpoint))
+        {
+            NextPageResults = MakeModels(20, ModelKind.Checkpoint, startId: 100),
+        };
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        await vm.NextPageAsync();
+        Assert.Equal(2, vm.CurrentPageNumber);
+
+        await vm.LoadMoreAsync();
+
+        // 追加数据不该把用户弹回第 1 页
+        Assert.Equal(2, vm.CurrentPageNumber);
+        Assert.Equal(45, vm.TotalFilteredCount);
+        Assert.Equal(3, vm.TotalPages);
+    }
+
+    [Fact]
+    public async Task CanGoNext_FalseOnLastPageWithoutCursor()
+    {
+        var marketplace = new MockModelMarketplaceService(MakeModels(5, ModelKind.Checkpoint))
+        {
+            NextCursorResult = null,
+        };
+        var vm = new ModelMarketplaceViewModel(marketplace, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.Equal(1, vm.TotalPages);
+        Assert.False(vm.CanGoNext);
+        Assert.False(vm.CanGoPrev);
+    }
+
+    private static ModelEntry MakeNsfwModel(int id, ModelNsfwKind nsfwKind)    {
         var entry = MakeModel(id, ModelKind.Checkpoint, ("v1", "1.0"));
         return new ModelEntry
         {
@@ -355,7 +507,6 @@ public class ModelMarketplaceViewModelTests
     private sealed class MockModelMarketplaceService : ModelMarketplaceService
     {
         private readonly List<ModelEntry> _entries;
-        private int _pageCallCount;
 
         public MockModelMarketplaceService(params ModelEntry[] entries)
             : base(Enumerable.Empty<IModelSource>(), null)
@@ -367,6 +518,8 @@ public class ModelMarketplaceViewModelTests
         public ModelSourceKind? LastSourceFilter { get; private set; }
         public CivitAiSort LastSort { get; private set; }
         public CivitAiPeriod LastPeriod { get; private set; }
+        public bool LastIncludeNsfw { get; set; } = true;
+        public string? LastBaseModel { get; set; }
         public int DelayMs { get; set; }
         public List<string> ProgressLines { get; } = new();
 
@@ -377,11 +530,13 @@ public class ModelMarketplaceViewModelTests
 
         public override async Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
             string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
-            IProgress<string>? progress, CancellationToken ct = default)
+            IProgress<string>? progress, bool includeNsfw, string? baseModel, CancellationToken ct = default)
         {
             CallCount++;
             LastSourceFilter = sourceFilter;
-            progress?.Report($"[mock] 开始 query='{query}' filter={sourceFilter}");
+            LastIncludeNsfw = includeNsfw;
+            LastBaseModel = baseModel;
+            progress?.Report($"[mock] 开始 query='{query}' filter={sourceFilter} nsfw={includeNsfw} bm={baseModel ?? "(无)"}");
             if (DelayMs > 0) await Task.Delay(DelayMs);
             progress?.Report($"[mock] 完成 {_entries.Count} 条");
             return _entries;
@@ -390,24 +545,31 @@ public class ModelMarketplaceViewModelTests
         public override async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> LoadPageAsync(
             string query, string? cursor, int pageSize, ModelSourceKind? sourceFilter,
             CivitAiSort sort, CivitAiPeriod period,
-            IProgress<string>? progress, CancellationToken ct = default)
+            IProgress<string>? progress, bool includeNsfw = true, string? baseModel = null, CancellationToken ct = default)
         {
-            _pageCallCount++;
             CallCount++;
             LastSort = sort;
             LastPeriod = period;
+            LastIncludeNsfw = includeNsfw;
+            LastBaseModel = baseModel;
             if (DelayMs > 0) await Task.Delay(DelayMs);
 
-            // cursor=null 第一页 → 返 _entries + "next"
-            // cursor="next" 第二页 → 返 NextPageResults + null(耗尽)
-            // 之后 cursor="next" 也按第二页返(测试不需要第三次)
-            if (cursor is null && _pageCallCount == 1)
+            // v0.6.22+:mock 模拟 source 端 NSFW 过滤 — includeNsfw=false 时
+            // 只返 SFW 条目(对标 CivitAI `?nsfw=false` / HF post-filter)。
+            IReadOnlyList<ModelEntry> entries = includeNsfw
+                ? _entries
+                : _entries.Where(e => e.NsfwKind == ModelNsfwKind.SFW).ToList();
+
+            // cursor == null → 第一页(Refresh 触发,不管调用几次都返 _entries 因为这是
+            // "新查询的第一页")。
+            // cursor != null → 第二页(LoadMore 触发,返 NextPageResults)。
+            if (cursor is null)
             {
-                progress?.Report($"[mock] page 1: {_entries.Count} 条, next={NextCursorResult} sort={sort} period={period}");
-                return (_entries, NextCursorResult);
+                progress?.Report($"[mock] page 1: {entries.Count} 条, next={NextCursorResult} sort={sort} period={period} nsfw={includeNsfw} bm={baseModel ?? "(无)"}");
+                return (entries, NextCursorResult);
             }
             var nextEntries = NextPageResults ?? Array.Empty<ModelEntry>();
-            progress?.Report($"[mock] page 2: {nextEntries.Length} 条");
+            progress?.Report($"[mock] page 2+: {nextEntries.Length} 条");
             return (nextEntries, null);
         }
     }

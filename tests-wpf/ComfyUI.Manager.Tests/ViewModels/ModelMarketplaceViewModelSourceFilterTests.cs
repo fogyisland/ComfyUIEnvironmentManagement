@@ -166,6 +166,77 @@ public class ModelMarketplaceViewModelSourceFilterTests
         Assert.Equal(CivitAiPeriod.Week, mock.LastPeriod);
     }
 
+    // —— v0.6.22+:CivitAI baseModel 过滤 ——
+
+    [Fact]
+    public void ActiveBaseModel_Default_IsAll()
+    {
+        // 默认 All = 不过滤(不附加 baseModels= URL 参数),chip 首次显示 "All" 高亮。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.Equal(CivitAiBaseModel.All, vm.ActiveBaseModel);
+    }
+
+    [Fact]
+    public void BaseModelOptions_ContainsCommonBaseModelValues()
+    {
+        // 至少要覆盖常用 baseModel:SD 1.5/SDXL/Flux/Pony/SD 3.5/Wan Video 等(用户 2026-08-20 反馈
+        // "常规可用的 Model 类型")。All 作为 chip 列表第 1 项 = 默认不过滤入口。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Assert.True(vm.BaseModelOptions.Count >= 10,
+            $"chip 数至少 10,实际 {vm.BaseModelOptions.Count}");
+        Assert.Contains(CivitAiBaseModel.All, vm.BaseModelOptions);
+        Assert.Contains(CivitAiBaseModel.SD_1_5, vm.BaseModelOptions);
+        Assert.Contains(CivitAiBaseModel.SDXL_1_0, vm.BaseModelOptions);
+        Assert.Contains(CivitAiBaseModel.Flux_1_D, vm.BaseModelOptions);
+        Assert.Contains(CivitAiBaseModel.Pony, vm.BaseModelOptions);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_DefaultBaseModel_PassesNull()
+    {
+        // 默认 All = 不过滤,VM 透传 baseModel=null(服务层不附加 baseModels= 参数)。
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        Assert.Null(mock.LastBaseModel);
+    }
+
+    [Fact]
+    public async Task ActiveBaseModel_Set_TriggersRefreshWithApiValue()
+    {
+        // v0.6.22+:切 baseModel chip → setter 自动 fire-and-forget RefreshAsync,
+        // 新值通过 ApiValue() 扩展方法转成 CivitAI 字符串透传。SDXL_1_0 → "SDXL 1.0"。
+        var mock = MakeRecordingMock();
+        var vm = new ModelMarketplaceViewModel(mock, null!, null!, null!, null);
+        await vm.RefreshAsync();
+        var baseline = mock.CallCount;
+        mock.LastBaseModel = null;
+        vm.ActiveBaseModel = CivitAiBaseModel.SDXL_1_0;
+        for (var i = 0; i < 100 && mock.CallCount <= baseline; i++) await Task.Delay(10);
+        Assert.True(mock.CallCount > baseline);
+        Assert.Equal("SDXL 1.0", mock.LastBaseModel);
+    }
+
+    [Fact]
+    public void CivitAiBaseModelApiValue_RoundTripsForAllValues()
+    {
+        // ApiValue + FromApi 互逆(All 例外,因为 All → null,FromApi(null) → All)。
+        foreach (var m in Enum.GetValues<CivitAiBaseModel>())
+        {
+            var apiValue = m.ApiValue();
+            if (m == CivitAiBaseModel.All)
+            {
+                Assert.Null(apiValue);
+                Assert.Equal(CivitAiBaseModel.All, CivitAiBaseModelExtensions.FromApi(null));
+            }
+            else
+            {
+                Assert.False(string.IsNullOrEmpty(apiValue), $"枚举 {m} 应有非空 ApiValue");
+                Assert.Equal(m, CivitAiBaseModelExtensions.FromApi(apiValue));
+            }
+        }
+    }
+
     /// <summary>Recording mock — 记录每次 LoadPageAsync / LoadAllAsync 的入参(query / sourceFilter / call count)。
 /// v0.6.22+:RefreshAsync 改走 LoadPageAsync(走 cursor),所以 mock 同时 override 两个方法
 /// 让 LoadAllAsync-based 老测试还能记录 call count。</summary>
@@ -176,30 +247,36 @@ public class ModelMarketplaceViewModelSourceFilterTests
         public ModelSourceKind? LastSourceFilter { get; set; }
         public CivitAiSort LastSort { get; set; }
         public CivitAiPeriod LastPeriod { get; set; }
+        public bool LastIncludeNsfw { get; set; } = true;
+        public string? LastBaseModel { get; set; }
 
         public RecordingMockMarketplace()
             : base(Enumerable.Empty<IModelSource>(), null) { }
 
         public override Task<IReadOnlyList<ModelEntry>> LoadAllAsync(
             string query, int maxResultsPerSource, ModelSourceKind? sourceFilter,
-            IProgress<string>? progress, CancellationToken ct = default)
+            IProgress<string>? progress, bool includeNsfw, string? baseModel, CancellationToken ct = default)
         {
             CallCount++;
             LastQuery = query;
             LastSourceFilter = sourceFilter;
+            LastIncludeNsfw = includeNsfw;
+            LastBaseModel = baseModel;
             return Task.FromResult<IReadOnlyList<ModelEntry>>(Array.Empty<ModelEntry>());
         }
 
         public override Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> LoadPageAsync(
             string query, string? cursor, int pageSize, ModelSourceKind? sourceFilter,
             CivitAiSort sort, CivitAiPeriod period,
-            IProgress<string>? progress, CancellationToken ct = default)
+            IProgress<string>? progress, bool includeNsfw = true, string? baseModel = null, CancellationToken ct = default)
         {
             CallCount++;
             LastQuery = query;
             LastSourceFilter = sourceFilter;
             LastSort = sort;
             LastPeriod = period;
+            LastIncludeNsfw = includeNsfw;
+            LastBaseModel = baseModel;
             return Task.FromResult<(IReadOnlyList<ModelEntry>, string?)>(
                 (Array.Empty<ModelEntry>(), (string?)null));
         }

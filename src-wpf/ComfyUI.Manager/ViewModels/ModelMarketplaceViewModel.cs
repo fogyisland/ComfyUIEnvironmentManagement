@@ -33,6 +33,11 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     private readonly SettingsRepository? _settingsRepo;
 
     private readonly List<ModelEntry> _allModels = new();
+    // v0.6.22+:筛选后的全集(kind / NSFW / query 过滤之后)。页码分页建在这个集合上,
+    // 不是 _allModels —— 否则筛掉 90% 后页码还按原始条数算,翻页会翻到空白页。
+    private readonly List<ModelEntry> _filtered = new();
+    // 当前页码,0-based。任何改变 _filtered 内容的筛选都会归零(见 ApplyFilter resetPage)。
+    private int _currentPage;
     private bool _userHiddenConsole;
     private string _query = "";
     private ModelKind? _activeKindFilter;
@@ -50,6 +55,10 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     // 不传递其他参数"。HF 不支持这两个参数,VM 仍保持状态但切到 HF 时不影响 API 请求。
     private CivitAiSort _activeSort = CivitAiSort.Newest;
     private CivitAiPeriod _activePeriod = CivitAiPeriod.AllTime;
+    // v0.6.22+:CivitAI baseModel 过滤 — 用户 2026-08-20 反馈"模型参数是不是也可以传递?
+    // 也就是 base model 列出常规可用的 Model 类型"。chip 单选语义,默认 "All"(不过滤)。
+    // HF 不支持 baseModel API 参数,VM 仍保持状态但切到 HF 时不影响 API 请求。
+    private CivitAiBaseModel _activeBaseModel = CivitAiBaseModel.All;
 
     /// <summary>底层 fetch 后被 filter strip 处理的"全集"。</summary>
     public ObservableCollection<ModelEntry> Models { get; } = new();
@@ -70,6 +79,10 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         Enum.GetValues<CivitAiSort>());
     public ObservableCollection<CivitAiPeriod> PeriodOptions { get; } = new(
         Enum.GetValues<CivitAiPeriod>());
+    // v0.6.22+:CivitAI baseModel chip 选项 — 跟 sort/period 模式一致(枚举值 → chip)。
+    // UI 单选,默认 "All"(不过滤)由 CivitAiBaseModel.All 表示 — 等价于不传 baseModels=。
+    public ObservableCollection<CivitAiBaseModel> BaseModelOptions { get; } = new(
+        Enum.GetValues<CivitAiBaseModel>());
 
     // —— Commands ——
     public ICommand RefreshCommand { get; }
@@ -83,6 +96,9 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     public ICommand ToggleVersionSelectionCommand { get; }
     // v0.6.22+:分页"加载更多"按钮 — HasNextPage=true 时可点。
     public ICommand LoadMoreCommand { get; }
+    // v0.6.22+:页码式分页 — 上一页走缓存(_filtered),下一页缓存不够时自动 LoadMoreAsync 补页。
+    public ICommand PrevPageCommand { get; }
+    public ICommand NextPageCommand { get; }
     // v0.6.22+:卡片每行 📋 按钮 — 把 ModelVersionEntry.PrimaryDownloadUrl 复制到系统剪贴板。
     // 用户 2026-08-20 反馈"没有下载的地址"。
     public ICommand CopyDownloadUrlCommand { get; }
@@ -136,6 +152,8 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         LoadMoreCommand = new RelayCommand(
             async _ => await LoadMoreAsync(),
             _ => !IsBusy && HasNextPage);
+        PrevPageCommand = new RelayCommand(_ => PrevPage(), _ => !IsBusy && CanGoPrev);
+        NextPageCommand = new RelayCommand(async _ => await NextPageAsync(), _ => !IsBusy && CanGoNext);
         // v0.6.22+:CopyDownloadUrlCommand — 参数是 ModelVersionEntry,clipboard 写 PrimaryDownloadUrl。
         // 失败(测试环境无 clipboard / STA 异常)catch 不抛 — UX 不强制成功。
         CopyDownloadUrlCommand = new RelayCommand(p =>
@@ -186,8 +204,10 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// v0.6.22+:NSFW/Mature 内容开关。默认 true(全显示),设 false 时 ApplyFilter 排除
-    /// NsfwKind != SFW 的条目(Mature/NSFW)。切换立即 ApplyFilter — 不重 fetch(_allModels 已是全量)。
+    /// v0.6.22+:NSFW/Mature 内容开关。默认 true(全显示);切换时 fire-and-forget
+    /// <see cref="RefreshAsync"/> 重 fetch(用户 2026-08-20 反馈
+    /// "因为我们就需要完整的非NSFW数据" — 仅 post-filter 缓存拿的是旧 nsfw=true
+    /// 拉回的子集,不是 source 全量 SFW 数据)。
     /// </summary>
     public bool IncludeNsfw
     {
@@ -197,7 +217,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             if (_includeNsfw == value) return;
             _includeNsfw = value;
             OnPropertyChanged();
-            ApplyFilter();
+            _ = RefreshAsync();
         }
     }
 
@@ -240,6 +260,8 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             (SearchCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DownloadSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (LoadMoreCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (PrevPageCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (NextPageCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
     }
 
@@ -271,6 +293,27 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     /// v0.6.22+:当前已加载总条数 — UI 显示 "已加载 N 条"。
     /// </summary>
     public int LoadedCount => _allModels.Count;
+
+    /// <summary>每页显示条数。API 首页拉 50 / 续页 100,一页 20 条读起来更舒服。</summary>
+    public const int PageSize = 20;
+
+    /// <summary>筛选后的总条数(kind / NSFW / query 之后) — 页码的分母来源。</summary>
+    public int TotalFilteredCount => _filtered.Count;
+
+    /// <summary>
+    /// 筛选后的总页数,至少 1(空结果也显示"第 1/1 页"而不是 0)。
+    /// 注意分母是 <see cref="_filtered"/> 而非 <see cref="_allModels"/>:勾 checkpoint 之类的
+    /// kind chip 会让页数立刻重算,ApplyFilter 同时把页码归零。
+    /// </summary>
+    public int TotalPages => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)PageSize));
+
+    /// <summary>当前页码,1-based(UI 显示用)。</summary>
+    public int CurrentPageNumber => _currentPage + 1;
+
+    public bool CanGoPrev => _currentPage > 0;
+
+    /// <summary>本地还有下一页,或 source 还能再拉一页(点下一页时自动补拉)。</summary>
+    public bool CanGoNext => _currentPage + 1 < TotalPages || HasNextPage;
 
     /// <summary>
     /// v0.6.22+:CivitAI 排序方式 — chip 点击触发 RefreshAsync 重新拉取(切 sort 必重 fetch)。
@@ -304,6 +347,26 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// v0.6.22+:CivitAI baseModel 过滤 — chip 点击触发 RefreshAsync 重新拉取(用户 2026-08-20
+    /// 反馈"模型参数是不是也可以传递?也就是 base model 列出常规可用的 Model 类型")。
+    /// chip 单选语义,默认值 <see cref="CivitAiBaseModel.All"/> 表示"不过滤"(不附加
+    /// <c>baseModels=</c> URL 参数);其他值映射到 CivitAI baseModel 名 + 跟 query 内
+    /// 自动识别的 baseModel keyword 合并(见 <see cref="Services.ModelSources.CivitAiModelSource.DetectBaseModels"/>)。
+    /// 切到 HuggingFace 时 chip 隐藏,属性值保留不影响 HF 请求(HF 接收 baseModel 但 no-op)。
+    /// </summary>
+    public CivitAiBaseModel ActiveBaseModel
+    {
+        get => _activeBaseModel;
+        set
+        {
+            if (_activeBaseModel == value) return;
+            _activeBaseModel = value;
+            OnPropertyChanged();
+            _ = RefreshAsync();
+        }
+    }
+
     // —— Operations ——
     public async Task RefreshAsync()
     {
@@ -325,11 +388,14 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             var (entries, nextCursor) = await _marketplace.LoadPageAsync(
                 _query, cursor: null, pageSize: 50, sourceFilter: _activeSource,
                 sort: _activeSort, period: _activePeriod,
-                progress: progress, ct: CancellationToken.None);
+                progress: progress, includeNsfw: _includeNsfw, baseModel: _activeBaseModel.ApiValue(),
+                ct: CancellationToken.None);
             _allModels.Clear();
             _allModels.AddRange(entries);
             _nextCursor = nextCursor;
             ApplyFilter();
+            _logger?.Info("model-marketplace",
+                $"DEBUG refresh: _allModels={_allModels.Count} _filtered={_filtered.Count} Models={Models.Count} curPage={_currentPage}");
             OnPropertyChanged(nameof(HasNextPage));
             OnPropertyChanged(nameof(LoadedCount));
             (LoadMoreCommand as RelayCommand)?.RaiseCanExecuteChanged();
@@ -360,10 +426,12 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
             var (entries, nextCursor) = await _marketplace.LoadPageAsync(
                 _query, _nextCursor, pageSize: 100, sourceFilter: _activeSource,
                 sort: _activeSort, period: _activePeriod,
-                progress: progress, ct: CancellationToken.None);
+                progress: progress, includeNsfw: _includeNsfw, baseModel: _activeBaseModel.ApiValue(),
+                ct: CancellationToken.None);
             _allModels.AddRange(entries);
             _nextCursor = nextCursor;
-            ApplyFilter();
+            // 追加数据不动当前页码 —— 用户正在第 3 页时补拉不该把他弹回第 1 页。
+            ApplyFilter(resetPage: false);
             OnPropertyChanged(nameof(HasNextPage));
             OnPropertyChanged(nameof(LoadedCount));
             (LoadMoreCommand as RelayCommand)?.RaiseCanExecuteChanged();
@@ -377,6 +445,33 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>上一页 — 纯本地翻页,数据已在 <see cref="_filtered"/> 缓存里,不重新请求。</summary>
+    public void PrevPage()
+    {
+        if (_currentPage == 0) return;
+        _currentPage--;
+        RebuildPageSlice();
+        RaisePagingChanged();
+    }
+
+    /// <summary>
+    /// 下一页 — 本地还有缓存页就直接翻;缓存到底但 source 还有 cursor 时先拉一页再翻。
+    /// 拉完仍凑不满新一页(比如新增条目全被 kind filter 筛掉)则停在当前页。
+    /// </summary>
+    public async Task NextPageAsync()
+    {
+        if (IsBusy) return;
+        if (_currentPage + 1 >= TotalPages)
+        {
+            if (!HasNextPage) return;
+            await LoadMoreAsync();
+            if (_currentPage + 1 >= TotalPages) return;
+        }
+        _currentPage++;
+        RebuildPageSlice();
+        RaisePagingChanged();
     }
 
     public async Task DownloadSelectedAsync()
@@ -408,7 +503,12 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         }
     }
 
-    private void ApplyFilter()
+    /// <summary>
+    /// 重建 <see cref="_filtered"/> 并投影当前页到 <see cref="Models"/>。
+    /// <paramref name="resetPage"/>=true(筛选条件变了 / 重新搜索)时回到第 1 页 —— 筛选后总页数
+    /// 会变,停在旧页码可能落到空白页。LoadMoreAsync 追加数据时传 false 保住当前页码。
+    /// </summary>
+    private void ApplyFilter(bool resetPage = true)
     {
         var filtered = _allModels.AsEnumerable();
         if (!string.IsNullOrWhiteSpace(_query))
@@ -425,8 +525,28 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         {
             filtered = filtered.Where(m => m.NsfwKind == ModelNsfwKind.SFW);
         }
+        _filtered.Clear();
+        _filtered.AddRange(filtered);
+        _currentPage = resetPage ? 0 : Math.Min(_currentPage, TotalPages - 1);
+        RebuildPageSlice();
+        RaisePagingChanged();
+    }
+
+    private void RebuildPageSlice()
+    {
         Models.Clear();
-        foreach (var m in filtered) Models.Add(m);
+        foreach (var m in _filtered.Skip(_currentPage * PageSize).Take(PageSize)) Models.Add(m);
+    }
+
+    private void RaisePagingChanged()
+    {
+        OnPropertyChanged(nameof(TotalFilteredCount));
+        OnPropertyChanged(nameof(TotalPages));
+        OnPropertyChanged(nameof(CurrentPageNumber));
+        OnPropertyChanged(nameof(CanGoPrev));
+        OnPropertyChanged(nameof(CanGoNext));
+        (PrevPageCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        (NextPageCommand as RelayCommand)?.RaiseCanExecuteChanged();
     }
 
     private void OnConsoleLogChanged(object? sender, NotifyCollectionChangedEventArgs e)

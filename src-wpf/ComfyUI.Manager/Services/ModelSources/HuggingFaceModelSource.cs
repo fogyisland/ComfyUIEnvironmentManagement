@@ -40,7 +40,7 @@ public class HuggingFaceModelSource : IModelSource
         }
     }
 
-    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct)
+    public async Task<IReadOnlyList<ModelEntry>> SearchAsync(string query, int maxResults, CancellationToken ct, bool includeNsfw = true, string? baseModel = null)
     {
         // v0.6.22+:SearchPageAsync 的循环包装,保持向后兼容。
         var results = new List<ModelEntry>();
@@ -50,7 +50,7 @@ public class HuggingFaceModelSource : IModelSource
         for (var pageCount = 1; pageCount <= maxPages && results.Count < maxResults; pageCount++)
         {
             var (entries, nextCursor) = await SearchPageAsync(
-                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct);
+                query, cursor, PageSize, CivitAiSort.Newest, CivitAiPeriod.AllTime, ct, includeNsfw, baseModel);
             results.AddRange(entries);
             cursor = nextCursor;
             if (string.IsNullOrEmpty(cursor)) break;
@@ -67,7 +67,8 @@ public class HuggingFaceModelSource : IModelSource
     /// </summary>
     public async Task<(IReadOnlyList<ModelEntry> entries, string? nextCursor)> SearchPageAsync(
         string query, string? cursor, int pageSize,
-        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct)
+        CivitAiSort sort, CivitAiPeriod period, CancellationToken ct,
+        bool includeNsfw = true, string? baseModel = null)
     {
         var results = new List<ModelEntry>();
         var qs = new List<string>
@@ -76,8 +77,9 @@ public class HuggingFaceModelSource : IModelSource
             "full=true",
         };
         if (!string.IsNullOrWhiteSpace(query)) qs.Add($"search={Uri.EscapeDataString(query)}");
+        // v0.6.22+:HF 不支持 baseModel API 参数(只通过 tag 标记)— 接收参数但忽略。
         var url = $"{_baseUrl}/api/models?{string.Join("&", qs)}";
-        _logger?.Info("model-huggingface", $"search page: {url}");
+        _logger?.Info("model-huggingface", $"search page nsfw={includeNsfw} bm={baseModel}: {url}");
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         if (!string.IsNullOrEmpty(_apiToken) && _baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
@@ -95,7 +97,12 @@ public class HuggingFaceModelSource : IModelSource
         {
             if (string.IsNullOrEmpty(item.Id)) continue;
             var entry = await MapToModelEntryAsync(item, ct).ConfigureAwait(false);
-            if (entry is not null) results.Add(entry);
+            // v0.6.22+:HF API 不支持 NSFW 参数(只通过 tag 标记);includeNsfw=false 时
+            // post-filter 掉 NsfwKind != SFW 的条目。等价于 VM post-filter 但在 source 层
+            // 完成,确保后续 caller 拿到的就是筛选后的干净集合。
+            if (entry is null) continue;
+            if (!includeNsfw && entry.NsfwKind != ModelNsfwKind.SFW) continue;
+            results.Add(entry);
         }
         return (results, null);
     }
