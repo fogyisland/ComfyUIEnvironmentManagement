@@ -163,7 +163,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
                 try
                 {
                     Clipboard.SetText(v.PrimaryDownloadUrl);
-                    ConsoleLog.Add($"[复制] {v.PrimaryDownloadUrl}");
+                    AppendConsole($"[复制] {v.PrimaryDownloadUrl}");
                 }
                 catch (Exception ex)
                 {
@@ -284,6 +284,18 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
     public bool IsConsoleVisible => !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0);
 
     /// <summary>
+    /// v0.6.22++:Console 反向滚动 + 时间戳 — 用户 2026-08-21 反馈 "模型市场 console 中使用反向滚动,
+    /// 也就是最上面的为最新,另外为日志加上时间戳"。所有 log entry 走这里统一格式化:
+    ///   1. 行首加 <c>[HH:mm:ss]</c> 时间戳(同秒多次调用即时反映 — 不缓存上次秒)
+    ///   2. Insert(0, ...) 让最新行始终在最上面,scroll viewer 无需 auto-scroll handler
+    /// 旧的 <c>ConsoleLog.Add(x)</c> 调用仍 OK(直接绕过 helper),但新代码必须走这里。
+    /// </summary>
+    public void AppendConsole(string line)
+    {
+        ConsoleLog.Insert(0, $"[{DateTime.Now:HH:mm:ss}] {line}");
+    }
+
+    /// <summary>
     /// v0.6.22+:还有更多可加载 = 当前 source 返回过 nextCursor,且不是空。
     /// 切换 query/source 后下次 RefreshAsync 重置。
     /// </summary>
@@ -380,9 +392,9 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         _nextCursor = null;
         try
         {
-            // v0.6.22 T6+:Progress<string> 在 VM 端构造 — ctor 捕获 UI SynchronizationContext,
-            // service 内 Report() 自动 marshal 回 UI 线程 → ConsoleLog.Add 安全。
-            var progress = new Progress<string>(line => ConsoleLog.Add(line));
+            // v0.6.22++:Progress<string> 在 VM 端构造 — ctor 捕获 UI SynchronizationContext,
+            // service 内 Report() 自动 marshal 回 UI 线程 → AppendConsole 安全。
+            var progress = new Progress<string>(line => AppendConsole(line));
             // VM-side await MUST NOT use .ConfigureAwait(false) — continuation runs on UI sync ctx,
             // touching Models.Clear() / Add() requires WPF-friendly context.
             var (entries, nextCursor) = await _marketplace.LoadPageAsync(
@@ -403,7 +415,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             _logger?.Warn("model-marketplace", $"刷新失败: {ex.Message}");
-            ConsoleLog.Add($"[错误] 刷新失败: {ex.Message}");
+            AppendConsole($"[错误] 刷新失败: {ex.Message}");
         }
         finally
         {
@@ -422,7 +434,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         IsBusy = true;
         try
         {
-            var progress = new Progress<string>(line => ConsoleLog.Add(line));
+            var progress = new Progress<string>(line => AppendConsole(line));
             var (entries, nextCursor) = await _marketplace.LoadPageAsync(
                 _query, _nextCursor, pageSize: 100, sourceFilter: _activeSource,
                 sort: _activeSort, period: _activePeriod,
@@ -439,7 +451,7 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             _logger?.Warn("model-marketplace", $"加载更多失败: {ex.Message}");
-            ConsoleLog.Add($"[错误] 加载更多失败: {ex.Message}");
+            AppendConsole($"[错误] 加载更多失败: {ex.Message}");
         }
         finally
         {
@@ -483,19 +495,19 @@ public class ModelMarketplaceViewModel : INotifyPropertyChanged
         {
             // Progress<string> captures the current SynchronizationContext (UI thread) at
             // construction — Report() automatically marshals back to UI thread.
-            var progress = new Progress<string>(line => ConsoleLog.Add(line));
+            var progress = new Progress<string>(line => AppendConsole(line));
             var versions = SelectedVersions.ToList();
             // v0.6.22+:ModelsDirectory 字段已硬删,改用 DefaultModelsDirectory (同时担任 env-create
             // junction 目标 + 模型市场下载目录)。空字符串时 ModelDownloader 内部 fallback。
             var summary = await _downloader.DownloadBatchAsync(
                 versions, _settings.DefaultModelsDirectory, progress);
-            ConsoleLog.Add(
+            AppendConsole(
                 $"[完成] 成功 {summary.Succeeded}, 失败 {summary.Failed}, 耗时 {summary.TotalDuration.TotalSeconds:F1}s");
         }
         catch (Exception ex)
         {
             _logger?.Error("model-download", $"批量下载异常: {ex.Message}");
-            ConsoleLog.Add($"[错误] {ex.Message}");
+            AppendConsole($"[错误] {ex.Message}");
         }
         finally
         {

@@ -200,6 +200,62 @@ public class ModelMarketplaceViewModelTests
         Assert.False(vm.IsConsoleVisible);
     }
 
+    // —— v0.6.22++ Console 反向滚动 + 时间戳 ——
+
+    [Fact]
+    public void ConsoleLog_AppendConsole_PrependsTimestampAndInsertsAtIndex0()
+    {
+        // 用户 2026-08-21 反馈"模型市场 console 中使用反向滚动,也就是最上面的为最新,
+        // 另外为日志加上时间戳"。AppendConsole(line) 必须:
+        //   1. 在行首加 [HH:mm:ss] 时间戳(同秒多次调也即时反映)
+        //   2. 插入到 index 0(最新在最上面)
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        vm.ConsoleLog.Add("first");          // 旧调用 OK,不破坏现有 contract
+        vm.AppendConsole("second");
+
+        Assert.Equal(2, vm.ConsoleLog.Count);
+        Assert.Equal("first", vm.ConsoleLog[1]);  // 旧行保持在 index 1
+        var newest = vm.ConsoleLog[0];
+        // 时间戳格式 [HH:mm:ss] + 空格 + 原文;小时可能在 0-23,分钟秒 00-59
+        Assert.Matches(@"^\[\d{2}:\d{2}:\d{2}\] second$", newest);
+    }
+
+    [Fact]
+    public void ConsoleLog_AppendConsole_NewerLineAppearsAboveOlder()
+    {
+        // 关键 UX 校验:连续 AppendConsole 3 行后,ConsoleLog[0] 是最后一行。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        vm.AppendConsole("alpha");
+        vm.AppendConsole("beta");
+        vm.AppendConsole("gamma");
+
+        Assert.Equal(3, vm.ConsoleLog.Count);
+        Assert.Contains("gamma", vm.ConsoleLog[0]);
+        Assert.Contains("beta", vm.ConsoleLog[1]);
+        Assert.Contains("alpha", vm.ConsoleLog[2]);
+    }
+
+    [Fact]
+    public void ConsoleLog_ProgressSinkUsesAppendConsole()
+    {
+        // Progress<string>(line => AppendConsole(line)) 模式被 RefreshAsync / LoadMoreAsync
+        // / DownloadSelectedAsync 三处共享。模拟 source 透过 IProgress<string> 回调时,
+        // 所有行必须带时间戳 + 插入头部。
+        // 注:Progress<T>.Report 是 IProgress<T> 的显式接口实现,只能通过接口类型调;
+        // 这里直接调 lambda 等价(生产代码 RefreshAsync:397/437/498 就是这个 lambda)。
+        var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
+        Action<string> sink = line => vm.AppendConsole(line);
+        sink("[URL] https://example.com/x");
+        sink("plain line");
+
+        Assert.Equal(2, vm.ConsoleLog.Count);
+        // 新 -> 上:plain line (最后调用) 在 index 0;[URL] (先调用) 在 index 1。
+        Assert.Contains("plain line", vm.ConsoleLog[0]);
+        Assert.Contains("[URL] https://example.com/x", vm.ConsoleLog[1]);
+        Assert.Matches(@"^\[\d{2}:\d{2}:\d{2}\] ", vm.ConsoleLog[0]);
+        Assert.Matches(@"^\[\d{2}:\d{2}:\d{2}\] ", vm.ConsoleLog[1]);
+    }
+
     // v0.6.22+:Per-source proxy CheckBox 从 model marketplace view 移除(用户 2026-08-20
     // 反馈 "勾选代理直接在设置中勾选就好了,就不要在界面中选择是否使用代理")。
     // 对应 VM 属性 CivitAiUseProxy / HuggingFaceUseProxy / IsGlobalProxyEnabled 已删除。
