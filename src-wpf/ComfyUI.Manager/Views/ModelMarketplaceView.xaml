@@ -127,6 +127,13 @@
                      IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=HuggingFace}"
                      Click="OnSourceRadioClicked"
                      Margin="12,0,0,0" VerticalAlignment="Center" />
+        <!-- v0.6.22.x:ModelScope 国内源 — 默认 disabled,启用后出现在 source radio group;
+             sort/period/baseModel 行只对 CivitAI 显示,ModelScope 同 HF 自动折叠。 -->
+        <RadioButton Content="ModelScope" GroupName="ActiveSource"
+                     Tag="{x:Static models:ModelSourceKind.ModelScope}"
+                     IsChecked="{Binding ActiveSource, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=ModelScope}"
+                     Click="OnSourceRadioClicked"
+                     Margin="12,0,0,0" VerticalAlignment="Center" />
       </StackPanel>
       <ItemsControl x:Name="KindFilterHost" ItemsSource="{Binding KindFilters}">
         <ItemsControl.ItemsPanel>
