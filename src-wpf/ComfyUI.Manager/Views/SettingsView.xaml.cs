@@ -261,6 +261,64 @@ public partial class SettingsView : UserControl
     }
 
     /// <summary>
+    /// v0.6.22.x:Test ModelScope connection — mirror HF/CivitAI 测试连接 UX。
+    /// ModelScope 没有 whoami endpoint,改用 /api/v1/models?limit=1 探测(轻量 + 返 models list)。
+    /// 镜像切换优先于官方(token 决定是否注入 Authorization: Bearer header)。
+    /// </summary>
+    private void TestModelScopeConnection(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsViewModel vm) return;
+        var baseUrl = vm.ModelSourceModelScopeUseMirror && !string.IsNullOrWhiteSpace(vm.ModelSourceModelScopeMirrorUrl)
+            ? vm.ModelSourceModelScopeMirrorUrl.TrimEnd('/')
+            : "https://www.modelscope.cn";
+        var token = vm.ModelSourceModelScopeApiToken;
+
+        // HTTP mirror with token → refuse (防 token 明文泄露)
+        if (baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(token))
+        {
+            MessageBox.Show($"镜像 {baseUrl} 使用 http,不发送 token。\n请改用 https 镜像或临时清空 token。",
+                "测试连接", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _ = ProbeModelScopeConnectionAsync(baseUrl, token);
+    }
+
+    private async Task ProbeModelScopeConnectionAsync(string baseUrl, string token)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            if (!string.IsNullOrEmpty(token) && baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            // ModelScope 无 whoami endpoint,用 /api/v1/models?limit=1 探测 — 返 200 即连接 OK,
+            // 401/403 即鉴权失败(token 错/失效/缺)。
+            var resp = await client.GetAsync($"{baseUrl}/api/v1/models?limit=1").ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                Dispatcher.Invoke(() => MessageBox.Show($"✅ 连接成功 ({baseUrl})", "测试连接", MessageBoxButton.OK, MessageBoxImage.Information));
+            }
+            else
+            {
+                Dispatcher.Invoke(() => MessageBox.Show($"❌ 失败 {(int)resp.StatusCode} {resp.ReasonPhrase}\n({baseUrl})", "测试连接", MessageBoxButton.OK, MessageBoxImage.Warning));
+            }
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() => MessageBox.Show($"❌ 连接失败: {ex.Message}\n({baseUrl})", "测试连接", MessageBoxButton.OK, MessageBoxImage.Error));
+        }
+    }
+
+    private void ResetModelScopeMirrorUrl(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            vm.ResetModelScopeMirrorUrlCommand.Execute(null);
+        }
+    }
+
+    /// <summary>
     /// v0.6.22+:CivitAI 测试连接 — 镜像 HuggingFace 测试连接 UX。
     /// 用当前 baseUrl(token 决定是否注入 Authorization: Bearer)probe CivitAI API。
     /// 注:CivitAI 没有 whoami-v2 endpoint,改用 /api/v1/models?limit=1 探测(轻量 + 返 models list)。

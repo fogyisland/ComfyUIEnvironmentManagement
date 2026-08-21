@@ -734,6 +734,90 @@
                 </StackPanel>
             </StackPanel>
 
+            <!-- v0.6.22.x:ModelScope enabled checkbox — 国内模型源(魔搭) -->
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <CheckBox Content="ModelScope (魔搭)" IsChecked="{Binding ModelSourceModelScopeEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          VerticalAlignment="Center" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[ModelSourceModelScopeEnabled], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <TextBlock Text="未配置 token 也能浏览公开模型。官方 https://www.modelscope.cn 在国内可直连,通常无需镜像或代理。"
+                       Foreground="Gray" FontSize="11" Margin="20,2,0,0" TextWrapping="Wrap" MaxWidth="500"
+                       HorizontalAlignment="Left" />
+
+            <!-- ModelScope sub-block (only visible when ModelScope enabled) -->
+            <StackPanel Margin="20,8,0,0"
+                        Visibility="{Binding ModelSourceModelScopeEnabled, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="API Token" VerticalAlignment="Center" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[ModelSourceModelScopeApiToken], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="测试连接" Click="TestModelScopeConnection"
+                            Style="{StaticResource MaterialButton}" Margin="4,0,0,0" Padding="8,4" />
+                    <controls:BindablePasswordBox x:Name="ModelScopeTokenBox"
+                                                   Password="{Binding ModelSourceModelScopeApiToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </DockPanel>
+                <TextBlock Margin="0,4,0,0">
+                    <Hyperlink NavigateUri="https://www.modelscope.cn/my/myaccesstoken" RequestNavigate="OpenHyperlink">
+                        在 https://www.modelscope.cn/my/myaccesstoken 获取 token
+                    </Hyperlink>
+                </TextBlock>
+
+                <!-- ModelScope mirror toggle + URL + reset -->
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <CheckBox Content="使用国内镜像 (默认 https://www.modelscope.cn)"
+                              IsChecked="{Binding ModelSourceModelScopeUseMirror, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              VerticalAlignment="Center" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[ModelSourceModelScopeUseMirror], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <DockPanel Margin="0,4,0,0"
+                           Visibility="{Binding ModelSourceModelScopeUseMirror, Converter={StaticResource BoolToVisibility}}">
+                    <Button DockPanel.Dock="Right" Content="重置" Click="ResetModelScopeMirrorUrl"
+                            Style="{StaticResource MaterialButton}" Margin="4,0,0,0" Padding="8,4" />
+                    <TextBox Text="{Binding ModelSourceModelScopeMirrorUrl, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource MaterialTextBox}" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[ModelSourceModelScopeMirrorUrl], Converter={StaticResource BoolToVisibility}}"/>
+                </DockPanel>
+                <TextBlock Text="⚠ http 镜像将不会发送 token(安全) — 仅 HTTPS 镜像支持鉴权模型"
+                           Foreground="{DynamicResource WarningBrush}" FontSize="11" Margin="0,4,0,0"
+                           Visibility="{Binding IsModelScopeMirrorInsecure, Converter={StaticResource BoolToVisibility}}" />
+
+                <!-- v0.6.22.x:ModelScope 代理三态 — 关闭 / 跟随全局 / 总是启用。重启生效 -->
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBlock Text="代理" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <RadioButton Content="关闭" GroupName="ModelScopeProxyMode"
+                                 IsChecked="{Binding ModelSourceModelScopeProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Off, Mode=TwoWay}"
+                                 VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <RadioButton Content="跟随全局" GroupName="ModelScopeProxyMode"
+                                 IsChecked="{Binding ModelSourceModelScopeProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=InheritGlobal, Mode=TwoWay}"
+                                 VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <RadioButton Content="总是启用" GroupName="ModelScopeProxyMode"
+                                 IsChecked="{Binding ModelSourceModelScopeProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=AlwaysOn, Mode=TwoWay}"
+                                 VerticalAlignment="Center" />
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[ModelSourceModelScopeProxyMode], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+            </StackPanel>
+
             <!-- Helper text + refresh button -->
             <TextBlock Text="勾选镜像后访问国内镜像地址,速度更快不需代理。CivitAI 无流行国内镜像,留空即可。"
                        Foreground="Gray" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap" MaxWidth="500"

@@ -10,6 +10,7 @@ using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.ModelSources;
 using Microsoft.Win32;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -688,6 +689,95 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             return url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(HuggingFaceApiToken);
         }
     }
+
+    // v0.6.22.x:ModelScope 国内模型源(默认 disabled)
+    public bool ModelSourceModelScopeEnabled
+    {
+        get => _settings.ModelSourceModelScopeEnabled;
+        set
+        {
+            if (_settings.ModelSourceModelScopeEnabled == value) return;
+            _settings.ModelSourceModelScopeEnabled = value;
+            MarkDirty(nameof(ModelSourceModelScopeEnabled));
+            RaisePropertyChanged();
+        }
+    }
+
+    public string ModelSourceModelScopeApiToken
+    {
+        get => _settings.ModelSourceModelScopeApiToken;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.ModelSourceModelScopeApiToken == v) return;
+            _settings.ModelSourceModelScopeApiToken = v;
+            MarkDirty(nameof(ModelSourceModelScopeApiToken));
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsModelScopeMirrorInsecure));
+        }
+    }
+
+    public bool ModelSourceModelScopeUseMirror
+    {
+        get => _settings.ModelSourceModelScopeUseMirror;
+        set
+        {
+            if (_settings.ModelSourceModelScopeUseMirror == value) return;
+            _settings.ModelSourceModelScopeUseMirror = value;
+            MarkDirty(nameof(ModelSourceModelScopeUseMirror));
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsModelScopeMirrorInsecure));
+        }
+    }
+
+    public string ModelSourceModelScopeMirrorUrl
+    {
+        get => _settings.ModelSourceModelScopeMirrorUrl;
+        set
+        {
+            var v = value ?? "";
+            if (_settings.ModelSourceModelScopeMirrorUrl == v) return;
+            _settings.ModelSourceModelScopeMirrorUrl = v;
+            MarkDirty(nameof(ModelSourceModelScopeMirrorUrl));
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsModelScopeMirrorInsecure));
+        }
+    }
+
+    public ModelSourceProxyMode ModelSourceModelScopeProxyMode
+    {
+        get => _settings.ModelSourceModelScopeProxyMode;
+        set
+        {
+            if (_settings.ModelSourceModelScopeProxyMode == value) return;
+            _settings.ModelSourceModelScopeProxyMode = value;
+            MarkDirty(nameof(ModelSourceModelScopeProxyMode));
+            RaisePropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// v0.6.22.x: Returns true if user has a token configured AND the mirror is http:// (insecure).
+    /// Mirrors HF security policy (no token over plaintext HTTP).
+    /// </summary>
+    public bool IsModelScopeMirrorInsecure
+    {
+        get
+        {
+            if (!ModelSourceModelScopeUseMirror) return false;
+            var url = ModelSourceModelScopeMirrorUrl ?? "";
+            return url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(ModelSourceModelScopeApiToken);
+        }
+    }
+
+    /// <summary>
+    /// v0.6.22.x:Reset ModelScope mirror URL to the official https://www.modelscope.cn.
+    /// </summary>
+    public RelayCommand ResetModelScopeMirrorUrlCommand => new RelayCommand(_ =>
+    {
+        ModelSourceModelScopeMirrorUrl = ModelSourceFactory.ModelScopeOfficial;
+    });
+
     // v0.6.10: 全局默认 Models 目录(env-create junction 目标)。空 = 不动 env 的 models 目录。
     public string DefaultModelsDirectory
     {
@@ -1081,6 +1171,11 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(ModelSourceHuggingFaceUseMirror));
         RaisePropertyChanged(nameof(ModelSourceHuggingFaceMirrorUrl));
         RaisePropertyChanged(nameof(IsHuggingFaceMirrorInsecure));
+        RaisePropertyChanged(nameof(ModelSourceModelScopeEnabled));
+        RaisePropertyChanged(nameof(ModelSourceModelScopeApiToken));
+        RaisePropertyChanged(nameof(ModelSourceModelScopeUseMirror));
+        RaisePropertyChanged(nameof(ModelSourceModelScopeMirrorUrl));
+        RaisePropertyChanged(nameof(IsModelScopeMirrorInsecure));
         RaisePropertyChanged(nameof(LogDirectory));
         RaisePropertyChanged(nameof(PythonVenvBaseline));
         RaisePropertyChanged(nameof(GitExe));
