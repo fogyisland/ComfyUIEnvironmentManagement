@@ -58,15 +58,8 @@ public partial class EnvironmentListView : UserControl
     }
 
     /// <summary>
-    /// v0.6.22 T5:模板更新状态面板 ✕ 按钮 — 调 TemplateUpdateStatus.Clear() 设
-    /// _userHidden=true 隐藏面板(LogLines / Error / IsBusy 不动,Reset() 时复原)。
-    /// 镜像 RequirementsStatusViewModel 失败后面板持续可见等用户关的模式。
+    /// v0.6.22.x 删:OnTemplateUpdateStatusCloseClicked handler — 模板更新状态面板
+    /// 跟 UpdateTemplateCommand 一起移走至 MainViewModel,env-list 不再展示模板更新。
     /// </summary>
-    private void OnTemplateUpdateStatusCloseClicked(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is ViewModels.EnvironmentListViewModel vm)
-        {
-            vm.TemplateUpdateStatus.Clear();
-        }
-    }
+    // private void OnTemplateUpdateStatusCloseClicked(object sender, RoutedEventArgs e) { ... }   // removed v0.6.22.x
 }

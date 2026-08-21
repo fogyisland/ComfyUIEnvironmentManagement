@@ -188,42 +188,8 @@
                 </StackPanel>
             </Border>
 
-            <!-- v0.6.22 T5:模板更新状态 — 镜像 RequirementsStatus 单阶段 inline 面板
-                 (同 SurfaceBrush / OutlineBrush / CornerRadius + BoolToVisibility converter),
-                 ✕ 按钮走 code-behind 事件 OnTemplateUpdateStatusCloseClicked。3-state
-                 IsVisible:!userHidden && (IsBusy || HasContent || HasError)。 -->
-            <Border Margin="0,6,0,0" Padding="12"
-                    Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                    CornerRadius="6"
-                    Visibility="{Binding TemplateUpdateStatus.IsVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
-                <StackPanel DataContext="{Binding TemplateUpdateStatus}">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="✕"
-                                Click="OnTemplateUpdateStatusCloseClicked"
-                                Style="{StaticResource GearIconButtonStyle}"
-                                Foreground="{DynamicResource OnSurfaceBrush}" />
-                        <TextBlock Text="模板更新状态" FontWeight="Bold" FontSize="14"
-                                   Foreground="{DynamicResource OnSurfaceBrush}"
-                                   VerticalAlignment="Center" />
-                    </DockPanel>
-                    <TextBlock Text="{Binding StatusText}" FontSize="14" Margin="0,4"
-                               Foreground="{DynamicResource OnSurfaceBrush}" TextWrapping="Wrap" />
-                    <ScrollViewer Height="120" Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding LogLines}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
-                                               Foreground="{DynamicResource OutlineBrush}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                    <TextBlock Text="{Binding Error}" Foreground="{DynamicResource ErrorBrush}"
-                               Margin="0,4,0,0" FontWeight="Bold" TextWrapping="Wrap"
-                               Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
-                </StackPanel>
-            </Border>
+            <!-- v0.6.22.x 删:模板更新状态面板(env-list 移除 — 模板更新操作改到 工具菜单,
+                 状态面板移到 MainWindow 全局展示,跟 per-env 无关)。 -->
 
             <!-- v0.6.15.8:节点管理 inline panel(同 SurfaceBrush/OutlineBrush/Border pattern) -->
             <Border Margin="0,6,0,0" Padding="12"
@@ -454,13 +420,11 @@
                                     <Run Text="{Binding BedProfileId, Mode=OneWay, TargetNullValue='未部署'}" />
                                 </TextBlock>
 
-                                <!-- Row 2: Actions — 3 行 × 5 列 Grid(v0.6.22 T5:加 Row 2 "模板更新"按钮,
-                                     镜像删除按钮 DangerButton 风格 — destructive,wipe
-                                     ComfyUI 目录内容 + git clone comfyanonymous/ComfyUI。
-                                     1-4 列留空(原 2x5 布局)。) -->
+                                <!-- Row 2: Actions — 2 行 × 5 列 Grid(v0.6.22.x 删:"模板更新"按钮 — 移到
+                                     MainWindow 工具菜单,操作对象是 <projectRoot>/ComfyUI/
+                                     master template,与 per-env 无关)。 -->
                                 <Grid Grid.Row="2">
                                     <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
@@ -539,17 +503,9 @@
                                             Command="{Binding DataContext.DeleteCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <!-- v0.6.22 T5:模板更新按钮 — wipe env.ComfyuiSource 内容
-                                         + git clone comfyanonymous/ComfyUI(sha~depth=1)。Destructive,
-                                         走 DangerButton 样式 + Click → MessageBox 二次确认。
-                                         CanExecute:env 不在 busy + ComfyuiSource 存在。
-                                         Row 2 col 1-4 留空(原 2x5 布局,只 col 0 一颗按钮)。 -->
-                                    <Button Grid.Row="2" Grid.Column="0" Content="模板更新" Margin="2" MinWidth="0"
-                                            Style="{StaticResource DangerButton}"
-                                            Command="{Binding DataContext.UpdateTemplateCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="删除 ComfyUI 目录内容 + git clone 重新初始化。会提示确认。" />
+                                    <!-- v0.6.22.x 删:模板更新按钮(env-list 移除 — 操作改到 MainWindow 工具菜单,
+                 目标 = <projectRoot>/ComfyUI/ master template,与 per-env 无关)。 -->
+
                                     <!-- v0.6.17.1:启动控制台入口移至 Row 0 col 2(port 旁小图标),
                                          这里不再独立按钮,Row 2 actions Grid 收成 2 行 × 5 列。 -->
                                 </Grid>

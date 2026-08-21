@@ -57,7 +57,7 @@ public class EnvironmentListViewModel : ViewModelBase
     // v0.6.22 T5:ComfyUI template update service(wipe env.ComfyuiSource 内容
     // + git clone comfyanonymous/ComfyUI --depth=1)。可空保留旧测试 ctor
     // 兼容;生产 DI 在 App.xaml.cs 注入。
-    private readonly ComfyUITemplateUpdater? _templateUpdater;
+    // v0.6.22.x 删:_templateUpdater 字段 + ctor param(移走至 MainViewModel)。
 
     /// <summary>
     /// v0.6.5.22 T4:per-env 互斥锁 — 同 env 上同时只允许一个长操作(BED install / uninstall /
@@ -67,7 +67,7 @@ public class EnvironmentListViewModel : ViewModelBase
     /// v0.6.11+ T3:加 ComfyUiManagerInstall / ComfyUiManagerUninstall 让 toggle 命令
     /// 跟其他长操作互斥(避免并发的 git clone 跟卸载冲突)。
     /// </summary>
-    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete, ComfyUiManagerInstall, ComfyUiManagerUninstall, Restart, TemplateUpdate }
+    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete, ComfyUiManagerInstall, ComfyUiManagerUninstall, Restart }   // v0.6.22.x: removed TemplateUpdate (moved to MainViewModel)
 
     private readonly Dictionary<string, BusyKind> _envBusy = new();
 
@@ -213,12 +213,12 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand CloseNodeManagementCommand { get; }
 
     /// <summary>
-    /// v0.6.22 T5:env-list 行"模板更新"按钮 — 删除 env.ComfyuiSource 全部内容
-    /// 后 git clone comfyanonymous/ComfyUI --depth=1。destructive,会先弹
-    /// MessageBox 确认。CanExecute:env 不在 busy + _templateUpdater 已注入 +
-    /// env.ComfyuiSource 路径存在。
+    /// v0.6.22.x 删:"模板更新"按钮从 env-list 移到主窗口 工具菜单
+    /// (MainViewModel.UpdateTemplateCommand)。用户原话"我们不会去更新环境
+    /// 中的环境,只是为下一个创建的环境更新" — 操作对象改为 &lt;projectRoot&gt;/ComfyUI/
+    /// master template,只影响下一次 env 创建,不再影响现有 env。
     /// </summary>
-    public RelayCommand UpdateTemplateCommand { get; }
+    // public RelayCommand UpdateTemplateCommand { get; }   // removed v0.6.22.x
 
     public RelayCommand ToggleBaseEnvCommand { get; }
 
@@ -279,12 +279,11 @@ public class EnvironmentListViewModel : ViewModelBase
     public ComfyUIManagerStatusViewModel? ComfyUiManagerStatus { get; private set; }
 
     /// <summary>
-    /// v0.6.22 T5:ComfyUI 模板更新 inline 状态面板(env-list 操作列"模板更新"
-    /// 按钮触发后)。镜像 <see cref="RequirementsStatusViewModel"/> 单阶段模式:
-    /// 3-state IsVisible (!userHidden && (IsBusy || HasContent || HasError)),
-    /// ✕ 按钮由 <see cref="OnTemplateUpdateStatusCloseClicked"/> 调 Clear()。
+    /// v0.6.22.x 删:模板更新状态面板跟 <see cref="UpdateTemplateCommand"/> 一起
+    /// 移到 MainViewModel(env-list 不再展示模板更新状态 — 用户操作的是 global
+    /// master template,不是 per-env)。
     /// </summary>
-    public TemplateUpdateStatusViewModel TemplateUpdateStatus { get; } = new();
+    // public TemplateUpdateStatusViewModel TemplateUpdateStatus { get; } = new();   // removed v0.6.22.x
 
     public EnvironmentListViewModel(
         EnvironmentRepository repo,
@@ -312,11 +311,7 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.20 T9: env-start 后异步 sync 已下载 models 到 env。可空保留旧测试 ctor 兼容;
         // 生产 DI 在 App.xaml.cs 注入。Signature(envId, envComfyuiSource, ct) — envId
         // 取 env.Id, envComfyuiSource 取 env.ComfyuiSource(同 workflow hook)。
-        ModelSymlinker? modelSymlinker = null,
-        // v0.6.22 T5:ComfyUI 模板更新 service(wipe + git clone)。可空保留
-        // 旧测试 ctor 兼容;生产 DI 在 App.xaml.cs 注入。null 时
-        // UpdateTemplateCommand.CanExecute 永远 false(按钮 disabled)。
-        ComfyUITemplateUpdater? templateUpdater = null)
+        ModelSymlinker? modelSymlinker = null)   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
     {
         _repo = repo;
         _launcher = launcher;
@@ -349,9 +344,7 @@ public class EnvironmentListViewModel : ViewModelBase
         _workflowSymlinker = workflowSymlinker;
         // v0.6.20 T9: env-start hook — fire-and-forget sync models 到 env。
         _modelSymlinker = modelSymlinker;
-        // v0.6.22 T5:ComfyUI 模板更新 service — UpdateTemplateCommand.CanExecute
-        // 依赖它非 null。
-        _templateUpdater = templateUpdater;
+        // v0.6.22.x:removed _templateUpdater assignment (moved to MainViewModel)
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
         StartCommand = new RelayCommand(
@@ -484,22 +477,9 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (IsEnvBusy(env)) return false;
                 return true;
             });
-        // v0.6.22 T5:env-list 行"模板更新"按钮 — destructive(wipe + reclone)。
-        // CanExecute:env 不在 busy + _templateUpdater 已注入 + env.ComfyuiSource
-        // 路径存在(否则 wipe 立即 fail 没意义)。Confirm gate 走 MessageBox
-        // 由 Execute 内调 ConfirmDangerous,CanExecute 只看前提条件。
-        UpdateTemplateCommand = new RelayCommand(
-            async p => await UpdateTemplateAsync(p as Environment ?? Selected),
-            p =>
-            {
-                var env = p as Environment ?? Selected;
-                if (env is null) return false;
-                if (IsEnvBusy(env)) return false;
-                if (_templateUpdater is null) return false;
-                if (string.IsNullOrWhiteSpace(env.ComfyuiSource)) return false;
-                if (!Directory.Exists(env.ComfyuiSource)) return false;
-                return true;
-            });
+        // v0.6.22.x 删:UpdateTemplateCommand 整段移除(改到 MainViewModel)。
+        //         env-list 不再有"模板更新"按钮,操作对象是 global master template
+        //         (<projectRoot>/ComfyUI/),与 per-env 无关。
         // v0.6.15.8 T5:NodeManagement 面板 open/close 命令。
         // CanExecute 镜像其他长操作命令(看 env 非 null + !IsEnvBusy)。
         // Close 命令始终可执行(允许用户在面板可见时手动关)。
@@ -1769,41 +1749,10 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// v0.6.22 T5:env-list 行"模板更新"按钮 handler — destructive 操作,wipe
-    /// env.ComfyuiSource 内容 + git clone comfyanonymous/ComfyUI --depth=1。
-    /// 流程:MessageBox 二次确认 → per-env mutex(TemplateUpdate) → 跑
-    /// <see cref="ComfyUITemplateUpdater.UpdateAsync"/> → 状态写回
-    /// <see cref="TemplateUpdateStatus"/>。
+    /// v0.6.22.x 删:UpdateTemplateAsync 移到 MainViewModel(操作对象是
+    /// &lt;projectRoot&gt;/ComfyUI/ master template,与 per-env mutex 解耦)。
     /// </summary>
-    private async Task UpdateTemplateAsync(Environment? env)
-    {
-        if (env is null || _templateUpdater is null) return;
-        if (!ConfirmDangerous(
-            $"模板更新会删除 env '{env.Name}' 的 ComfyUI 目录全部内容并重新 git clone。\n" +
-            "未提交的修改会丢失。是否继续?"))
-            return;
-        var kind = BusyKind.TemplateUpdate;
-        if (!_envBusy.TryAdd(env.RootPath, kind)) return;   // already busy
-        try
-        {
-            await TemplateUpdateStatus.RunAsync(async progress =>
-            {
-                var result = await _templateUpdater.UpdateAsync(env, progress);
-                if (!result.Success)
-                {
-                    TemplateUpdateStatus.Error = result.Reason ?? "未知错误";
-                }
-            });
-        }
-        finally
-        {
-            _envBusy.Remove(env.RootPath);
-            // wipe 后 ComfyuiSource 内容变了 → reload envs 让 UI 反映最新状态
-            // (env.ComfyuiSource 字段未变,但 disk state 变了)。
-            Load();
-            RaiseCommandsChanged();
-        }
-    }
+    // private async Task UpdateTemplateAsync(Environment? env) { ... }   // removed v0.6.22.x
 
     /// <summary>
     /// v0.6.22 T5:destructive 操作前的 MessageBox 二次确认 — 模板更新 / 删除等
@@ -1846,8 +1795,5 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.17:启动 / 关面板 / 启动成功 / 删除 env 都会改 _startStatuses dict,
         // "再次打开" 按钮要 refresh。
         ReopenStartStatusCommand.RaiseCanExecuteChanged();
-        // v0.6.22 T5:模板更新命令也依赖 IsEnvBusy + env.ComfyuiSource 存在,
-        // wipe + clone 后要 refresh 让按钮重新 enable。
-        UpdateTemplateCommand.RaiseCanExecuteChanged();
     }
 }
