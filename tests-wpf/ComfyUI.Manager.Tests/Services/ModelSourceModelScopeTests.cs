@@ -42,7 +42,27 @@ public class ModelSourceModelScopeTests
         var src = new ModelScopeModelSource(CreateClient(handler), "https://www.modelscope.cn", "");
         var entries = await src.SearchAsync("", 50, default);
         Assert.Equal(2, entries.Count);
-        // 不验 URL — 改由 SearchPageAsync_AddsPageParam 测试
+        // URL 参数校验见 SearchPageAsync_BuildsUrlWithExpectedQueryParams 测试。
+    }
+
+    [Fact]
+    public async Task SearchPageAsync_BuildsUrlWithExpectedQueryParams()
+    {
+        // 验证 BuildUrl 输出含 PageNumber=1, PageSize=8, Search=<encoded query>。
+        // Search 编码双兼容(Uri.ToString() 不解码,某些 .NET 版本会解码)—
+        // 见 v0.6.22+ URL logged 教训。
+        var resp = MakeListResponse(count: 1, pageNumber: 1, pageSize: 8, totalCount: 1);
+        var handler = new DelegatingHandlerStub(resp);
+        var src = new ModelScopeModelSource(CreateClient(handler), "https://www.modelscope.cn", "");
+        var (entries, _) = await src.SearchPageAsync(
+            "测试", null, 8, CivitAiSort.Newest, CivitAiPeriod.AllTime, default,
+            true, null, null);
+        Assert.Single(entries);
+        var url = handler.Requests[0].RequestUri!.ToString();
+        Assert.Contains("PageNumber=1", url);
+        Assert.Contains("PageSize=8", url);
+        Assert.True(url.Contains("测试") || url.Contains("%E4%B8%AD%E6%96%87"),
+            $"Search query 应在 URL 中(原文或 percent-encoded),实际:{url}");
     }
 
     [Fact]

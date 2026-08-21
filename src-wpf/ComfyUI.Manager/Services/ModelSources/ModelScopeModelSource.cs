@@ -86,7 +86,8 @@ public class ModelScopeModelSource : IModelSource
         bool includeNsfw = true, string? baseModel = null,
         IProgress<string>? progress = null)
     {
-        var pageNumber = string.IsNullOrEmpty(cursor) ? 1 : int.Parse(cursor) + 1;
+        var pageNumber = string.IsNullOrEmpty(cursor) ? 1
+            : (int.TryParse(cursor, out var n) ? n + 1 : 1);
         var url = BuildUrl(query, pageNumber, pageSize);
         var uri = new Uri(url);
         var proxyInfo = FormatProxyInfo(_proxy);
@@ -134,7 +135,7 @@ public class ModelScopeModelSource : IModelSource
             var (entry, versionList) = MapListItemToEntry(item);
             try
             {
-                await FillEntryFromDetailAsync(entry, versionList, item.Id);
+                await FillEntryFromDetailAsync(entry, versionList, item.Id, ct);
             }
             catch (Exception ex)
             {
@@ -252,11 +253,12 @@ public class ModelScopeModelSource : IModelSource
         return ModelKind.Other;
     }
 
-    private async Task FillEntryFromDetailAsync(ModelEntry entry, List<ModelVersionEntry> versionList, long id)
+    private async Task FillEntryFromDetailAsync(ModelEntry entry, List<ModelVersionEntry> versionList, long id,
+        CancellationToken ct)
     {
         var url = $"{_baseUrl}/api/v1/models/{id}";
-        var httpResp = await _http.GetAsync(url).ConfigureAwait(false);
-        var body = await httpResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var httpResp = await _http.GetAsync(url, ct).ConfigureAwait(false);
+        var body = await httpResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!httpResp.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
