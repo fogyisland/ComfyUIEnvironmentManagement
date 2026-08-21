@@ -29,7 +29,7 @@ public class ModelEntry
     [JsonPropertyName("versions")] public IReadOnlyList<ModelVersionEntry> Versions { get; init; } = Array.Empty<ModelVersionEntry>();
 }
 
-public enum ModelSourceKind { CivitAi = 0, HuggingFace = 1 }
+public enum ModelSourceKind { CivitAi = 0, HuggingFace = 1, ModelScope = 2 }
 
 public enum ModelKind
 {
