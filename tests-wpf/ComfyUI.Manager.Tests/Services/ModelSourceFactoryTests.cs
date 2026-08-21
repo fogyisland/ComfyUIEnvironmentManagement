@@ -23,7 +23,9 @@ public class ModelSourceFactoryTests
         string civitaiToken = "",
         bool hf = false, string hfToken = "", bool hfMirror = true, string hfMirrorUrl = "https://hf-mirror.com",
         ModelSourceProxyMode hfProxyMode = ModelSourceProxyMode.InheritGlobal,
-        HttpProxyMode httpProxyMode = HttpProxyMode.Off, string httpProxyUrl = "http://127.0.0.1", int httpProxyPort = 7890)
+        HttpProxyMode httpProxyMode = HttpProxyMode.Off, string httpProxyUrl = "http://127.0.0.1", int httpProxyPort = 7890,
+        bool modelScope = false, bool modelScopeMirror = false, string modelScopeMirrorUrl = "",
+        string modelScopeToken = "", ModelSourceProxyMode modelScopeProxyMode = ModelSourceProxyMode.InheritGlobal)
         => new Settings
         {
             ModelSourceCivitAiEnabled = civitai,
@@ -39,6 +41,11 @@ public class ModelSourceFactoryTests
             HttpProxyMode = httpProxyMode,
             HttpProxyUrl = httpProxyUrl,
             HttpProxyPort = httpProxyPort,
+            ModelSourceModelScopeEnabled = modelScope,
+            ModelSourceModelScopeUseMirror = modelScopeMirror,
+            ModelSourceModelScopeMirrorUrl = modelScopeMirrorUrl,
+            ModelSourceModelScopeApiToken = modelScopeToken,
+            ModelSourceModelScopeProxyMode = modelScopeProxyMode,
         };
 
     /// <summary>测试用 builder:接收 HttpProxyConfig?,记下传进来的 proxy + 返回带/不带 proxy 的 HttpClient。</summary>
@@ -230,5 +237,52 @@ public class ModelSourceFactoryTests
         var b = new RecordingBuilder();
         var src = ModelSourceFactory.CreateCivitAi(settings, b.AsFunc());
         Assert.NotNull(src);
+    }
+
+    // —— v0.6.22.x:ModelScope 国内模型源 factory 接入 ——
+
+    [Fact]
+    public void CreateModelScope_Disabled_ReturnsNull()
+    {
+        var settings = MakeSettings(modelScope: false);
+        var b = new RecordingBuilder();
+        var result = ModelSourceFactory.CreateModelScope(settings, b.AsFunc());
+        Assert.Null(result);
+        Assert.Empty(b.Calls);
+    }
+
+    [Fact]
+    public void CreateModelScope_UseMirror_ResolvesMirrorUrl()
+    {
+        var settings = MakeSettings(modelScope: true, modelScopeMirror: true,
+            modelScopeMirrorUrl: "https://ms-mirror.example.com/");
+        var b = new RecordingBuilder();
+        var src = ModelSourceFactory.CreateModelScope(settings, b.AsFunc());
+        Assert.NotNull(src);
+        Assert.Equal(ModelSourceKind.ModelScope, src!.SourceKind);
+        Assert.Equal("ModelScope", src.DisplayName);
+    }
+
+    [Fact]
+    public void CreateModelScope_Official_NoMirror_ReturnsOfficialBase()
+    {
+        var settings = MakeSettings(modelScope: true, modelScopeMirror: false);
+        var b = new RecordingBuilder();
+        var src = ModelSourceFactory.CreateModelScope(settings, b.AsFunc());
+        Assert.NotNull(src);
+    }
+
+    [Fact]
+    public void CreateAll_ThreeSources_ReturnsThree()
+    {
+        var settings = MakeSettings(
+            civitai: true, hf: true, modelScope: true,
+            modelScopeMirror: false);
+        var b = new RecordingBuilder();
+        var sources = new List<IModelSource>(ModelSourceFactory.CreateAll(settings, b.AsFunc()));
+        Assert.Equal(3, sources.Count);
+        Assert.Equal(ModelSourceKind.CivitAi, sources[0].SourceKind);
+        Assert.Equal(ModelSourceKind.ModelScope, sources[1].SourceKind);
+        Assert.Equal(ModelSourceKind.HuggingFace, sources[2].SourceKind);
     }
 }

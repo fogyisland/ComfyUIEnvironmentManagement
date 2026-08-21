@@ -20,6 +20,7 @@ public static class ModelSourceFactory
 {
     public const string CivitAiOfficial = "https://civitai.com";
     public const string HuggingFaceOfficial = "https://huggingface.co";
+    public const string ModelScopeOfficial = "https://www.modelscope.cn";
 
     public static CivitAiModelSource? CreateCivitAi(
         Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder,
@@ -55,6 +56,23 @@ public static class ModelSourceFactory
         return new HuggingFaceModelSource(http, baseUrl, settings.HuggingFaceApiToken, logger, proxy);
     }
 
+    /// <summary>v0.6.22.x:ModelScope 国内模型源 — 默认 disabled,勾选后才创建。</summary>
+    public static ModelScopeModelSource? CreateModelScope(
+        Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder,
+        AppLogger? logger = null)
+    {
+        if (!settings.ModelSourceModelScopeEnabled) return null;
+        var baseUrl = ResolveBaseUrl(settings.ModelSourceModelScopeUseMirror,
+                                     settings.ModelSourceModelScopeMirrorUrl,
+                                     ModelScopeOfficial);
+        var proxy = ModelSourceProxyDecision.Resolve(
+            settings.HttpProxyMode,
+            settings.ModelSourceModelScopeProxyMode,
+            settings);
+        var http = httpBuilder(proxy);
+        return new ModelScopeModelSource(http, baseUrl, settings.ModelSourceModelScopeApiToken, logger, proxy);
+    }
+
     public static IEnumerable<IModelSource> CreateAll(
         Settings settings, Func<HttpProxyConfig?, HttpClient> httpBuilder,
         AppLogger? logger = null)
@@ -62,6 +80,8 @@ public static class ModelSourceFactory
         var sources = new List<IModelSource>();
         var civitai = CreateCivitAi(settings, httpBuilder, logger);
         if (civitai is not null) sources.Add(civitai);
+        var modelScope = CreateModelScope(settings, httpBuilder, logger);
+        if (modelScope is not null) sources.Add(modelScope);
         var hf = CreateHuggingFace(settings, httpBuilder, logger);
         if (hf is not null) sources.Add(hf);
         return sources;

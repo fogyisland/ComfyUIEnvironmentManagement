@@ -110,6 +110,19 @@ public class Settings
     [JsonPropertyName("model_source_huggingface_proxy_mode")]
     public ModelSourceProxyMode ModelSourceHuggingFaceProxyMode { get; set; } = ModelSourceProxyMode.InheritGlobal;
 
+    // v0.6.22.x:ModelScope 国内模型源 — 默认 disabled(避免新装用户没配 token 看到空结果,
+    // 需要时手动勾选;镜像 HF/CivitAI 同模式)。
+    [JsonPropertyName("model_source_modelscope_enabled")]
+    public bool ModelSourceModelScopeEnabled { get; set; } = false;
+    [JsonPropertyName("modelscope_api_token")]
+    public string ModelSourceModelScopeApiToken { get; set; } = "";
+    [JsonPropertyName("model_source_modelscope_use_mirror")]
+    public bool ModelSourceModelScopeUseMirror { get; set; } = false;
+    [JsonPropertyName("model_source_modelscope_mirror_url")]
+    public string ModelSourceModelScopeMirrorUrl { get; set; } = "";
+    [JsonPropertyName("model_source_modelscope_proxy_mode")]
+    public ModelSourceProxyMode ModelSourceModelScopeProxyMode { get; set; } = ModelSourceProxyMode.InheritGlobal;
+
     // —— 环境 / 工具 ——
     [JsonPropertyName("python_venv_baseline")] public string PythonVenvBaseline { get; set; } = "";
     // v0.6.22++:全局代理三态 — Off / InheritSystem / Custom。
@@ -217,6 +230,11 @@ public class Settings
         target.ModelSourceHuggingFaceMirrorUrl = source.ModelSourceHuggingFaceMirrorUrl;
         target.ModelSourceCivitAiProxyMode = source.ModelSourceCivitAiProxyMode;
         target.ModelSourceHuggingFaceProxyMode = source.ModelSourceHuggingFaceProxyMode;
+        target.ModelSourceModelScopeEnabled = source.ModelSourceModelScopeEnabled;
+        target.ModelSourceModelScopeApiToken = source.ModelSourceModelScopeApiToken;
+        target.ModelSourceModelScopeUseMirror = source.ModelSourceModelScopeUseMirror;
+        target.ModelSourceModelScopeMirrorUrl = source.ModelSourceModelScopeMirrorUrl;
+        target.ModelSourceModelScopeProxyMode = source.ModelSourceModelScopeProxyMode;
         // —— 环境 / 工具 ——
         target.PythonVenvBaseline = source.PythonVenvBaseline;
         target.GitExe = source.GitExe;
