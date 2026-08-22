@@ -2,14 +2,14 @@
 # M5.2 release build — WPF-only zip, no Python service.
 # Output: release/ComfyUI-Manager-v0.6.0-win-x64.zip
 param(
-    [string]$Version = "0.6.0",
+    [string]$Version = "1.0.0",
     [string]$OutputDir = "release"
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path "$PSScriptRoot/.."
 $StageDir = Join-Path $Root "$OutputDir/staging"
-$ZipPath = Join-Path $Root "$OutputDir/ComfyUI-Manager-v$Version-win-x64.zip"
+$ZipPath = Join-Path $Root "$OutputDir/ComfyUIManagement-v$Version-win-x64.zip"
 
 Write-Host "=== M5.2 release build v$Version (WPF-only) ===" -ForegroundColor Cyan
 
@@ -17,7 +17,7 @@ Write-Host "=== M5.2 release build v$Version (WPF-only) ===" -ForegroundColor Cy
 Write-Host "[1/7] Cleaning staging..." -ForegroundColor Yellow
 if (Test-Path $StageDir) { Remove-Item -Recurse -Force $StageDir }
 New-Item -ItemType Directory -Path $StageDir | Out-Null
-$AppDir = Join-Path $StageDir "ComfyUI Manager"
+$AppDir = Join-Path $StageDir "ComfyUIManagement"
 New-Item -ItemType Directory -Path $AppDir | Out-Null
 
 # 2. dotnet publish self-contained
@@ -63,6 +63,23 @@ if (-not (Test-Path (Join-Path $AppDir "ComfyUI"))) {
 }
 # copy with overwrite so re-runs stay clean
 robocopy "$Root/ComfyUI" (Join-Path $AppDir "ComfyUI") /MIR /NJH /NJS /NDL /NFL /NC /NS | Out-Null
+
+# v1.0.0:预填 catalog-cache.db
+Write-Host "[6/7] Pre-filling catalog-cache.db..." -ForegroundColor Yellow
+$DataDir = Join-Path $PublishDir "data"
+New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+$CatalogDb = Join-Path $DataDir "catalog-cache.db"
+if (-not (Test-Path $CatalogDb) -or $env:REBUILD_CATALOG -eq "1") {
+    python "$Root/scripts/prefill_catalog_cache.py" $CatalogDb
+    if ($LASTEXITCODE -ne 0) { throw "prefill_catalog_cache.py failed" }
+} else {
+    Write-Host "  catalog-cache.db exists, skipping (set REBUILD_CATALOG=1 to force)" -ForegroundColor DarkGray
+}
+
+# v1.0.0:运行期 extras(README + uninstall + startmenu 快捷方式)
+Write-Host "[6.5/7] Emitting extras..." -ForegroundColor Yellow
+& "$Root/tools/build_release_extras.ps1" -AppDir $AppDir -Version $Version
+if ($LASTEXITCODE -ne 0) { throw "build_release_extras.ps1 failed" }
 
 # 6. docs + logs dir + zip
 Write-Host "[7/7] Finalizing + compressing..." -ForegroundColor Yellow
