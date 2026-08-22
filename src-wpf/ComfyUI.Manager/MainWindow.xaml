@@ -112,6 +112,8 @@
                 <!-- v0.6.19 T10:工作流市场 — 聚合 3 个 IWorkflowSource (Community/CivitAI/OpenArt) + batch download + env-start 后自动 symlink workflows 到 env。 -->
                 <RadioButton Content="工作流库" GroupName="SidebarNav"
                              Command="{Binding ShowWorkflowsCommand}"
+                             IsEnabled="False"
+                             ToolTip="将在后续版本提供"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Workflows, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v0.6.20 T9:模型市场 — 紧邻工作流市场(同类"市场"分区,UI 连排便于切换)。
@@ -119,6 +121,8 @@
                      env-start 后自动 symlink 已下载 models 到 env。 -->
                 <RadioButton Content="模型市场" GroupName="SidebarNav"
                              Command="{Binding ShowModelsCommand}"
+                             IsEnabled="False"
+                             ToolTip="将在后续版本提供"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Models, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <RadioButton Content="本地节点" GroupName="SidebarNav"
