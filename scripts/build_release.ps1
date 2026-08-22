@@ -59,9 +59,11 @@ Write-Host "[4/8] Moving satellite resource assemblies to languages/..." -Foregr
 $LanguagesDir = Join-Path $AppDir "languages"
 New-Item -ItemType Directory -Path $LanguagesDir -Force | Out-Null
 Get-ChildItem -Path $AppDir -Directory | Where-Object {
-    # 卫星 culture 子目录:形如 "zh-CN" / "en-US" — 形如 5 字母 + dash + 2 字母
+    # 卫星 culture 子目录(BCP 47 形态):"zh" / "zh-CN" / "en-US" / "zh-Hans" / "zh-Hant"
+    # — language(2 lowercase) + 可选 script([A-Z][a-z]{3},e.g. Hans/Hant/Cyrl)
+    #   或 region(2 uppercase 或 3 digits,e.g. CN/TW/419)
     # 跳过非 culture 顶层目录(Embeded/Python/ComfyUI 等)
-    $_.Name -match '^[a-z]{2}(-[A-Z]{2})?$'
+    $_.Name -match '^[a-z]{2}(-[A-Z][a-z]{3}|-[A-Z]{2}|-[0-9]{3})?$'
 } | ForEach-Object {
     $cultureDir = $_.FullName
     $targetDir = Join-Path $LanguagesDir $_.Name
