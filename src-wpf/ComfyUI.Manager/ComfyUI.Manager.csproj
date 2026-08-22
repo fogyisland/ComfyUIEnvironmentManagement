@@ -12,7 +12,7 @@
          编译期嵌入 EXE 的图标(Explorer 显示),跟 XAML Window.Icon 运行时 URI 不同机制。
          路径必须相对项目目录解析,所以指 ..\..\asset\icon.ico(对应仓库根 asset/icon.ico)。 -->
     <ApplicationIcon>..\..\asset\icon.ico</ApplicationIcon>
-    <Version>0.6.5.6</Version>
+    <Version>1.0.0</Version>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
   </PropertyGroup>
