@@ -290,7 +290,7 @@ public partial class App : Application
         var comfyUiManagerInstaller = new ComfyUIManagerInstaller(reqFileInstaller, gitExe, gitProxy, logger);
         // v0.6.22.x:ComfyUI 模板更新 service — 工具菜单 → 模板更新按钮触发。
         // v0.6.22 T5 原版注入 EnvironmentRepository(从未使用,dead code)+ 给 EnvironmentListViewModel,
-        // T5.x 改:目标 = <projectRoot>/ComfyUI/ master template(不需要 envRepo),
+        // T5.x 改:目标 = <projectRoot>/ComfyUITemplate/ master template(不需要 envRepo),
         // 改注入 MainViewModel。
         var comfyUiTemplateUpdater = new ComfyUITemplateUpdater(gitRunner, logger);
         // v0.6.11++:常用节点自动装 service(env-create 末尾 + 装依赖末尾触发)。

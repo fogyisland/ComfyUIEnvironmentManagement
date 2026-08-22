@@ -108,7 +108,7 @@ public class MainViewModel : ViewModelBase
     // fire-and-forget sync 已下载 models 到 env。可空保留旧测试 ctor 兼容。
     private readonly ModelSymlinker? _modelSymlinker;
     // v0.6.22.x: ComfyUI 模板更新 service —— 模板更新操作从 env-list 移到主窗口
-    // 工具菜单,目标改为 <projectRoot>/ComfyUI/ master template(用户 2026-08-21
+    // 工具菜单,目标改为 <projectRoot>/ComfyUITemplate/ master template(v1.0.0+ 从 `ComfyUI/` 重命名;用户 2026-08-21
     // 反馈"我们不会去更新环境中的环境,只是为下一个创建的环境更新")。不再透传给
     // EnvironmentListViewModel,UpdateTemplateCommand / TemplateUpdateStatus 改挂
     // 在 MainViewModel 上。
@@ -300,8 +300,8 @@ public class MainViewModel : ViewModelBase
     public RelayCommand OpenComfySettingsJsonCommand { get; }
     public RelayCommand OpenExtraModelPathsYamlCommand { get; }
     public RelayCommand ExitAppCommand { get; }
-    /// <summary>v0.6.22.x:工具菜单 → 模板更新。目标 = &lt;projectRoot&gt;/ComfyUI/
-    /// master template(影响下次 env 创建),不更新现有 env 的 ComfyUI clone。
+    /// <summary>v0.6.22.x:工具菜单 → 模板更新。目标 = &lt;projectRoot&gt;/ComfyUITemplate/
+    /// master template(v1.0.0+ 从 `ComfyUI/` 重命名;影响下次 env 创建),不更新现有 env 的 ComfyUI clone。
     /// CanExecute = _templateUpdater 已注入 + !TemplateUpdateStatus.IsBusy。</summary>
     public RelayCommand UpdateTemplateCommand { get; }
     public RelayCommand ShowAboutCommand { get; }
@@ -455,7 +455,7 @@ public class MainViewModel : ViewModelBase
         OpenComfySettingsJsonCommand = new RelayCommand(_ => OpenComfyConfigFile("comfy.settings.json"));
         OpenExtraModelPathsYamlCommand = new RelayCommand(_ => OpenComfyConfigFile("extra_model_paths.yaml"));
         ExitAppCommand = new RelayCommand(_ => DoExit());
-        // v0.6.22.x:模板更新菜单命令。wipe <projectRoot>/ComfyUI/ + git clone,
+        // v0.6.22.x:模板更新菜单命令。wipe <projectRoot>/ComfyUITemplate/ + git clone,
         // 影响下一次 env 创建(per-env ComfyUI clones 不动)。CanExecute = _templateUpdater
         // 已注入 + !TemplateUpdateStatus.IsBusy(避免并发跑两份)。
         UpdateTemplateCommand = new RelayCommand(
@@ -747,7 +747,7 @@ public class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// v0.6.22.x:工具菜单 → 模板更新 handler。wipe <projectRoot>/ComfyUI/ 全部
+    /// v0.6.22.x:工具菜单 → 模板更新 handler。wipe <projectRoot>/ComfyUITemplate/ 全部
     /// 内容 + git clone comfyanonymous/ComfyUI --depth=1,影响下一次 env 创建。
     /// 不动现有 env 的 ComfyUI clones(用户 2026-08-21 反馈"我们不会去更新环境
     /// 中的环境")。流程:MessageBox 二次确认 → TemplateUpdateStatus 跑进度 →

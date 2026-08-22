@@ -12,8 +12,8 @@ namespace ComfyUI.Manager.Services;
 ///
 /// v0.6.22.x 改:v0.6.22 T5 是 per-env(env.ComfyuiSource),用户 2026-08-21 反馈
 /// "我们默认只有一个模板...我们不会去更新环境中的环境,只是为下一个创建的
-/// 环境更新" — 重构为 path-based,目标 = &lt;projectRoot&gt;/ComfyUI/ master template,
-/// 用于下一次创建 env 时复制(shared 布局 / script bundle)。
+/// 环境更新" — 重构为 path-based,目标 = &lt;projectRoot&gt;/ComfyUITemplate/ master template
+/// (v1.0.0+ 从 `ComfyUI/` 重命名),用于下一次创建 env 时复制(shared 布局 / script bundle)。
 ///
 /// Confirms:
 /// - Caller MUST gate with confirm dialog before invoking — this service will

@@ -215,7 +215,7 @@ public class EnvironmentListViewModel : ViewModelBase
     /// <summary>
     /// v0.6.22.x 删:"模板更新"按钮从 env-list 移到主窗口 工具菜单
     /// (MainViewModel.UpdateTemplateCommand)。用户原话"我们不会去更新环境
-    /// 中的环境,只是为下一个创建的环境更新" — 操作对象改为 &lt;projectRoot&gt;/ComfyUI/
+    /// 中的环境,只是为下一个创建的环境更新" — 操作对象改为 &lt;projectRoot&gt;/ComfyUITemplate/
     /// master template,只影响下一次 env 创建,不再影响现有 env。
     /// </summary>
     // public RelayCommand UpdateTemplateCommand { get; }   // removed v0.6.22.x
@@ -479,7 +479,7 @@ public class EnvironmentListViewModel : ViewModelBase
             });
         // v0.6.22.x 删:UpdateTemplateCommand 整段移除(改到 MainViewModel)。
         //         env-list 不再有"模板更新"按钮,操作对象是 global master template
-        //         (<projectRoot>/ComfyUI/),与 per-env 无关。
+        //         (<projectRoot>/ComfyUITemplate/),与 per-env 无关。
         // v0.6.15.8 T5:NodeManagement 面板 open/close 命令。
         // CanExecute 镜像其他长操作命令(看 env 非 null + !IsEnvBusy)。
         // Close 命令始终可执行(允许用户在面板可见时手动关)。
@@ -1750,7 +1750,7 @@ public class EnvironmentListViewModel : ViewModelBase
 
     /// <summary>
     /// v0.6.22.x 删:UpdateTemplateAsync 移到 MainViewModel(操作对象是
-    /// &lt;projectRoot&gt;/ComfyUI/ master template,与 per-env mutex 解耦)。
+    /// &lt;projectRoot&gt;/ComfyUITemplate/ master template,与 per-env mutex 解耦)。
     /// </summary>
     // private async Task UpdateTemplateAsync(Environment? env) { ... }   // removed v0.6.22.x
 
