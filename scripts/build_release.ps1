@@ -1,6 +1,6 @@
 # scripts/build_release.ps1
 # M5.2 release build — WPF-only zip, no Python service.
-# Output: release/ComfyUI-Manager-v0.6.0-win-x64.zip
+# Output: release/ComfyUIManagement-v1.0.0-win-x64.zip
 param(
     [string]$Version = "1.0.0",
     [string]$OutputDir = "release"
@@ -66,9 +66,9 @@ robocopy "$Root/ComfyUI" (Join-Path $AppDir "ComfyUI") /MIR /NJH /NJS /NDL /NFL 
 
 # v1.0.0:预填 catalog-cache.db
 Write-Host "[6/7] Pre-filling catalog-cache.db..." -ForegroundColor Yellow
-$DataDir = Join-Path $PublishDir "data"
-New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
-$CatalogDb = Join-Path $DataDir "catalog-cache.db"
+$AppDataDir = Join-Path $AppDir "data"
+New-Item -ItemType Directory -Path $AppDataDir -Force | Out-Null
+$CatalogDb = Join-Path $AppDataDir "catalog-cache.db"
 if (-not (Test-Path $CatalogDb) -or $env:REBUILD_CATALOG -eq "1") {
     python "$Root/scripts/prefill_catalog_cache.py" $CatalogDb
     if ($LASTEXITCODE -ne 0) { throw "prefill_catalog_cache.py failed" }
@@ -94,4 +94,4 @@ Compress-Archive -Path "$AppDir/*" -DestinationPath $ZipPath -CompressionLevel O
 
 $Size = (Get-Item $ZipPath).Length / 1MB
 Write-Host "✓ Built $ZipPath ($([math]::Round($Size, 1)) MB)" -ForegroundColor Green
-Write-Host "Unzip and run 'ComfyUI Manager.exe' to test." -ForegroundColor Green
+Write-Host "Unzip and run 'ComfyUIManagement\ComfyUI.Manager.exe' to test." -ForegroundColor Green
