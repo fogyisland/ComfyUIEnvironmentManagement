@@ -4,7 +4,7 @@
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         Title="选择节点" Height="600" Width="870"
         Background="{StaticResource BackgroundBrush}"
-        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
     <Grid Margin="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

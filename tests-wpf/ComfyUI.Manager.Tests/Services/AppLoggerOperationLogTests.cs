@@ -29,8 +29,9 @@ public class AppLoggerOperationLogTests : IDisposable
     public void OperationLogPath_RegularEnvName_ReturnsExpectedFormat()
     {
         var path = AppLogger.OperationLogPath("firstEnv", new DateTime(2026, 8, 12), _tmpDir);
-        // v0.6.17.3: 子目录布局 logs/env/firstEnv/2026-08-12.log(老格式是平面 Logs/operation-firstEnv-...)
-        Assert.Equal(Path.Combine(_tmpDir, "logs", "env", "firstEnv", "2026-08-12.log"), path);
+        // v0.6.17.3: 子目录布局 Logs/env/firstEnv/2026-08-12.log(老格式是平面 Logs/operation-firstEnv-...)
+        // v1.0.0: 目录重构 logs/ → Logs/(PascalCase,跟其它顶层目录一致)
+        Assert.Equal(Path.Combine(_tmpDir, "Logs", "env", "firstEnv", "2026-08-12.log"), path);
     }
 
     [Fact]
@@ -38,7 +39,8 @@ public class AppLoggerOperationLogTests : IDisposable
     {
         var path = AppLogger.OperationLogPath("foo/bar:baz", new DateTime(2026, 8, 12), _tmpDir);
         // v0.6.17.3: envName 净化结果决定子目录名;filename 现在只有日期
-        Assert.Equal(Path.Combine("foo_bar_baz", "2026-08-12.log"), Path.GetRelativePath(Path.Combine(_tmpDir, "logs", "env"), path));
+        // v1.0.0: Logs/(PascalCase)替换原来的 logs/
+        Assert.Equal(Path.Combine("foo_bar_baz", "2026-08-12.log"), Path.GetRelativePath(Path.Combine(_tmpDir, "Logs", "env"), path));
     }
 
     [Fact]
@@ -46,7 +48,8 @@ public class AppLoggerOperationLogTests : IDisposable
     {
         var path = AppLogger.OperationLogPath("", new DateTime(2026, 8, 12), _tmpDir);
         // 空 envName fallback "unknown" 子目录
-        Assert.Equal(Path.Combine(_tmpDir, "logs", "env", "unknown", "2026-08-12.log"), path);
+        // v1.0.0: Logs/(PascalCase)替换原来的 logs/
+        Assert.Equal(Path.Combine(_tmpDir, "Logs", "env", "unknown", "2026-08-12.log"), path);
     }
 
     [Fact]

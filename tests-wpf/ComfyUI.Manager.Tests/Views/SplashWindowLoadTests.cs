@@ -11,7 +11,7 @@ namespace ComfyUI.Manager.Tests.Views;
 
 /// <summary>
 /// v0.6.11+ dashboard/splash polish:STA-thread headless load 验证 Splash 新 XAML
-/// (asset/ComfyUI.png + 4-row ProgressBar + no Border bg)解析不抛 XamlParseException。
+/// (assets/ComfyUI.png + 4-row ProgressBar + no Border bg)解析不抛 XamlParseException。
 /// </summary>
 public class SplashWindowLoadTests
 {
@@ -65,10 +65,10 @@ public class SplashWindowLoadTests
     /// (用户原话"背景就是一张图片"),URI 错了就是全黑/全透明 splash,
     /// 而 XAML 解析本身不会抛(WPF Image.Source 失败走 ImageFailed 事件静默)。
     ///
-    /// 踩坑记录:asset/** 在 csproj 里是 &lt;None&gt; + CopyToOutputDirectory
+    /// 踩坑记录:assets/** 在 csproj 里是 &lt;None&gt; + CopyToOutputDirectory
     /// (松散文件),不是编译进 assembly 的 &lt;Resource&gt;,所以
-    /// pack://application:,,,/asset/x.png 一定抛 IOException 找不到资源;
-    /// 必须用 pack://siteoforigin:,,,/asset/x.png。v0.6.8 的 splash.png
+    /// pack://application:,,,/assets/x.png 一定抛 IOException 找不到资源;
+    /// 必须用 pack://siteoforigin:,,,/assets/x.png。v0.6.8 的 splash.png
     /// 一直是坏的,只是被 Border 背景色 + 静默 ImageFailed 盖住了没人发现。
     /// </summary>
     [Fact]
@@ -86,7 +86,7 @@ public class SplashWindowLoadTests
                 WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
 
                 var bmp = new BitmapImage(
-                    new Uri("pack://siteoforigin:,,,/asset/ComfyUI.png", UriKind.Absolute));
+                    new Uri("pack://siteoforigin:,,,/assets/ComfyUI.png", UriKind.Absolute));
                 size = $"{bmp.PixelWidth}x{bmp.PixelHeight}";
             }
             catch (Exception ex)

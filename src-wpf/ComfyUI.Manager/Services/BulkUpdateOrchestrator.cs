@@ -25,7 +25,7 @@ namespace ComfyUI.Manager.Services;
 /// - 超时:每个 git pull 上限 30s,超时即 cancel 进程,记为 failed。
 /// - 取消:Caller 通过传入的 CancellationToken 或调用本类的 CancelAsync()
 ///   取消,已发出的 Progress 行保留 terminal 状态,未发出的不再发出。
-/// - 日志:每个 bulk run 一个 &lt;projectRoot&gt;/logs/bulk-update-&lt;bulkId&gt;.log。
+/// - 日志:每个 bulk run 一个 &lt;projectRoot&gt;/Logs/bulk-update-&lt;bulkId&gt;.log。
 /// - 代理:每次 git 调用读 live HttpProxyConfig,启用时把 HTTP_PROXY/HTTPS_PROXY
 ///   写到 psi.EnvironmentVariables(per-process,不污染整个 WPF)。
 /// </summary>
@@ -156,7 +156,7 @@ public sealed class BulkUpdateOrchestrator
 
         _logger?.Info("bulk-update", $"开始 bulkId={bulkId[..8]} jobs={jobs.Count}");
 
-        var logPath = Path.Combine(_projectRoot, "logs", $"bulk-update-{bulkId}.log");
+        var logPath = Path.Combine(_projectRoot, "Logs", $"bulk-update-{bulkId}.log");
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
         // 全 run 共享一个流,而不是每次 (env,target) 重新打开 ——
         // 保持与 ProcessLauncher 的 log 格式风格一致,便于 tail。

@@ -4,7 +4,7 @@
         Title="确认" Height="200" Width="400"
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner"
-        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
     <StackPanel Margin="16">
         <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
         <StackPanel Orientation="Horizontal" Margin="0,16,0,0"

@@ -160,7 +160,7 @@ public sealed class BulkUpdateOrchestratorTests
 
         var tempRoot = Path.Combine(
             Path.GetTempPath(), $"comfy-bulk-{Guid.NewGuid():N}");
-        var logsRoot = Path.Combine(tempRoot, "logs");
+        var logsRoot = Path.Combine(tempRoot, "Logs");
         Directory.CreateDirectory(tempRoot);
 
         // working 仓库直接放在 comfyuiSource 上 —— orchestrator 用

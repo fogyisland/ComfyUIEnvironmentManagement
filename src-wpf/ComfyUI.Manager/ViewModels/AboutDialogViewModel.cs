@@ -22,10 +22,10 @@ public sealed class AboutDialogViewModel : ViewModelBase
     public const string RepositoryUrlValue = "https://github.com/fogyisland/ComfyUIEnvironmentManagement";
     public const string IssuesUrlValue = RepositoryUrlValue + "/issues";
     public const string LicenseTextValue = "MIT";
-    // v0.6.5.21 hotfix:用户桌面 `asset/receiveMark.jpg`(单数)就是微信支付收款码。
-    // v0.6.5.21 T9 创建的 `assets/`(复数)是占位,留作未来其他 asset 用,与 donate 无关。
+    // v1.0.0:目录重构 — asset/ → assets/(复数,仓库一致命名)。
+    // 微信支付收款码图片路径:projectRoot/assets/receiveMark.jpg。
     public const string DonateImageFileName = "receiveMark.jpg";
-    public const string DonateImageSubdirectory = "asset";
+    public const string DonateImageSubdirectory = "assets";
 
     // csproj 用 <Resource Include="Resources\Strings*.resx"> + MSBuild:_GenerateResxSource,
     // 该 generator 只把 .resx 编进二进制资源,不会生成 strong-typed Strings 类。

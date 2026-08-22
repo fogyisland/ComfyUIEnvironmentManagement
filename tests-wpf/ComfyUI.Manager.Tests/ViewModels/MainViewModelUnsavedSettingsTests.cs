@@ -101,10 +101,10 @@ public sealed class MainViewModelUnsavedSettingsTests : IDisposable
         Assert.True(mvm.ConfirmDiscardUnsavedSettings());
 
         Assert.False(svm.HasUnsavedChanges);
-        Assert.Equal("", svm.DefaultModelsDirectory);   // disk 默认值
+        Assert.Equal("Models", svm.DefaultModelsDirectory);   // disk 默认值
         // disk 没动
         var fresh = _settingsRepo.Load();
-        Assert.Equal("", fresh.DefaultModelsDirectory);
+        Assert.Equal("Models", fresh.DefaultModelsDirectory);
     }
 
     [Fact]
@@ -121,6 +121,6 @@ public sealed class MainViewModelUnsavedSettingsTests : IDisposable
         Assert.True(svm.HasUnsavedChanges);
         Assert.Equal("keep-dirty", svm.DefaultModelsDirectory);
         var fresh = _settingsRepo.Load();
-        Assert.Equal("", fresh.DefaultModelsDirectory);   // 没写盘
+        Assert.Equal("Models", fresh.DefaultModelsDirectory);   // 没写盘
     }
 }

@@ -7,7 +7,7 @@
         ShowInTaskbar="False" ShowActivated="False"
         Topmost="True" AllowsTransparency="True"
         Background="Transparent"
-        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
     <!-- T4 bake 出 icon.ico 后可把上面的 Icon 换成 .ico。注意 Window.Icon 跟
          Image.Source 行为不同 — 指向不存在的文件会在 XAML 解析期直接抛
          IOException(不是静默走 ImageFailed),所以必须指向真实存在的文件。 -->
@@ -26,12 +26,12 @@
          Image 缺失时控件空,背景透明 → 用户看不到 splash 但 main 仍能 Show。
 
          URI 必须是 pack://siteoforigin: 而不是 pack://application: —
-         asset/** 在 csproj 里是 <None> + CopyToOutputDirectory(松散文件),
+         assets/** 在 csproj 里是 <None> + CopyToOutputDirectory(松散文件),
          没编译进 assembly,application: 会抛 IOException 找不到资源。
          (v0.6.8 的 splash.png 一直用错的 application: 所以从来没显示过,
          被 Border 背景色 + 静默 ImageFailed 盖住了。) -->
     <Grid>
-        <Image Source="pack://siteoforigin:,,,/asset/ComfyUI.png"
+        <Image Source="pack://siteoforigin:,,,/assets/ComfyUI.png"
                Stretch="UniformToFill" />
 
         <!-- 右下角 title/tagline/version(原 v0.6.8 设计保留,上移让出底部进度条空间) -->

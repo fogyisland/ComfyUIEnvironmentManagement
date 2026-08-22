@@ -6,8 +6,9 @@ namespace ComfyUI.Manager.Data;
 
 /// <summary>
 /// CatalogCacheStore:窄化的 SQLite 连接工厂,只服务 <c>catalog_cache</c> 表。
-/// db 文件位于 &lt;AppBaseDir&gt;/data/catalog-cache.db,随包发布走,不混入
+/// db 文件位于 &lt;AppBaseDir&gt;/Data/catalog-cache.db,随包发布走,不混入
 /// %APPDATA% 的用户数据。
+/// v1.0.0:目录重构 data/ → Data/(PascalCase 跟其它顶层目录一致)。
 /// </summary>
 public sealed class CatalogCacheStore
 {
@@ -16,7 +17,7 @@ public sealed class CatalogCacheStore
     public CatalogCacheStore()
     {
         var baseDir = AppContext.BaseDirectory;
-        var dataDir = Path.Combine(baseDir, "data");
+        var dataDir = Path.Combine(baseDir, "Data");
         Directory.CreateDirectory(dataDir);
         DbPath = Path.Combine(dataDir, "catalog-cache.db");
     }

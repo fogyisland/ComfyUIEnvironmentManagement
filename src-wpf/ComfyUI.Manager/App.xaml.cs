@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -54,6 +56,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // v1.0.0:语言文件在 languages/<culture>/<resources>.dll(顶层目录结构重构后),
+        // 不再跟 MSBuild 默认 layout 一样放在 <exeDir>/<culture>/。注册一个
+        // AssemblyResolve 钩子把 satellite resource assembly 重定向到 languages/ 下。
+        // 必须在任何 ResourceManager.GetString 之前 hook,否则首次读资源就 fallback
+        // 到 default culture 然后再也找不到对应 zh-CN strings。
+        AppDomain.CurrentDomain.AssemblyResolve += ResolveSatelliteAssemblyFromLanguagesDir;
+
         // v0.6.8: Splash 立即显示 — 必须先于所有服务初始化,保证用户 0ms 看到
         // (G1)。失败静默,不阻断程序启动(G6 错误处理)。
         try
@@ -103,6 +112,11 @@ public partial class App : Application
         // localPaths.Directory (v0.6.16) 是唯一权威路径,跟 SettingsRepository 一致。
         if (FirstRun.FirstRunDetector.IsFirstRun(localPaths.Directory))
         {
+            // Splash 默认 Topmost=true,会盖在 wizard 上让用户看不到 wizard,误以为卡死。
+            // wizard 是 modal dialog,即使 Splash 非 Topmost 也能正常显示在上面。
+            // 启动 fade 让 Splash 让位,wizard 接收输入。
+            if (_splash != null) { _splash.Topmost = false; }
+            _splashVm?.StartFadeOut();
             var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(localPaths.Directory);
             var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
             if (wizard.ShowDialog() != true)
@@ -213,7 +227,8 @@ public partial class App : Application
         }
 
         // M5.2-T6: bulk update 在 WPF 端直接跑 git pull,git exe 优先用
-        // bin/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
+        // Embeded/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
+        // v1.0.0:目录重构 bin/ → Embeded/(portable 工具放 Embeded/ 下)。
         // settings.GitExe 优先,settings 是空则走默认。
         var gitExe = !string.IsNullOrWhiteSpace(settings.GitExe)
             ? settings.GitExe
@@ -431,9 +446,56 @@ public partial class App : Application
         try { _launcher?.Dispose(); } catch { }
     }
 
+    /// <summary>
+    /// v1.0.0:目录结构重构 — satellite resource assembly 路径从默认
+    /// <c>&lt;exeDir&gt;/&lt;culture&gt;/&lt;resources&gt;.dll</c> 重定向到
+    /// <c>&lt;exeDir&gt;/languages/&lt;culture&gt;/&lt;resources&gt;.dll</c>。
+    /// build_release.ps1 在 publish 完把 satellite DLLs 搬到 languages/ 下保持
+    /// 顶层目录干净(根目录只放 app exe,见用户的目录结构 spec)。
+    ///
+    /// 行为:
+    /// - 收到 ResourceManager 的 satellite assembly 请求(命名空间带 .resources 且
+    ///   请求的 culture 不是 invariant)→ 在 languages/ 下找同名 DLL;
+    /// - 找到 → 加载并返回;找不到 → 返回 null(让 .NET 走默认 fallback chain,
+    ///   通常最终回到 invariant/default culture);
+    /// - 不是 satellite assembly(主程序集 / 第三方 dll)→ 不管,返回 null。
+    ///
+    /// 注:不能 try AppContext.BaseDirectory 因为 publish 后 bin/ 不存在,跟 staging
+    /// 结构不一致(AppContext.BaseDirectory 在 self-contained publish 下指向
+    /// publish 根目录 = 用户的顶层目录,跟 Environment.ProcessPath 一致)。
+    /// </summary>
+    private static Assembly? ResolveSatelliteAssemblyFromLanguagesDir(object? sender, ResolveEventArgs args)
+    {
+        try
+        {
+            // args.Name 形如 "ComfyUI.Manager.resources, Version=..., Culture=zh-CN, PublicKeyToken=null"
+            var requested = new AssemblyName(args.Name);
+            if (!requested.Name.EndsWith(".resources", StringComparison.Ordinal))
+            {
+                return null;  // 非 satellite assembly → 交给默认 loader
+            }
+            if (string.IsNullOrEmpty(requested.CultureName) || requested.CultureName == "neutral")
+            {
+                return null;  // invariant / neutral culture → 默认就在主程序集里,不需要 resolve
+            }
+            var baseDir = AppContext.BaseDirectory;
+            var candidate = Path.Combine(baseDir, "languages", requested.CultureName, requested.Name + ".dll");
+            if (File.Exists(candidate))
+            {
+                return Assembly.LoadFrom(candidate);
+            }
+        }
+        catch
+        {
+            // 解析 / IO 异常 → 静默回退到默认 loader(G6)。
+        }
+        return null;
+    }
+
     private static string ResolveGitExe(string projectRoot)
     {
-        var portable = Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe");
+        // v1.0.0:目录重构 bin/ → Embeded/(portable 工具放 Embeded/ 下)。
+        var portable = Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe");
         if (File.Exists(portable)) return portable;
         return "git"; // fallback to PATH
     }

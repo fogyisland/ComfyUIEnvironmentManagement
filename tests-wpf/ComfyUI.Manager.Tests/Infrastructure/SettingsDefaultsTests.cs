@@ -14,12 +14,13 @@ public class SettingsDefaultsTests
     [Fact]
     public void Apply_TemplatePythonDir_EmptyDefaultsToPython()
     {
-        // template paths:空字段填默认子目录名(指向 package 自带的 portable python/)
+        // template paths:空字段填默认子目录名(指向 package 自带的 portable Python/)
+        // v1.0.0:子目录统一 PascalCase → "Python"(而非 v0.6.x 的 "python")
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("python", s.TemplatePythonDir);
+        Assert.Equal("Python", s.TemplatePythonDir);
     }
 
     [Fact]
@@ -103,16 +104,42 @@ public class SettingsDefaultsTests
     public void Apply_KeepsRelativePathUntouched()
     {
         // 设置页填了相对路径,Apply 不重新格式化或加 ../ 前缀
+        // v1.0.0:子目录统一 PascalCase,旧值 "envs" 会被 MigrateOldSubdirName 迁到 "Envs"
         var s = new Settings
         {
-            EnvsDir = "envs",
+            EnvsDir = "my-envs",  // 用户自定义子目录名 → 不在迁移表里,保持不变
             TemplatePythonDir = "..\\external-python",
         };
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("envs", s.EnvsDir);
+        Assert.Equal("my-envs", s.EnvsDir);
         Assert.Equal("..\\external-python", s.TemplatePythonDir);
+    }
+
+    [Fact]
+    public void Apply_MigratesLegacySubdirNames_ToPascalCase()
+    {
+        // v1.0.0:老 settings.json 里写过的旧子目录名(全小写 / kebab-case)
+        // 一次性迁到 PascalCase。其它用户自定义子目录名不受影响。
+        var s = new Settings
+        {
+            TemplatePythonDir = "python",
+            EnvsDir = "envs",
+            GlobalNodesDir = "global-nodes",
+            LocalNodeDirectory = "local-nodes",
+            WorkflowsDirectory = "workflows",
+            DefaultModelsDirectory = "models",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("Python", s.TemplatePythonDir);
+        Assert.Equal("Envs", s.EnvsDir);
+        Assert.Equal("Nodes", s.GlobalNodesDir);
+        Assert.Equal("LocalNodes", s.LocalNodeDirectory);
+        Assert.Equal("Workflow", s.WorkflowsDirectory);
+        Assert.Equal("Models", s.DefaultModelsDirectory);
     }
 
     [Fact]

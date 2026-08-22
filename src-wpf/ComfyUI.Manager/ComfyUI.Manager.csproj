@@ -7,11 +7,10 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>ComfyUI.Manager</AssemblyName>
     <RootNamespace>ComfyUI.Manager</RootNamespace>
-    <!-- v0.6.11+ T4:从 app.ico(1×1 占位)切到 asset/icon.ico,1408×768 源 PNG 烘成
-         6 个尺寸(16/32/48/64/128/256)的真实 Windows ICO。<ApplicationIcon> 是 MSBuild
-         编译期嵌入 EXE 的图标(Explorer 显示),跟 XAML Window.Icon 运行时 URI 不同机制。
-         路径必须相对项目目录解析,所以指 ..\..\asset\icon.ico(对应仓库根 asset/icon.ico)。 -->
-    <ApplicationIcon>..\..\asset\icon.ico</ApplicationIcon>
+    <!-- v1.0.0:从 asset/(单数)切到 assets/(复数) — 与用户目录结构重构一致。
+         <ApplicationIcon> 是 MSBuild 编译期嵌入 EXE 的图标(Explorer 显示),
+         跟 XAML Window.Icon 运行时 URI 不同机制。路径相对项目目录解析。 -->
+    <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <Version>1.0.0</Version>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
@@ -31,11 +30,11 @@
     </Resource>
   </ItemGroup>
   <ItemGroup>
-    <!-- v0.6.5.21 hotfix:把仓库根的 asset/(单数)拷到输出 — 微信支付收款码
-         receiveMark.jpg 由 AboutDialogViewModel + DonateQrViewModel 运行时读。
-         Link 节点保留 asset/ 相对路径(运行时 projectRoot/asset/receiveMark.jpg)。 -->
-    <None Include="..\..\asset\**\*">
-      <Link>asset\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    <!-- v1.0.0:把仓库根的 assets/(复数)拷到输出 — 微信支付收款码 receiveMark.jpg
+         由 AboutDialogViewModel + DonateQrViewModel 运行时读。
+         Link 节点保留 assets/ 相对路径(运行时 projectRoot/assets/receiveMark.jpg)。 -->
+    <None Include="..\..\assets\**\*">
+      <Link>assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- v0.6.11+ T3:Dashboard「最近更新」卡片运行时读 CHANGELOG.md 解析版本条目。

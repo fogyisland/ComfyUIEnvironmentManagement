@@ -169,8 +169,8 @@ public sealed class AppLogger : IDisposable
             }
         }
 
-        // 2) 新子目录布局 — {projectRoot}/logs/env/*/*.log
-        var envLogsRoot = Path.Combine(projectRoot, "logs", "env");
+        // 2) 新子目录布局 — {projectRoot}/Logs/env/*/*.log
+        var envLogsRoot = Path.Combine(projectRoot, "Logs", "env");
         if (Directory.Exists(envLogsRoot))
         {
             foreach (var envDir in Directory.EnumerateDirectories(envLogsRoot))
@@ -214,14 +214,16 @@ public sealed class AppLogger : IDisposable
     }
 
     /// <summary>
-    /// v0.6.17.3:per-env 日志文件路径改成 <c>{baseDir}/logs/env/{sanitized envName}/{yyyy-MM-dd}.log</c>
+    /// v0.6.17.3:per-env 日志文件路径改成 <c>{baseDir}/Logs/env/{sanitized envName}/{yyyy-MM-dd}.log</c>
     /// 子目录布局 — 用户原话"日志目录更改为 logs\env\环境名称\当前日期.log"。
+    ///
+    /// v1.0.0:目录重构 logs/ → Logs/(PascalCase),跟其它顶层目录一致。
     ///
     /// 旧(v0.6.12 ~ v0.6.17.2):<c>{baseDir}/Logs/operation-{envName}-{date}.log</c>(平面布局)
     /// 新:v0.6.17.3 起的 subdir layout — File Explorer 一目了然看到哪个 env 哪天跑了什么。
     ///
     /// envName 净化非法字符 + 截断 100 字符 + 空 fallback "unknown"(跟 v0.6.12 一致)。
-    /// baseDir 是 <c>logs/</c> 的父目录(默认 = 调用方 AppLogger 的 _projectRoot);
+    /// baseDir 是 <c>Logs/</c> 的父目录(默认 = 调用方 AppLogger 的 _projectRoot);
     /// 静态调用可显式传。
     /// </summary>
     public static string OperationLogPath(string envName, DateTime date, string? baseDir = null)
@@ -230,7 +232,7 @@ public sealed class AppLogger : IDisposable
             "OperationLogPath 静态调用必须显式传 baseDir");
         var sanitized = SanitizeFileName(envName);
         var fileName = $"{date:yyyy-MM-dd}.log";
-        return Path.Combine(dir, "logs", "env", sanitized, fileName);
+        return Path.Combine(dir, "Logs", "env", sanitized, fileName);
     }
 
     /// <summary>

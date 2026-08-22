@@ -23,21 +23,28 @@ namespace ComfyUI.Manager.Infrastructure;
 /// 解出绝对路径。
 ///
 /// 默认子目录名:
-///   - python    : 模板 Python 根(指向 package 自带的 portable python/ 目录,
+///   - Python    : 模板 Python 根(指向 package 自带的 portable Python/ 目录,
 ///                 内含 3.10/3.11/.../python.exe)
 ///   - ComfyUI   : shared 布局的 ComfyUI 源(package root/ComfyUI/)
-///   - envs      : EnvCreatorService 创建 env 时放这里(空 → 不预创建)
-///   - global-nodes : 全局 catalog 节点根(空 → 不预创建)
+///   - Envs      : EnvCreatorService 创建 env 时放这里(空 → 不预创建)
+///   - Nodes     : 全局 catalog 节点根(空 → 不预创建)
+///   - LocalNodes: catalog 主页「下载」按钮的目标目录(template-style,空字段自动填子目录名)
+///   - Workflow  : 工作流市场下载目录(template-style,空字段自动填子目录名)
+///   - Models    : env-create junction 目标 + 模型市场下载目录(template-style,空字段自动填子目录名)
+///
+/// v1.0.0 目录结构重构:子目录统一 PascalCase 与 package root 一致。旧版本(全小写
+/// 或 kebab-case)的子目录名(settings.json 里写过的)在 Apply 里通过 MigrateOldSubdirName
+/// 一次性迁到 PascalCase,无需用户手工改 settings.json。
 /// </summary>
 public static class SettingsDefaults
 {
-    public const string TemplatePythonSubdir = "python";
+    public const string TemplatePythonSubdir = "Python";
     public const string TemplateComfyuiSubdir = "ComfyUI";
-    public const string EnvsSubdir = "envs";
-    public const string GlobalNodesSubdir = "global-nodes";
-    public const string LocalNodesSubdir = "local-nodes";
-    public const string WorkflowsSubdir = "workflows";
-    public const string ModelsSubdir = "models";
+    public const string EnvsSubdir = "Envs";
+    public const string GlobalNodesSubdir = "Nodes";
+    public const string LocalNodesSubdir = "LocalNodes";
+    public const string WorkflowsSubdir = "Workflow";
+    public const string ModelsSubdir = "Models";
     public const string DefaultQuerySourceName = "comfyui manager";
     public const string DefaultQuerySourceUrl =
         "https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json";
@@ -60,16 +67,27 @@ public static class SettingsDefaults
     {
         if (s is null) return;
 
+        // v1.0.0 目录结构重构:老 settings.json 里写过的旧子目录名(全小写 / kebab-case)
+        // 一次性迁到 PascalCase,避免 service 在 projectRoot/envs/ 和 projectRoot/Envs/ 两边分裂。
+        // Resolve 之前的 MigrateOldSubdirName 必须走在前面,否则后续 MigrateOnly 会跳过相对路径。
+        s.TemplatePythonDir = MigrateOldSubdirName(s.TemplatePythonDir, "python", TemplatePythonSubdir);
+        s.TemplateComfyuiDir = MigrateOldSubdirName(s.TemplateComfyuiDir, "ComfyUI", TemplateComfyuiSubdir);
+        s.EnvsDir = MigrateOldSubdirName(s.EnvsDir, "envs", EnvsSubdir);
+        s.GlobalNodesDir = MigrateOldSubdirName(s.GlobalNodesDir, "global-nodes", GlobalNodesSubdir);
+        // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,空字段自动填子目录名。
+        s.LocalNodeDirectory = MigrateOldSubdirName(s.LocalNodeDirectory, "local-nodes", LocalNodesSubdir);
+        // v0.6.19:WorkflowsDirectory — template-style,空字段自动填 "Workflow" 子目录名
+        s.WorkflowsDirectory = MigrateOldSubdirName(s.WorkflowsDirectory, "workflows", WorkflowsSubdir);
+        // v0.6.22+:DefaultModelsDirectory — 同时担任 env-create junction 目标 + 模型市场下载目录。
+        // 原 v0.6.20 ModelsDirectory 字段已硬删,空字段自动填 "Models" 子目录名。
+        s.DefaultModelsDirectory = MigrateOldSubdirName(s.DefaultModelsDirectory, "models", ModelsSubdir);
+
         s.TemplatePythonDir = Resolve(s.TemplatePythonDir, TemplatePythonSubdir, projectRoot);
         s.TemplateComfyuiDir = Resolve(s.TemplateComfyuiDir, TemplateComfyuiSubdir, projectRoot);
         s.EnvsDir = MigrateOnly(s.EnvsDir, projectRoot);
         s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
-        // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,空字段自动填子目录名。
         s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
-        // v0.6.19:WorkflowsDirectory — template-style,空字段自动填 "workflows" 子目录名
         s.WorkflowsDirectory = Resolve(s.WorkflowsDirectory, WorkflowsSubdir, projectRoot);
-        // v0.6.22+:DefaultModelsDirectory — 同时担任 env-create junction 目标 + 模型市场下载目录。
-        // 原 v0.6.20 ModelsDirectory 字段已硬删,空字段自动填 "models" 子目录名。
         s.DefaultModelsDirectory = Resolve(s.DefaultModelsDirectory, ModelsSubdir, projectRoot);
 
         // 节点源:空列表 → 装默认 "comfyui manager";空 active → 回落到列表第一条
@@ -214,6 +232,17 @@ public static class SettingsDefaults
             return defaultSubdir;
         }
         return MigrateOnly(current, projectRoot);
+    }
+
+    /// <summary>
+    /// v1.0.0:老 settings.json 里写过的旧子目录名(全小写 / kebab-case)迁到新 PascalCase。
+    /// 只在字段等于 oldName(精确匹配,忽略大小写)时改写;其他值(用户手填的绝对路径、
+    /// 已经迁过的 PascalCase、空)都原样保留。空字段不在这里处理,留给 Resolve / MigrateOnly。
+    /// </summary>
+    private static string MigrateOldSubdirName(string current, string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(current)) return current;
+        return string.Equals(current, oldName, StringComparison.OrdinalIgnoreCase) ? newName : current;
     }
 
     /// <summary>

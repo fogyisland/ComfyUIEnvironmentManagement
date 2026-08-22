@@ -15,7 +15,7 @@ public partial class AboutDialog : Window
     /// <summary>
     /// 弹非模态 About 对话框(独立窗口,不阻塞主窗口 — v0.6.5.21 hotfix)。
     /// Owner 通常 <c>Application.Current.MainWindow</c>(用于位置关联 + WindowStartupLocation=CenterOwner)。
-    /// projectRoot 用于定位 <c>asset/receiveMark.jpg</c>(QR 单独从 DonateQrWindow 打开)。
+    /// projectRoot 用于定位 <c>assets/receiveMark.jpg</c>(QR 单独从 DonateQrWindow 打开)。
     /// </summary>
     public static void Show(Window owner, string projectRoot)
     {

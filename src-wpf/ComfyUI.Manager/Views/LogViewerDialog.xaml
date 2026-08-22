@@ -5,6 +5,6 @@
         Title="日志" Height="600" Width="900"
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner"
-        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
     <views:LogViewer DataContext="{Binding}" />
 </Window>

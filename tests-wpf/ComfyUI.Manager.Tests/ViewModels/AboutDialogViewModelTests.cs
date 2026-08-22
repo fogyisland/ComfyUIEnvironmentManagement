@@ -37,15 +37,15 @@ public class AboutDialogViewModelTests : IDisposable
     [Fact]
     public void DonateImageFileName_IsReceiveMarkJpg()
     {
-        // v0.6.5.21 hotfix:用户桌面 `asset/receiveMark.jpg` 是微信支付收款码
+        // v1.0.0:微信支付收款码文件路径 `assets/receiveMark.jpg`(复数 assets/ 统一目录)
         Assert.Equal("receiveMark.jpg", AboutDialogViewModel.DonateImageFileName);
     }
 
     [Fact]
-    public void DonateImageSubdirectory_IsAssetSingular()
+    public void DonateImageSubdirectory_IsAssetsPlural()
     {
-        // v0.6.5.21 hotfix:用单数 `asset/`(不是 v0.6.5.21 创建的复数 `assets/`)
-        Assert.Equal("asset", AboutDialogViewModel.DonateImageSubdirectory);
+        // v1.0.0:统一使用复数 `assets/`(目录重构后与仓库一致)
+        Assert.Equal("assets", AboutDialogViewModel.DonateImageSubdirectory);
     }
 
     [Fact]

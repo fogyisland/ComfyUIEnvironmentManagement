@@ -24,18 +24,22 @@ $readme = @'
 3. 首次启动会弹出配置向导(选择安装根目录 + Python 解释器)
 4. 配置完成后进入主界面
 
-## 目录说明
+## 目录结构(v1.0.0 重构)
 
 | 目录 | 说明 |
 |---|---|
-| `python/` | 内置 portable Python(用于创建环境)|
-| `bin/git-portable/` | 内置 git(用于拉取节点仓库)|
-| `ComfyUI/` | ComfyUI 源模板 |
-| `data/` | 节点详情缓存(catalog-cache.db) |
-| `logs/` | 运行日志 |
+| `ComfyUI.Manager.exe` | 应用主程序(根目录直接放) |
+| `ComfyUI/` | ComfyUI 源模板(shared 布局) |
+| `Python/` | 内置 portable Python(用于创建环境)|
+| `Embeded/git-portable/` | 内置 git(用于拉取节点仓库) |
+| `languages/<culture>/` | 多语言资源 DLL(每种 culture 一个子目录) |
+| `Data/` | 节点详情缓存(catalog-cache.db) |
+| `Logs/` | 运行日志 |
+| `assets/` | 图标 / 启动图 / 收款码 |
 
-用户配置后会在所选安装根目录下创建:`envs\`(环境)、`local-nodes\`(本地节点)、
-`workflows\`(工作流)、`models\`(模型)等子目录。
+用户配置后会在所选安装根目录下创建:`Envs\`(环境)、`Nodes\`(全局节点)、
+`LocalNodes\`(本地节点)、`Workflow\`(工作流)、`Models\`(模型)等子目录
+(子目录名走 PascalCase,跟 v0.6.x 的全小写不同,旧 settings.json 自动迁移)。
 
 ## 工作流 / 模型市场
 
@@ -61,12 +65,11 @@ setlocal
 echo 即将卸载 ComfyUIManagement ...
 echo.
 echo 该脚本会删除:
-echo   - 当前应用目录(包含 exe + python + git-portable)
+echo   - 当前应用目录(包含 exe + Python + Embeded + ComfyUI + ...)
 echo   - %%APPDATA%%\ComfyUI-Manager\.first-run-complete
 echo.
 echo 不会删除:
-echo   - %%APPDATA%%\ComfyUI-Manager\settings.json(用户配置)
-echo   - 安装根目录下创建的 envs\workflows\models 等用户数据
+echo   - 安装根目录下创建的 Envs\Workflow\Models 等用户数据
 echo.
 set /p CONFIRM=确认卸载?(Y/N)
 if /i not "%CONFIRM%"=="Y" goto :end

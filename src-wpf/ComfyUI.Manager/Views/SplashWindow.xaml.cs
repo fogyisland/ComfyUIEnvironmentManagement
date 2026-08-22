@@ -23,7 +23,7 @@ public partial class SplashWindow : Window
         Closed += (_, _) => _vm.RaiseFadeCompleted();
 
         // v0.6.8 G6: Image 加载失败静默 → Image 控件空,文本兜底显示
-        // 用 ImageFailed 事件捕获失败原因(典型:asset/ComfyUI.png 缺失或格式损坏)
+        // 用 ImageFailed 事件捕获失败原因(典型:assets/ComfyUI.png 缺失或格式损坏)
         Loaded += OnLoadedSubscribeImageFailed;
     }
 

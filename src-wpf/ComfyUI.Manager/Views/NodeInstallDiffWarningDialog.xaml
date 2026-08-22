@@ -5,7 +5,7 @@
         Background="{StaticResource BackgroundBrush}"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

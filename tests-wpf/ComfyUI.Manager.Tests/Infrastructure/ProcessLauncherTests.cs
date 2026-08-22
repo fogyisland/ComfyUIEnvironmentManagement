@@ -153,7 +153,7 @@ time.sleep(60)
 
         var path = launcher.LogFilePath("firstEnv", "env-d651ab01", new DateTime(2026, 8, 12));
 
-        Assert.Equal(@"C:\root\logs\env\firstEnv\2026-08-12.log", path);
+        Assert.Equal(@"C:\root\Logs\env\firstEnv\2026-08-12.log", path);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ time.sleep(60)
 
         var path = launcher.LogFilePath("foo/bar", "env-x", new DateTime(2026, 8, 12));
 
-        Assert.Equal(@"C:\root\logs\env\foo_bar\2026-08-12.log", path);
+        Assert.Equal(@"C:\root\Logs\env\foo_bar\2026-08-12.log", path);
     }
 
     [Fact]
@@ -188,7 +188,7 @@ time.sleep(60)
 
         var path = launcher.LogFilePath("firstEnv", "env-d651ab01", new DateTime(2026, 8, 12));
 
-        Assert.Equal(@"C:\root\logs\env\firstEnv\2026-08-12.log", path);
+        Assert.Equal(@"C:\root\Logs\env\firstEnv\2026-08-12.log", path);
     }
 
     [Fact]
@@ -206,7 +206,7 @@ time.sleep(60)
 
         var path = launcher.LogFilePath("firstEnv", "env-x", new DateTime(2026, 8, 12));
 
-        // Path.Combine normalizes separators — expect single separator before logs/env/
-        Assert.Equal(@"C:\custom\logs\logs\env\firstEnv\2026-08-12.log", path);
+        // Path.Combine normalizes separators — expect single separator before Logs/env/
+        Assert.Equal(@"C:\custom\logs\Logs\env\firstEnv\2026-08-12.log", path);
     }
 }

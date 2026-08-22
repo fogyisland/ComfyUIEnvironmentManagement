@@ -51,10 +51,10 @@ public class DashboardViewLoadTests
     /// <summary>
     /// Hero 区图标 URI 必须真的能解析。
     ///
-    /// 踩坑记录(同 SplashWindowLoadTests):asset/** 在 csproj 里是 &lt;None&gt; +
+    /// 踩坑记录(同 SplashWindowLoadTests):assets/** 在 csproj 里是 &lt;None&gt; +
     /// CopyToOutputDirectory(松散文件),不是编译进 assembly 的 &lt;Resource&gt;,
-    /// 所以 pack://application:,,,/asset/icon.png 一定抛 IOException 找不到资源;
-    /// 必须用 pack://siteoforigin:,,,/asset/icon.png。而 Image.Source 解析失败走
+    /// 所以 pack://application:,,,/assets/icon.png 一定抛 IOException 找不到资源;
+    /// 必须用 pack://siteoforigin:,,,/assets/icon.png。而 Image.Source 解析失败走
     /// ImageFailed 事件静默 —— XAML load 测试本身抓不到,只能像这样单独解析 URI。
     /// </summary>
     [Fact]
@@ -72,7 +72,7 @@ public class DashboardViewLoadTests
                 WpfTestResources.EnsureLoaded(WpfTestResources.PaletteVariant.Dark);
 
                 var bmp = new BitmapImage(
-                    new Uri("pack://siteoforigin:,,,/asset/icon.png", UriKind.Absolute));
+                    new Uri("pack://siteoforigin:,,,/assets/icon.png", UriKind.Absolute));
                 size = $"{bmp.PixelWidth}x{bmp.PixelHeight}";
             }
             catch (Exception ex)

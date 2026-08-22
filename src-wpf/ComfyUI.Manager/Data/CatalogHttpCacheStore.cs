@@ -25,7 +25,7 @@ public class CatalogHttpCacheStore
     }
 
     public CatalogHttpCacheStore()
-        : this(Path.Combine(AppContext.BaseDirectory, "data", "catalog-cache.db"))
+        : this(Path.Combine(AppContext.BaseDirectory, "Data", "catalog-cache.db"))
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
     }

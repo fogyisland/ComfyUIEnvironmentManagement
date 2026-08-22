@@ -76,8 +76,9 @@ public sealed class SettingsViewModelDirtyTests : IDisposable
         vm.DefaultModelsDirectory = @"D:\Models\dirty";
 
         var fresh = new SettingsRepository(_path).Load();
-        // v0.6.22+:ModelsDirectory 硬删后 SettingsDefaults 给 DefaultModelsDirectory 兜底 "models"
-        Assert.Equal("models", fresh.DefaultModelsDirectory);   // 还是默认值,未写盘
+        // v0.6.22+:ModelsDirectory 硬删后 SettingsDefaults 给 DefaultModelsDirectory 兜底 "Models"
+        // v1.0.0:目录重构,PascalCase 统一 → "Models"(而非 v0.6.x 的 "models")
+        Assert.Equal("Models", fresh.DefaultModelsDirectory);   // 还是默认值,未写盘
     }
 
     [Fact]

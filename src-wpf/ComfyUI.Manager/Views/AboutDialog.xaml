@@ -4,7 +4,7 @@
         Title="关于 ComfyUI 多环境管理系统" Width="360" Height="460"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" ShowInTaskbar="True"
-        Icon="pack://siteoforigin:,,,/asset/comfyuiLogo.png">
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
     <Window.InputBindings>
         <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
     </Window.InputBindings>
