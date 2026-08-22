@@ -87,7 +87,7 @@ public class MainViewModelTemplateUpdateTests : IDisposable
         }
 
         Assert.NotNull(capturedTargetDir);
-        Assert.Equal(Path.Combine(_projectRoot, "ComfyUI"), capturedTargetDir);
+        Assert.Equal(Path.Combine(_projectRoot, "ComfyUITemplate"), capturedTargetDir);
     }
 
     [Fact]

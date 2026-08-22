@@ -37,7 +37,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
             EnvsDir = "envs",
             TemplatePythonDir = "python",
             DefaultPythonVersion = "3.10",
-            TemplateComfyuiDir = "ComfyUI",
+            TemplateComfyuiDir = "ComfyUITemplate",
         };
 
         _venvCreator = new FakeVenvCreator();
@@ -48,7 +48,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
         Directory.CreateDirectory(pyDir);
         File.WriteAllText(Path.Combine(pyDir, "python.exe"), "");
 
-        var comfyDir = Path.Combine(_rootDir, "ComfyUI");
+        var comfyDir = Path.Combine(_rootDir, "ComfyUITemplate");
         Directory.CreateDirectory(comfyDir);
         File.WriteAllText(Path.Combine(comfyDir, "main.py"), "");
 
@@ -68,7 +68,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
 
         var env = await _service.CreateAsync(
             "alpha", "shared", basePy,
-            Path.Combine(_rootDir, "ComfyUI"),
+            Path.Combine(_rootDir, "ComfyUITemplate"),
             port: null);
 
         Assert.Equal(basePy, env.BasePythonPath);
@@ -82,7 +82,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
 
         var env = await _service.CreateAsync(
             "beta", "shared", basePy,
-            Path.Combine(_rootDir, "ComfyUI"),
+            Path.Combine(_rootDir, "ComfyUITemplate"),
             port: null);
 
         // FakeVenvCreator writes an empty python.exe; ReadVenvPythonVersionAsync
@@ -100,7 +100,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
 
         var env = await _service.CreateAsync(
             "gamma", "shared", basePy,
-            Path.Combine(_rootDir, "ComfyUI"),
+            Path.Combine(_rootDir, "ComfyUITemplate"),
             port: null,
             progress: null,
             CancellationToken.None,
@@ -123,7 +123,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
 
         var env = await _service.CreateAsync(
             "delta", "shared", basePy,
-            Path.Combine(_rootDir, "ComfyUI"),
+            Path.Combine(_rootDir, "ComfyUITemplate"),
             port: null,
             progress: null,
             CancellationToken.None,
@@ -191,7 +191,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
         var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
         var env = await service.CreateAsync(
             "hooktest", "shared", basePy,
-            Path.Combine(_rootDir, "ComfyUI"),
+            Path.Combine(_rootDir, "ComfyUITemplate"),
             port: null);
 
         // hook 拿到的 env 是 step 8 写库的同一份;fakeInstaller 的 gitClone

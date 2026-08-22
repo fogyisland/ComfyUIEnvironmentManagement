@@ -70,7 +70,7 @@ public sealed class ComfyUITemplateUpdaterTests : IDisposable
         // v0.6.22.x: targetDir exists → 删内容前先尝试 report 一行 (确认路径正确
         // 进入 wipe 阶段 — 后续 git clone 会失败因为 PATH 没 git / 网络,但我们
         // 只断言 progress.Report("开始模板更新...") 已被触发,说明走到了 wipe 路径)。
-        var targetDir = Path.Combine(_rootDir, "ComfyUI");
+        var targetDir = Path.Combine(_rootDir, "ComfyUITemplate");
         Directory.CreateDirectory(targetDir);
         // put a sentinel file we can verify is wiped
         File.WriteAllText(Path.Combine(targetDir, "sentinel.txt"), "x");

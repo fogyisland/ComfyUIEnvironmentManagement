@@ -29,7 +29,7 @@ $readme = @'
 | 目录 | 说明 |
 |---|---|
 | `ComfyUI.Manager.exe` | 应用主程序(根目录直接放) |
-| `ComfyUI/` | ComfyUI 源模板(shared 布局) |
+| `ComfyUITemplate/` | ComfyUI 源模板(shared 布局,v1.0.0+ 从 `ComfyUI/` 重命名) |
 | `Python/` | 内置 portable Python(用于创建环境)|
 | `Embeded/git-portable/` | 内置 git(用于拉取节点仓库) |
 | `languages/<culture>/` | 多语言资源 DLL(每种 culture 一个子目录) |
@@ -65,7 +65,7 @@ setlocal
 echo 即将卸载 ComfyUIManagement ...
 echo.
 echo 该脚本会删除:
-echo   - 当前应用目录(包含 exe + Python + Embeded + ComfyUI + ...)
+echo   - 当前应用目录(包含 exe + Python + Embeded + ComfyUITemplate + ...)
 echo   - %%APPDATA%%\ComfyUI-Manager\.first-run-complete
 echo.
 echo 不会删除:

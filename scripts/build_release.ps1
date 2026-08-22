@@ -3,9 +3,9 @@
 # Output: release/ComfyUIManagement-v1.0.0-win-x64.zip
 #
 # v1.0.0 目录结构重构 — 顶层目录含义:
-#   1. <root>            = app exe + .dll(根目录就是应用)
-#   2. <root>/ComfyUI    = ComfyUI 源模板(shared 布局)
-#   3. <root>/Python     = portable Python(保证 venv 能起来)
+#   1. <root>                  = app exe + .dll(根目录就是应用)
+#   2. <root>/ComfyUITemplate  = ComfyUI 源模板(shared 布局,供新建 env 时复制/junction)
+#   3. <root>/Python           = portable Python(保证 venv 能起来)
 #   4. <root>/Embeded    = git-portable 等内嵌工具
 #   5. <root>/Workflow   = 工作流市场下载目录(运行期自动创建)
 #   7. <root>/Envs       = 用户创建的环境
@@ -28,7 +28,7 @@ Write-Host "=== v1.0.0 release build v$Version (WPF-only) ===" -ForegroundColor 
 # 1. 清理 staging
 Write-Host "[1/8] Cleaning staging..." -ForegroundColor Yellow
 if (Test-Path $StageDir) {
-    # 容忍 Defender 扫描时锁住的大模型文件 —— robocopy /MIR 会负责把 ComfyUI/ 同步到源状态
+    # 容忍 Defender 扫描时锁住的大模型文件 —— robocopy /MIR 会负责把 ComfyUITemplate/ 同步到源状态
     Remove-Item -Recurse -Force $StageDir -ErrorAction SilentlyContinue
     # 再尝试清理任何残留目录(可能因为锁而被跳过)
     if (Test-Path $StageDir) { Remove-Item -Recurse -Force $StageDir -ErrorAction SilentlyContinue }
@@ -62,7 +62,7 @@ Get-ChildItem -Path $AppDir -Directory | Where-Object {
     # 卫星 culture 子目录(BCP 47 形态):"zh" / "zh-CN" / "en-US" / "zh-Hans" / "zh-Hant"
     # — language(2 lowercase) + 可选 script([A-Z][a-z]{3},e.g. Hans/Hant/Cyrl)
     #   或 region(2 uppercase 或 3 digits,e.g. CN/TW/419)
-    # 跳过非 culture 顶层目录(Embeded/Python/ComfyUI 等)
+    # 跳过非 culture 顶层目录(Embeded/Python/ComfyUITemplate 等)
     $_.Name -match '^[a-z]{2}(-[A-Z][a-z]{3}|-[A-Z]{2}|-[0-9]{3})?$'
 } | ForEach-Object {
     $cultureDir = $_.FullName
@@ -91,19 +91,20 @@ New-Item -ItemType Directory -Path (Join-Path $AppDir "Embeded") -Force | Out-Nu
 Copy-Item -Recurse -Force "$Root/bin/git-portable" (Join-Path $AppDir "Embeded/git-portable")
 
 # 6.5: fetch ComfyUI source template(幂等)
+# v1.0.0+:模板目录从 ComfyUI/ → ComfyUITemplate/(避免用户误以为是"已安装的 ComfyUI")
 Write-Host "[6.5/8] Ensuring ComfyUI template..." -ForegroundColor Yellow
-if (-not (Test-Path "$Root/ComfyUI/main.py")) {
+if (-not (Test-Path "$Root/ComfyUITemplate/main.py")) {
     Write-Host "  ComfyUI template missing, fetching..." -ForegroundColor Yellow
     & "$Root/scripts/fetch_comfyui_template.ps1" -ProjectRoot $Root
     if ($LASTEXITCODE -ne 0) { throw "fetch_comfyui_template.ps1 failed" }
 }
-if (-not (Test-Path (Join-Path $AppDir "ComfyUI"))) {
-    New-Item -ItemType Directory -Path (Join-Path $AppDir "ComfyUI") -Force | Out-Null
+if (-not (Test-Path (Join-Path $AppDir "ComfyUITemplate"))) {
+    New-Item -ItemType Directory -Path (Join-Path $AppDir "ComfyUITemplate") -Force | Out-Null
 }
 # copy with overwrite so re-runs stay clean
 # 排除用户的本地数据(models/output/input/cache/custom_nodes 等),只保留 ComfyUI 源码作为模板
 # /XD = exclude directories(空格分隔列表)
-robocopy "$Root/ComfyUI" (Join-Path $AppDir "ComfyUI") /MIR `
+robocopy "$Root/ComfyUITemplate" (Join-Path $AppDir "ComfyUITemplate") /MIR `
     /XD models output input __pycache__ custom_nodes localnodes user temp .git `
     /XF "*.pyc" "*.safetensors" "*.ckpt" "*.pt" "*.pth" "*.bin" "*.gguf" `
     /NJH /NJS /NDL /NFL /NC /NS | Out-Null

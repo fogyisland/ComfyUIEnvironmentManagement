@@ -756,7 +756,7 @@ public class MainViewModel : ViewModelBase
     private async Task UpdateTemplateAsync()
     {
         if (_templateUpdater is null) return;
-        var targetDir = Path.Combine(_projectRoot, "ComfyUI");
+        var targetDir = Path.Combine(_projectRoot, "ComfyUITemplate");
         var confirmMessage =
             $"模板更新会删除 {targetDir} 全部内容并重新 git clone ComfyUI。\n" +
             "用于下次创建 env(不影响现有 env 的 ComfyUI)。\n" +

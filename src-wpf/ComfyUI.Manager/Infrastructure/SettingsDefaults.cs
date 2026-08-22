@@ -25,7 +25,7 @@ namespace ComfyUI.Manager.Infrastructure;
 /// 默认子目录名:
 ///   - Python    : 模板 Python 根(指向 package 自带的 portable Python/ 目录,
 ///                 内含 3.10/3.11/.../python.exe)
-///   - ComfyUI   : shared 布局的 ComfyUI 源(package root/ComfyUI/)
+///   - ComfyUITemplate : shared 布局的 ComfyUI 源(package root/ComfyUITemplate/,v1.0.0+ 从 `ComfyUI/` 重命名)
 ///   - Envs      : EnvCreatorService 创建 env 时放这里(空 → 不预创建)
 ///   - Nodes     : 全局 catalog 节点根(空 → 不预创建)
 ///   - LocalNodes: catalog 主页「下载」按钮的目标目录(template-style,空字段自动填子目录名)
@@ -39,7 +39,7 @@ namespace ComfyUI.Manager.Infrastructure;
 public static class SettingsDefaults
 {
     public const string TemplatePythonSubdir = "Python";
-    public const string TemplateComfyuiSubdir = "ComfyUI";
+    public const string TemplateComfyuiSubdir = "ComfyUITemplate";
     public const string EnvsSubdir = "Envs";
     public const string GlobalNodesSubdir = "Nodes";
     public const string LocalNodesSubdir = "LocalNodes";
@@ -72,6 +72,8 @@ public static class SettingsDefaults
         // Resolve 之前的 MigrateOldSubdirName 必须走在前面,否则后续 MigrateOnly 会跳过相对路径。
         s.TemplatePythonDir = MigrateOldSubdirName(s.TemplatePythonDir, "python", TemplatePythonSubdir);
         s.TemplateComfyuiDir = MigrateOldSubdirName(s.TemplateComfyuiDir, "ComfyUI", TemplateComfyuiSubdir);
+        // 注:上面 "ComfyUI" 是旧名,"ComfyUITemplate" 是 v1.0.0+ 新名。
+        // 老 settings.json 里写过 "ComfyUI" 的会自动迁移;用户也可填其它子目录名。
         s.EnvsDir = MigrateOldSubdirName(s.EnvsDir, "envs", EnvsSubdir);
         s.GlobalNodesDir = MigrateOldSubdirName(s.GlobalNodesDir, "global-nodes", GlobalNodesSubdir);
         // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,空字段自动填子目录名。

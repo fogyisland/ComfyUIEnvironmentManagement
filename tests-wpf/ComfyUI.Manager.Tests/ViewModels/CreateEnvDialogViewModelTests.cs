@@ -19,7 +19,7 @@ public class CreateEnvDialogViewModelTests
         return new Settings
         {
             TemplatePythonDir = templatePythonDir,
-            TemplateComfyuiDir = "ComfyUI",
+            TemplateComfyuiDir = "ComfyUITemplate",
             DefaultPythonVersion = defaultPythonVersion,
             PythonInterpreters = pythonInterpreters ?? new(),
             ActivePythonInterpreterName = activePythonInterpreterName,
@@ -47,7 +47,7 @@ public class CreateEnvDialogViewModelTests
     {
         var projectRoot = Path.Combine(Path.GetTempPath(), "autofill-test-" + Path.GetRandomFileName());
         var pythonExe = Path.Combine(projectRoot, "python", version, "python.exe");
-        var comfyuiDir = Path.Combine(projectRoot, "ComfyUI");
+        var comfyuiDir = Path.Combine(projectRoot, "ComfyUITemplate");
         Directory.CreateDirectory(Path.GetDirectoryName(pythonExe)!);
         Directory.CreateDirectory(comfyuiDir);
         File.WriteAllText(pythonExe, "");
@@ -85,7 +85,7 @@ public class CreateEnvDialogViewModelTests
     public void Constructor_LeavesPythonExeBlank_WhenPythonTemplateMissing()
     {
         var root = Path.Combine(Path.GetTempPath(), "autofill-test-" + Path.GetRandomFileName());
-        var cm = Path.Combine(root, "ComfyUI");
+        var cm = Path.Combine(root, "ComfyUITemplate");
         Directory.CreateDirectory(cm);
         File.WriteAllText(Path.Combine(cm, "main.py"), "");
         try

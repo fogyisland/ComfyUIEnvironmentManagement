@@ -1,8 +1,10 @@
 # scripts/fetch_comfyui_template.ps1
-# 把 ComfyUI 源 shallow-clone 到 <repo>/ComfyUI/,作为 "shared" 布局 env 的
+# 把 ComfyUI 源 shallow-clone 到 <repo>/ComfyUITemplate/,作为 "shared" 布局 env 的
 # 模板源(替代 v0.6.3 之前的 "用户必须自己 git clone" 步骤)。
-# 使用 bundled portable git (bin/git-portable/cmd/git.exe),不依赖系统 PATH。
+# 使用 bundled portable git (Embeded/git-portable/cmd/git.exe),不依赖系统 PATH。
 # 幂等:目录已存在 + main.py 存在 → 跳过。
+#
+# v1.0.0+:目录名 ComfyUI/ → ComfyUITemplate/,避免用户误以为这是"已安装的 ComfyUI"。
 
 param(
     [string]$ProjectRoot = (Resolve-Path "$PSScriptRoot/.."),
@@ -11,14 +13,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ComfyUiDir = Join-Path $ProjectRoot "ComfyUI"
-$GitPortableExe = Join-Path $ProjectRoot "bin/git-portable/cmd/git.exe"
+$ComfyUiDir = Join-Path $ProjectRoot "ComfyUITemplate"
+$GitPortableExe = Join-Path $ProjectRoot "Embeded/git-portable/cmd/git.exe"
 
 # 1. 选 git exe(优先 portable,fallback 到 PATH)
 $GitExe = if (Test-Path $GitPortableExe) {
     $GitPortableExe
 } else {
-    Write-Warning "[warn] bin/git-portable/cmd/git.exe not found; falling back to system 'git'."
+    Write-Warning "[warn] Embeded/git-portable/cmd/git.exe not found; falling back to system 'git'."
     "git"
 }
 

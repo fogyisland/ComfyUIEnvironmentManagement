@@ -38,7 +38,7 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
             EnvsDir = "envs",
             TemplatePythonDir = "python",
             DefaultPythonVersion = "3.10",
-            TemplateComfyuiDir = "ComfyUI",
+            TemplateComfyuiDir = "ComfyUITemplate",
             DefaultModelsDirectory = "",
         };
         _linker = new RecordingJunctionLinker();
@@ -46,7 +46,7 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
         var pyDir = Path.Combine(_rootDir, "python", "3.10");
         Directory.CreateDirectory(pyDir);
         File.WriteAllText(Path.Combine(pyDir, "python.exe"), "");
-        var comfyDir = Path.Combine(_rootDir, "ComfyUI");
+        var comfyDir = Path.Combine(_rootDir, "ComfyUITemplate");
         Directory.CreateDirectory(comfyDir);
         File.WriteAllText(Path.Combine(comfyDir, "main.py"), "");
         Directory.CreateDirectory(Path.Combine(comfyDir, "models"));
@@ -61,7 +61,7 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
     }
 
     private string BasePython => Path.Combine(_rootDir, "python", "3.10", "python.exe");
-    private string ComfyuiSource => Path.Combine(_rootDir, "ComfyUI");
+    private string ComfyuiSource => Path.Combine(_rootDir, "ComfyUITemplate");
 
     private string CreateDir(string name)
     {

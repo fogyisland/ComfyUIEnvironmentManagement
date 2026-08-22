@@ -63,11 +63,11 @@
                               Command="{Binding OpenLogFolderCommand}" />
                     <Separator />
                     <!-- v0.6.22.x:模板更新 — 用户原话"我们默认只有一个模板...只是为下一个
-                         创建的环境更新"。目标 = <projectRoot>/ComfyUI/ master template,
+                         创建的环境更新"。目标 = <projectRoot>/ComfyUITemplate/ master template,
                          不影响现有 env 的 ComfyUI clones。会弹确认 dialog + 状态面板。 -->
                     <MenuItem Header="_模板更新..."
                               Command="{Binding UpdateTemplateCommand}"
-                              ToolTip="wipe projectRoot/ComfyUI/ 全部内容并 git clone ComfyUI,只影响下次创建 env" />
+                              ToolTip="wipe projectRoot/ComfyUITemplate/ 全部内容并 git clone ComfyUI,只影响下次创建 env" />
                 </MenuItem>
                 <MenuItem Header="_关于(_H)">
                     <MenuItem Header="关于..."

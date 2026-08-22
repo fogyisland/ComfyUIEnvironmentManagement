@@ -24,13 +24,13 @@ public class SettingsDefaultsTests
     }
 
     [Fact]
-    public void Apply_TemplateComfyuiDir_EmptyDefaultsToComfyUI()
+    public void Apply_TemplateComfyuiDir_EmptyDefaultsToComfyUITemplate()
     {
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("ComfyUI", s.TemplateComfyuiDir);
+        Assert.Equal("ComfyUITemplate", s.TemplateComfyuiDir);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class SettingsDefaultsTests
         Assert.Equal("E:\\my-python", s.TemplatePythonDir);
         Assert.Equal("my-envs", s.EnvsDir);
         Assert.Equal("shared-nodes", s.GlobalNodesDir);
-        Assert.Equal("ComfyUI", s.TemplateComfyuiDir);   // 空字段填默认
+        Assert.Equal("ComfyUITemplate", s.TemplateComfyuiDir);   // 空字段填默认
     }
 
     [Fact]
@@ -71,13 +71,13 @@ public class SettingsDefaultsTests
         var s = new Settings
         {
             EnvsDir = @"D:\ToolDevelop\ComfyUI\bin\Debug\net8.0-windows\envs",
-            TemplateComfyuiDir = @"D:\ToolDevelop\ComfyUI\ComfyUI",
+            TemplateComfyuiDir = @"D:\ToolDevelop\ComfyUI\ComfyUITemplate",
         };
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal(@"bin\Debug\net8.0-windows\envs", s.EnvsDir);
-        Assert.Equal("ComfyUI", s.TemplateComfyuiDir);
+        Assert.Equal("ComfyUITemplate", s.TemplateComfyuiDir);
     }
 
     [Fact]

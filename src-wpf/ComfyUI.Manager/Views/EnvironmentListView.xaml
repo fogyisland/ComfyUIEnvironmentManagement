@@ -421,7 +421,7 @@
                                 </TextBlock>
 
                                 <!-- Row 2: Actions — 2 行 × 5 列 Grid(v0.6.22.x 删:"模板更新"按钮 — 移到
-                                     MainWindow 工具菜单,操作对象是 <projectRoot>/ComfyUI/
+                                     MainWindow 工具菜单,操作对象是 <projectRoot>/ComfyUITemplate/
                                      master template,与 per-env 无关)。 -->
                                 <Grid Grid.Row="2">
                                     <Grid.RowDefinitions>
@@ -504,7 +504,7 @@
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
                                     <!-- v0.6.22.x 删:模板更新按钮(env-list 移除 — 操作改到 MainWindow 工具菜单,
-                 目标 = <projectRoot>/ComfyUI/ master template,与 per-env 无关)。 -->
+                 目标 = <projectRoot>/ComfyUITemplate/ master template,与 per-env 无关)。 -->
 
                                     <!-- v0.6.17.1:启动控制台入口移至 Row 0 col 2(port 旁小图标),
                                          这里不再独立按钮,Row 2 actions Grid 收成 2 行 × 5 列。 -->

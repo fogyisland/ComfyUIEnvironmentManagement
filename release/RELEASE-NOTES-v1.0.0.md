@@ -21,7 +21,7 @@
 
 - 内置 portable Python(`Python/`)
 - 内置 git(`Embeded/git-portable/`)
-- 内置 ComfyUI 源模板(`ComfyUI/`)
+- 内置 ComfyUI 源模板(`ComfyUITemplate/`,v1.0.0+ 从 `ComfyUI/` 重命名,避免跟 per-env 安装的 ComfyUI 混淆)
 - 多语言资源 DLL(`languages/<culture>/`,14 种 culture 含 `zh-CN` / `zh-Hans` / `zh-Hant` / `en-US` 等)
 - 预填充节点详情缓存(`Data/catalog-cache.db`,约 5000+ 节点 + GitHub releases),首启即用
 - 应用图标与启动图(`assets/`)

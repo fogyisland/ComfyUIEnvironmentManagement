@@ -47,7 +47,7 @@ dist/
 # M3 portable runtime (git + python base)
 bin/
 python/
-ComfyUI/
+ComfyUITemplate/  # v1.0.0+:renamed from ComfyUI/(avoid confusion with installed ComfyUI)
 
 # Editor / backup
 *.bak
