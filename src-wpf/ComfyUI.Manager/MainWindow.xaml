@@ -96,25 +96,21 @@
                 <controls:SpotlightSearchBox
                     DataContext="{Binding Spotlight}"
                     Margin="0,0,0,12" />
-                <RadioButton Content="主页" GroupName="SidebarNav"
+                <RadioButton Content="应用总览" GroupName="SidebarNav"
                              Command="{Binding ShowDashboardCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Dashboard, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="环境" GroupName="SidebarNav"
+                <RadioButton Content="环境管理" GroupName="SidebarNav"
                              Command="{Binding ShowEnvironmentsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Environments, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="节点目录" GroupName="SidebarNav"
+                <!-- v0.6.15:本地节点页 — 跟 Catalog 同位置(节点目录紧邻)。从 Settings.LocalNodeDirectory 拉本地节点列表,可装到任一 env。 -->
+                <RadioButton Content="节点市场" GroupName="SidebarNav"
                              Command="{Binding ShowCatalogCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Catalog, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <!-- v0.6.15:本地节点页 — 跟 Catalog 同位置(节点目录紧邻)。从 Settings.LocalNodeDirectory 拉本地节点列表,可装到任一 env。 -->
-                <RadioButton Content="本地节点" GroupName="SidebarNav"
-                             Command="{Binding ShowLocalNodesCommand}"
-                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=LocalNodes, Mode=OneWay}"
-                             Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v0.6.19 T10:工作流市场 — 聚合 3 个 IWorkflowSource (Community/CivitAI/OpenArt) + batch download + env-start 后自动 symlink workflows 到 env。 -->
-                <RadioButton Content="工作流市场" GroupName="SidebarNav"
+                <RadioButton Content="工作流库" GroupName="SidebarNav"
                              Command="{Binding ShowWorkflowsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Workflows, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
@@ -125,13 +121,17 @@
                              Command="{Binding ShowModelsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Models, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="设置" GroupName="SidebarNav"
-                             Command="{Binding ShowSettingsCommand}"
-                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"
+                <RadioButton Content="本地节点" GroupName="SidebarNav"
+                             Command="{Binding ShowLocalNodesCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=LocalNodes, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <RadioButton Content="批量更新" GroupName="SidebarNav"
                              Command="{Binding OpenBulkUpdateCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=BulkUpdate, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
+                <RadioButton Content="应用设置" GroupName="SidebarNav"
+                             Command="{Binding ShowSettingsCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <RadioButton Content="系统状态" GroupName="SidebarNav"
                              Command="{Binding ShowSystemStatusCommand}"
