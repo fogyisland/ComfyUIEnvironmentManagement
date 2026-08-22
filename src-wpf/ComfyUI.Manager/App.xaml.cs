@@ -10,6 +10,7 @@ using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
 using ComfyUI.Manager.Views;
+using FirstRun = ComfyUI.Manager.Services.FirstRun;
 
 namespace ComfyUI.Manager;
 
@@ -379,6 +380,24 @@ public partial class App : Application
             // 拿自己的 HttpClient(per-source proxy toggle 在此生效)。同 BuildHttpClient 静态方法
             // 引用 — 复用同样的 handler 配置 + 60s timeout + Proxy=null/UseProxy=false fallback。
             httpBuilder: httpBuilder);
+
+        // v1.0.0:首启动 wizard
+        var appDataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "ComfyUI-Manager");
+        if (FirstRun.FirstRunDetector.IsFirstRun(appDataDir))
+        {
+            var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(appDataDir);
+            var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
+            if (wizard.ShowDialog() != true)
+            {
+                // user cancelled → exit cleanly (no half-config state)
+                Shutdown();
+                return;
+            }
+            // wizard completed → settings.json + sentinel already written by VM Finish()
+            // continue to MainWindow construction as usual
+        }
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
