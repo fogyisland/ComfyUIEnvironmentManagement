@@ -44,7 +44,7 @@ v1.0.0 暂不提供,将在后续版本发布。侧栏对应按钮为灰色不可
 ## 卸载
 
 双击运行 `uninstall.bat`(只删除应用目录 + 配置 sentinel,**不删除**用户数据)。
-如需同时清理用户数据,请手动删除 `%APPDATA%\ComfyUI-Manager\`。
+如需清理用户数据,请手动删除安装根目录下的 `.manager\` 子目录(首次启动向导中所选的安装根目录)。
 
 ## 创建开始菜单快捷方式
 
@@ -72,7 +72,7 @@ set /p CONFIRM=确认卸载?(Y/N)
 if /i not "%CONFIRM%"=="Y" goto :end
 cd /d "%~dp0"
 rd /s /q "%~dp0"
-del /q "%APPDATA%\ComfyUI-Manager\.first-run-complete" 2>nul
+if exist "%~dp0.manager\.first-run-complete" del /q "%~dp0.manager\.first-run-complete"
 echo.
 echo 卸载完成。
 :end
