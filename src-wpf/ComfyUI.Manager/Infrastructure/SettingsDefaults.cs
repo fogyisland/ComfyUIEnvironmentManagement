@@ -187,6 +187,12 @@ public static class SettingsDefaults
         // v0.6.11++:首次启动种 curated 常用节点(只在空时 seed,G13)。
         s.CommonNodes = SeedCommonNodesIfEmpty(s.CommonNodes);
 
+        // v1.0.0 Phase 1:dev build 解锁所有 hidden feature flag — 用户原话
+        // "开发阶段没有限制,所以在开发就不要限制了模型市场和工作流库了,
+        // 只有在 release 时候才限制"。release build 跳过此分支,保留 release 默认
+        // (HF/ModelScope disabled 等)保护没配 token 的新装用户避免看到空结果。
+        ApplyDevOverridesIfEnabled(s);
+
         // v0.6.12:LogDirectory 非空则 Directory.CreateDirectory,失败静默
         if (!string.IsNullOrWhiteSpace(s.LogDirectory))
         {
@@ -199,6 +205,30 @@ public static class SettingsDefaults
             }
             catch { /* 权限/盘满/路径非法 → 静默,运行时再 CreateDirectory 兜底 */ }
         }
+    }
+
+    /// <summary>
+    /// v1.0.0 Phase 1:dev build 强制启用所有 hidden feature flag。Release build
+    /// 此方法体是空(no-op,const fold 优化掉),保持 release 字段默认值不变。
+    ///
+    /// 启用项:
+    /// - ModelSourceHuggingFaceEnabled = true(dev 默认开;release 默认 false 防止空结果)
+    /// - ModelSourceModelScopeEnabled = true(dev 默认开;release 默认 false 同理)
+    /// - WorkflowSourceCommunityJson/CivitAi/OpenArt 三 source — release 已默认 true,
+    ///   dev 此处显式置 true 防止用户手动关掉后 dev 跳不出页面
+    ///
+    /// 注:不修改 CivitAI 默认(已 true)、不修改 ModelSourceProxyMode 默认
+    /// (已 InheritGlobal,合理默认)、不修改 CivitAiUseMirror(默认 false,镜像站可选)。
+    /// </summary>
+    private static void ApplyDevOverridesIfEnabled(Settings s)
+    {
+#if DEBUG
+        s.ModelSourceHuggingFaceEnabled = true;
+        s.ModelSourceModelScopeEnabled = true;
+        s.WorkflowSourceCommunityJsonEnabled = true;
+        s.WorkflowSourceCivitAiEnabled = true;
+        s.WorkflowSourceOpenArtEnabled = true;
+#endif
     }
 
     /// <summary>

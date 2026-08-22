@@ -429,4 +429,70 @@ public class SettingsDefaultsTests
             Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    // —— v1.0.0 Phase 1:dev 模式 feature flag override ——
+    // DEBUG build 下 HuggingFace + ModelScope 默认 enabled=true;workflow 3 source
+    // 显式锁 true(防用户手动关后 dev 跳不出页面)。Release build 走 const fold,
+    // override 分支 no-op,字段保持 release 默认值。
+    //
+    // 测试策略:测试程序集默认编译为 DEBUG,所以 IsEnabled=true,验证字段值。
+    // Release-mode 行为无法在此验证(需另编译 release 跑),但代码路径可读
+    // 保证 const fold 后 override 分支是 dead code。
+
+    [Fact]
+    public void Apply_DevMode_EnablesHuggingFaceSource()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.ModelSourceHuggingFaceEnabled);
+    }
+
+    [Fact]
+    public void Apply_DevMode_EnablesModelScopeSource()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.ModelSourceModelScopeEnabled);
+    }
+
+    [Fact]
+    public void Apply_DevMode_LocksWorkflowSourcesEnabled()
+    {
+        // 用户在 dev 关掉某个 workflow source → Apply 强制改回 true
+        var s = new Settings
+        {
+            WorkflowSourceCommunityJsonEnabled = false,
+            WorkflowSourceCivitAiEnabled = false,
+            WorkflowSourceOpenArtEnabled = false,
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.WorkflowSourceCommunityJsonEnabled);
+        Assert.True(s.WorkflowSourceCivitAiEnabled);
+        Assert.True(s.WorkflowSourceOpenArtEnabled);
+    }
+
+    [Fact]
+    public void Apply_DevMode_DoesNotTouchCivitAiSourceAlreadyEnabled()
+    {
+        // CivitAI 已 release 默认 true,override 不应改其他字段
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.ModelSourceCivitAiEnabled);
+    }
+
+    [Fact]
+    public void DevMode_IsEnabled_MatchesDebugConfiguration()
+    {
+        // 测试程序集编译为 DEBUG → IsEnabled 必须 true;若编译 release 此测试会失败
+        // (作为 sanity check 提醒开发者切换配置后跑 full suite)
+        Assert.True(DevMode.IsEnabled);
+    }
 }

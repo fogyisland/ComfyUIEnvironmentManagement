@@ -110,7 +110,11 @@ public partial class App : Application
         // v1.0.0:首启动 wizard — 必须先于 settingsRepo.Load(),让 wizard 写入的
         // settings.json 在下游 Load() 时被读到,避免 MainViewModel 用 stale Settings。
         // localPaths.Directory (v0.6.16) 是唯一权威路径,跟 SettingsRepository 一致。
-        if (FirstRun.FirstRunDetector.IsFirstRun(localPaths.Directory))
+        // v1.0.0 Phase 1:dev build 跳过 wizard — 用户原话"开发阶段没有限制,
+        // 在开发就不要限制了模型市场和工作流库了,只有在 release 时候才限制"。
+        // dev 跳过 wizard 直接走 SettingsDefaults.Apply 的 dev-override 分支
+        // (启用所有 hidden feature flag + 默认 3 source + HF + ModelScope 启用)。
+        if (!DevMode.IsEnabled && FirstRun.FirstRunDetector.IsFirstRun(localPaths.Directory))
         {
             // Splash 默认 Topmost=true,会盖在 wizard 上让用户看不到 wizard,误以为卡死。
             // wizard 是 modal dialog,即使 Splash 非 Topmost 也能正常显示在上面。
