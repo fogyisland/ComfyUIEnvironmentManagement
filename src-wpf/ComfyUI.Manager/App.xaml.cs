@@ -98,6 +98,23 @@ public partial class App : Application
         // python 路径等全丢。
         new LocalDataMigrationService(localPaths, logger: null).RunIfNeeded();
 
+        // v1.0.0:首启动 wizard — 必须先于 settingsRepo.Load(),让 wizard 写入的
+        // settings.json 在下游 Load() 时被读到,避免 MainViewModel 用 stale Settings。
+        // localPaths.Directory (v0.6.16) 是唯一权威路径,跟 SettingsRepository 一致。
+        if (FirstRun.FirstRunDetector.IsFirstRun(localPaths.Directory))
+        {
+            var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(localPaths.Directory);
+            var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
+            if (wizard.ShowDialog() != true)
+            {
+                // user cancelled → exit cleanly (no half-config state)
+                Shutdown();
+                return;
+            }
+            // wizard completed → settings.json + sentinel already written by VM Finish()
+            // continue to settingsRepo.Load() as usual (picks up wizard's settings.json)
+        }
+
         // v0.6.7.1 + v0.6.12: 在 logger / launcher 构造前先 Load settings —
         // logger 读 LogDirectory(决定 Logs 父目录),launcher 读 startupTimeoutSeconds / locale / models。
         // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
@@ -380,24 +397,6 @@ public partial class App : Application
             // 拿自己的 HttpClient(per-source proxy toggle 在此生效)。同 BuildHttpClient 静态方法
             // 引用 — 复用同样的 handler 配置 + 60s timeout + Proxy=null/UseProxy=false fallback。
             httpBuilder: httpBuilder);
-
-        // v1.0.0:首启动 wizard
-        var appDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ComfyUI-Manager");
-        if (FirstRun.FirstRunDetector.IsFirstRun(appDataDir))
-        {
-            var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(appDataDir);
-            var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
-            if (wizard.ShowDialog() != true)
-            {
-                // user cancelled → exit cleanly (no half-config state)
-                Shutdown();
-                return;
-            }
-            // wizard completed → settings.json + sentinel already written by VM Finish()
-            // continue to MainWindow construction as usual
-        }
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
