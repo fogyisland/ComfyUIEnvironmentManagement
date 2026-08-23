@@ -228,7 +228,13 @@ public class CreateEnvDialogViewModel : ViewModelBase
         {
             Kind = SelectedTemplateKind,
             Name = template.Name,
-            LocalSourceDir = ComfyuiSource,
+            // v1.0.0 T7 R1:ApplyTemplate and SelectedTemplateKind auto-fill store the raw
+            // LocalSourceDir (project-relative, e.g. "ComfyUITemplate"). EnvCreatorService
+            // expects an absolute path (Directory.Exists + CopyDirectory), so join against
+            // _projectRoot when the value is relative. Absolute paths pass through unchanged.
+            LocalSourceDir = Path.IsPathRooted(ComfyuiSource)
+                ? ComfyuiSource
+                : Path.Combine(_projectRoot, ComfyuiSource),
             EntryScript = template.EntryScript,
             EntryArgs = template.EntryArgs,
             ModelsSubdir = template.ModelsSubdir,
