@@ -143,7 +143,12 @@ public partial class App : Application
 
         // v0.6.16: db path 也走 LocalDataPaths 注入 —— state.db 落 <projectRoot>/.manager/。
         var dbFactory = new SqliteConnectionFactory(localPaths);
-        var envRepo = new EnvironmentRepository(dbFactory);
+        // v1.0.0 T3:legacy env rows get backfilled with current Settings.Templates["ComfyUI"]
+        // snapshot (G6). Fallback to fresh defaults if user has no ComfyUI template entry.
+        var envRepo = new EnvironmentRepository(dbFactory, () =>
+            settings.Templates.TryGetValue("ComfyUI", out var t)
+                ? t
+                : TemplateConfigDefaults.ComfyUi(projectRoot));
 
         // v0.6.11+ dashboard/splash polish:Stage 2 LoadDatabase 完成。
         _splashVm?.ReportStageProgress(Stage.LoadDatabase, 100);
