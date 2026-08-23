@@ -46,7 +46,10 @@ public class Settings
 
     // —— 路径 ——
     [JsonPropertyName("template_python_dir")] public string TemplatePythonDir { get; set; } = "";
+    // v1.0.0 multi-template:老 TemplateComfyuiDir 在 v1.0.0+ → Settings.Templates["ComfyUI"].LocalSourceDir。
+    // T12 移除该字段;目前保留以便 SettingsDefaults.TryMigrateOldTemplateComfyuiDir 读取 + 一次性迁移。
     [JsonPropertyName("template_comfyui_dir")] public string TemplateComfyuiDir { get; set; } = "";
+    [JsonPropertyName("templates")] public Dictionary<string, TemplateConfig> Templates { get; set; } = new();
     [JsonPropertyName("default_python_version")] public string DefaultPythonVersion { get; set; } = "3.10";
     [JsonPropertyName("envs_dir")] public string EnvsDir { get; set; } = "";
     [JsonPropertyName("global_nodes_dir")] public string GlobalNodesDir { get; set; } = "";
@@ -267,6 +270,13 @@ public class Settings
         target.PythonInterpreters.AddRange(source.PythonInterpreters);
         target.CommonNodes.Clear();
         target.CommonNodes.AddRange(source.CommonNodes);
+        // v1.0.0 multi-template: Templates dict — 清空 + AddRange(Dictionary 没有 AddRange,
+        // 用 Clear + foreach[key]=value 复制,保持同一引用语义不变)
+        target.Templates.Clear();
+        foreach (var kv in source.Templates)
+        {
+            target.Templates[kv.Key] = kv.Value;
+        }
     }
 }
 

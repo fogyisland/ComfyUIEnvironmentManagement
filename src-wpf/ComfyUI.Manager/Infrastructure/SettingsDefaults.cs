@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 
 namespace ComfyUI.Manager.Infrastructure;
 
@@ -71,9 +72,10 @@ public static class SettingsDefaults
         // 一次性迁到 PascalCase,避免 service 在 projectRoot/envs/ 和 projectRoot/Envs/ 两边分裂。
         // Resolve 之前的 MigrateOldSubdirName 必须走在前面,否则后续 MigrateOnly 会跳过相对路径。
         s.TemplatePythonDir = MigrateOldSubdirName(s.TemplatePythonDir, "python", TemplatePythonSubdir);
-        s.TemplateComfyuiDir = MigrateOldSubdirName(s.TemplateComfyuiDir, "ComfyUI", TemplateComfyuiSubdir);
-        // 注:上面 "ComfyUI" 是旧名,"ComfyUITemplate" 是 v1.0.0+ 新名。
-        // 老 settings.json 里写过 "ComfyUI" 的会自动迁移;用户也可填其它子目录名。
+        // 注:v1.0.0 multi-template:TemplateComfyuiDir 字段在 v1.0.0+ 只用来 lift 老 settings.json
+        // 用户填过的真实路径到 Templates["ComfyUI"].LocalSourceDir。不再"自动填默认子目录名"
+        // — 默认值由 SeedBuiltInTemplatesIfMissing 写到 Templates dict。下行注释保留作为
+        // 旧 single-template 迁移记录。T12 移除该字段。
         s.EnvsDir = MigrateOldSubdirName(s.EnvsDir, "envs", EnvsSubdir);
         s.GlobalNodesDir = MigrateOldSubdirName(s.GlobalNodesDir, "global-nodes", GlobalNodesSubdir);
         // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,空字段自动填子目录名。
@@ -85,7 +87,7 @@ public static class SettingsDefaults
         s.DefaultModelsDirectory = MigrateOldSubdirName(s.DefaultModelsDirectory, "models", ModelsSubdir);
 
         s.TemplatePythonDir = Resolve(s.TemplatePythonDir, TemplatePythonSubdir, projectRoot);
-        s.TemplateComfyuiDir = Resolve(s.TemplateComfyuiDir, TemplateComfyuiSubdir, projectRoot);
+        // 注:旧单行 s.TemplateComfyuiDir = Resolve(...) 删除 — 现由 Templates dict 接管。
         s.EnvsDir = MigrateOnly(s.EnvsDir, projectRoot);
         s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
         s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
@@ -187,6 +189,12 @@ public static class SettingsDefaults
         // v0.6.11++:首次启动种 curated 常用节点(只在空时 seed,G13)。
         s.CommonNodes = SeedCommonNodesIfEmpty(s.CommonNodes);
 
+        // v1.0.0 multi-template: migrate old TemplateComfyuiDir FIRST (before seed),
+        // 因为 seed helper 只看 Templates dict 是否缺 key — 让老 field 值优先表达用户意图,
+        // 再补其它 built-in 默认(A1111 等)到缺失 key。
+        TryMigrateOldTemplateComfyuiDir(s);
+        SeedBuiltInTemplatesIfMissing(s, projectRoot);
+
         // v1.0.0 Phase 1:dev build 解锁所有 hidden feature flag — 用户原话
         // "开发阶段没有限制,所以在开发就不要限制了模型市场和工作流库了,
         // 只有在 release 时候才限制"。release build 跳过此分支,保留 release 默认
@@ -252,6 +260,46 @@ public static class SettingsDefaults
             new() { Id = "kijai/ComfyUI-Florence2",          DisplayName = "ComfyUI Florence2",             IsBuiltIn = true, Enabled = true },
             new() { Id = "Kosinkadink/ComfyUI-Advanced-ControlNet", DisplayName = "ComfyUI Advanced ControlNet", IsBuiltIn = true, Enabled = true },
         };
+    }
+
+    /// <summary>
+    /// v1.0.0 multi-template:首次启动 seed ComfyUI + A1111 built-in templates(G4 防覆盖。
+    /// 只在 Templates dict 缺对应 key 时填默认,用户定制过的 entry 不会被覆盖。
+    /// </summary>
+    private static void SeedBuiltInTemplatesIfMissing(Settings s, string projectRoot)
+    {
+        // G4: only seed if missing — never overwrite user customization
+        if (!s.Templates.ContainsKey("ComfyUI"))
+        {
+            s.Templates["ComfyUI"] = TemplateConfigDefaults.ComfyUi(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("A1111"))
+        {
+            s.Templates["A1111"] = TemplateConfigDefaults.A1111(projectRoot);
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0 multi-template:把老 Settings.TemplateComfyuiDir 字段值迁移到
+    /// Templates["ComfyUI"].LocalSourceDir(G6)。只在用户没设过 ComfyUI template 时迁移 —
+    /// 否则视为用户已经表达过意图,不让旧字段覆盖当前 entry。同时把老字段值清空,
+    /// 让 JSON 不再带陈旧字段。T12 移除该字段。
+    /// </summary>
+    private static void TryMigrateOldTemplateComfyuiDir(Settings s)
+    {
+        if (!s.Templates.ContainsKey("ComfyUI") && !string.IsNullOrWhiteSpace(s.TemplateComfyuiDir))
+        {
+            s.Templates["ComfyUI"] = new TemplateConfig
+            {
+                Name = "ComfyUI",
+                Kind = "ComfyUI",
+                LocalSourceDir = s.TemplateComfyuiDir,
+                EntryScript = "main.py",
+                EntryArgs = "--port {port} --listen 0.0.0.0",
+                ModelsSubdir = "models",
+            };
+            s.TemplateComfyuiDir = ""; // drop old field
+        }
     }
 
     /// <summary>

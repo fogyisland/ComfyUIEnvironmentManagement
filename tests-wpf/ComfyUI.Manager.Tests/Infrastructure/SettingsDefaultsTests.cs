@@ -26,11 +26,15 @@ public class SettingsDefaultsTests
     [Fact]
     public void Apply_TemplateComfyuiDir_EmptyDefaultsToComfyUITemplate()
     {
+        // v1.0.0 multi-template:TemplateComfyuiDir 字段在 T12 移除;Apply 不再"默认填充"该字段,
+        // 改成 seed Templates["ComfyUI"].LocalSourceDir 指向 <projectRoot>/Templates/ComfyUI 子目录。
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("ComfyUITemplate", s.TemplateComfyuiDir);
+        Assert.True(s.Templates.ContainsKey("ComfyUI"));
+        Assert.Equal(Path.Combine(ProjectRoot, "Templates", "ComfyUI"),
+            s.Templates["ComfyUI"].LocalSourceDir);
     }
 
     [Fact]
@@ -61,7 +65,9 @@ public class SettingsDefaultsTests
         Assert.Equal("E:\\my-python", s.TemplatePythonDir);
         Assert.Equal("my-envs", s.EnvsDir);
         Assert.Equal("shared-nodes", s.GlobalNodesDir);
-        Assert.Equal("ComfyUITemplate", s.TemplateComfyuiDir);   // 空字段填默认
+        // v1.0.0 multi-template:空 ComfyUI template entry 被 seed 默认 LocalSourceDir
+        Assert.Equal(Path.Combine(ProjectRoot, "Templates", "ComfyUI"),
+            s.Templates["ComfyUI"].LocalSourceDir);
     }
 
     [Fact]
@@ -71,13 +77,11 @@ public class SettingsDefaultsTests
         var s = new Settings
         {
             EnvsDir = @"D:\ToolDevelop\ComfyUI\bin\Debug\net8.0-windows\envs",
-            TemplateComfyuiDir = @"D:\ToolDevelop\ComfyUI\ComfyUITemplate",
         };
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal(@"bin\Debug\net8.0-windows\envs", s.EnvsDir);
-        Assert.Equal("ComfyUITemplate", s.TemplateComfyuiDir);
     }
 
     [Fact]
