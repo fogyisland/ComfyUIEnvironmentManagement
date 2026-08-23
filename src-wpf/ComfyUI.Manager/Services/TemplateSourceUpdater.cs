@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Infrastructure;
@@ -96,8 +97,10 @@ public class TemplateSourceUpdater
         }
 
         // 2. git clone --depth=1 (fast, no history needed for template)
+        progress?.Report($"[src] $ git clone --depth=1 {repoUrl} .");
         progress?.Report($"[src] → {FormatHost(repoUrl)} ({FormatProxyInfo()})");
         var sw = Stopwatch.StartNew();
+        var sizeHolder = new PackageSizeHolder();
         GitResult r;
         try
         {
@@ -105,7 +108,8 @@ public class TemplateSourceUpdater
                 workdir: targetDir,
                 args: new[] { "clone", "--depth=1", repoUrl, "." },
                 timeout: TimeSpan.FromMinutes(5),
-                ct: ct);
+                ct: ct,
+                onStderrLine: WrapProgressForSizeTracking(progress, sizeHolder));
         }
         catch (OperationCanceledException)
         {
@@ -133,8 +137,9 @@ public class TemplateSourceUpdater
             return NodeOperationResult.Fail($"git clone 失败(exit={r.ExitCode}):{r.Stderr}");
         }
 
-        progress?.Report($"[src] ✓ 完成 ({elapsed}ms)");
-        _logger?.Info("template-source-update", $"target='{targetDir}' 模板更新完成 ({elapsed}ms)");
+        var sizeNote = string.IsNullOrEmpty(sizeHolder.Size) ? "" : $" {sizeHolder.Size}";
+        progress?.Report($"[src] ✓ 完成{sizeNote} ({elapsed}ms)");
+        _logger?.Info("template-source-update", $"target='{targetDir}' 模板更新完成 ({elapsed}ms, {sizeHolder.Size})");
         return NodeOperationResult.Ok(null);
     }
 
@@ -182,8 +187,10 @@ public class TemplateSourceUpdater
             return NodeOperationResult.Fail($"创建父目录失败:{ex.Message}");
         }
 
+        progress?.Report($"[src] $ git clone --depth=1 {repoUrl} {name}");
         progress?.Report($"[src] → {FormatHost(repoUrl)} ({FormatProxyInfo()})");
         var sw = Stopwatch.StartNew();
+        var sizeHolder = new PackageSizeHolder();
         GitResult r;
         try
         {
@@ -191,7 +198,8 @@ public class TemplateSourceUpdater
                 workdir: parent,
                 args: new[] { "clone", "--depth=1", repoUrl, name },
                 timeout: TimeSpan.FromMinutes(5),
-                ct: ct);
+                ct: ct,
+                onStderrLine: WrapProgressForSizeTracking(progress, sizeHolder));
         }
         catch (OperationCanceledException)
         {
@@ -218,8 +226,9 @@ public class TemplateSourceUpdater
             return NodeOperationResult.Fail($"git clone 失败(exit={r.ExitCode}):{r.Stderr}");
         }
 
-        progress?.Report($"[src] ✓ 完成 ({elapsed}ms)");
-        _logger?.Info("template-source-update", $"target='{targetDir}' 模板克隆完成 ({elapsed}ms)");
+        var sizeNote = string.IsNullOrEmpty(sizeHolder.Size) ? "" : $" {sizeHolder.Size}";
+        progress?.Report($"[src] ✓ 完成{sizeNote} ({elapsed}ms)");
+        _logger?.Info("template-source-update", $"target='{targetDir}' 模板克隆完成 ({elapsed}ms, {sizeHolder.Size})");
         return NodeOperationResult.Ok(null);
     }
 
@@ -308,6 +317,48 @@ public class TemplateSourceUpdater
             if (!string.IsNullOrEmpty(trimmed)) return trimmed;
         }
         return "(empty)";
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 从 git "Receiving objects:" 行提取总下载量(用户要求的"包多大")。
+    /// 典型行:
+    /// <c>Receiving objects: 100% (12345/12345), 67.89 MiB | 12.34 MiB/s, done.</c>
+    /// 也可能在 Resolving deltas 行附带(罕见)。返回 <c>"67.89 MiB"</c> 等格式化大小(数字 + 单位)
+    /// 或 null(未命中)。
+    /// </summary>
+    private static readonly Regex ReceivingObjectsRegex = new(
+        @"Receiving\s+objects:\s+\d+%[^\,]*,\s+(?<size>[\d.]+\s+\w+)",
+        RegexOptions.Compiled);
+
+    private static string? ExtractSizeFromLine(string line)
+    {
+        if (string.IsNullOrEmpty(line) || !line.StartsWith("Receiving objects")) return null;
+        var m = ReceivingObjectsRegex.Match(line);
+        return m.Success ? m.Groups["size"].Value : null;
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 包裹 user 传入的 <see cref="IProgress{T}"/>,既把 git 流式 stderr 行转发给
+    /// VM(用户实时看到 <c>Receiving objects: 80%...</c> 进度),又顺路抓 size 给 done 行用。
+    /// user progress == null 时直接 return null(GitRunner 走 capture mode)。
+    /// </summary>
+    private static IProgress<string>? WrapProgressForSizeTracking(
+        IProgress<string>? userProgress,
+        PackageSizeHolder sizeHolder)
+    {
+        if (userProgress == null) return null;
+        return new Progress<string>(line =>
+        {
+            var sz = ExtractSizeFromLine(line);
+            if (sz != null) sizeHolder.Size = sz;
+            try { userProgress.Report(line); } catch { /* sink to avoid Console crash on bg */ }
+        });
+    }
+
+    /// <summary>v1.0.0.x: git 流式提取的最近一个 package size(如 <c>"67.89 MiB"</c>)。</summary>
+    private sealed class PackageSizeHolder
+    {
+        public string? Size { get; set; }
     }
 
     /// <summary>

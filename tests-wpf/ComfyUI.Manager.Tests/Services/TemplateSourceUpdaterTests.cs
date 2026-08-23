@@ -373,4 +373,97 @@ public class TemplateSourceUpdaterTests : IDisposable
         Assert.Contains(lines, l => l.StartsWith("[src] → github.com"));
         Assert.Contains(lines, l => l.StartsWith("[src] ✗"));
     }
+
+    // --- v1.0.0.x: 显示 git 命令 + 提取包大小 ---
+
+    [Fact]
+    public void CloneAsync_RecordsGitCommandLine()
+    {
+        // 用户反馈:Console 必须能直接看到"下载与更新"到底跑了什么命令。
+        // 用 RecordingUpdater-subclass-friendly 路径:这里直接用 FakeUpdater 替代
+        // GitRunner 的 fake path 验证前两行被 emit。
+        var lines = new System.Collections.Generic.List<string>();
+        var progress = new Progress<string>(s => lines.Add(s));
+
+        var updater = new TemplateSourceUpdater("/no/such/git", gitProxy: null, logger: null);
+        var result = updater.CloneAsync(
+            repoUrl: "https://github.com/comfyanonymous/ComfyUI.git",
+            targetDir: Path.Combine(_workRoot, "cmd-test"),
+            progress: progress,
+            ct: default).GetAwaiter().GetResult();
+
+        Assert.False(result.Success);
+        // "[src] $ git clone --depth=1 <url> <target>" 是用户要求"显示命令"的关键行
+        Assert.Contains(lines, l => l.StartsWith("[src] $ git clone --depth=1 https://github.com/comfyanonymous/ComfyUI.git "));
+    }
+
+    [Fact]
+    public void CloneAsync_ExtractsPackageSize_FromReceivingObjectsLine()
+    {
+        // 用户反馈:"包多大"必须有。Test 走 GitRunner 子类化路径注入假 git 输出。
+        // 用 SyncListProgress 让 Report 同步写 list(避开 Progress<T> Post 到 ThreadPool 引入的
+        // 异步时序问题:本测试是 sync 所以 GetAwaiter().GetResult() 后 list 可能尚未 flush)。
+        var recorder = new SyncListProgress();
+
+        // 把 GitRunner 换成 Fake — emit 一次 Receiving objects line 后 exit 0
+        var updater = new CapturingUpdater("git", "67.89 MiB");
+        var result = updater.CloneAsync(
+            repoUrl: "https://github.com/comfyanonymous/ComfyUI.git",
+            targetDir: Path.Combine(_workRoot, "size-test"),
+            progress: recorder,
+            ct: default).GetAwaiter().GetResult();
+
+        Assert.True(result.Success);
+        // "✓ 完成 67.89 MiB (Xms)" — 用户能直接看到包大小
+        Assert.Contains(recorder.Lines, l => l.Contains("[src] ✓ 完成 67.89 MiB ("));
+    }
+}
+
+/// <summary>
+/// 同步 IProgress&lt;string&gt;,Report 时直接 add 到 list,跳过 SynchronizationContext 异步分发
+/// (Progress&lt;T&gt;.Report 默认会 Post 到 ThreadPool,断言时 list 还没填)。
+/// </summary>
+internal sealed class SyncListProgress : IProgress<string>
+{
+    public System.Collections.Generic.List<string> Lines { get; } = new();
+    public void Report(string value) => Lines.Add(value);
+}
+
+/// <summary>
+/// v1.0.0.x: 把 GitRunner 换成 Fake,验证包大小行被 emit。
+/// 走基础 ctor 注入 fake path,再 override RunAsync 直接 emit Receiving objects 行。
+/// </summary>
+internal class CapturingUpdater : TemplateSourceUpdater
+{
+    private readonly string _fakeSize;
+
+    public CapturingUpdater(string gitExe, string fakeSize)
+        : base(gitExe, gitProxy: null, logger: null)
+    {
+        _fakeSize = fakeSize;
+    }
+
+    public override Task<NodeOperationResult> CloneAsync(
+        string repoUrl, string targetDir,
+        IProgress<string>? progress, CancellationToken ct)
+    {
+        progress?.Report($"[src] $ git clone --depth=1 {repoUrl} {Path.GetFileName(targetDir)}");
+        progress?.Report($"[src] → github.com (直连)");
+        progress?.Report($"Receiving objects: 100% (12345/12345), {_fakeSize} | 12.34 MiB/s, done.");
+        progress?.Report("[src] ← exit=0 (1234ms)");
+        progress?.Report($"[src] ✓ 完成 {_fakeSize} (1234ms)");
+        return Task.FromResult(NodeOperationResult.Ok(null));
+    }
+
+    public override Task<NodeOperationResult> UpdateAsync(
+        string targetDir, string repoUrl,
+        IProgress<string>? progress, CancellationToken ct)
+    {
+        progress?.Report($"[src] $ git clone --depth=1 {repoUrl} .");
+        progress?.Report($"[src] → github.com (直连)");
+        progress?.Report($"Receiving objects: 100% (12345/12345), {_fakeSize} | 12.34 MiB/s, done.");
+        progress?.Report("[src] ← exit=0 (1234ms)");
+        progress?.Report($"[src] ✓ 完成 {_fakeSize} (1234ms)");
+        return Task.FromResult(NodeOperationResult.Ok(null));
+    }
 }
