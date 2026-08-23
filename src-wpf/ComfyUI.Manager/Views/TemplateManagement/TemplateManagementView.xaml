@@ -1,0 +1,78 @@
+<UserControl x:Class="ComfyUI.Manager.Views.TemplateManagement.TemplateManagementView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             mc:Ignorable="d"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             d:DataContext="{d:DesignInstance Type=vm:TemplateManagementViewModel}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="模板管理" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button Content="+ 添加模板" DockPanel.Dock="Right"
+                    Command="{Binding AddCommand}"
+                    HorizontalAlignment="Right"/>
+        </DockPanel>
+
+        <!-- Card list -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding Templates}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,0,8" Padding="12" CornerRadius="6"
+                                BorderBrush="{DynamicResource OutlineBrush}"
+                                BorderThickness="1"
+                                Background="{DynamicResource SurfaceBrush}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                                    <Button Content="更新源码" Margin="4,0"
+                                            Command="{Binding DataContext.UpdateSourceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="编辑" Margin="4,0"
+                                            Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="删除" Margin="4,0"
+                                            Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,4,0,0">
+                                    <Run Text="Kind: "/><Run Text="{Binding Kind}"/>
+                                </TextBlock>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2">
+                                    <Run Text="Source: "/><Run Text="{Binding LocalSourceDir}"/>
+                                </TextBlock>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
+                                    <Run Text="Entry: "/><Run Text="{Binding EntryScript}"/><Run Text=" "/><Run Text="{Binding EntryArgs}"/>
+                                </TextBlock>
+                                <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2">
+                                    <Run Text="Models: "/><Run Text="{Binding ModelsSubdir}"/>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
