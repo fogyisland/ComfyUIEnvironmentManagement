@@ -14,6 +14,7 @@ using ComfyUI.Manager.Search;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.Views;
+using ComfyUI.Manager.Views.TemplateManagement;
 using Microsoft.Win32;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -26,6 +27,9 @@ public enum MainSection
     LocalNodes,  // v0.6.15
     // v0.6.19: 工作流市场 — between LocalNodes and Settings
     Workflows,
+    // v1.0.0 multi-template T8: 模板管理 — 紧邻 Workflows(同类"内容源"分区,
+    // UI 上连排便于切换)。
+    Templates,
     // v0.6.20 T9: 模型市场 — 紧邻 Workflows(同类"市场"分区,UI 上连排便于切换)。
     Models,
     Settings,
@@ -146,6 +150,11 @@ public class MainViewModel : ViewModelBase
     // 后台触发 LoadAsync,后续进入复用同一份 VM 保留 IsBusy / Models / SelectedVersions)。
     private ModelMarketplaceViewModel? _modelMarketplaceViewModel;
     private ModelMarketplaceView? _modelMarketplaceView;
+    // v1.0.0 T8: 模板管理页 VM/View 缓存(同 ShowLocalNodes 懒构造模式)。
+    // 首次进入 new VM(从 Settings.Templates 拷贝列表),View 由 T9 factory 注入;
+    // 切走再回来复用同一份 VM,保留编辑状态(选中/滚动位置)。
+    private TemplateManagementViewModel? _templateManagementViewModel;
+    private object? _templateManagementView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
@@ -208,6 +217,13 @@ public class MainViewModel : ViewModelBase
     /// 默认 new 真实 View;测试可注入 stub 返回,绕开 WPF STA 初始化。
     /// </summary>
     internal Func<ModelMarketplaceViewModel, object?>? ModelMarketplaceViewFactory { get; set; }
+
+    /// <summary>
+    /// v1.0.0 T8: 构造模板管理 View 的工厂 hook。
+    /// 默认 new <see cref="TemplateManagementView"/>(T9 落地的 UserControl);
+    /// 测试可注入 stub 返回,绕开 WPF STA 初始化。
+    /// </summary>
+    internal Func<TemplateManagementViewModel, object?>? TemplateManagementViewFactory { get; set; }
 
     /// <summary>
     /// 测试用:获取当前缓存的"环境"页 VM(若有)。用于断言 ShowEnvironments
@@ -289,6 +305,7 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowLocalNodesCommand { get; }   // v0.6.15
     public RelayCommand ShowWorkflowsCommand { get; }    // v0.6.19 T10: 侧栏 8th "工作流市场"
     public RelayCommand ShowModelsCommand { get; }      // v0.6.20 T9: 侧栏 9th "模型市场"
+    public RelayCommand ShowTemplateManagementCommand { get; }  // v1.0.0 T8: 模板管理
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
@@ -443,6 +460,8 @@ public class MainViewModel : ViewModelBase
         ShowWorkflowsCommand = new RelayCommand(_ => ShowWorkflows());
         // v0.6.20 T9:模型市场命令。ShowModels 懒构造 ModelMarketplaceViewModel + 后台 LoadAsync。
         ShowModelsCommand = new RelayCommand(_ => ShowModels());
+        // v1.0.0 T8:模板管理命令。ShowTemplateManagement 懒构造 TemplateManagementViewModel。
+        ShowTemplateManagementCommand = new RelayCommand(_ => ShowTemplateManagement());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
         ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
@@ -660,6 +679,28 @@ public class MainViewModel : ViewModelBase
             _ = _modelMarketplaceViewModel.RefreshAsync();
         }
         CurrentView = _modelMarketplaceView;
+    }
+
+    // v1.0.0 T8: 模板管理页 — 侧栏 9th entry "模板管理"。跟 ShowLocalNodes
+    // 同款懒构造模式。首次进入 new VM(从 Settings.Templates 拷贝列表),
+    // View 由 T9 factory 注入(默认 new TemplateManagementView);
+    // 切走再回来复用同一份 VM 保留编辑状态/选中行/滚动位置。
+    // editTemplateFactory = null → VM ctor 自建 EditTemplateDialogViewModel 替身;
+    // updater = null → UpdateSourceCommand 走 no-op(T11 落地后由 App.xaml.cs 注入实 updater)。
+    private void ShowTemplateManagement()
+    {
+        CurrentSection = MainSection.Templates;
+        if (_templateManagementViewModel is null)
+        {
+            _templateManagementViewModel = new TemplateManagementViewModel(
+                _settings,
+                editTemplateFactory: null,
+                updater: null);
+            _templateManagementView = TemplateManagementViewFactory is null
+                ? new TemplateManagementView { DataContext = _templateManagementViewModel }
+                : TemplateManagementViewFactory(_templateManagementViewModel);
+        }
+        CurrentView = _templateManagementView;
     }
 
     /// <summary>
