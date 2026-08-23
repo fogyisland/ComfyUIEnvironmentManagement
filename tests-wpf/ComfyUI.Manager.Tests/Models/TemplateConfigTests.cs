@@ -66,10 +66,11 @@ public class TemplateConfigTests
     }
 
     [Fact]
-    public void JsonOptions_UsesSnakeCase_NamesFromComfySettingsWriter()
+    public void JsonPropertyNames_SnakeCase_WithoutExplicitOptions()
     {
-        // ComfySettingsWriter / JsonOptions.cs uses PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower
-        // (or equivalent). Verify TemplateConfig serializes with snake_case without custom attribute.
+        // JsonOptions uses CamelCase globally, but call JsonSerializer.Serialize without options here so
+        // the explicit [JsonPropertyName] attributes are the only mapping. Guards against accidental
+        // attribute removal for fields whose CamelCase rendering happens to match snake_case (a no-op bug).
         var c = new TemplateConfig { LocalSourceDir = "x", ExtraJunctionTargets = new() { "a" } };
         var json = JsonSerializer.Serialize(c);
         Assert.Contains("local_source_dir", json);
