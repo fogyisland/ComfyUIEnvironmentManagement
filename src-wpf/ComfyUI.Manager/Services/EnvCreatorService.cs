@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
@@ -14,16 +15,23 @@ namespace ComfyUI.Manager.Services;
 /// <summary>
 /// EnvCreatorService:编排 env 创建流程(替代 M5.2 删除的 Python EnvironmentService.create)。
 ///
+/// v1.0.0 multi-template T4 重构:CreateAsync 接收 <see cref="TemplateConfig"/>
+/// 代替原来的 <c>comfyuiSource</c> + <c>layout</c> 两个参数,实现:
+///   - G3:始终 copy(G3 删除 junction 选项)
+///   - G2:TemplateConfigSnapshot JSON 克隆冻结,settings 后续修改不影响 env
+///   - G9:仅 ComfyUI kind 触发 ComfyUIManagerInstaller / CommonNodeInstaller
+///
 /// 步骤:
-///   1. 校验输入(name unique / python 存在 / shared 布局的 ComfyUI source 存在)
+///   1. 校验输入(name unique / python 存在 / template.Kind + LocalSourceDir 非空)
 ///   2. 分配 port(从 8188 起,跳过已用)
 ///   3. 生成 env_id
 ///   4. 创建 env 根目录
-///   5. 链接 / 复制 ComfyUI(shared → junction,independent → copy)
+///   5. **始终 copy** template source → env 根目录(不 junction)
 ///   5.5 链接默认 Models 目录(Settings.DefaultModelsDirectory 非空时,models → 该目录)
 ///   6. 创建 venv(VenvCreator)
 ///   7. 写 extra_model_paths.yaml(占位)
-///   8. 插 SQLite 行
+///   8. 插 SQLite 行(持久化 TemplateKind + TemplateConfigSnapshot JSON 克隆)
+///   9. (kind == ComfyUI 时)best-effort 装常用节点
 /// </summary>
 public sealed class EnvCreatorService
 {
@@ -62,29 +70,41 @@ public sealed class EnvCreatorService
         }
     }
 
+    /// <summary>
+    /// v1.0.0 multi-template T4:CreateAsync 接收 <see cref="TemplateConfig"/> 替代原来
+    /// 独立的 <c>comfyuiSource</c> + <c>layout</c> 两个参数。TemplateConfig 内的
+    /// <c>Kind</c> 决定 ComfyUI Manager / Common Node 安装行为;LocalSourceDir 决定
+    /// copy 来源。TemplateConfigSnapshot 通过 JSON round-trip 克隆,确保 env 创建后
+    /// 用户修改 Settings.Templates 不影响已有 env(G2)。
+    /// </summary>
     public async Task<Environment> CreateAsync(
         string name,
-        string layout,            // "shared" | "independent"
+        TemplateConfig templateConfig,
         string pythonExe,
-        string? comfyuiSource,
         int? port,
-        IProgress<CreateStepReport>? progress = null,
+        string? notes = null,
         CancellationToken ct = default,
-        string? notes = null)
+        IProgress<CreateStepReport>? progress = null)
     {
         // 1. 校验输入
         progress?.Report(new CreateStepReport("校验输入", $"python.exe = {pythonExe}"));
         if (string.IsNullOrWhiteSpace(name))
             throw new CreateEnvException("ENV_NAME_INVALID", "环境名不能为空");
-        if (layout != "shared" && layout != "independent")
-            throw new CreateEnvException("ENV_LAYOUT_INVALID",
-                $"layout 必须是 shared 或 independent,收到: {layout}");
+        if (templateConfig is null)
+            throw new CreateEnvException("TEMPLATE_CONFIG_MISSING",
+                "TemplateConfig 不能为 null");
+        if (string.IsNullOrWhiteSpace(templateConfig.Kind))
+            throw new CreateEnvException("TEMPLATE_KIND_INVALID",
+                "TemplateConfig.Kind 不能为空");
+        if (string.IsNullOrWhiteSpace(templateConfig.LocalSourceDir))
+            throw new CreateEnvException("TEMPLATE_SOURCE_MISSING",
+                "TemplateConfig.LocalSourceDir 不能为空");
+        if (!Directory.Exists(templateConfig.LocalSourceDir))
+            throw new CreateEnvException("TEMPLATE_SOURCE_NOT_FOUND",
+                $"Template source 不存在: {templateConfig.LocalSourceDir}");
         if (!File.Exists(pythonExe))
             throw new CreateEnvException("VENV_PYTHON_MISSING",
                 $"Python 解释器不存在: {pythonExe}");
-        if (layout == "shared" && (string.IsNullOrEmpty(comfyuiSource) || !Directory.Exists(comfyuiSource)))
-            throw new CreateEnvException("COMFYUI_SOURCE_MISSING",
-                "shared 布局必须指定已存在的 ComfyUI 源");
 
         var envRepo = new EnvironmentRepository(_dbFactory);
         foreach (var existing in envRepo.ListAll())
@@ -120,33 +140,20 @@ public sealed class EnvCreatorService
         Directory.CreateDirectory(envsDir);
         Directory.CreateDirectory(rootPath);
 
-        // 5. 链接 / 复制 ComfyUI
-        var comfyuiLink = Path.Combine(rootPath, "ComfyUI");
-        string comfyuiResolved;
-        if (layout == "shared")
-        {
-            progress?.Report(new CreateStepReport("链接 ComfyUI 源",
-                $"junction: {comfyuiSource} → {comfyuiLink}"));
-            await _linker.CreateAsync(comfyuiLink, comfyuiSource!, ct);
-            comfyuiResolved = comfyuiSource!;
-        }
-        else
-        {
-            // independent:需要先有 comfyuiSource 作为拷贝源
-            if (string.IsNullOrEmpty(comfyuiSource) || !Directory.Exists(comfyuiSource))
-                throw new CreateEnvException("COMFYUI_SOURCE_MISSING",
-                    "independent 布局也需要指定已存在的 ComfyUI 源作为拷贝来源");
-            progress?.Report(new CreateStepReport("链接 ComfyUI 源",
-                $"copy: {comfyuiSource} → {comfyuiLink}"));
-            _linker.CopyDirectory(comfyuiSource, comfyuiLink);
-            comfyuiResolved = comfyuiLink;
-        }
+        // 5. v1.0.0 T4 G3:始终 copy template source 到 env 根目录。
+        // 删除了 v0.6.x 时代的 shared → junction / independent → copy 二选一;
+        // 现在所有 kind 都是独立 copy,环境间不共享 template 源代码。
+        progress?.Report(new CreateStepReport("复制 template 源",
+            $"copy: {templateConfig.LocalSourceDir} → {rootPath}"));
+        _linker.CopyDirectory(templateConfig.LocalSourceDir, rootPath);
 
         // 5.5 链接默认 Models 目录(v0.6.11+ T2 合并:Shared 字段删除,只此一条)。
+        // v1.0.0 T4:对所有 kind 都生效(不是仅 ComfyUI),让用户配置 default models
+        // 后 A1111 / 其它 kind 也能共享 models。
         if (!string.IsNullOrWhiteSpace(_settings.DefaultModelsDirectory))
         {
             var modelsDirFull = Path.GetFullPath(_settings.DefaultModelsDirectory);
-            var modelsLink = Path.Combine(comfyuiLink, "models");
+            var modelsLink = Path.Combine(rootPath, "models");
             progress?.Report(new CreateStepReport("链接 Models 目录",
                 $"junction: {modelsLink} → {modelsDirFull}"));
             try
@@ -186,13 +193,18 @@ public sealed class EnvCreatorService
         File.WriteAllText(extraYaml, "# TODO: M1 填充\n", System.Text.Encoding.UTF8);
 
         // 8. 构造 Environment 写库
+        // v1.0.0 T4 G2:TemplateConfigSnapshot 用 JSON round-trip 克隆,后续 settings
+        // 编辑不会 mutate 已存在的 env snapshot(测试 `CreateAsync_SnapshotIsFrozen_*`)。
+        // ComfyuiLayout 列保留旧字段("isolated" 标量字面),仍写到 DB 以兼容老 schema。
         var env = new Environment
         {
             Id = envId,
             Name = name,
             RootPath = rootPath,
-            ComfyuiLayout = layout,
-            ComfyuiSource = comfyuiResolved,
+            // v1.0.0 T4:Layout 概念被 templateConfig.Kind 取代;ComfyuiLayout 列保留
+            // 一个标量字面以兼容 DB schema(老行回填 "isolated")。
+            ComfyuiLayout = "isolated",
+            ComfyuiSource = rootPath,  // copy 后 ComfyUI 内容就在 rootPath 下
             BasePythonPath = pythonExe,
             VenvPath = venvPath,
             PythonExecutable = Path.Combine(venvPath, "Scripts", "python.exe"),
@@ -203,12 +215,16 @@ public sealed class EnvCreatorService
             Status = "stopped",
             EnabledNodeIdsJson = "[]",
             Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+            TemplateKind = templateConfig.Kind,
+            TemplateConfigSnapshot = CloneTemplateConfig(templateConfig),
         };
         Directory.CreateDirectory(env.CustomNodesPath!);
         envRepo.Upsert(env);
 
-        // 5.7 best-effort 装常用节点(G5:不阻断 env-create,失败仅 WARN)
-        if (_commonNodeInstaller is not null)
+        // 9. v1.0.0 T4 G9:仅 ComfyUI kind 跑 CommonNodeInstaller。
+        // 非 ComfyUI(A1111 / 自定义 / etc)无 ComfyUI Manager / 常用节点概念,跳过。
+        if (_commonNodeInstaller is not null
+            && string.Equals(templateConfig.Kind, "ComfyUI", StringComparison.Ordinal))
         {
             try
             {
@@ -227,6 +243,18 @@ public sealed class EnvCreatorService
         }
 
         return env;
+    }
+
+    /// <summary>
+    /// v1.0.0 T4 G2:通过 JSON 序列化往返克隆 <see cref="TemplateConfig"/>,
+    /// 确保后续用户编辑 <c>Settings.Templates</c> 不会 mutate 已存在 env 的 snapshot。
+    /// 跟 EnvironmentRepository 持久化 snapshot 用相同的 JsonSerializer 选项(default,无 converter)。
+    /// </summary>
+    private static TemplateConfig CloneTemplateConfig(TemplateConfig source)
+    {
+        var json = JsonSerializer.Serialize(source);
+        return JsonSerializer.Deserialize<TemplateConfig>(json)
+            ?? throw new InvalidOperationException("TemplateConfig clone round-trip returned null");
     }
 
     private static int NextFreePort(HashSet<int> used)

@@ -170,8 +170,36 @@ public class CreateEnvDialogViewModel : ViewModelBase
         if (IsBusy) return false;
         if (string.IsNullOrWhiteSpace(Name)) return false;
         if (string.IsNullOrWhiteSpace(PythonExe)) return false;
-        if (Layout == "shared" && string.IsNullOrWhiteSpace(ComfyuiSource)) return false;
+        // v1.0.0 T4:ComfyuiSource 现在恒非空(始终 copy)。Layout 字段保留向后兼容 UI,
+        // 但 env-create 走 BuildTemplateConfig() — 必须有 source 才能 copy。
+        if (string.IsNullOrWhiteSpace(ComfyuiSource)) return false;
         return true;
+    }
+
+    /// <summary>
+    /// v1.0.0 T4:从对话框当前状态(<see cref="Layout"/> + <see cref="ComfyuiSource"/> + <see cref="PythonExe"/>)
+    /// 构造一个 <see cref="TemplateConfig"/> 传给 <c>EnvCreatorService.CreateAsync</c>。
+    /// Layout == "shared" 视作 ComfyUI kind(现有行为),其他 layout 走非 ComfyUI 路径。
+    /// 测试用 main.py 入口;EntryArgs 默认带 {port} 占位符让 user 在 Port 输入框生效。
+    /// </summary>
+    internal TemplateConfig BuildTemplateConfig()
+    {
+        // 现有 dialog 只支持 ComfyUI 模板路径,T7 会替换为完整 template picker。
+        // 现在固定 Kind = "ComfyUI",通过 Settings.Templates["ComfyUI"] 兜底拿到 entry 配置。
+        var comfyTemplate = _settings.Templates.TryGetValue("ComfyUI", out var t)
+            ? t
+            : TemplateConfigDefaults.ComfyUi(_projectRoot);
+        return new TemplateConfig
+        {
+            Kind = "ComfyUI",
+            Name = comfyTemplate.Name,
+            LocalSourceDir = ComfyuiSource,
+            EntryScript = comfyTemplate.EntryScript,
+            EntryArgs = comfyTemplate.EntryArgs,
+            ModelsSubdir = comfyTemplate.ModelsSubdir,
+            ExtraJunctionTargets = new(comfyTemplate.ExtraJunctionTargets),
+            UserExtraArgs = comfyTemplate.UserExtraArgs,
+        };
     }
 
     /// <summary>
@@ -240,12 +268,12 @@ public class CreateEnvDialogViewModel : ViewModelBase
             if (int.TryParse(Port, out var p) && p > 0) port = p;
 
             var env = await _creator.CreateAsync(
-                Name, Layout, PythonExe,
-                string.IsNullOrWhiteSpace(ComfyuiSource) ? null : ComfyuiSource,
+                Name, BuildTemplateConfig(),
+                PythonExe,
                 port,
-                progress,
+                string.IsNullOrWhiteSpace(Notes) ? null : Notes,
                 CancellationToken.None,
-                string.IsNullOrWhiteSpace(Notes) ? null : Notes);
+                progress);
             Closed?.Invoke(env);
         }
         catch (EnvCreatorService.CreateEnvException ex)

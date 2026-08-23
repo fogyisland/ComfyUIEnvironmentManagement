@@ -71,7 +71,9 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
     }
 
     private static bool IsModelsLink(string linkPath) =>
-        linkPath.EndsWith(Path.Combine("ComfyUI", "models"), StringComparison.OrdinalIgnoreCase);
+        // v1.0.0 T4:env-create 现在直接 copy template source 到 rootPath(models 目录也跟着进),
+        // 不再有 rootPath/ComfyUI 子目录,所以 models junction 直接建在 rootPath/models。
+        linkPath.EndsWith(Path.Combine("envs", "env-1", "models"), StringComparison.OrdinalIgnoreCase);
 
     private static bool SameDir(string a, string b) =>
         Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar)
@@ -85,7 +87,7 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
         _settings.DefaultModelsDirectory = defaultModelsDir;
 
         await _service.CreateAsync(
-            "env-1", "independent", BasePython, ComfyuiSource, port: null);
+            "env-1", MakeComfyUITemplate(), BasePython, port: null);
 
         Assert.Contains(_linker.CreatedLinks,
             pair => IsModelsLink(pair.Link) && SameDir(pair.Target, defaultModelsDir));
@@ -97,9 +99,22 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
         _settings.DefaultModelsDirectory = "";
 
         await _service.CreateAsync(
-            "env-2", "independent", BasePython, ComfyuiSource, port: null);
+            "env-2", MakeComfyUITemplate(), BasePython, port: null);
 
         Assert.DoesNotContain(_linker.CreatedLinks, pair => IsModelsLink(pair.Link));
+    }
+
+    private TemplateConfig MakeComfyUITemplate()
+    {
+        return new TemplateConfig
+        {
+            Kind = "ComfyUI",
+            Name = "ComfyUI",
+            LocalSourceDir = ComfyuiSource,
+            EntryScript = "main.py",
+            EntryArgs = "--port {port} --listen 0.0.0.0",
+            ModelsSubdir = "models",
+        };
     }
 
     private sealed class RecordingJunctionLinker : JunctionLinker
