@@ -54,6 +54,65 @@ public class EditTemplateDialogViewModel : ViewModelBase
         !string.IsNullOrWhiteSpace(WorkingConfig.Kind) &&
         (Mode == EditTemplateDialogMode.Edit || !_settings.Templates.ContainsKey(WorkingConfig.Kind));
 
+    // T10 R1: XAML TwoWay bindings target these VM-level proxy properties instead of
+    // WorkingConfig.X directly. TemplateConfig is a plain POCO without INPC, so writing
+    // to WorkingConfig.Name/Kind/etc. from a binding never raises PropertyChanged, and
+    // SaveCommand.CanExecute never re-evaluates as the user types. The setters fire both
+    // the property's own PropertyChanged (to refresh any TwoWay readback) and CanSave
+    // (to drive SaveCommand.RaiseCanExecuteChanged via the WPF CommandManager pipeline).
+    public string Name
+    {
+        get => WorkingConfig.Name;
+        set { if (WorkingConfig.Name != value) { WorkingConfig.Name = value; RaiseFor(nameof(Name)); } }
+    }
+
+    public string Kind
+    {
+        get => WorkingConfig.Kind;
+        set { if (WorkingConfig.Kind != value) { WorkingConfig.Kind = value; RaiseFor(nameof(Kind)); } }
+    }
+
+    public string LocalSourceDir
+    {
+        get => WorkingConfig.LocalSourceDir;
+        set { if (WorkingConfig.LocalSourceDir != value) { WorkingConfig.LocalSourceDir = value; RaiseFor(nameof(LocalSourceDir)); } }
+    }
+
+    public string EntryScript
+    {
+        get => WorkingConfig.EntryScript;
+        set { if (WorkingConfig.EntryScript != value) { WorkingConfig.EntryScript = value; RaiseFor(nameof(EntryScript)); } }
+    }
+
+    public string EntryArgs
+    {
+        get => WorkingConfig.EntryArgs;
+        set { if (WorkingConfig.EntryArgs != value) { WorkingConfig.EntryArgs = value; RaiseFor(nameof(EntryArgs)); } }
+    }
+
+    public string ModelsSubdir
+    {
+        get => WorkingConfig.ModelsSubdir;
+        set { if (WorkingConfig.ModelsSubdir != value) { WorkingConfig.ModelsSubdir = value; RaiseFor(nameof(ModelsSubdir)); } }
+    }
+
+    public string UserExtraArgs
+    {
+        get => WorkingConfig.UserExtraArgs;
+        set { if (WorkingConfig.UserExtraArgs != value) { WorkingConfig.UserExtraArgs = value; RaiseFor(nameof(UserExtraArgs)); } }
+    }
+
+    private void RaiseFor(string prop)
+    {
+        RaisePropertyChanged(prop);
+        RaisePropertyChanged(nameof(CanSave));
+        // WPF re-evaluates Command.CanExecute only when its CanExecuteChanged event fires.
+        // PropertyChanged on CanSave alone does NOT trigger Button.IsEnabled re-poll, so we
+        // must explicitly notify the command. This is the same pattern as
+        // ModelMarketplaceViewModel / BulkUpdateViewModel / SettingsViewModel.
+        (SaveCommand as RelayCommand)?.RaiseCanExecuteChanged();
+    }
+
     public void LoadFrom(TemplateConfig existing)
     {
         _originalKind = existing.Kind;
@@ -69,6 +128,14 @@ public class EditTemplateDialogViewModel : ViewModelBase
             UserExtraArgs = existing.UserExtraArgs,
         };
         RaisePropertyChanged(nameof(WorkingConfig));
+        // Refresh proxy properties (they read WorkingConfig.X) and CanSave
+        RaisePropertyChanged(nameof(Name));
+        RaisePropertyChanged(nameof(Kind));
+        RaisePropertyChanged(nameof(LocalSourceDir));
+        RaisePropertyChanged(nameof(EntryScript));
+        RaisePropertyChanged(nameof(EntryArgs));
+        RaisePropertyChanged(nameof(ModelsSubdir));
+        RaisePropertyChanged(nameof(UserExtraArgs));
         RaisePropertyChanged(nameof(CanSave));
     }
 

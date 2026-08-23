@@ -93,4 +93,29 @@ public class EditTemplateDialogViewModelTests
         Assert.True(s.Templates.ContainsKey("MySwarm"));
         Assert.True(vm.AppliedToSettings);
     }
+
+    // T10 R1: XAML TwoWay bindings write through VM proxy properties (not WorkingConfig directly).
+    // Without the proxies, no PropertyChanged fires, so SaveCommand.CanExecute stays false even
+    // when Name + Kind are valid — Save button appears permanently disabled in the running GUI.
+    [Fact]
+    public void SaveCommand_CanExecute_FollowsCanSaveReactivity()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        // Simulate XAML textbox input via proxy properties (not direct WorkingConfig mutation)
+        vm.Name = "MySwarm";
+        vm.Kind = "MySwarm";
+        vm.LocalSourceDir = "D:/swarmui";
+        Assert.True(vm.SaveCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void SaveCommand_CanExecute_FalseWhenNameEmpty()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.Name = "";  // empty
+        vm.Kind = "MySwarm";
+        Assert.False(vm.SaveCommand.CanExecute(null));
+    }
 }

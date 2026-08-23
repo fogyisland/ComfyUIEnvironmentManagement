@@ -25,11 +25,11 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <TextBlock Text="名称" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding WorkingConfig.Name, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
 
                 <TextBlock Text="Kind (内置 ComfyUI / A1111 只读)" Style="{StaticResource LabelStyle}"/>
                 <ComboBox IsEditable="True"
-                          Text="{Binding WorkingConfig.Kind, UpdateSourceTrigger=PropertyChanged}">
+                          Text="{Binding Kind, UpdateSourceTrigger=PropertyChanged}">
                     <ComboBoxItem Content="ComfyUI"/>
                     <ComboBoxItem Content="A1111"/>
                 </ComboBox>
@@ -38,21 +38,21 @@
                 <DockPanel>
                     <Button Content="浏览..." DockPanel.Dock="Right" Margin="4,0,0,0"
                             Click="BrowseLocalSourceDir_Click"/>
-                    <TextBox Text="{Binding WorkingConfig.LocalSourceDir, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBox Text="{Binding LocalSourceDir, UpdateSourceTrigger=PropertyChanged}"/>
                 </DockPanel>
 
                 <TextBlock Text="启动脚本" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding WorkingConfig.EntryScript, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBox Text="{Binding EntryScript, UpdateSourceTrigger=PropertyChanged}"/>
 
                 <TextBlock Text="启动参数 (支持 {port} 占位符)" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding WorkingConfig.EntryArgs, UpdateSourceTrigger=PropertyChanged}"
+                <TextBox Text="{Binding EntryArgs, UpdateSourceTrigger=PropertyChanged}"
                          AcceptsReturn="True" TextWrapping="Wrap" Height="60"/>
 
                 <TextBlock Text="模型子目录" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding WorkingConfig.ModelsSubdir, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBox Text="{Binding ModelsSubdir, UpdateSourceTrigger=PropertyChanged}"/>
 
                 <TextBlock Text="用户附加参数 (启动时附加)" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding WorkingConfig.UserExtraArgs, UpdateSourceTrigger=PropertyChanged}"
+                <TextBox Text="{Binding UserExtraArgs, UpdateSourceTrigger=PropertyChanged}"
                          AcceptsReturn="True" TextWrapping="Wrap" Height="60"/>
             </StackPanel>
         </ScrollViewer>
@@ -61,6 +61,7 @@
             <Button Content="取消" Width="80" Margin="0,0,8,0"
                     IsCancel="True" Click="Cancel_Click"/>
             <Button Content="保存" Width="80"
+                    Command="{Binding SaveCommand}"
                     IsDefault="True" Click="Save_Click"/>
         </StackPanel>
     </Grid>

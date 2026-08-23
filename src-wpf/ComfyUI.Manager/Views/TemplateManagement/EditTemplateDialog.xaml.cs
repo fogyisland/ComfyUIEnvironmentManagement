@@ -41,7 +41,10 @@ public partial class EditTemplateDialog : Window
         };
         if (dlg.ShowDialog(this) == true)
         {
-            vm.WorkingConfig.LocalSourceDir = dlg.FolderName;
+            // T10 R1: write through the proxy setter so CanSave + SaveCommand.RaiseCanExecuteChanged
+            // both fire. Writing WorkingConfig.LocalSourceDir directly bypasses INPC and leaves
+            // the Save button visually disabled.
+            vm.LocalSourceDir = dlg.FolderName;
         }
     }
 }
