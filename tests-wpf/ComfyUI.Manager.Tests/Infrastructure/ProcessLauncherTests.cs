@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Tests.Fakes;
 using Xunit;
 using Environment = ComfyUI.Manager.Models.Environment;
@@ -82,7 +83,12 @@ public sealed class ProcessLauncherTests
 
         // A console process (no window) ignores CloseMainWindow(), so the only
         // way StopEnvAsync can return is via the grace-timeout -> kill path.
-        var mainPy = Path.Combine(tempRoot, "main.py");
+        // v1.0.0 T5: BuildStartCommand 把 entry file 放在 <projectRoot>/envs/<envName>/<EntryScript>,
+        // ProcessLauncher 用其父目录做 WorkingDirectory — 必须真实创建该目录,否则 Process.Start 抛
+        // "目录名称无效"。
+        var envDir = Path.Combine(tempRoot, "envs", "stop-timeout");
+        Directory.CreateDirectory(envDir);
+        var mainPy = Path.Combine(envDir, "main.py");
         File.WriteAllText(mainPy, """
 import sys, socket, time
 host, port = "127.0.0.1", 0
@@ -113,6 +119,16 @@ time.sleep(60)
             PythonExecutable = python,
             Port = port,
             Status = "stopped",
+            // v1.0.0 T5: ProcessLauncher.BuildStartCommand 需要 TemplateConfigSnapshot
+            // (或 Settings.Templates[Kind]) 来派生 entry script。tempRoot 下没
+            // .manager/settings.json,所以 fallback settings 是空的 — 必须显式 set snapshot。
+            TemplateKind = "ComfyUI",
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "ComfyUI",
+                EntryScript = "main.py",
+                EntryArgs = "--port {port} --listen 127.0.0.1",
+            },
         };
         envRepo.Upsert(env);
 

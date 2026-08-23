@@ -86,6 +86,16 @@ public sealed class ProcessLauncherProgressTests : IDisposable
             CustomNodesPath = Path.Combine(_projectRoot, "nodes"),
             Port = port,
             Status = "stopped",
+            // v1.0.0 T5: ProcessLauncher.BuildStartCommand 需要 TemplateConfigSnapshot
+            // (或 Settings.Templates[Kind]) 来派生 entry script + args。SeedEnv 不创
+            // .manager/settings.json,所以 fallback settings 是空的 — 必须显式 set snapshot。
+            TemplateKind = "ComfyUI",
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "ComfyUI",
+                EntryScript = "main.py",
+                EntryArgs = "--port {port} --listen 127.0.0.1",
+            },
         };
         // 写一个临时 main.py 让 ResolveMainPy 找到(否则 start 抛"找不到 main.py")
         if (mainPy is not null)
@@ -107,7 +117,10 @@ public sealed class ProcessLauncherProgressTests : IDisposable
         // ResolvePythonExecutable 找 "dotnet"(任意 binary),MainPy 用一个不存在的路径(启动后立即 fail,
         // 但 stage 0 + stage 1 都已经 Report 过)。
         // WaitForPortAsync 会因为 port 不 listen 超时 — 用一个无效端口避免被占用。
-        var mainPy = Path.Combine(_projectRoot, "ComfyUI", "main.py");
+        // v1.0.0 T5: BuildStartCommand 把 entry file 放在 <projectRoot>/envs/<envName>/<EntryScript>,
+        // ProcessLauncher 用其父目录做 WorkingDirectory — 必须真实创建该目录,否则 Process.Start 抛
+        // "目录名称无效"。
+        var mainPy = Path.Combine(_projectRoot, "envs", "test-env", "main.py");
         var env = SeedEnv(port: 1, pythonExe: ResolveTrivialBinary(), mainPy: mainPy);  // port 1 = privileged,不会 listen
         var launcher = NewLauncher();
         var stages = new List<string>();

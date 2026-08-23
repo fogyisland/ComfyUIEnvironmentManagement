@@ -166,14 +166,9 @@ public sealed class ProcessLauncher : IDisposable
 
         try
         {
-            var pythonExe = ResolvePythonExecutable(env);
             stageProgress?.Report("stage:激活本地环境");
-            var mainPy = ResolveMainPy(env);
-            if (!File.Exists(mainPy))
-            {
-                throw new InvalidOperationException(
-                    $"找不到 main.py(已尝试:{mainPy})");
-            }
+            var settings = new SettingsRepository(new LocalDataPaths(_projectRoot)).Load();
+            var (pythonExe, (entryFile, entryArgs)) = BuildStartCommand(env, settings, _projectRoot);
 
             var port = env.Port
                 ?? throw new ArgumentException(
@@ -187,9 +182,11 @@ public sealed class ProcessLauncher : IDisposable
 
             // v0.6.7.3 + v0.6.11+ T2:启动前检查并重建 Models junction(改 DefaultModelsDirectory 后自动生效)。
             // 失败仅 INFO 日志,不阻塞启动 —— ComfyUI 跑得起来,只是 models 共享不生效。
+            // v1.0.0 T5:comfyuiRoot 改从 BuildStartCommand 的 entryFile 派生(<envRoot>/<entryScript>
+            // → Path.GetDirectoryName = <envRoot>),而不是老 ResolveMainPy 返回的 <envRoot>/ComfyUI/main.py。
             try
             {
-                var comfyUiRootForModels = Path.GetDirectoryName(mainPy)!;
+                var comfyUiRootForModels = Path.GetDirectoryName(entryFile)!;
                 await EnsureModelsJunctionAsync(comfyUiRootForModels, ct);
             }
             catch (Exception ex)
@@ -203,7 +200,7 @@ public sealed class ProcessLauncher : IDisposable
             {
                 try
                 {
-                    var comfyUiRoot = Path.GetDirectoryName(mainPy)!;
+                    var comfyUiRoot = Path.GetDirectoryName(entryFile)!;
                     new ComfySettingsWriter().WriteLocale(comfyUiRoot, _comfyUiLocale);
                     _logger?.Info("env-start", $"写入 ComfyUI locale={_comfyUiLocale} → {comfyUiRoot}/user/default/comfy.settings.json");
                 }
@@ -219,17 +216,20 @@ public sealed class ProcessLauncher : IDisposable
             var psi = new ProcessStartInfo
             {
                 FileName = pythonExe,
-                WorkingDirectory = Path.GetDirectoryName(mainPy)!,
+                WorkingDirectory = Path.GetDirectoryName(entryFile)!,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             };
-            psi.ArgumentList.Add(mainPy);
-            psi.ArgumentList.Add("--port");
-            psi.ArgumentList.Add(port.ToString());
-            psi.ArgumentList.Add("--listen");
-            psi.ArgumentList.Add("127.0.0.1");
+            psi.ArgumentList.Add(entryFile);
+            // entryArgs 是一段命令行参数(包含 {port} 已替换的 --port / --listen / UserExtraArgs),
+            // 用 ArgumentList.Add 拆分 — 但里面 --preview-method auto 是两个独立 token,所以原样
+            // 用空格分隔字符串追加到 ArgumentList。ProcessStartInfo.ArgumentList 会按空格拆。
+            foreach (var token in entryArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                psi.ArgumentList.Add(token);
+            }
             psi.EnvironmentVariables["PYTHONPATH"] =
                 $"{_projectRoot};{Path.Combine(_projectRoot, "src")}";
 
@@ -455,50 +455,6 @@ public sealed class ProcessLauncher : IDisposable
     }
 
     // -------- internals --------
-
-    private string ResolvePythonExecutable(Environment env)
-    {
-        if (!string.IsNullOrWhiteSpace(env.PythonExecutable)
-            && File.Exists(env.PythonExecutable))
-        {
-            return env.PythonExecutable;
-        }
-
-        if (string.IsNullOrWhiteSpace(env.VenvPath))
-        {
-            throw new ArgumentException(
-                $"env '{env.Name}' 缺 PythonExecutable 与 VenvPath",
-                nameof(env));
-        }
-
-        // Scripts/python.exe on Windows, bin/python on Linux/macOS —
-        // 显式 OS 判定,避免在 WSL / macOS 开发时静默失败。
-        var relative = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? Path.Combine("Scripts", "python.exe")
-            : Path.Combine("bin", "python");
-        var exe = Path.Combine(env.VenvPath, relative);
-
-        if (!File.Exists(exe))
-        {
-            throw new InvalidOperationException(
-                $"venv python 找不到: {exe}");
-        }
-        return exe;
-    }
-
-    private string ResolveMainPy(Environment env)
-    {
-        // 优先级 1:<root>/ComfyUI/main.py
-        var nested = Path.Combine(env.RootPath, "ComfyUI", "main.py");
-        if (File.Exists(nested)) return nested;
-
-        // 优先级 2:<root>/main.py(env 直接就是 ComfyUI)
-        var flat = Path.Combine(env.RootPath, "main.py");
-        if (File.Exists(flat)) return flat;
-
-        // 都不在:返回 nested,File.Exists 检查会失败,start 时抛清晰错误
-        return nested;
-    }
 
     /// <summary>
     /// v0.6.7.3: 启动前检查 <paramref name="comfyuiRoot"/>/models 是否指向
@@ -834,6 +790,48 @@ public sealed class ProcessLauncher : IDisposable
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// v1.0.0 multi-template T5: 根据 <paramref name="env"/> 的 <see cref="Environment.TemplateKind"/>
+    /// 拼接启动命令的 (exe, (entryFile, entryArgs))。
+    ///
+    /// 优先级: <see cref="Environment.TemplateConfigSnapshot"/> (env 创建时的快照)
+    /// → <see cref="Settings.Templates"/>[env.TemplateKind] (向后兼容,老 env 无快照列时用当前 template)。
+    ///
+    /// 路径约定: <c>&lt;projectRoot&gt;/envs/&lt;envName&gt;/venv/Scripts/python.exe</c>
+    /// + <c>&lt;projectRoot&gt;/envs/&lt;envName&gt;/&lt;EntryScript&gt;</c>。
+    /// {port} 占位符用 <see cref="Environment.Port"/> 替换;空则回退 "8000"。
+    /// </summary>
+    /// <returns>
+    /// (exe, (entryFile, entryArgsString))。entryArgsString 是空格分隔的命令行参数
+    /// 串,调用方按需 Split(' ') 喂给 <see cref="ProcessStartInfo.ArgumentList"/>。
+    /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// env 既无 TemplateConfigSnapshot 也找不到 Settings.Templates[TemplateKind] ——
+    /// 即 template 已被用户在 Settings 中删除,且 env row 没快照。
+    /// </exception>
+    public static (string exe, (string File, string ArgsString) args) BuildStartCommand(
+        Environment env, Settings settings, string projectRoot)
+    {
+        var snapshot = env.TemplateConfigSnapshot
+            ?? settings.Templates.GetValueOrDefault(env.TemplateKind)
+            ?? throw new InvalidOperationException(
+                $"模板 '{env.TemplateKind}' 不存在,可能在 Settings 中已被删除");
+
+        var envRoot = Path.Combine(projectRoot, "envs", env.Name);
+        // v0.6.7.1: env.PythonExecutable 优先 — 允许用户/测试覆写 python 路径(老行为)。
+        // 空/不存在 → 回退到标准 venv layout <envRoot>/venv/Scripts/python.exe。
+        var venvPython = !string.IsNullOrWhiteSpace(env.PythonExecutable) && File.Exists(env.PythonExecutable)
+            ? env.PythonExecutable
+            : Path.Combine(envRoot, "venv", "Scripts", "python.exe");
+        var entryScript = Path.Combine(envRoot, snapshot.EntryScript);
+        var port = env.Port?.ToString() ?? "8000";
+        var entryArgs = snapshot.EntryArgs.Replace("{port}", port);
+        if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
+            entryArgs += " " + snapshot.UserExtraArgs;
+
+        return (venvPython, (entryScript, entryArgs));
     }
 
     private static void TryKillProcessTree(Process process)
