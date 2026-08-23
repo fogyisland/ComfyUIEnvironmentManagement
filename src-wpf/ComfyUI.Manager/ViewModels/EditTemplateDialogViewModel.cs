@@ -1,7 +1,10 @@
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;  // for NodeOperationResult
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -15,6 +18,7 @@ public class EditTemplateDialogViewModel : ViewModelBase
 {
     private readonly Settings _settings;
     private readonly Action<EditTemplateDialogViewModel>? _showDialogImpl;
+    private readonly Func<string, string, CancellationToken, Task<NodeOperationResult>>? _cloneFunc;
     private string _originalKind = "";  // for edit mode: tracks the original kind to handle rename
 
     public EditTemplateDialogMode Mode { get; set; } = EditTemplateDialogMode.Add;
@@ -32,10 +36,12 @@ public class EditTemplateDialogViewModel : ViewModelBase
 
     public EditTemplateDialogViewModel(
         Settings settings,
-        Action<EditTemplateDialogViewModel>? showDialogImpl)
+        Action<EditTemplateDialogViewModel>? showDialogImpl,
+        Func<string, string, CancellationToken, Task<NodeOperationResult>>? cloneFunc = null)
     {
         _settings = settings;
         _showDialogImpl = showDialogImpl;
+        _cloneFunc = cloneFunc;
         SaveCommand = new RelayCommand(Save, () => CanSave);
         CancelCommand = new RelayCommand(Cancel);
     }
@@ -49,10 +55,23 @@ public class EditTemplateDialogViewModel : ViewModelBase
         ShowDialogRequested?.Invoke(this);
     }
 
-    public bool CanSave =>
-        !string.IsNullOrWhiteSpace(WorkingConfig.Name) &&
-        !string.IsNullOrWhiteSpace(WorkingConfig.Kind) &&
-        (Mode == EditTemplateDialogMode.Edit || !_settings.Templates.ContainsKey(WorkingConfig.Kind));
+    public bool CanSave
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(WorkingConfig.Name)) return false;
+            if (string.IsNullOrWhiteSpace(WorkingConfig.Kind)) return false;
+            if (Mode == EditTemplateDialogMode.Add && _settings.Templates.ContainsKey(WorkingConfig.Kind)) return false;
+
+            return WorkingConfig.SourceKind switch
+            {
+                TemplateSourceKind.Local => !string.IsNullOrWhiteSpace(WorkingConfig.LocalSourceDir),
+                TemplateSourceKind.GitHub => !string.IsNullOrWhiteSpace(WorkingConfig.GitHubRepoUrl)
+                                            && IsValidRepoUrl(WorkingConfig.GitHubRepoUrl),
+                _ => false,
+            };
+        }
+    }
 
     // T10 R1: XAML TwoWay bindings target these VM-level proxy properties instead of
     // WorkingConfig.X directly. TemplateConfig is a plain POCO without INPC, so writing
@@ -76,6 +95,43 @@ public class EditTemplateDialogViewModel : ViewModelBase
     {
         get => WorkingConfig.LocalSourceDir;
         set { if (WorkingConfig.LocalSourceDir != value) { WorkingConfig.LocalSourceDir = value; RaiseFor(nameof(LocalSourceDir)); } }
+    }
+
+    public TemplateSourceKind SourceKind
+    {
+        get => WorkingConfig.SourceKind;
+        set
+        {
+            if (WorkingConfig.SourceKind == value) return;
+            WorkingConfig.SourceKind = value;
+            // Switching to GitHub: auto-fill LocalSourceDir from URL basename if empty.
+            if (value == TemplateSourceKind.GitHub
+                && string.IsNullOrWhiteSpace(WorkingConfig.LocalSourceDir)
+                && !string.IsNullOrWhiteSpace(WorkingConfig.GitHubRepoUrl))
+            {
+                WorkingConfig.LocalSourceDir = DeriveRepoBasename(WorkingConfig.GitHubRepoUrl);
+                RaiseFor(nameof(LocalSourceDir));
+            }
+            RaiseFor(nameof(SourceKind));
+        }
+    }
+
+    public string GitHubRepoUrl
+    {
+        get => WorkingConfig.GitHubRepoUrl;
+        set
+        {
+            if (WorkingConfig.GitHubRepoUrl == value) return;
+            WorkingConfig.GitHubRepoUrl = value;
+            // In GitHub mode with empty LocalSourceDir, re-derive on URL change.
+            if (WorkingConfig.SourceKind == TemplateSourceKind.GitHub
+                && string.IsNullOrWhiteSpace(WorkingConfig.LocalSourceDir))
+            {
+                WorkingConfig.LocalSourceDir = DeriveRepoBasename(value);
+                RaiseFor(nameof(LocalSourceDir));
+            }
+            RaiseFor(nameof(GitHubRepoUrl));
+        }
     }
 
     public string EntryScript
@@ -126,12 +182,16 @@ public class EditTemplateDialogViewModel : ViewModelBase
             ModelsSubdir = existing.ModelsSubdir,
             ExtraJunctionTargets = new System.Collections.Generic.List<string>(existing.ExtraJunctionTargets),
             UserExtraArgs = existing.UserExtraArgs,
+            SourceKind = existing.SourceKind,
+            GitHubRepoUrl = existing.GitHubRepoUrl,
         };
         RaisePropertyChanged(nameof(WorkingConfig));
         // Refresh proxy properties (they read WorkingConfig.X) and CanSave
         RaisePropertyChanged(nameof(Name));
         RaisePropertyChanged(nameof(Kind));
         RaisePropertyChanged(nameof(LocalSourceDir));
+        RaisePropertyChanged(nameof(SourceKind));
+        RaisePropertyChanged(nameof(GitHubRepoUrl));
         RaisePropertyChanged(nameof(EntryScript));
         RaisePropertyChanged(nameof(EntryArgs));
         RaisePropertyChanged(nameof(ModelsSubdir));
@@ -139,18 +199,61 @@ public class EditTemplateDialogViewModel : ViewModelBase
         RaisePropertyChanged(nameof(CanSave));
     }
 
-    private void Save()
+    private async void Save()
     {
-        if (Mode == EditTemplateDialogMode.Edit && _originalKind != WorkingConfig.Kind)
+        var cfg = WorkingConfig;
+        if (cfg.SourceKind == TemplateSourceKind.GitHub)
+        {
+            // Ensure LocalSourceDir is filled from URL if user left it blank.
+            if (string.IsNullOrWhiteSpace(cfg.LocalSourceDir) && !string.IsNullOrWhiteSpace(cfg.GitHubRepoUrl))
+            {
+                cfg.LocalSourceDir = DeriveRepoBasename(cfg.GitHubRepoUrl);
+            }
+            if (_cloneFunc == null)
+            {
+                // No clone wired (test path or misconfigured prod) — refuse to Save in GitHub mode.
+                AppliedToSettings = false;
+                return;
+            }
+            var result = await _cloneFunc(cfg.GitHubRepoUrl, cfg.LocalSourceDir, CancellationToken.None);
+            if (!result.Success)
+            {
+                AppliedToSettings = false;
+                return;
+            }
+        }
+
+        if (Mode == EditTemplateDialogMode.Edit && _originalKind != cfg.Kind)
         {
             _settings.Templates.Remove(_originalKind);
         }
-        _settings.Templates[WorkingConfig.Kind] = WorkingConfig;
+        _settings.Templates[cfg.Kind] = cfg;
         AppliedToSettings = true;
     }
 
     private void Cancel()
     {
         AppliedToSettings = false;
+    }
+
+    internal static bool IsValidRepoUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        return url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || url.StartsWith("git@", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static string DeriveRepoBasename(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        var trimmed = url.TrimEnd('/');
+        var lastSlash = trimmed.LastIndexOf('/');
+        var last = lastSlash >= 0 ? trimmed[(lastSlash + 1)..] : trimmed;
+        if (last.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+        {
+            last = last[..^4];
+        }
+        return last;
     }
 }

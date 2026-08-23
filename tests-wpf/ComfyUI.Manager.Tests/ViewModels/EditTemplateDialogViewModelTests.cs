@@ -1,5 +1,9 @@
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
 
@@ -117,5 +121,172 @@ public class EditTemplateDialogViewModelTests
         vm.Name = "";  // empty
         vm.Kind = "MySwarm";
         Assert.False(vm.SaveCommand.CanExecute(null));
+    }
+
+    // --- T14: SourceKind switching ---
+
+    [Fact]
+    public void SourceKind_DefaultIs_Local()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        Assert.Equal(TemplateSourceKind.Local, vm.WorkingConfig.SourceKind);
+        Assert.Equal("", vm.WorkingConfig.GitHubRepoUrl);
+    }
+
+    [Fact]
+    public void SourceKind_Setter_WritesThroughProxy()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.SourceKind = TemplateSourceKind.GitHub;
+        Assert.Equal(TemplateSourceKind.GitHub, vm.WorkingConfig.SourceKind);
+        vm.SourceKind = TemplateSourceKind.Local;
+        Assert.Equal(TemplateSourceKind.Local, vm.WorkingConfig.SourceKind);
+    }
+
+    [Fact]
+    public void GitHubRepoUrl_SwitchToGitHub_AutoDerives_LocalSourceDir()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.GitHubRepoUrl = "https://github.com/comfyanonymous/ComfyUI.git";
+        vm.SourceKind = TemplateSourceKind.GitHub;
+        Assert.Equal("ComfyUI", vm.WorkingConfig.LocalSourceDir);
+    }
+
+    [Fact]
+    public void GitHubRepoUrl_NoGitSuffix_DerivesBasenameOnly()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.SourceKind = TemplateSourceKind.GitHub;
+        vm.GitHubRepoUrl = "https://github.com/foo/MyRepo";
+        Assert.Equal("MyRepo", vm.WorkingConfig.LocalSourceDir);
+    }
+
+    [Fact]
+    public void GitHubRepoUrl_AlreadyHasLocalSourceDir_DoesNotOverwrite()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.SourceKind = TemplateSourceKind.GitHub;
+        vm.LocalSourceDir = "MyCustomDir";
+        vm.GitHubRepoUrl = "https://github.com/foo/Whatever.git";
+        Assert.Equal("MyCustomDir", vm.WorkingConfig.LocalSourceDir);
+    }
+
+    // --- T14: CanSave branches ---
+
+    [Fact]
+    public void CanSave_LocalMode_EmptyLocalSourceDir_False()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Name = "MyTpl";
+        vm.WorkingConfig.Kind = "MyTpl";
+        vm.WorkingConfig.LocalSourceDir = "";  // empty
+        Assert.False(vm.CanSave);
+    }
+
+    [Fact]
+    public void CanSave_GitHubMode_EmptyUrl_False()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Name = "MyTpl";
+        vm.WorkingConfig.Kind = "MyTpl";
+        vm.WorkingConfig.SourceKind = TemplateSourceKind.GitHub;
+        vm.WorkingConfig.GitHubRepoUrl = "";
+        Assert.False(vm.CanSave);
+    }
+
+    [Fact]
+    public void CanSave_GitHubMode_InvalidUrlPrefix_False()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Name = "MyTpl";
+        vm.WorkingConfig.Kind = "MyTpl";
+        vm.WorkingConfig.SourceKind = TemplateSourceKind.GitHub;
+        vm.WorkingConfig.GitHubRepoUrl = "ftp://server/repo.git";
+        Assert.False(vm.CanSave);
+    }
+
+    [Fact]
+    public void CanSave_GitHubMode_ValidInputs_True()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Name = "MyTpl";
+        vm.WorkingConfig.Kind = "MyTpl";
+        vm.WorkingConfig.SourceKind = TemplateSourceKind.GitHub;
+        vm.WorkingConfig.GitHubRepoUrl = "https://github.com/foo/MyTpl.git";
+        Assert.True(vm.CanSave);
+    }
+
+    // --- T14: SaveCommand GitHub mode clone integration ---
+
+    [Fact]
+    public void SaveCommand_GitHubMode_CallsCloneFunc_WithDerivedTargetDir()
+    {
+        var s = SeedSettings();
+        string? calledRepo = null;
+        string? calledTarget = null;
+        Func<string, string, CancellationToken, Task<NodeOperationResult>> cloneFunc =
+            (repo, target, ct) => { calledRepo = repo; calledTarget = target; return Task.FromResult(NodeOperationResult.Ok(null)); };
+
+        var vm = new EditTemplateDialogViewModel(s, null, cloneFunc) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Name = "MyTpl";
+        vm.WorkingConfig.Kind = "MyTpl";
+        vm.WorkingConfig.SourceKind = TemplateSourceKind.GitHub;
+        vm.WorkingConfig.GitHubRepoUrl = "https://github.com/foo/MyTpl.git";
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal("https://github.com/foo/MyTpl.git", calledRepo);
+        Assert.Equal("MyTpl", calledTarget);
+        Assert.True(vm.AppliedToSettings);
+        Assert.True(s.Templates.ContainsKey("MyTpl"));
+    }
+
+    [Fact]
+    public void SaveCommand_GitHubMode_CloneFails_DoesNotApplyToSettings()
+    {
+        var s = SeedSettings();
+        Func<string, string, CancellationToken, Task<NodeOperationResult>> cloneFunc =
+            (repo, target, ct) => Task.FromResult(NodeOperationResult.Fail("目标目录已存在:MyTpl"));
+
+        var vm = new EditTemplateDialogViewModel(s, null, cloneFunc) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Name = "MyTpl";
+        vm.WorkingConfig.Kind = "MyTpl";
+        vm.WorkingConfig.SourceKind = TemplateSourceKind.GitHub;
+        vm.WorkingConfig.GitHubRepoUrl = "https://github.com/foo/MyTpl.git";
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.False(vm.AppliedToSettings);
+        Assert.False(s.Templates.ContainsKey("MyTpl"));
+    }
+
+    [Fact]
+    public void SaveCommand_LocalMode_DoesNotCallCloneFunc()
+    {
+        var s = SeedSettings();
+        int cloneCallCount = 0;
+        Func<string, string, CancellationToken, Task<NodeOperationResult>> cloneFunc =
+            (repo, target, ct) => { cloneCallCount++; return Task.FromResult(NodeOperationResult.Ok(null)); };
+
+        var vm = new EditTemplateDialogViewModel(s, null, cloneFunc) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Name = "MyTpl";
+        vm.WorkingConfig.Kind = "MyTpl";
+        vm.WorkingConfig.SourceKind = TemplateSourceKind.Local;  // explicit Local
+        vm.WorkingConfig.LocalSourceDir = "D:/localrepo";
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(0, cloneCallCount);
+        Assert.True(vm.AppliedToSettings);
+        Assert.True(s.Templates.ContainsKey("MyTpl"));
     }
 }

@@ -2,14 +2,16 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+        xmlns:models="clr-namespace:ComfyUI.Manager.Models"
         Title="编辑模板"
-        Width="600" Height="540"
+        Width="600" Height="620"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
     <!-- v1.0.0 T10 note: G12 (built-in Kind=ReadOnly when editing existing) is
          deferred to T12 polish. The ComboBox below is always editable in T10;
          the CanSave validator + duplicate-kind check in EditTemplateDialogViewModel
-         prevents bad data. T12 will bind IsReadOnly to Mode + IsBuiltIn flag. -->
+         prevents bad data. T12 will bind IsReadOnly to Mode + IsBuiltIn flag.
+         v1.0.0 T14: SourceKind ComboBox + conditional Local/GitHub fields below. -->
     <Window.Resources>
         <Style TargetType="TextBlock" x:Key="LabelStyle">
             <Setter Property="Margin" Value="0,8,0,4"/>
@@ -34,12 +36,30 @@
                     <ComboBoxItem Content="A1111"/>
                 </ComboBox>
 
-                <TextBlock Text="模板源目录 (项目相对路径或绝对路径)" Style="{StaticResource LabelStyle}"/>
-                <DockPanel>
-                    <Button Content="浏览..." DockPanel.Dock="Right" Margin="4,0,0,0"
-                            Click="BrowseLocalSourceDir_Click"/>
-                    <TextBox Text="{Binding LocalSourceDir, UpdateSourceTrigger=PropertyChanged}"/>
-                </DockPanel>
+                <TextBlock Text="模板来源类型" Style="{StaticResource LabelStyle}"/>
+                <ComboBox x:Name="SourceKindCombo"
+                          SelectionChanged="SourceKindCombo_SelectionChanged">
+                    <ComboBoxItem Content="本地目录" Tag="{x:Static models:TemplateSourceKind.Local}"/>
+                    <ComboBoxItem Content="GitHub 仓库" Tag="{x:Static models:TemplateSourceKind.GitHub}"/>
+                </ComboBox>
+
+                <!-- Local mode: LocalSourceDir + Browse -->
+                <StackPanel Visibility="{Binding SourceKind, Converter={StaticResource EnumEqualsVisibility}, ConverterParameter=Local}">
+                    <TextBlock Text="模板源目录 (项目相对路径或绝对路径)" Style="{StaticResource LabelStyle}"/>
+                    <DockPanel>
+                        <Button Content="浏览..." DockPanel.Dock="Right" Margin="4,0,0,0"
+                                Click="BrowseLocalSourceDir_Click"/>
+                        <TextBox Text="{Binding LocalSourceDir, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+                </StackPanel>
+
+                <!-- GitHub mode: GitHubRepoUrl + readonly LocalSourceDir preview -->
+                <StackPanel Visibility="{Binding SourceKind, Converter={StaticResource EnumEqualsVisibility}, ConverterParameter=GitHub}">
+                    <TextBlock Text="GitHub 仓库 URL (http/https/git@)" Style="{StaticResource LabelStyle}"/>
+                    <TextBox Text="{Binding GitHubRepoUrl, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="本地目录 (自动从 URL 派生,只读)" Margin="0,8,0,4" FontStyle="Italic"/>
+                    <TextBox Text="{Binding LocalSourceDir, Mode=OneWay}" IsReadOnly="True" Background="#F0F0F0"/>
+                </StackPanel>
 
                 <TextBlock Text="启动脚本" Style="{StaticResource LabelStyle}"/>
                 <TextBox Text="{Binding EntryScript, UpdateSourceTrigger=PropertyChanged}"/>

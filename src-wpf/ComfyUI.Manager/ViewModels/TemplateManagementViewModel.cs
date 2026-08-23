@@ -34,7 +34,15 @@ public class TemplateManagementViewModel : ViewModelBase
         TemplateSourceUpdater? updater)
     {
         _settings = settings;
-        _editFactory = editTemplateFactory ?? (() => new EditTemplateDialogViewModel(_settings, null));
+        // T14: wire cloneFunc from _updater (production-wiring for GitHub-mode Save).
+        // null cloneFunc in unit tests (no updater provided) lets GitHub-mode tests use
+        // their own mock via the 3-param ctor overload.
+        _editFactory = editTemplateFactory ?? (() => new EditTemplateDialogViewModel(
+            _settings,
+            null,
+            cloneFunc: _updater == null
+                ? null
+                : (repo, target, ct) => _updater.CloneAsync(repo, target, null, ct)));
         _updater = updater;
 
         foreach (var kvp in _settings.Templates)
