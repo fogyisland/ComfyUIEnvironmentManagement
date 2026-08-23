@@ -58,6 +58,32 @@ public class SettingsRepository
             return new Settings();
         }
 
+        return LoadInternal(json);
+    }
+
+    /// <summary>
+    /// v1.0.0 (T12):Load 重载,把磁盘上的 raw JSON 文本也一并返出来,
+    /// 让调用方能把 JSON 喂给 SettingsDefaults.Apply(s, projectRoot, rawJson)
+    /// 触发老字段迁移(template_comfyui_dir 等)。file 不存在或空白 → 返 (new Settings(), null)。
+    /// </summary>
+    public virtual (Settings Settings, string? RawJson) LoadWithRawJson()
+    {
+        if (!File.Exists(_settingsPath))
+        {
+            return (new Settings(), null);
+        }
+
+        var json = File.ReadAllText(_settingsPath);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return (new Settings(), null);
+        }
+
+        return (LoadInternal(json), json);
+    }
+
+    private Settings LoadInternal(string json)
+    {
         // v0.6.15.4: 检测旧 schema 字段 (git_proxy_*) → 迁移到新 schema (http_proxy_*)
         // 并 Save 写回 (持久化迁移)。Pay-for-once: 第一次启动 v0.6.15.4 触发一次,
         // 后续启动走新 schema 没迁移开销。

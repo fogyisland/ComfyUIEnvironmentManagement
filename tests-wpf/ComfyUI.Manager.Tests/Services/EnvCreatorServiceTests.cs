@@ -37,7 +37,23 @@ public sealed class EnvCreatorServiceTests : IDisposable
             EnvsDir = "envs",
             TemplatePythonDir = "python",
             DefaultPythonVersion = "3.10",
-            TemplateComfyuiDir = "ComfyUITemplate",
+            // v1.0.0 (T12):TemplateComfyuiDir 字段已移除,ComfyUI 模板源目录走
+            // Settings.Templates["ComfyUI"].LocalSourceDir 承载。测试用绝对路径
+            // <rootDir>/ComfyUITemplate,与下方 MakeComfyUITemplate 一致。
+            // EnvCreatorService 不读 Settings.Templates,这里占位填绝对路径只为
+            // 让 _settings.Templates["ComfyUI"] 完整,避免 Apply 误覆盖。
+            Templates =
+            {
+                ["ComfyUI"] = new ComfyUI.Manager.Models.TemplateConfig
+                {
+                    Kind = "ComfyUI",
+                    Name = "ComfyUI",
+                    LocalSourceDir = Path.Combine(_rootDir, "ComfyUITemplate"),
+                    EntryScript = "main.py",
+                    EntryArgs = "--port {port} --listen 0.0.0.0",
+                    ModelsSubdir = "models",
+                },
+            },
         };
 
         _venvCreator = new FakeVenvCreator();

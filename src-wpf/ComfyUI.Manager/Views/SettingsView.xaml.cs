@@ -89,15 +89,6 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void BrowseTemplateComfyui(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-        {
-            var picked = vm.PickFolder();
-            if (picked is not null) vm.TemplateComfyuiDir = picked;
-        }
-    }
-
     private void BrowseEnvsDir(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)

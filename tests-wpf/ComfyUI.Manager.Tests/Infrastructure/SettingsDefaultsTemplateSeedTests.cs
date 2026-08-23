@@ -75,12 +75,83 @@ public class SettingsDefaultsTemplateSeedTests
     [Fact]
     public void Apply_OldTemplateComfyuiDirField_MigratedToTemplatesDict()
     {
-        // G6: migrate from old Settings.TemplateComfyuiDir -> Settings.Templates["ComfyUI"]
-        var s = new Settings { TemplateComfyuiDir = "D:/old/comfyui-source" };
-        SettingsDefaults.Apply(s, ProjectRoot);
+        // G6: migrate from old Settings.TemplateComfyuiDir (JSON property
+        // "template_comfyui_dir") -> Settings.Templates["ComfyUI"].LocalSourceDir。
+        // T12 移除 Settings.TemplateComfyuiDir 字段 — 改走 rawJson + JsonDocument
+        // 读老 JSON property。模拟老 settings.json 整文件 deserialize 后,
+        // Apply 用 rawJson 触发迁移。
+        var s = new Settings();
+        var oldJson = "{\"template_comfyui_dir\":\"D:/old/comfyui-source\"}";
+
+        SettingsDefaults.Apply(s, ProjectRoot, oldJson);
 
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
         Assert.Equal("D:/old/comfyui-source", s.Templates["ComfyUI"].LocalSourceDir);
         Assert.Equal("main.py", s.Templates["ComfyUI"].EntryScript);
+    }
+
+    [Fact]
+    public void Apply_OldTemplateComfyuiDir_NotMigrated_WhenRawJsonNull()
+    {
+        // T12 后:无 rawJson(纯 in-memory settings,没经过 SettingsRepository.Load)
+        // → 不迁移,只 seed 默认 ComfyUI entry。保护 caller 不被"凭空迁移"覆盖。
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot, rawJson: null);
+
+        // Templates["ComfyUI"] 由 SeedBuiltInTemplatesIfMissing 填默认,
+        // LocalSourceDir 指向 <projectRoot>/Templates/ComfyUI。
+        Assert.True(s.Templates.ContainsKey("ComfyUI"));
+        Assert.Equal(Path.Combine(ProjectRoot, "Templates", "ComfyUI"),
+            s.Templates["ComfyUI"].LocalSourceDir);
+    }
+
+    [Fact]
+    public void Apply_OldTemplateComfyuiDir_NotMigrated_WhenUserAlreadyHasComfyUI()
+    {
+        // G4:用户已设过 ComfyUI template → 不让老 JSON 字段覆盖当前 entry。
+        var s = new Settings();
+        s.Templates["ComfyUI"] = new TemplateConfig
+        {
+            Name = "ComfyUI",
+            Kind = "ComfyUI",
+            LocalSourceDir = "D:/user-picked",
+            EntryScript = "main.py",
+            EntryArgs = "--port {port}",
+            ModelsSubdir = "models",
+        };
+        var oldJson = "{\"template_comfyui_dir\":\"D:/old/comfyui-source\"}";
+
+        SettingsDefaults.Apply(s, ProjectRoot, oldJson);
+
+        Assert.Equal("D:/user-picked", s.Templates["ComfyUI"].LocalSourceDir);
+    }
+
+    [Fact]
+    public void Apply_OldTemplateComfyuiDir_EmptyValue_NotMigrated()
+    {
+        // 老 JSON 字段为空字符串 → 不迁移,跟原 Settings 字段空白的语义一致。
+        var s = new Settings();
+        var oldJson = "{\"template_comfyui_dir\":\"\"}";
+
+        SettingsDefaults.Apply(s, ProjectRoot, oldJson);
+
+        // seed 默认 ComfyUI entry(LocalSourceDir 指向 <projectRoot>/Templates/ComfyUI)
+        Assert.True(s.Templates.ContainsKey("ComfyUI"));
+        Assert.Equal(Path.Combine(ProjectRoot, "Templates", "ComfyUI"),
+            s.Templates["ComfyUI"].LocalSourceDir);
+    }
+
+    [Fact]
+    public void Apply_OldTemplateComfyuiDir_MalformedJson_DoesNotThrow()
+    {
+        // 防御:JSON 解析失败 → 静默不抛,后续 seed 走默认 ComfyUI entry。
+        var s = new Settings();
+        var badJson = "{this is not valid json";
+
+        var ex = Record.Exception(() => SettingsDefaults.Apply(s, ProjectRoot, badJson));
+
+        Assert.Null(ex);
+        Assert.True(s.Templates.ContainsKey("ComfyUI"));
     }
 }

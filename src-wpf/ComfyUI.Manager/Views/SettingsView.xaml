@@ -420,21 +420,9 @@
             <TextBox Text="{Binding TemplatePythonDir}" IsReadOnly="True"
                      Style="{StaticResource MaterialTextBox}" />
 
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                <TextBlock Text="模板 ComfyUI 目录(shared 源)" VerticalAlignment="Center"/>
-                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource WarningBrush}"
-                           ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[TemplateComfyuiDir], Converter={StaticResource BoolToVisibility}}"/>
-            </StackPanel>
-            <DockPanel Margin="0,2,0,0">
-                <Button DockPanel.Dock="Right" Content="浏览..."
-                        Click="BrowseTemplateComfyui"
-                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
-                <TextBox Text="{Binding TemplateComfyuiDir, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}" />
-            </DockPanel>
+            <!-- v1.0.0 (T12): ComfyUI 模板目录从这里移到「模板管理」sidebar 页 ——
+                 模板配置通过 Templates["ComfyUI"].LocalSourceDir 承载,
+                 编辑入口见 sidebar 第 9 项 "模板管理"。 -->
 
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
                 <TextBlock Text="默认 Python 版本(已废弃,只读 — 请用下方 &quot;Python 解释器&quot; 区段)" VerticalAlignment="Center"/>

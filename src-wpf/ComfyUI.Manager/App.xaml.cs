@@ -139,7 +139,9 @@ public partial class App : Application
         // 不会改 ComfyUiStartupTimeoutSeconds,所以顺序安全。
         // v0.6.16: 走 LocalDataPaths 注入,settings.json 现在落 <projectRoot>/.manager/。
         var settingsRepo = new SettingsRepository(localPaths);
-        var settings = settingsRepo.Load();
+        // v1.0.0 (T12):用 LoadWithRawJson 把磁盘上的 raw JSON 一起拿到,
+        // 喂给 SettingsDefaults.Apply 触发老 template_comfyui_dir 字段迁移。
+        var (settings, rawJson) = settingsRepo.LoadWithRawJson();
 
         // v0.6.16: db path 也走 LocalDataPaths 注入 —— state.db 落 <projectRoot>/.manager/。
         var dbFactory = new SqliteConnectionFactory(localPaths);
@@ -222,7 +224,7 @@ public partial class App : Application
         // 2) 已经在 projectRoot 下的绝对路径 → 转相对(跨机器/跨盘符时
         //    settings.json 不需重新生成)
         // 3) 用户故意选的别处绝对路径 → 保留
-        SettingsDefaults.Apply(settings, projectRoot);
+        SettingsDefaults.Apply(settings, projectRoot, rawJson);
         settingsRepo.Save(settings);
 
         // v0.6.5.9: 首次启动预创建本地节点目录,失败静默(用户运行期 DownloadAsync 还会再兜底 CreateDirectory)。

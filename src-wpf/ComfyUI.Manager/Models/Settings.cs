@@ -46,9 +46,9 @@ public class Settings
 
     // —— 路径 ——
     [JsonPropertyName("template_python_dir")] public string TemplatePythonDir { get; set; } = "";
-    // v1.0.0 multi-template:老 TemplateComfyuiDir 在 v1.0.0+ → Settings.Templates["ComfyUI"].LocalSourceDir。
-    // T12 移除该字段;目前保留以便 SettingsDefaults.TryMigrateOldTemplateComfyuiDir 读取 + 一次性迁移。
-    [JsonPropertyName("template_comfyui_dir")] public string TemplateComfyuiDir { get; set; } = "";
+    // v1.0.0 multi-template (T12):老 template_comfyui_dir JSON 字段已移除,
+    // 由 SettingsDefaults.TryMigrateOldTemplateComfyuiDir(s, rawJson) 在加载阶段
+    // 通过 JsonDocument.Parse 读取老 JSON 一次性迁移到 Templates["ComfyUI"].LocalSourceDir。
     [JsonPropertyName("templates")] public Dictionary<string, TemplateConfig> Templates { get; set; } = new();
     [JsonPropertyName("default_python_version")] public string DefaultPythonVersion { get; set; } = "3.10";
     [JsonPropertyName("envs_dir")] public string EnvsDir { get; set; } = "";
@@ -212,7 +212,6 @@ public class Settings
         target.CompatApiBaseUrl = source.CompatApiBaseUrl;
         // —— 路径 ——
         target.TemplatePythonDir = source.TemplatePythonDir;
-        target.TemplateComfyuiDir = source.TemplateComfyuiDir;
         target.DefaultPythonVersion = source.DefaultPythonVersion;
         target.EnvsDir = source.EnvsDir;
         target.GlobalNodesDir = source.GlobalNodesDir;

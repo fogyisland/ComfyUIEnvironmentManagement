@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 
@@ -12,9 +13,10 @@ namespace ComfyUI.Manager.Infrastructure;
 /// 并给 template 类 path 字段填上 package root 下的默认子目录名。
 ///
 /// 区分两类 path:
-/// - **template paths** (TemplatePythonDir / TemplateComfyuiDir) — 默认填子目录名,
-///   因为这些是 "包自带的资源" 类的东西(模板 Python / ComfyUI 源)应该落在程序根下,
-///   不需要跑到额外的地方。
+/// - **template paths** (TemplatePythonDir) — 默认填子目录名,
+///   因为这些是 "包自带的资源" 类的东西(模板 Python 源)应该落在程序根下,
+///   不需要跑到额外的地方。ComfyUI 模板源目录由 Settings.Templates["ComfyUI"].LocalSourceDir
+///   承载(v1.0.0 multi-template 重构),老 template_comfyui_dir 字段在 T12 移除。
 /// - **user-configured paths** (EnvsDir / GlobalNodesDir) — 默认保持空,
 ///   因为这些是用户主动管理的数据(env 列表 / 全局 catalog),不预创建不预填,
 ///   留到用户配置后再用。服务使用点(EnvCreatorService)在 path 为空时主动报错。
@@ -65,6 +67,15 @@ public static class SettingsDefaults
     /// 5. 不在 projectRoot 下的绝对路径(用户故意选的别处)→ 保留
     /// </summary>
     public static void Apply(Settings s, string projectRoot)
+        => Apply(s, projectRoot, rawJson: null);
+
+    /// <summary>
+    /// v1.0.0 (T12):Apply 重载,接收 raw JSON 用于模板字段迁移。
+    /// 生产链路 SettingsRepository.Load() 拿到 settings 后,应把磁盘上的 settings.json
+    /// 文本传给本重载,以便迁移老 template_comfyui_dir 字段到 Templates["ComfyUI"]。
+    /// 测试可手动构造老格式 JSON 字符串 + 直接 new Settings() 来验证迁移。
+    /// </summary>
+    public static void Apply(Settings s, string projectRoot, string? rawJson)
     {
         if (s is null) return;
 
@@ -72,10 +83,9 @@ public static class SettingsDefaults
         // 一次性迁到 PascalCase,避免 service 在 projectRoot/envs/ 和 projectRoot/Envs/ 两边分裂。
         // Resolve 之前的 MigrateOldSubdirName 必须走在前面,否则后续 MigrateOnly 会跳过相对路径。
         s.TemplatePythonDir = MigrateOldSubdirName(s.TemplatePythonDir, "python", TemplatePythonSubdir);
-        // 注:v1.0.0 multi-template:TemplateComfyuiDir 字段在 v1.0.0+ 只用来 lift 老 settings.json
-        // 用户填过的真实路径到 Templates["ComfyUI"].LocalSourceDir。不再"自动填默认子目录名"
-        // — 默认值由 SeedBuiltInTemplatesIfMissing 写到 Templates dict。下行注释保留作为
-        // 旧 single-template 迁移记录。T12 移除该字段。
+        // 注:v1.0.0 multi-template:ComfyUI 模板源目录由 Settings.Templates["ComfyUI"].LocalSourceDir
+        // 承载(T12 移除老的 TemplateComfyuiDir 字段),默认值由 SeedBuiltInTemplatesIfMissing
+        // 写到 Templates dict。这里不再"自动填默认子目录名"。
         s.EnvsDir = MigrateOldSubdirName(s.EnvsDir, "envs", EnvsSubdir);
         s.GlobalNodesDir = MigrateOldSubdirName(s.GlobalNodesDir, "global-nodes", GlobalNodesSubdir);
         // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,空字段自动填子目录名。
@@ -189,10 +199,11 @@ public static class SettingsDefaults
         // v0.6.11++:首次启动种 curated 常用节点(只在空时 seed,G13)。
         s.CommonNodes = SeedCommonNodesIfEmpty(s.CommonNodes);
 
-        // v1.0.0 multi-template: migrate old TemplateComfyuiDir FIRST (before seed),
-        // 因为 seed helper 只看 Templates dict 是否缺 key — 让老 field 值优先表达用户意图,
-        // 再补其它 built-in 默认(A1111 等)到缺失 key。
-        TryMigrateOldTemplateComfyuiDir(s);
+        // v1.0.0 multi-template: migrate old template_comfyui_dir JSON property FIRST
+        // (before seed)。Settings.TemplateComfyuiDir 字段在 T12 已移除,迁移通过
+        // TryMigrateOldTemplateComfyuiDir(s, rawJson) 走 JsonDocument 读老 JSON。
+        // rawJson 可为 null(无 JSON 可用,纯 in-memory settings) → 不迁移。
+        TryMigrateOldTemplateComfyuiDir(s, rawJson);
         SeedBuiltInTemplatesIfMissing(s, projectRoot);
 
         // v1.0.0 Phase 1:dev build 解锁所有 hidden feature flag — 用户原话
@@ -280,26 +291,49 @@ public static class SettingsDefaults
     }
 
     /// <summary>
-    /// v1.0.0 multi-template:把老 Settings.TemplateComfyuiDir 字段值迁移到
-    /// Templates["ComfyUI"].LocalSourceDir(G6)。只在用户没设过 ComfyUI template 时迁移 —
-    /// 否则视为用户已经表达过意图,不让旧字段覆盖当前 entry。同时把老字段值清空,
-    /// 让 JSON 不再带陈旧字段。T12 移除该字段。
+    /// v1.0.0 multi-template (T12):把老 settings.json 里 <c>template_comfyui_dir</c> 字段值
+    /// 迁移到 Templates["ComfyUI"].LocalSourceDir(G6)。
+    ///
+    /// T12 起 Settings.TemplateComfyuiDir 字段已移除 — 改走 JsonDocument.Parse(rawJson)
+    /// 直接读老 JSON property。当 <paramref name="rawJson"/> 为 null 时(in-memory settings,
+    /// 没有 JSON 来源)跳过迁移,纯 in-memory 状态保持不变。
+    ///
+    /// 只在用户没设过 ComfyUI template 时迁移 — 否则视为用户已经表达过意图,
+    /// 不让旧字段覆盖当前 entry。
     /// </summary>
-    private static void TryMigrateOldTemplateComfyuiDir(Settings s)
+    private static void TryMigrateOldTemplateComfyuiDir(Settings s, string? rawJson)
     {
-        if (!s.Templates.ContainsKey("ComfyUI") && !string.IsNullOrWhiteSpace(s.TemplateComfyuiDir))
+        if (s.Templates.ContainsKey("ComfyUI")) return;
+        if (string.IsNullOrWhiteSpace(rawJson)) return;
+
+        string? oldDir = null;
+        try
         {
-            s.Templates["ComfyUI"] = new TemplateConfig
-            {
-                Name = "ComfyUI",
-                Kind = "ComfyUI",
-                LocalSourceDir = s.TemplateComfyuiDir,
-                EntryScript = "main.py",
-                EntryArgs = "--port {port} --listen 0.0.0.0",
-                ModelsSubdir = "models",
-            };
-            s.TemplateComfyuiDir = ""; // drop old field
+            using var doc = JsonDocument.Parse(rawJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return;
+            if (!doc.RootElement.TryGetProperty("template_comfyui_dir", out var prop)) return;
+            if (prop.ValueKind != JsonValueKind.String) return;
+            oldDir = prop.GetString();
         }
+        catch
+        {
+            // JSON 解析失败 → 静默(不要因为迁移失败让整个 Apply 挂掉)
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(oldDir)) return;
+
+        s.Templates["ComfyUI"] = new TemplateConfig
+        {
+            Name = "ComfyUI",
+            Kind = "ComfyUI",
+            LocalSourceDir = oldDir,
+            EntryScript = "main.py",
+            EntryArgs = "--port {port} --listen 0.0.0.0",
+            ModelsSubdir = "models",
+        };
+        // 老字段在 Settings 类已删除,无需再清。SettingsRepository 持久化时也不会
+        // 再带这个 key,自然从用户的 settings.json 里消失(G6)。
     }
 
     /// <summary>

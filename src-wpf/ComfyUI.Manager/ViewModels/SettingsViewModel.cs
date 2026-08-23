@@ -82,12 +82,27 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         _validator = validator;
         _themeService = themeService;
         // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
-        // 没有注入时(单元测试)才从 disk 加载。
-        _settings = sharedSettings ?? _repo.Load();
+        // 没有注入时(单元测试)才从 disk 加载。T12:走 LoadWithRawJson 拿到磁盘 raw JSON,
+        // 以便 Apply 触发老 template_comfyui_dir 字段迁移。生产 App.xaml.cs 也用同一路径。
+        string? rawJsonForApply = null;
+        if (sharedSettings is not null)
+        {
+            _settings = sharedSettings;
+        }
+        else
+        {
+            var (loaded, rawJson) = _repo.LoadWithRawJson();
+            _settings = loaded;
+            rawJsonForApply = rawJson;
+        }
         // 首次启动/无 settings.json 时把默认值(node source 列表 + active 名)填上。
         // 生产环境 App.xaml.cs 也会 Apply,这里再 Apply 一次保证测试直构造 VM
         // 时也能拿到默认值(幂等:已存在的非空列表/active 名不会被覆盖)。
-        SettingsDefaults.Apply(_settings, AppContext.BaseDirectory);
+        // 共享实例路径下 rawJson=null(已经 App.xaml.cs Apply 过),不需要再 Apply。
+        if (sharedSettings is null)
+        {
+            SettingsDefaults.Apply(_settings, AppContext.BaseDirectory, rawJsonForApply);
+        }
         _repo.Save(_settings);
         ExtraPaths = new ObservableCollection<ExtraPath>(_settings.ExtraPaths);
         ExtraPaths.CollectionChanged += (_, _) =>
@@ -455,11 +470,6 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     {
         get => _settings.TemplatePythonDir;
         set { _settings.TemplatePythonDir = value; MarkDirty(nameof(TemplatePythonDir)); RaisePropertyChanged(); }
-    }
-    public string TemplateComfyuiDir
-    {
-        get => _settings.TemplateComfyuiDir;
-        set { _settings.TemplateComfyuiDir = value; MarkDirty(nameof(TemplateComfyuiDir)); RaisePropertyChanged(); }
     }
     public string EnvsDir
     {
@@ -1152,7 +1162,6 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(ComfyUiStartupTimeoutSeconds));
         RaisePropertyChanged(nameof(CompatApiBaseUrl));
         RaisePropertyChanged(nameof(TemplatePythonDir));
-        RaisePropertyChanged(nameof(TemplateComfyuiDir));
         RaisePropertyChanged(nameof(EnvsDir));
         RaisePropertyChanged(nameof(DefaultPythonVersion));
         RaisePropertyChanged(nameof(GlobalNodesDir));
