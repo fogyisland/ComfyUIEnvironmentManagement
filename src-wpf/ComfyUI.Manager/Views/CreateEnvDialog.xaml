@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="clr-namespace:ComfyUI.Manager.Views"
         xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+        xmlns:models="clr-namespace:ComfyUI.Manager.Models"
         xmlns:services="clr-namespace:ComfyUI.Manager.Services"
         Title="新建环境" Height="620" Width="560"
         Background="{StaticResource BackgroundBrush}"
@@ -26,11 +27,27 @@
                          IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
                          Margin="0,2,0,8" />
 
-                <TextBlock Text="布局" />
-                <ComboBox SelectedItem="{Binding Layout}"
-                          ItemsSource="{Binding LayoutOptions}"
+                <!-- v1.0.0 T7:TemplateKind picker — 替换 v0.x 的 "shared/independent" Layout。
+                     ComboBox 显示 "{Name} ({LocalSourceDir})"。SelectedValuePath="Kind" 让
+                     SelectedValue(TwoWay 绑 SelectedTemplateKind)在 TemplateConfig 之间按 Kind 字符串匹配
+                     (避免 ReferenceEquals 类默认比较下,选中 TemplateConfig 实例无法 = 字符串)。 -->
+                <TextBlock Text="模板" />
+                <ComboBox ItemsSource="{Binding TemplateOptions}"
+                          SelectedValuePath="Kind"
+                          SelectedValue="{Binding SelectedTemplateKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                           IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
-                          Margin="0,2,0,8" />
+                          Margin="0,2,0,8">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:TemplateConfig}">
+                            <TextBlock>
+                                <Run Text="{Binding Name}" />
+                                <Run Text=" (" />
+                                <Run Text="{Binding LocalSourceDir}" />
+                                <Run Text=")" />
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
 
                 <TextBlock Text="Python 解释器 (python.exe)" />
                 <DockPanel Margin="0,2,0,8">
@@ -45,7 +62,7 @@
                     <TextBox Text="{Binding PythonExe, UpdateSourceTrigger=PropertyChanged}" />
                 </DockPanel>
 
-                <TextBlock Text="ComfyUI 源(shared 必填,independent 作为拷贝来源)" />
+                <TextBlock Text="模板源(由模板选择自动填充,可手动调整)" />
                 <DockPanel Margin="0,2,0,8">
                     <Button DockPanel.Dock="Right" Content="应用模板"
                             Command="{Binding ApplyTemplateCommand}"

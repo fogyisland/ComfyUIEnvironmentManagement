@@ -34,16 +34,27 @@ public class CreateEnvDialogViewModel : ViewModelBase
         _recentBasePythonPath = recentBasePythonPath;
         _onResult = onResult;
         _envRepo = envRepo;
+        // v1.0.0 T7:模板 kind 选项从 Settings.Templates 来 — T2 seed ComfyUI + A1111。
+        // 顺序无所谓,UI 用 SelectedTemplateKind 匹配 SelectedItem。
+        TemplateOptions = _settings.Templates.Values
+            .OrderBy(t => t.Kind)
+            .ToList();
+
         CreateCommand = new RelayCommand(
             async _ => await CreateAsync(),
-            _ => CanCreate());
+            _ => CanConfirm);
         CancelCommand = new RelayCommand(_ => Closed?.Invoke(null));
         ApplyTemplateCommand = new RelayCommand(_ =>
         {
             _recentBasePythonPath = null;
             ApplyTemplate();
         });
-        ApplyTemplate();   // 初次填充
+        // 初次填充 ComfyuiSource 从当前 SelectedTemplateKind(默认 ComfyUI)
+        if (_settings.Templates.TryGetValue(_selectedTemplateKind, out var initial))
+        {
+            ComfyuiSource = initial.LocalSourceDir;
+        }
+        ApplyTemplate();   // 初次填充 PythonExe + 警告文案
         // v0.6.7.6:Port 默认填 MAX(port)+1,空 DB / 无 envRepo 时回落 8188
         if (_envRepo is not null)
         {
@@ -65,22 +76,41 @@ public class CreateEnvDialogViewModel : ViewModelBase
 
     public event Action<Models.Environment?>? Closed;
 
-    public System.Collections.Generic.List<string> LayoutOptions { get; } =
-        new() { "shared", "independent" };
+    /// <summary>
+    /// v1.0.0 T7:模板 kind 选项列表(从 <see cref="Settings.Templates"/> 读,
+    /// 顺序按 Kind 字母序,UI 用 ComboBox 选 <see cref="SelectedTemplateKind"/>)。
+    /// 每项显示 <c>{Name} ({LocalSourceDir})</c> 让用户看到模板指向的实际目录。
+    /// </summary>
+    public IReadOnlyList<TemplateConfig> TemplateOptions { get; }
+
+    private string _selectedTemplateKind = "ComfyUI";
+    /// <summary>
+    /// v1.0.0 T7:选中的 template kind(默认 ComfyUI)。
+    /// Setter 自动从模板 <see cref="TemplateConfig.LocalSourceDir"/> 填充 <see cref="ComfyuiSource"/>;
+    /// 设置未识别的 kind → ComfyuiSource 不变,CanConfirm 返回 false。
+    /// </summary>
+    public string SelectedTemplateKind
+    {
+        get => _selectedTemplateKind;
+        set
+        {
+            if (SetField(ref _selectedTemplateKind, value))
+            {
+                // Auto-fill ComfyuiSource from the selected template
+                if (_settings.Templates.TryGetValue(value, out var t))
+                {
+                    ComfyuiSource = t.LocalSourceDir;
+                }
+                RaiseCommandsChanged();
+            }
+        }
+    }
 
     private string _name = "";
     public string Name
     {
         get => _name;
         set { _name = value; RaisePropertyChanged(); RaiseCommandsChanged(); }
-    }
-
-    private string _layout = "shared";
-    public string Layout
-    {
-        get => _layout;
-        // 决策 2:layout 切换不重新 auto-fill,只 RaisePropertyChanged + RaiseCommandsChanged
-        set { _layout = value; RaisePropertyChanged(); RaiseCommandsChanged(); }
     }
 
     private string _pythonExe = "";
@@ -165,47 +195,53 @@ public class CreateEnvDialogViewModel : ViewModelBase
         }
     }
 
-    public bool CanCreate()
+    /// <summary>
+    /// v1.0.0 T7:Replaces <c>CanCreate</c>。多了"选中的 template kind 必须在
+    /// <see cref="TemplateOptions"/> 里"一项校验(防设置被清空时 UI 还显示合法)。
+    /// </summary>
+    public bool CanConfirm
     {
-        if (IsBusy) return false;
-        if (string.IsNullOrWhiteSpace(Name)) return false;
-        if (string.IsNullOrWhiteSpace(PythonExe)) return false;
-        // v1.0.0 T4:ComfyuiSource 现在恒非空(始终 copy)。Layout 字段保留向后兼容 UI,
-        // 但 env-create 走 BuildTemplateConfig() — 必须有 source 才能 copy。
-        if (string.IsNullOrWhiteSpace(ComfyuiSource)) return false;
-        return true;
+        get
+        {
+            if (IsBusy) return false;
+            if (string.IsNullOrWhiteSpace(Name)) return false;
+            if (string.IsNullOrWhiteSpace(PythonExe)) return false;
+            // ComfyuiSource 现在恒非空(始终 copy)。env-create 走 BuildTemplateConfig() — 必须有 source 才能 copy。
+            if (string.IsNullOrWhiteSpace(ComfyuiSource)) return false;
+            // T7:校验选中 kind 在 options 里(模板被删 / 设非法值时按钮灰)
+            if (!TemplateOptions.Any(t => t.Kind == SelectedTemplateKind)) return false;
+            return true;
+        }
     }
 
     /// <summary>
-    /// v1.0.0 T4:从对话框当前状态(<see cref="Layout"/> + <see cref="ComfyuiSource"/> + <see cref="PythonExe"/>)
+    /// v1.0.0 T7:从对话框当前状态(<see cref="SelectedTemplateKind"/> + <see cref="ComfyuiSource"/> + <see cref="PythonExe"/>)
     /// 构造一个 <see cref="TemplateConfig"/> 传给 <c>EnvCreatorService.CreateAsync</c>。
-    /// Layout == "shared" 视作 ComfyUI kind(现有行为),其他 layout 走非 ComfyUI 路径。
-    /// 测试用 main.py 入口;EntryArgs 默认带 {port} 占位符让 user 在 Port 输入框生效。
+    /// SelectedTemplateKind 不在 Settings.Templates 里时兜底 ComfyUI kind。
     /// </summary>
     internal TemplateConfig BuildTemplateConfig()
     {
-        // 现有 dialog 只支持 ComfyUI 模板路径,T7 会替换为完整 template picker。
-        // 现在固定 Kind = "ComfyUI",通过 Settings.Templates["ComfyUI"] 兜底拿到 entry 配置。
-        var comfyTemplate = _settings.Templates.TryGetValue("ComfyUI", out var t)
+        var template = _settings.Templates.TryGetValue(SelectedTemplateKind, out var t)
             ? t
             : TemplateConfigDefaults.ComfyUi(_projectRoot);
         return new TemplateConfig
         {
-            Kind = "ComfyUI",
-            Name = comfyTemplate.Name,
+            Kind = SelectedTemplateKind,
+            Name = template.Name,
             LocalSourceDir = ComfyuiSource,
-            EntryScript = comfyTemplate.EntryScript,
-            EntryArgs = comfyTemplate.EntryArgs,
-            ModelsSubdir = comfyTemplate.ModelsSubdir,
-            ExtraJunctionTargets = new(comfyTemplate.ExtraJunctionTargets),
-            UserExtraArgs = comfyTemplate.UserExtraArgs,
+            EntryScript = template.EntryScript,
+            EntryArgs = template.EntryArgs,
+            ModelsSubdir = template.ModelsSubdir,
+            ExtraJunctionTargets = new(template.ExtraJunctionTargets),
+            UserExtraArgs = template.UserExtraArgs,
         };
     }
 
     /// <summary>
-    /// 从 settings 读 ActivePythonInterpreterName + PythonInterpreters + TemplateComfyuiDir
-    /// + projectRoot 拼接,填回 PythonExe + ComfyuiSource。Python 解释器缺失/路径不存在时
-    /// 设 TemplateWarningMessage 警告(spec §2.5 文案)。
+    /// 从 settings 读 ActivePythonInterpreterName + PythonInterpreters
+    /// 填回 PythonExe(警告文案)。ComfyuiSource 走 <see cref="SelectedTemplateKind"/> 自动填充,
+    /// 这里不再用 TemplateComfyuiDir 拼(projectRoot)。
+    /// Python 解释器缺失/路径不存在时设 TemplateWarningMessage 警告(spec §2.5 文案)。
     /// </summary>
     public void ApplyTemplate()
     {
@@ -232,17 +268,25 @@ public class CreateEnvDialogViewModel : ViewModelBase
             warnings.Add("当前 Python 解释器路径不存在,请检查设置");
         }
 
-        var comfyuiSource = Path.Combine(
-            _projectRoot,
-            _settings.TemplateComfyuiDir);
-
-        if (Directory.Exists(comfyuiSource))
+        // v1.0.0 T7:ComfyuiSource 跟随 SelectedTemplateKind 变化;
+        // 这里补一条警告 — 当模板目录不存在时提示用户下载。
+        if (_settings.Templates.TryGetValue(SelectedTemplateKind, out var t))
         {
-            ComfyuiSource = comfyuiSource;
+            var templateSource = Path.IsPathRooted(t.LocalSourceDir)
+                ? t.LocalSourceDir
+                : Path.Combine(_projectRoot, t.LocalSourceDir);
+            if (Directory.Exists(templateSource))
+            {
+                ComfyuiSource = t.LocalSourceDir;
+            }
+            else
+            {
+                warnings.Add($"模板目录({SelectedTemplateKind})未安装,请先在设置页下载");
+                ComfyuiSource = "";
+            }
         }
         else
         {
-            warnings.Add("ComfyUI 模板目录未安装,请先在设置页下载");
             ComfyuiSource = "";
         }
 
