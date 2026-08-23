@@ -29,6 +29,12 @@ public class GitRunner
 
     public string GitExe => _gitExe;
 
+    /// <summary>
+    /// v1.0.0.x: 暴露代理配置给 caller(模板更新 Console log helper 需要读 mode/URL/Port
+    /// 写 [src] → host (proxy info) 行)。null 表示从 ctor 未注入(纯直连)。
+    /// </summary>
+    public HttpProxyConfig? ProxyConfig => _proxy;
+
     public GitRunner(string gitExe, HttpProxyConfig? proxy = null)
     {
         if (string.IsNullOrWhiteSpace(gitExe))

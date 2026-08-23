@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Services;
 using Xunit;
@@ -15,6 +16,44 @@ public class TemplateSourceUpdaterTests : IDisposable
     {
         _workRoot = Path.Combine(Path.GetTempPath(), "cmgr-tplsrd-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(_workRoot);
+    }
+
+    /// <summary>
+    /// v1.0.0.x: RecordingUpdater overrides both UpdateAsync + CloneAsync to record
+    /// which method was called without invoking the real GitRunner. Base ctor creates
+    /// a GitRunner that's never invoked (we override the methods that use it), so
+    /// no network/disk side effects.
+    /// </summary>
+    private class RecordingUpdater : TemplateSourceUpdater
+    {
+        public int UpdateCallCount;
+        public int CloneCallCount;
+        public string? LastUpdateUrl;
+        public string? LastUpdateTarget;
+        public string? LastCloneUrl;
+        public string? LastCloneTarget;
+
+        public RecordingUpdater() : base("git", null, null) { }
+
+        public override Task<NodeOperationResult> UpdateAsync(
+            string targetDir, string repoUrl,
+            IProgress<string>? progress, CancellationToken ct)
+        {
+            UpdateCallCount++;
+            LastUpdateUrl = repoUrl;
+            LastUpdateTarget = targetDir;
+            return Task.FromResult(NodeOperationResult.Ok(null));
+        }
+
+        public override Task<NodeOperationResult> CloneAsync(
+            string repoUrl, string targetDir,
+            IProgress<string>? progress, CancellationToken ct)
+        {
+            CloneCallCount++;
+            LastCloneUrl = repoUrl;
+            LastCloneTarget = targetDir;
+            return Task.FromResult(NodeOperationResult.Ok(null));
+        }
     }
 
     [Fact]
@@ -120,5 +159,218 @@ public class TemplateSourceUpdaterTests : IDisposable
     public void Dispose()
     {
         try { Directory.Delete(_workRoot, recursive: true); } catch { }
+    }
+
+    // --- v1.0.0.x DownloadOrUpdateAsync (smart clone-or-update dispatch) ---
+
+    [Fact]
+    public async Task DownloadOrUpdateAsync_DirMissing_CallsCloneAsync()
+    {
+        var updater = new RecordingUpdater();
+        var nonExistentDir = Path.Combine(Path.GetTempPath(), "non-existent-" + Guid.NewGuid().ToString("N"));
+
+        var result = await updater.DownloadOrUpdateAsync(
+            repoUrl: "https://github.com/foo/bar.git",
+            targetDir: nonExistentDir,
+            progress: null,
+            ct: default);
+
+        Assert.Equal(0, updater.UpdateCallCount);
+        Assert.Equal(1, updater.CloneCallCount);
+        Assert.Equal("https://github.com/foo/bar.git", updater.LastCloneUrl);
+        Assert.Equal(nonExistentDir, updater.LastCloneTarget);
+    }
+
+    [Fact]
+    public async Task DownloadOrUpdateAsync_DirExists_CallsUpdateAsync()
+    {
+        var updater = new RecordingUpdater();
+        var existingDir = Path.Combine(Path.GetTempPath(), "existing-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(existingDir);
+        try
+        {
+            var result = await updater.DownloadOrUpdateAsync(
+                repoUrl: "https://github.com/foo/bar.git",
+                targetDir: existingDir,
+                progress: null,
+                ct: default);
+
+            Assert.Equal(1, updater.UpdateCallCount);
+            Assert.Equal(0, updater.CloneCallCount);
+            Assert.Equal("https://github.com/foo/bar.git", updater.LastUpdateUrl);
+            Assert.Equal(existingDir, updater.LastUpdateTarget);
+        }
+        finally
+        {
+            try { Directory.Delete(existingDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadOrUpdateAsync_EmptyRepoUrl_Validates()
+    {
+        var updater = new RecordingUpdater();
+        var result = await updater.DownloadOrUpdateAsync(
+            repoUrl: "",
+            targetDir: Path.Combine(Path.GetTempPath(), "x"),
+            progress: null,
+            ct: default);
+        Assert.False(result.Success);
+        Assert.Contains("repoUrl", result.Reason);
+        Assert.Equal(0, updater.UpdateCallCount + updater.CloneCallCount);
+    }
+
+    [Fact]
+    public async Task DownloadOrUpdateAsync_EmptyTargetDir_Validates()
+    {
+        var updater = new RecordingUpdater();
+        var result = await updater.DownloadOrUpdateAsync(
+            repoUrl: "https://github.com/foo/bar.git",
+            targetDir: "",
+            progress: null,
+            ct: default);
+        Assert.False(result.Success);
+        Assert.Contains("targetDir", result.Reason);
+        Assert.Equal(0, updater.UpdateCallCount + updater.CloneCallCount);
+    }
+
+    // --- v1.0.0.x rich Console log (proxy + host + exit code + duration) ---
+
+    [Fact]
+    public void FormatHost_GitHubUrl_ReturnsHost()
+    {
+        Assert.Equal("github.com",
+            TemplateSourceUpdater.FormatHost("https://github.com/comfyanonymous/ComfyUI.git"));
+    }
+
+    [Fact]
+    public void FormatHost_EmptyUrl_ReturnsPlaceholder()
+    {
+        Assert.Equal("<unknown>", TemplateSourceUpdater.FormatHost(""));
+        Assert.Equal("<unknown>", TemplateSourceUpdater.FormatHost(null!));
+    }
+
+    [Fact]
+    public void FormatHost_GitSshUrl_ReturnsHost()
+    {
+        Assert.Equal("github.com",
+            TemplateSourceUpdater.FormatHost("git@github.com:comfyanonymous/ComfyUI.git"));
+    }
+
+    [Fact]
+    public void FormatProxyInfo_NullProxy_Returns直连()
+    {
+        var updater = new TemplateSourceUpdater("git", gitProxy: null, logger: null);
+        Assert.Equal("直连", updater.FormatProxyInfo());
+    }
+
+    [Fact]
+    public void FormatProxyInfo_DisabledProxy_Returns直连()
+    {
+        var proxy = new HttpProxyConfig { Enabled = false };
+        var updater = new TemplateSourceUpdater("git", gitProxy: proxy, logger: null);
+        Assert.Equal("直连", updater.FormatProxyInfo());
+    }
+
+    [Fact]
+    public void FormatProxyInfo_UseSystemProxy_Returns系统代理()
+    {
+        var proxy = new HttpProxyConfig { Enabled = true, UseSystemProxy = true };
+        var updater = new TemplateSourceUpdater("git", gitProxy: proxy, logger: null);
+        Assert.Equal("系统代理", updater.FormatProxyInfo());
+    }
+
+    [Fact]
+    public void FormatProxyInfo_CustomProxy_Returns代理UrlPort()
+    {
+        var proxy = new HttpProxyConfig { Enabled = true, UseSystemProxy = false, Url = "127.0.0.1", Port = 10808 };
+        var updater = new TemplateSourceUpdater("git", gitProxy: proxy, logger: null);
+        Assert.Equal("代理=127.0.0.1:10808", updater.FormatProxyInfo());
+    }
+
+    [Fact]
+    public void FormatProxyInfo_CustomProxy_MissingUrlOrPort_ReturnsQuestionMarks()
+    {
+        // UI 修复前/输错端口 = 0 时仍给出 placeholder,而不是抛异常
+        var proxy1 = new HttpProxyConfig { Enabled = true, UseSystemProxy = false, Url = "", Port = 10808 };
+        var u1 = new TemplateSourceUpdater("git", gitProxy: proxy1, logger: null);
+        Assert.Equal("代理=?:10808", u1.FormatProxyInfo());
+
+        var proxy2 = new HttpProxyConfig { Enabled = true, UseSystemProxy = false, Url = "127.0.0.1", Port = 0 };
+        var u2 = new TemplateSourceUpdater("git", gitProxy: proxy2, logger: null);
+        Assert.Equal("代理=127.0.0.1:?", u2.FormatProxyInfo());
+    }
+
+    [Fact]
+    public void CloneAsync_CreatesParentDirectory_IfMissing()
+    {
+        // T16: git 只创建 leaf dir,父目录必须先存在(模板管理常见场景:用户首次添加
+        // GitHub 模板时 Templates/ 还不存在)。否则 git 报 "could not create work tree"
+        // 但 Templates/ 仍没建出,用户重试仍失败。CloneAsync 必须 Directory.CreateDirectory(parent)。
+        //
+        // 触发 fake git path:`/no/such/git` 不存在 → Process.Start 抛 Win32Exception
+        // → InvalidOperationException 被内部 catch 接住 → result.Success=false 但 *父目录已建*。
+        var nested = Path.Combine(_workRoot, "deep", "Templates", "ComfyUI");
+        Assert.False(Directory.Exists(Path.GetDirectoryName(nested)!));
+
+        var updater = new TemplateSourceUpdater("/no/such/git", gitProxy: null, logger: null);
+        var result = updater.CloneAsync(
+            repoUrl: "https://github.com/comfyanonymous/ComfyUI.git",
+            targetDir: nested,
+            progress: null,
+            ct: default).GetAwaiter().GetResult();
+
+        // 父目录已创建
+        Assert.True(Directory.Exists(Path.GetDirectoryName(nested)!),
+            "CloneAsync 必须创建父目录(git 不会自动建 leaf 的 parent)");
+
+        // git 必然失败(fake path)— 但失败是 git 阶段,不是父目录创建阶段
+        Assert.False(result.Success);
+        Assert.Contains("git", result.Reason);
+    }
+
+    [Fact]
+    public void CloneAsync_RecordsProgressLines_InExpectedFormat()
+    {
+        // v1.0.0.x: 验证 progress 行格式 — 至少触发一次 "[src] →" 行 + 在 fake git 失败时
+        // "[src] ✗ ExceptionType..." 行(recorded via IProgress<string> 回调)。
+        // 不依赖网络/真实 git:fake git path 让整个流程 deterministic 失败。
+        var lines = new System.Collections.Generic.List<string>();
+        var progress = new Progress<string>(s => lines.Add(s));
+
+        var updater = new TemplateSourceUpdater("/no/such/git", gitProxy: null, logger: null);
+        var result = updater.CloneAsync(
+            repoUrl: "https://github.com/comfyanonymous/ComfyUI.git",
+            targetDir: Path.Combine(_workRoot, "progress-test"),
+            progress: progress,
+            ct: default).GetAwaiter().GetResult();
+
+        Assert.False(result.Success);
+        Assert.Contains(lines, l => l.StartsWith("[src] → github.com"));
+        Assert.Contains(lines, l => l.StartsWith("[src] ✗"));
+        // fake git 走 InvalidOperationException("无法启动 git")或 OperationCanceledException 都不会 — 是 Exception 路径
+        Assert.Contains(lines, l => l.Contains("ms)"));
+    }
+
+    [Fact]
+    public void UpdateAsync_RecordsProgressLines_InExpectedFormat()
+    {
+        // v1.0.0.x: 同 CloneAsync 但走 update 路径 — targetDir 必须先存在。
+        // Fake git path 让 RunAsync 抛 InvalidOperationException → "[src] ✗ ..." 行。
+        var target = Path.Combine(_workRoot, "update-target");
+        Directory.CreateDirectory(target);
+        var lines = new System.Collections.Generic.List<string>();
+        var progress = new Progress<string>(s => lines.Add(s));
+
+        var updater = new TemplateSourceUpdater("/no/such/git", gitProxy: null, logger: null);
+        var result = updater.UpdateAsync(
+            targetDir: target,
+            repoUrl: "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git",
+            progress: progress,
+            ct: default).GetAwaiter().GetResult();
+
+        Assert.False(result.Success);
+        Assert.Contains(lines, l => l.StartsWith("[src] → github.com"));
+        Assert.Contains(lines, l => l.StartsWith("[src] ✗"));
     }
 }

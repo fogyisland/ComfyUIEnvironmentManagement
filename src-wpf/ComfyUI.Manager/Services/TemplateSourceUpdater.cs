@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,12 +25,30 @@ namespace ComfyUI.Manager.Services;
 /// - Keeps the directory itself (junction target / permissions preserved).
 /// - <c>--depth=1</c> clone for speed — template just needs current main.
 ///
+/// v1.0.0.x: rich Console log mirror v0.6.22++ ModelMarketplace 模式:
+///   [src] → host (proxy info) / [src] ← exit=N (ms) / [src] ✓ 完成 / [src] ✗ ... / [src] ⏹ ...
+///   git 没有 HTTP response code,用 exit code 作类比(exit=0 = success = "200 之类")。
+///
 /// AppLogger subsystem: <c>template-source-update</c>.
 /// </summary>
+/// <remarks>
+/// v1.0.0.x: progress 行格式约定(同 v0.6.22++ ModelMarketplace):
+/// <list type="bullet">
+///   <item><c>[src] → {host} ({proxyInfo})</c> — git clone 开始前</item>
+///   <item><c>[src] ← exit={code} ({ms}ms)</c> — git 返回(exit=0 类比 HTTP 200)</item>
+///   <item><c>[src] ✓ 完成 ({ms}ms)</c> — 整个 update 成功</item>
+///   <item><c>[src] ✗ {ErrorType} ({ms}ms): {reason}</c> — git 失败 / 异常</item>
+///   <item><c>[src] ⏹ 已取消 ({ms}ms)</c> — 用户取消</item>
+/// </list>
+/// 调用方负责给行加 <c>[{Kind}]</c> 前缀(多模板并发区分),本服务只关心 <c>[src]</c>。
+/// </remarks>
 public class TemplateSourceUpdater
 {
     private readonly GitRunner _git;
     private readonly AppLogger? _logger;
+
+    /// <summary>v1.0.0.x: 暴露代理配置给 Console log helper(FormatProxyInfo 三分支)。</summary>
+    protected HttpProxyConfig? Proxy => (_git as GitRunner)?.ProxyConfig;
 
     public TemplateSourceUpdater(string gitExe, HttpProxyConfig? gitProxy = null, AppLogger? logger = null)
     {
@@ -77,7 +96,8 @@ public class TemplateSourceUpdater
         }
 
         // 2. git clone --depth=1 (fast, no history needed for template)
-        progress?.Report($"正在 git clone {repoUrl}...");
+        progress?.Report($"[src] → {FormatHost(repoUrl)} ({FormatProxyInfo()})");
+        var sw = Stopwatch.StartNew();
         GitResult r;
         try
         {
@@ -89,22 +109,32 @@ public class TemplateSourceUpdater
         }
         catch (OperationCanceledException)
         {
+            sw.Stop();
+            progress?.Report($"[src] ⏹ 已取消 ({sw.ElapsedMilliseconds}ms)");
             return NodeOperationResult.Fail("用户取消");
         }
         catch (Exception ex)
         {
+            sw.Stop();
+            var ms = sw.ElapsedMilliseconds;
+            progress?.Report($"[src] ✗ {ex.GetType().Name} ({ms}ms): {ex.Message}");
             _logger?.Error("template-source-update", "git clone threw", ex);
             return NodeOperationResult.Fail($"git clone 异常:{ex.Message}");
         }
-
+        sw.Stop();
+        var elapsed = sw.ElapsedMilliseconds;
+        progress?.Report($"[src] ← exit={r.ExitCode} ({elapsed}ms)");
         if (!r.Ok)
         {
-            _logger?.Warn("template-source-update", $"target='{targetDir}' git clone 失败:{r.Stderr}");
-            return NodeOperationResult.Fail($"git clone 失败:{r.Stderr}");
+            // git stderr 取首行非空做"response body-like"展示,完整 stderr 进 NodeOperationResult
+            var firstLine = SplitFirstLine(r.Stderr);
+            _logger?.Warn("template-source-update", $"target='{targetDir}' git clone 失败(exit={r.ExitCode}):{r.Stderr}");
+            progress?.Report($"[src] ✗ GitExit={r.ExitCode} ({elapsed}ms): {firstLine}");
+            return NodeOperationResult.Fail($"git clone 失败(exit={r.ExitCode}):{r.Stderr}");
         }
 
-        progress?.Report("模板更新完成");
-        _logger?.Info("template-source-update", $"target='{targetDir}' 模板更新完成");
+        progress?.Report($"[src] ✓ 完成 ({elapsed}ms)");
+        _logger?.Info("template-source-update", $"target='{targetDir}' 模板更新完成 ({elapsed}ms)");
         return NodeOperationResult.Ok(null);
     }
 
@@ -140,6 +170,20 @@ public class TemplateSourceUpdater
             return NodeOperationResult.Fail($"无法解析父目录:{targetDir}");
         var name = Path.GetFileName(targetDir);
 
+        // T16: git clone 只创建 leaf 目录(其父目录必须已存在)。如果父目录不存在(如 Templates/),
+        // 用户首次添加 GitHub 模板时 Directory.CreateDirectory 把它建出来,git 不会自动建父级。
+        try
+        {
+            Directory.CreateDirectory(parent);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("template-source-update", $"父目录创建失败 parent='{parent}'", ex);
+            return NodeOperationResult.Fail($"创建父目录失败:{ex.Message}");
+        }
+
+        progress?.Report($"[src] → {FormatHost(repoUrl)} ({FormatProxyInfo()})");
+        var sw = Stopwatch.StartNew();
         GitResult r;
         try
         {
@@ -151,22 +195,31 @@ public class TemplateSourceUpdater
         }
         catch (OperationCanceledException)
         {
+            sw.Stop();
+            progress?.Report($"[src] ⏹ 已取消 ({sw.ElapsedMilliseconds}ms)");
             return NodeOperationResult.Fail("用户取消");
         }
         catch (Exception ex)
         {
+            sw.Stop();
+            var ms = sw.ElapsedMilliseconds;
+            progress?.Report($"[src] ✗ {ex.GetType().Name} ({ms}ms): {ex.Message}");
             _logger?.Error("template-source-update", "git clone threw", ex);
             return NodeOperationResult.Fail($"git clone 异常:{ex.Message}");
         }
-
+        sw.Stop();
+        var elapsed = sw.ElapsedMilliseconds;
+        progress?.Report($"[src] ← exit={r.ExitCode} ({elapsed}ms)");
         if (!r.Ok)
         {
-            _logger?.Warn("template-source-update", $"target='{targetDir}' git clone 失败:{r.Stderr}");
-            return NodeOperationResult.Fail($"git clone 失败:{r.Stderr}");
+            var firstLine = SplitFirstLine(r.Stderr);
+            _logger?.Warn("template-source-update", $"target='{targetDir}' git clone 失败(exit={r.ExitCode}):{r.Stderr}");
+            progress?.Report($"[src] ✗ GitExit={r.ExitCode} ({elapsed}ms): {firstLine}");
+            return NodeOperationResult.Fail($"git clone 失败(exit={r.ExitCode}):{r.Stderr}");
         }
 
-        progress?.Report("模板克隆完成");
-        _logger?.Info("template-source-update", $"target='{targetDir}' 模板克隆完成");
+        progress?.Report($"[src] ✓ 完成 ({elapsed}ms)");
+        _logger?.Info("template-source-update", $"target='{targetDir}' 模板克隆完成 ({elapsed}ms)");
         return NodeOperationResult.Ok(null);
     }
 
@@ -181,5 +234,108 @@ public class TemplateSourceUpdater
         {
             // 单个 entry 失败继续(让其他 entry 删掉)— wipe 整体失败会被外层 catch 抓到。
         }
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 三分支(同 v0.6.22++ ModelMarketplace CivitAiModelSource.FormatProxyInfo):
+    /// <list type="bullet">
+    ///   <item>HttpProxyConfig == null 或 <c>!Enabled</c> → <c>"直连"</c>(没显式配代理)</item>
+    ///   <item><c>Enabled</c> + <c>UseSystemProxy</c> → <c>"系统代理"</c>(读 Windows IE 代理设置)</item>
+    ///   <item><c>Enabled</c> + <c>!UseSystemProxy</c> → <c>"代理=URL:Port"</c>(如 <c>代理=127.0.0.1:10808</c>)</item>
+    /// </list>
+    /// 注意: <see cref="HttpProxyConfig"/> 用 <c>Enabled</c> + <c>UseSystemProxy</c> 两个 bool
+    /// 表示 mode,而 Settings.HttpProxyMode(enum) 是给 user-facing UI 用的更高层抽象。
+    /// Console 单行 12-20 字符宽度,跟 model marketplace 行风格对齐。
+    /// </summary>
+    public virtual string FormatProxyInfo()
+    {
+        var p = Proxy;
+        if (p is null || !p.Enabled) return "直连";
+        if (p.UseSystemProxy) return "系统代理";
+        // Custom
+        var url = string.IsNullOrWhiteSpace(p.Url) ? "?" : p.Url;
+        var port = p.Port <= 0 ? "?" : p.Port.ToString();
+        return $"代理={url}:{port}";
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 从 repoUrl 安全取 host(<c>github.com/comfyanonymous/ComfyUI.git</c> → <c>github.com</c>)。
+    /// 处理三种形态:
+    /// <list type="bullet">
+    ///   <item>HTTPS/HTTP URL → <c>new Uri(...).Host</c></item>
+    ///   <item>SSH URL(<c>git@github.com:user/repo.git</c>) → 切 <c>git@...:user</c> 中间</item>
+    ///   <item>都不是 → 裸字符串第一段(与 v1.0.0 之前保持兼容)</item>
+    /// </list>
+    /// 解析失败返回 <c>"&lt;unknown&gt;"</c>,绝不让异常逃出(影响 progress 行生成)。
+    /// </summary>
+    public static string FormatHost(string repoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(repoUrl)) return "<unknown>";
+        // HTTPS/HTTP path
+        try
+        {
+            var uri = new Uri(repoUrl);
+            if (!string.IsNullOrWhiteSpace(uri.Host)) return uri.Host;
+        }
+        catch { /* fallthrough */ }
+
+        // SSH path: git@github.com:user/repo.git — colon separator, not slash
+        if (repoUrl.StartsWith("git@", StringComparison.Ordinal))
+        {
+            var colon = repoUrl.IndexOf(':');
+            if (colon > 4)
+            {
+                // skip "git@" prefix (4 chars), hostname is between "git@" and ":"
+                return repoUrl[4..colon];
+            }
+        }
+
+        // Last resort: 裸字符串截取 "/" 之前一段(如 "github.com/user/repo" 等等)
+        var slash = repoUrl.IndexOf('/');
+        return slash > 0 ? repoUrl[..slash] : repoUrl;
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 取 git stderr 第一行非空内容用于 Console fail 行(对应 v0.6.22++ 的
+    /// HTTP "body {bytes} bytes" 展示)。整体 stderr 仍进 <see cref="NodeOperationResult.Reason"/>。
+    /// </summary>
+    private static string SplitFirstLine(string stderr)
+    {
+        if (string.IsNullOrWhiteSpace(stderr)) return "(no stderr)";
+        foreach (var line in stderr.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (!string.IsNullOrEmpty(trimmed)) return trimmed;
+        }
+        return "(empty)";
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 一键下载/更新 — 根据 targetDir 是否存在决定走 clone 或 update。
+    /// <list type="bullet">
+    ///   <item>targetDir 不存在 → <see cref="CloneAsync"/>(首次下载)</item>
+    ///   <item>targetDir 已存在 → <see cref="UpdateAsync"/>(wipe + clone,相当于 git pull)</item>
+    /// </list>
+    /// 用于模板管理页 "下载与更新" 按钮(只动源码,不涉及 env/node)。
+    /// </summary>
+    public virtual async Task<NodeOperationResult> DownloadOrUpdateAsync(
+        string repoUrl,
+        string targetDir,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(repoUrl))
+            return NodeOperationResult.Fail("repoUrl 不能为空");
+        if (string.IsNullOrWhiteSpace(targetDir))
+            return NodeOperationResult.Fail("targetDir 不能为空");
+
+        progress?.Report($"[src] 检查目标目录: {targetDir}");
+        if (Directory.Exists(targetDir))
+        {
+            progress?.Report("[src] 目录已存在,执行 wipe + clone (更新)");
+            return await UpdateAsync(targetDir, repoUrl, progress, ct);
+        }
+        progress?.Report("[src] 目录不存在,执行 git clone (首次下载)");
+        return await CloneAsync(repoUrl, targetDir, progress, ct);
     }
 }
