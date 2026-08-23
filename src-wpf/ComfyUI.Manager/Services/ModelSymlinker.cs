@@ -18,7 +18,7 @@ namespace ComfyUI.Manager.Services;
 /// link 名字 = &lt;model-slug&gt;-&lt;id8&gt;__&lt;version-slug&gt;-&lt;vid8&gt;
 /// (env 端用 __ 双下划线分隔,避免 model-slug 与 version-slug 同前缀时碰撞)。
 /// v1.0.0 multi-template T6:per-kind ModelsSubdir — env 端 models dir 由
-/// <see cref="Environment.TemplateConfigSnapshot"/>.ModelsSubdir 决定(ComfyUI="models",
+/// <see cref="Models.Environment.TemplateConfigSnapshot"/>.ModelsSubdir 决定(ComfyUI="models",
 /// A1111="models/Stable-diffusion",自定义=&lt;用户输入&gt;);snapshot 缺失时 fallback "models"。
 /// 失败 WARN + 计数 + Errors list,不抛 — 永远不影响 env-start 状态。</summary>
 public class ModelSymlinker
@@ -41,7 +41,7 @@ public class ModelSymlinker
     }
 
     /// <summary>v1.0.0 multi-template T6 (G8):resolve env 端 models 目录路径。
-    /// 优先 <see cref="Environment.TemplateConfigSnapshot"/>.ModelsSubdir;null/空 fallback "models"。
+    /// 优先 <see cref="Models.Environment.TemplateConfigSnapshot"/>.ModelsSubdir;null/空 fallback "models"。
     /// subdir 内 '/' 在 Windows 上替换为 <see cref="Path.DirectorySeparatorChar"/>,
     /// 保证 Linux/macOS 测试 fixture "models/Stable-diffusion" 跨平台行为一致。</summary>
     public static string GetEnvModelsDir(Models.Environment env, string projectRoot)
@@ -51,6 +51,21 @@ public class ModelSymlinker
         var subdir = env.TemplateConfigSnapshot?.ModelsSubdir;
         if (string.IsNullOrEmpty(subdir)) subdir = "models";
         return Path.Combine(projectRoot, "envs", env.Name, subdir.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    /// <summary>v1.0.0 multi-template T6 (G8):per-kind env models dir.
+    /// ComfyUI snapshot "models" → <c>&lt;envRoot&gt;/models</c>;
+    /// A1111 snapshot "models/Stable-diffusion" → <c>&lt;envRoot&gt;/models/Stable-diffusion</c>;
+    /// null/empty snapshot → fallback <c>models</c>. Delegates to the string-based overload
+    /// with the resolved env models root path. Caller passes <paramref name="env"/> whose
+    /// <c>ComfyuiSource</c> is the env root (T4 always-copy layout).</summary>
+    public virtual Task<ModelSyncResult> SyncToEnvAsync(Models.Environment env, CancellationToken ct = default)
+    {
+        var envRoot = env?.ComfyuiSource ?? "";
+        var subdir = env?.TemplateConfigSnapshot?.ModelsSubdir;
+        if (string.IsNullOrEmpty(subdir)) subdir = "models";
+        var envModelsRoot = Path.Combine(envRoot, subdir.Replace('/', Path.DirectorySeparatorChar));
+        return SyncToEnvAsync(envModelsRoot, ct);
     }
 
     public virtual async Task<ModelSyncResult> SyncToEnvAsync(string envComfyuiSource, CancellationToken ct = default)

@@ -674,12 +674,13 @@ public class EnvironmentListViewModel : ViewModelBase
             {
                 var modelSymlinker = _modelSymlinker;
                 var envId = env.Id;
-                var comfyuiSource = env.ComfyuiSource;
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await modelSymlinker.SyncToEnvAsync(comfyuiSource).ConfigureAwait(false);
+                        // v1.0.0 T6 (G8): pass env so symlinker reads TemplateConfigSnapshot.ModelsSubdir;
+                        // A1111 envs get models/Stable-diffusion instead of plain models/.
+                        await modelSymlinker.SyncToEnvAsync(env).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
