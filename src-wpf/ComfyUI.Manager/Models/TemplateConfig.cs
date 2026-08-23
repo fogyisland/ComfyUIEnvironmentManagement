@@ -51,4 +51,28 @@ public class TemplateConfig
 
     [JsonPropertyName("user_extra_args")]
     public string UserExtraArgs { get; set; } = "";
+
+    /// <summary>
+    /// Human-readable badge for the template kind. v1.0.0+: used by TemplateManagementView
+    /// card to display "[GitHub]" / "[本地]". Not serialized — derived from SourceKind.
+    /// </summary>
+    [JsonIgnore]
+    public string SourceKindBadge => SourceKind switch
+    {
+        TemplateSourceKind.GitHub => "[GitHub]",
+        TemplateSourceKind.Local => "[本地]",
+        _ => "",
+    };
+
+    /// <summary>
+    /// Whether this template's source can be updated via
+    /// <see cref="ComfyUI.Manager.Services.TemplateSourceUpdater.UpdateAsync"/>.
+    /// GitHub templates always can (URL is in config). Local templates only if built-in
+    /// (ComfyUI / A1111 — they have a default repo URL). Custom Local templates have no remote.
+    /// v1.0.0+: used by TemplateManagementView "更新源码" button Visibility binding.
+    /// </summary>
+    [JsonIgnore]
+    public bool CanUpdateSource => SourceKind == TemplateSourceKind.GitHub
+        || Kind == "ComfyUI"
+        || Kind == "A1111";
 }

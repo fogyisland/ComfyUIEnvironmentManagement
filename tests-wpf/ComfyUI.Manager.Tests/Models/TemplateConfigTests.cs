@@ -98,4 +98,41 @@ public class TemplateConfigTests
         Assert.Contains("local_source_dir", json);
         Assert.Contains("extra_junction_targets", json);
     }
+
+    // --- T16: CanUpdateSource + SourceKindBadge computed properties ---
+
+    [Fact]
+    public void CanUpdateSource_LocalBuiltIn_True()
+    {
+        var cfg = new TemplateConfig { Kind = "ComfyUI", SourceKind = TemplateSourceKind.Local };
+        Assert.True(cfg.CanUpdateSource);
+    }
+
+    [Fact]
+    public void CanUpdateSource_LocalCustom_False()
+    {
+        var cfg = new TemplateConfig { Kind = "MySwarm", SourceKind = TemplateSourceKind.Local };
+        Assert.False(cfg.CanUpdateSource);
+    }
+
+    [Fact]
+    public void CanUpdateSource_GitHub_True()
+    {
+        var cfg = new TemplateConfig { Kind = "Anything", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.True(cfg.CanUpdateSource);
+    }
+
+    [Fact]
+    public void SourceKindBadge_LocalKind_ReturnsLocalText()
+    {
+        var cfg = new TemplateConfig { Kind = "MySwarm", SourceKind = TemplateSourceKind.Local };
+        Assert.Equal("[本地]", cfg.SourceKindBadge);
+    }
+
+    [Fact]
+    public void SourceKindBadge_GitHubKind_ReturnsGitHubText()
+    {
+        var cfg = new TemplateConfig { Kind = "GhTpl", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.Equal("[GitHub]", cfg.SourceKindBadge);
+    }
 }

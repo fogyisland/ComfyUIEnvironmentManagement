@@ -99,7 +99,17 @@ public class TemplateManagementViewModel : ViewModelBase
     private void UpdateTemplateSource(TemplateConfig? t)
     {
         if (t == null || _updater == null) return;
-        _ = _updater.UpdateAsync(t.LocalSourceDir, GetDefaultRepoUrl(t.Kind), null, default);
+
+        // Resolve URL based on SourceKind:
+        //   GitHub templates use their configured repo URL.
+        //   Local templates use GetDefaultRepoUrl only for built-in ComfyUI/A1111;
+        //   custom Local templates have no remote and are skipped silently.
+        var url = t.SourceKind == TemplateSourceKind.GitHub
+            ? t.GitHubRepoUrl
+            : GetDefaultRepoUrl(t.Kind);
+        if (string.IsNullOrWhiteSpace(url)) return;
+
+        _ = _updater.UpdateAsync(t.LocalSourceDir, url, null, default);
     }
 
     private static string GetDefaultRepoUrl(string kind) => kind switch

@@ -1,7 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
 using Xunit;
 
@@ -61,5 +65,95 @@ public class TemplateManagementViewModelTests
         Assert.True(vm.IsBuiltIn("ComfyUI"));
         Assert.True(vm.IsBuiltIn("A1111"));
         Assert.False(vm.IsBuiltIn("MySwarm"));
+    }
+
+    // --- T16: UpdateSourceCommand branches + CanUpdateSource ---
+
+    [Fact]
+    public void UpdateSourceCommand_LocalKind_BuiltInComfyUI_CallsUpdateAsync_WithDefaultUrl()
+    {
+        var s = SeedSettings();
+        var fakeUpdater = new FakeUpdater();
+        var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
+        var comfy = vm.Templates.First(t => t.Kind == "ComfyUI");
+
+        vm.UpdateSourceCommand.Execute(comfy);
+
+        Assert.Equal(1, fakeUpdater.CallCount);
+        Assert.Equal("Templates/ComfyUI", fakeUpdater.LastTargetDir);
+        Assert.Equal("https://github.com/comfyanonymous/ComfyUI.git", fakeUpdater.LastRepoUrl);
+    }
+
+    [Fact]
+    public void UpdateSourceCommand_LocalKind_CustomTemplate_DoesNotCallUpdateAsync()
+    {
+        var s = SeedSettings();
+        var fakeUpdater = new FakeUpdater();
+        var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
+        var custom = vm.Templates.First(t => t.Kind == "MySwarm");
+
+        vm.UpdateSourceCommand.Execute(custom);
+
+        Assert.Equal(0, fakeUpdater.CallCount);  // no default URL for custom Kind
+    }
+
+    [Fact]
+    public void UpdateSourceCommand_GitHubKind_CallsUpdateAsync_WithConfigRepoUrl()
+    {
+        var s = SeedSettings();
+        s.Templates["GithubTpl"] = new TemplateConfig
+        {
+            Name = "GithubTpl", Kind = "GithubTpl",
+            LocalSourceDir = "Templates/GithubTpl",
+            SourceKind = TemplateSourceKind.GitHub,
+            GitHubRepoUrl = "https://github.com/user/GithubTpl.git",
+        };
+        var fakeUpdater = new FakeUpdater();
+        var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
+        var gh = vm.Templates.First(t => t.Kind == "GithubTpl");
+
+        vm.UpdateSourceCommand.Execute(gh);
+
+        Assert.Equal(1, fakeUpdater.CallCount);
+        Assert.Equal("Templates/GithubTpl", fakeUpdater.LastTargetDir);
+        Assert.Equal("https://github.com/user/GithubTpl.git", fakeUpdater.LastRepoUrl);
+    }
+
+    [Fact]
+    public void UpdateSourceCommand_NullUpdater_DoesNotThrow()
+    {
+        var s = SeedSettings();
+        var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: null);
+        var comfy = vm.Templates.First(t => t.Kind == "ComfyUI");
+
+        // Should silently skip, not throw
+        var ex = Record.Exception(() => vm.UpdateSourceCommand.Execute(comfy));
+        Assert.Null(ex);
+    }
+
+    /// <summary>
+    /// T16 test helper: subclass TemplateSourceUpdater and override UpdateAsync to capture
+    /// call args without invoking the real GitRunner. Base ctor creates a GitRunner that's
+    /// never invoked (we override the method that uses it), so no network/disk side effects.
+    /// </summary>
+    private class FakeUpdater : TemplateSourceUpdater
+    {
+        public int CallCount { get; private set; }
+        public string? LastTargetDir { get; private set; }
+        public string? LastRepoUrl { get; private set; }
+        public IProgress<string>? LastProgress { get; private set; }
+
+        public FakeUpdater() : base("git") { }
+
+        public override Task<NodeOperationResult> UpdateAsync(
+            string targetDir, string repoUrl,
+            IProgress<string>? progress, CancellationToken ct)
+        {
+            CallCount++;
+            LastTargetDir = targetDir;
+            LastRepoUrl = repoUrl;
+            LastProgress = progress;
+            return Task.FromResult(NodeOperationResult.Ok(null));
+        }
     }
 }

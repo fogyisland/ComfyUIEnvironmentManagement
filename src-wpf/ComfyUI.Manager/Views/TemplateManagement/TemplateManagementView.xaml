@@ -42,10 +42,15 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <TextBlock Grid.Row="0" Grid.Column="0"
-                                           Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                                <DockPanel Grid.Row="0" Grid.Column="0">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding SourceKindBadge}" Margin="8,0,0,0"
+                                               FontSize="12" Foreground="{DynamicResource OutlineBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                                </DockPanel>
                                 <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
                                     <Button Content="更新源码" Margin="4,0"
+                                            Visibility="{Binding CanUpdateSource, Converter={StaticResource BoolToVisibility}}"
                                             Command="{Binding DataContext.UpdateSourceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"/>
                                     <Button Content="编辑" Margin="4,0"
