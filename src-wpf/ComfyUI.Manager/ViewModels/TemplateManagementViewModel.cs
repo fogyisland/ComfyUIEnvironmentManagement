@@ -58,14 +58,11 @@ public class TemplateManagementViewModel : ViewModelBase
     {
         var vm = _editFactory();
         vm.Mode = EditTemplateDialogMode.Add;
-        if (vm.ShowDialogRequested != null)
+        vm.RequestShowDialog();
+        if (vm.AppliedToSettings)
         {
-            vm.ShowDialogRequested.Invoke(vm);
-            if (vm.AppliedToSettings)
-            {
-                Templates.Add(vm.WorkingConfig);
-                _settings.Templates[vm.WorkingConfig.Kind] = vm.WorkingConfig;
-            }
+            Templates.Add(vm.WorkingConfig);
+            _settings.Templates[vm.WorkingConfig.Kind] = vm.WorkingConfig;
         }
     }
 
@@ -75,15 +72,12 @@ public class TemplateManagementViewModel : ViewModelBase
         var vm = _editFactory();
         vm.Mode = EditTemplateDialogMode.Edit;
         vm.LoadFrom(t);
-        if (vm.ShowDialogRequested != null)
+        vm.RequestShowDialog();
+        if (vm.AppliedToSettings)
         {
-            vm.ShowDialogRequested.Invoke(vm);
-            if (vm.AppliedToSettings)
-            {
-                _settings.Templates[vm.WorkingConfig.Kind] = vm.WorkingConfig;
-                var idx = Templates.IndexOf(t);
-                if (idx >= 0) Templates[idx] = vm.WorkingConfig;
-            }
+            _settings.Templates[vm.WorkingConfig.Kind] = vm.WorkingConfig;
+            var idx = Templates.IndexOf(t);
+            if (idx >= 0) Templates[idx] = vm.WorkingConfig;
         }
     }
 
@@ -108,52 +102,8 @@ public class TemplateManagementViewModel : ViewModelBase
     };
 }
 
-// TODO T10: Replace with real dialog VM in T10. T8 only needs the public surface
-// (Mode / WorkingConfig / AppliedToSettings / ShowDialogRequested / LoadFrom) so the
-// TemplateManagementViewModel ctor compiles and T10 can layer in actual XAML binding.
-public enum EditTemplateDialogMode
-{
-    Add,
-    Edit,
-}
-
-// TODO T10: Replace stub with full XAML-bound dialog VM. Real impl will own the
-// TextBox/BindingPipeline for Name/Kind/LocalSourceDir/EntryScript/EntryArgs/
-// ModelsSubdir/ExtraJunctionTargets/UserExtraArgs + Apply/Cancel buttons. T8 only
-// references the public surface — T10 will replace fields/properties with
-// INotifyPropertyChanged-backed bindings to XAML controls.
-public class EditTemplateDialogViewModel
-{
-    public EditTemplateDialogMode Mode { get; set; } = EditTemplateDialogMode.Add;
-    public TemplateConfig WorkingConfig { get; set; } = new();
-    public bool AppliedToSettings { get; set; }
-    public Action<EditTemplateDialogViewModel>? ShowDialogRequested { get; set; }
-
-    public EditTemplateDialogViewModel(Settings settings, AppLogger? logger)
-    {
-        // T8 stub: no-op. T10 will subscribe to settings/log when building the
-        // real VM (e.g. ReadTemplateDefaults / ValidateConfig / SaveOnApply).
-        _ = settings;
-        _ = logger;
-    }
-
-    public void LoadFrom(TemplateConfig source)
-    {
-        // T8 stub: shallow clone of fields to keep caller mutation isolated.
-        // T10 will wire this to bound controls via two-way bindings.
-        WorkingConfig = new TemplateConfig
-        {
-            Name = source.Name,
-            Kind = source.Kind,
-            LocalSourceDir = source.LocalSourceDir,
-            EntryScript = source.EntryScript,
-            EntryArgs = source.EntryArgs,
-            ModelsSubdir = source.ModelsSubdir,
-            ExtraJunctionTargets = new List<string>(source.ExtraJunctionTargets),
-            UserExtraArgs = source.UserExtraArgs,
-        };
-    }
-}
+// EditTemplateDialogMode and EditTemplateDialogViewModel were moved to
+// src-wpf/ComfyUI.Manager/ViewModels/EditTemplateDialogViewModel.cs (T10).
 
 // TODO T11: Replace stub with real TemplateSourceUpdater. T11 lands the actual
 // git clone / wipe logic; T8 only needs the constructor + UpdateAsync signature
