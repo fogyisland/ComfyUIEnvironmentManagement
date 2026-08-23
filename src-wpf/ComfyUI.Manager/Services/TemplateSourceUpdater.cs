@@ -108,6 +108,68 @@ public class TemplateSourceUpdater
         return NodeOperationResult.Ok(null);
     }
 
+    /// <summary>
+    /// Clone <paramref name="repoUrl"/> into empty <paramref name="targetDir"/>.
+    /// Unlike <see cref="UpdateAsync"/> this does NOT wipe an existing directory —
+    /// it fails if <paramref name="targetDir"/> already exists. Use <see cref="UpdateAsync"/>
+    /// to refresh a previously-cloned template.
+    ///
+    /// v1.0.0+: used by EditTemplateDialog's SaveCommand GitHub mode to clone
+    /// at add-time so LocalSourceDir is a real populated path immediately.
+    /// </summary>
+    public virtual async Task<NodeOperationResult> CloneAsync(
+        string repoUrl,
+        string targetDir,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(repoUrl))
+            return NodeOperationResult.Fail("repoUrl 不能为空");
+        if (string.IsNullOrWhiteSpace(targetDir))
+            return NodeOperationResult.Fail("targetDir 不能为空");
+        if (Directory.Exists(targetDir))
+            return NodeOperationResult.Fail($"目标目录已存在:{targetDir}");
+
+        _logger?.Info("template-source-update", $"target='{targetDir}' repo='{repoUrl}' 开始模板克隆");
+        progress?.Report($"开始克隆:{repoUrl}");
+
+        // git clone --depth=1 <repo> <dir>
+        // workdir = parent of targetDir; args specify target as last positional
+        var parent = Path.GetDirectoryName(targetDir);
+        if (string.IsNullOrWhiteSpace(parent))
+            return NodeOperationResult.Fail($"无法解析父目录:{targetDir}");
+        var name = Path.GetFileName(targetDir);
+
+        GitResult r;
+        try
+        {
+            r = await _git.RunAsync(
+                workdir: parent,
+                args: new[] { "clone", "--depth=1", repoUrl, name },
+                timeout: TimeSpan.FromMinutes(5),
+                ct: ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return NodeOperationResult.Fail("用户取消");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("template-source-update", "git clone threw", ex);
+            return NodeOperationResult.Fail($"git clone 异常:{ex.Message}");
+        }
+
+        if (!r.Ok)
+        {
+            _logger?.Warn("template-source-update", $"target='{targetDir}' git clone 失败:{r.Stderr}");
+            return NodeOperationResult.Fail($"git clone 失败:{r.Stderr}");
+        }
+
+        progress?.Report("模板克隆完成");
+        _logger?.Info("template-source-update", $"target='{targetDir}' 模板克隆完成");
+        return NodeOperationResult.Ok(null);
+    }
+
     private static void TryDelete(string path)
     {
         try

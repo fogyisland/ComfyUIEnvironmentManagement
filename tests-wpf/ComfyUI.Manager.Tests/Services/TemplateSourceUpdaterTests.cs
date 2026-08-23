@@ -67,6 +67,56 @@ public class TemplateSourceUpdaterTests : IDisposable
         Assert.NotNull(result.Reason);
     }
 
+    [Fact]
+    public void CloneAsync_EmptyRepoUrl_Validates()
+    {
+        var updater = new TemplateSourceUpdater("git", null, null);
+        var result = updater.CloneAsync(
+            repoUrl: "",
+            targetDir: Path.Combine(_workRoot, "fresh-clone"),
+            progress: null,
+            ct: default).GetAwaiter().GetResult();
+        Assert.False(result.Success);
+        Assert.Contains("repoUrl", result.Reason);
+    }
+
+    [Fact]
+    public void CloneAsync_TargetDirExists_Fails()
+    {
+        // Reject cloning into existing non-empty dir to avoid silent overwrite.
+        // UpdateAsync wipes; CloneAsync refuses (use UpdateAsync to refresh).
+        var existing = Path.Combine(_workRoot, "already-exists");
+        Directory.CreateDirectory(existing);
+        File.WriteAllText(Path.Combine(existing, "marker.txt"), "x");
+
+        var updater = new TemplateSourceUpdater("git", null, null);
+        var result = updater.CloneAsync(
+            repoUrl: "https://github.com/comfyanonymous/ComfyUI.git",
+            targetDir: existing,
+            progress: null,
+            ct: default).GetAwaiter().GetResult();
+        Assert.False(result.Success);
+        Assert.Contains("已存在", result.Reason);
+        // marker file must still exist (no destructive side effect)
+        Assert.True(File.Exists(Path.Combine(existing, "marker.txt")));
+    }
+
+    [Fact]
+    public void CloneAsync_ValidInputs_ReturnsResult()
+    {
+        // Smoke: doesn't actually clone (no network), but verifies no throw
+        // and result object is well-formed.
+        var updater = new TemplateSourceUpdater("git", null, null);
+        var result = updater.CloneAsync(
+            repoUrl: "https://github.com/comfyanonymous/ComfyUI.git",
+            targetDir: Path.Combine(_workRoot, "template-clone"),
+            progress: null,
+            ct: default).GetAwaiter().GetResult();
+        Assert.NotNull(result);
+        // Reason may be null (success path, Ok(null)) or non-null (git network fail).
+        // The intent is "method doesn't throw, returns a well-formed result record".
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_workRoot, recursive: true); } catch { }
