@@ -297,11 +297,12 @@ public partial class App : Application
         // v0.6.11+ T2: ComfyUI Manager 装/卸 service(env-list toggle 按钮 + 装依赖末尾自动装)。
         // 复用 reqFileInstaller 跑 Manager 自己的 requirements.txt;git 走共享的 gitExe + GitRunner。
         var comfyUiManagerInstaller = new ComfyUIManagerInstaller(reqFileInstaller, gitExe, gitProxy, logger);
-        // v0.6.22.x:ComfyUI 模板更新 service — 工具菜单 → 模板更新按钮触发。
-        // v0.6.22 T5 原版注入 EnvironmentRepository(从未使用,dead code)+ 给 EnvironmentListViewModel,
-        // T5.x 改:目标 = <projectRoot>/ComfyUITemplate/ master template(不需要 envRepo),
-        // 改注入 MainViewModel。
-        var comfyUiTemplateUpdater = new ComfyUITemplateUpdater(gitRunner, logger);
+        // v1.0.0 T11: 通用 template source updater — per-repo-URL, 给
+        // TemplateManagementViewModel(ShowTemplateManagement)的每张模板卡
+        // "更新源码" 按钮使用。构造时传 gitExe + gitProxy + logger(不是 gitRunner),
+        // service 内部自己 new GitRunner(gitExe, gitProxy)。
+        var templateSourceUpdater = new TemplateSourceUpdater(
+            gitExe: gitExe, gitProxy: gitProxy, logger: logger);
         // v0.6.11++:常用节点自动装 service(env-create 末尾 + 装依赖末尾触发)。
         // 走注入的 git clone func(包 GitRunner.RunAsync)— 测试可换 fake func。
         // 共享 reqExe + GitRunner,先于 EnvCreatorService / RequirementsInstaller 构造。
@@ -415,8 +416,6 @@ public partial class App : Application
             // env-start 成功后 fire-and-forget sync 已下载 models 到 env。同 workflow hook 模式,
             // 各自独立 try/catch,失败互不干扰。
             modelSymlinker: modelSymlinker,
-            // v0.6.22.x:模板更新 service — 改注入 MainViewModel(工具菜单 → 模板更新)。
-            templateUpdater: comfyUiTemplateUpdater,
             // v0.6.22+:per-source HttpClient builder — 传给 ModelSourceFactory 让每个 source
             // 拿自己的 HttpClient(per-source proxy toggle 在此生效)。同 BuildHttpClient 静态方法
             // 引用 — 复用同样的 handler 配置 + 60s timeout + Proxy=null/UseProxy=false fallback。

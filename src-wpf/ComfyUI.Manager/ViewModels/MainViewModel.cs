@@ -111,15 +111,10 @@ public class MainViewModel : ViewModelBase
     // v0.6.20 T9: ModelSymlinker — 透传给 EnvironmentListViewModel 让 env-start 成功后
     // fire-and-forget sync 已下载 models 到 env。可空保留旧测试 ctor 兼容。
     private readonly ModelSymlinker? _modelSymlinker;
-    // v0.6.22.x: ComfyUI 模板更新 service —— 模板更新操作从 env-list 移到主窗口
-    // 工具菜单,目标改为 <projectRoot>/ComfyUITemplate/ master template(v1.0.0+ 从 `ComfyUI/` 重命名;用户 2026-08-21
-    // 反馈"我们不会去更新环境中的环境,只是为下一个创建的环境更新")。不再透传给
-    // EnvironmentListViewModel,UpdateTemplateCommand / TemplateUpdateStatus 改挂
-    // 在 MainViewModel 上。
-    private readonly ComfyUITemplateUpdater? _templateUpdater;
-    /// <summary>v0.6.22.x:模板更新状态面板(singleton,绑 MainWindow.XAML)。3-state
-    /// IsVisible 镜像 RequirementsStatusViewModel 模式。</summary>
-    public TemplateUpdateStatusViewModel TemplateUpdateStatus { get; } = new();
+    // v1.0.0 T11: 通用 template source updater —— 由 App.xaml.cs 注入, 透传给
+    // TemplateManagementViewModel(ShowTemplateManagement), 让每张模板卡
+    // "更新源码" 按钮调用 TemplateSourceUpdater.UpdateAsync(targetDir, repoUrl)。
+    private readonly TemplateSourceUpdater? _templateSourceUpdater;
     // Spotlight VM 懒构造(只第一次 OpenSpotlight 时建一次 + 注入 navigator)。
     private SpotlightSearchViewModel? _spotlightVm;
     // v0.6.9 T7:SettingsViewModel 缓存 — 之前每次 ShowSettings 都 new 一个新实例,
@@ -317,10 +312,8 @@ public class MainViewModel : ViewModelBase
     public RelayCommand OpenComfySettingsJsonCommand { get; }
     public RelayCommand OpenExtraModelPathsYamlCommand { get; }
     public RelayCommand ExitAppCommand { get; }
-    /// <summary>v0.6.22.x:工具菜单 → 模板更新。目标 = &lt;projectRoot&gt;/ComfyUITemplate/
-    /// master template(v1.0.0+ 从 `ComfyUI/` 重命名;影响下次 env 创建),不更新现有 env 的 ComfyUI clone。
-    /// CanExecute = _templateUpdater 已注入 + !TemplateUpdateStatus.IsBusy。</summary>
-    public RelayCommand UpdateTemplateCommand { get; }
+    // v1.0.0 T11: removed UpdateTemplateCommand — 工具菜单 → 模板更新 入口删除,
+    // 改到 TemplateManagementView 的每张模板卡 "更新源码" 按钮。
     public RelayCommand ShowAboutCommand { get; }
     public RelayCommand ShowDonateQrCommand { get; }   // v0.6.5.21 hotfix:菜单直接打开赞助二维码独立窗口
     // v0.6.9 T7:Spotlight 全局搜索。MainWindow.xaml.cs 在 OnLoaded 把 Ctrl+K 绑到
@@ -333,9 +326,8 @@ public class MainViewModel : ViewModelBase
     internal Func<string, UiPreferences, bool>? SaveUiPreferencesDialogOverride { get; set; }
     internal Func<string, bool>? LoadUiPreferencesDialogOverride { get; set; }
     internal Action? ShowDonateQrOverride { get; set; }       // v0.6.5.21 hotfix test seam
-    // v0.6.22.x:destructive 确认 dialog 测试 seam — UpdateTemplateAsync 弹 MessageBox
-    // 二次确认,生产默认 Yes,测试拦截只记录不弹。null → 走 MessageBox.Show。
-    internal Func<string, string, bool>? ConfirmDangerousOverride { get; set; }
+    // v1.0.0 T11: removed ConfirmDangerousOverride — 工具菜单 → 模板更新 删除,
+    // TemplateManagementView 每张卡的 "更新源码" 按钮自己 confirm。
     // v0.6.7.3 T5 test seams
     internal Action<string>? ProcessStartOverride { get; set; }
     internal Action<string>? EnsureFileExistsOverride { get; set; }
@@ -389,10 +381,10 @@ public class MainViewModel : ViewModelBase
         // v0.6.20 T9: ModelSymlinker — 传给 EnvironmentListViewModel 让 env-start 成功后
         // fire-and-forget sync 已下载 models 到 env 的 models/<kind>/。可空保留旧测试 ctor 兼容。
         ModelSymlinker? modelSymlinker = null,
-        // v0.6.22 T5: ComfyUI 模板更新 service —— 传给 EnvironmentListViewModel
-        // 让 UpdateTemplateCommand 触发 wipe + git clone。可空保留旧测试 ctor
-        // 兼容(null 时 UpdateTemplateCommand.CanExecute 永远 false)。
-        ComfyUITemplateUpdater? templateUpdater = null,
+        // v1.0.0 T11: 通用 template source updater —— 由 ShowTemplateManagement
+        // 透传给 TemplateManagementViewModel 让 "更新源码" 按钮触发 wipe + git clone。
+        // 可空保留测试 ctor 兼容(null 时 UpdateSourceCommand 走 no-op)。
+        TemplateSourceUpdater? templateSourceUpdater = null,
         // v0.6.22+:per-source HttpClient builder — 传给 ModelSourceFactory 让每个 source
         // 拿自己的 HttpClient(per-source proxy toggle 才生效)。可空保留旧测试 ctor 兼容
         // (null 时 ShowModels 退回到包 _http 的简单 lambda,共享 singleton,无 per-source proxy)。
@@ -448,8 +440,9 @@ public class MainViewModel : ViewModelBase
         _workflowSymlinker = workflowSymlinker;
         // v0.6.20 T9: ModelSymlinker — 透传给 EnvironmentListViewModel env-start 同步 model junction。
         _modelSymlinker = modelSymlinker;
-        // v0.6.22 T5: ComfyUI 模板更新 service — 透传给 EnvironmentListViewModel。
-        _templateUpdater = templateUpdater;
+        // v1.0.0 T11: 通用 template source updater — 由 ShowTemplateManagement 透传给
+        // TemplateManagementViewModel(每张模板卡 "更新源码" 按钮)。
+        _templateSourceUpdater = templateSourceUpdater;
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
@@ -474,12 +467,8 @@ public class MainViewModel : ViewModelBase
         OpenComfySettingsJsonCommand = new RelayCommand(_ => OpenComfyConfigFile("comfy.settings.json"));
         OpenExtraModelPathsYamlCommand = new RelayCommand(_ => OpenComfyConfigFile("extra_model_paths.yaml"));
         ExitAppCommand = new RelayCommand(_ => DoExit());
-        // v0.6.22.x:模板更新菜单命令。wipe <projectRoot>/ComfyUITemplate/ + git clone,
-        // 影响下一次 env 创建(per-env ComfyUI clones 不动)。CanExecute = _templateUpdater
-        // 已注入 + !TemplateUpdateStatus.IsBusy(避免并发跑两份)。
-        UpdateTemplateCommand = new RelayCommand(
-            _ => _ = UpdateTemplateAsync(),
-            _ => _templateUpdater is not null && !TemplateUpdateStatus.IsBusy);
+        // v1.0.0 T11: removed UpdateTemplateCommand init — 工具菜单 → 模板更新 删除,
+        // 改到 TemplateManagementView 每张模板卡 "更新源码" 按钮。
         ShowAboutCommand = new RelayCommand(_ =>
         {
             var owner = Application.Current?.MainWindow;
@@ -686,7 +675,7 @@ public class MainViewModel : ViewModelBase
     // View 由 T9 factory 注入(默认 new TemplateManagementView);
     // 切走再回来复用同一份 VM 保留编辑状态/选中行/滚动位置。
     // editTemplateFactory = null → VM ctor 自建 EditTemplateDialogViewModel 替身;
-    // updater = null → UpdateSourceCommand 走 no-op(T11 落地后由 App.xaml.cs 注入实 updater)。
+    // updater 由 App.xaml.cs 注入 templateSourceUpdater(T11 wiring)。
     private void ShowTemplateManagement()
     {
         CurrentSection = MainSection.Templates;
@@ -695,7 +684,7 @@ public class MainViewModel : ViewModelBase
             _templateManagementViewModel = new TemplateManagementViewModel(
                 _settings,
                 editTemplateFactory: null,
-                updater: null);
+                updater: _templateSourceUpdater);
             _templateManagementView = TemplateManagementViewFactory is null
                 ? new TemplateManagementView { DataContext = _templateManagementViewModel }
                 : TemplateManagementViewFactory(_templateManagementViewModel);
@@ -787,46 +776,8 @@ public class MainViewModel : ViewModelBase
         };
     }
 
-    /// <summary>
-    /// v0.6.22.x:工具菜单 → 模板更新 handler。wipe <projectRoot>/ComfyUITemplate/ 全部
-    /// 内容 + git clone comfyanonymous/ComfyUI --depth=1,影响下一次 env 创建。
-    /// 不动现有 env 的 ComfyUI clones(用户 2026-08-21 反馈"我们不会去更新环境
-    /// 中的环境")。流程:MessageBox 二次确认 → TemplateUpdateStatus 跑进度 →
-    /// 错误写回 Error。
-    /// </summary>
-    private async Task UpdateTemplateAsync()
-    {
-        if (_templateUpdater is null) return;
-        var targetDir = Path.Combine(_projectRoot, "ComfyUITemplate");
-        var confirmMessage =
-            $"模板更新会删除 {targetDir} 全部内容并重新 git clone ComfyUI。\n" +
-            "用于下次创建 env(不影响现有 env 的 ComfyUI)。\n" +
-            "未提交的本地修改会丢失。是否继续?";
-        var proceed = ConfirmDangerousOverride is not null
-            ? ConfirmDangerousOverride(confirmMessage, "模板更新确认")
-            : MessageBox.Show(
-                Application.Current?.MainWindow,
-                confirmMessage, "模板更新确认",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
-        if (!proceed) return;
-
-        try
-        {
-            UpdateTemplateCommand.RaiseCanExecuteChanged();   // disable while busy
-            await TemplateUpdateStatus.RunAsync(async progress =>
-            {
-                var result = await _templateUpdater.UpdateAsync(targetDir, progress);
-                if (!result.Success)
-                {
-                    TemplateUpdateStatus.Error = result.Reason ?? "未知错误";
-                }
-            });
-        }
-        finally
-        {
-            UpdateTemplateCommand.RaiseCanExecuteChanged();   // re-enable
-        }
-    }
+    // v1.0.0 T11: removed UpdateTemplateAsync — 工具菜单 → 模板更新 删除,
+    // TemplateManagementViewModel.UpdateSourceCommand 直接调 TemplateSourceUpdater。
 
     private void OpenFolder(string path)
     {

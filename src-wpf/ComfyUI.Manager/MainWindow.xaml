@@ -17,7 +17,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />   <!-- v0.6.22.x:新增 TemplateUpdateStatus 全局状态面板(原 2 row 现在是 5 row) -->
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -62,12 +61,9 @@
                     <MenuItem Header="打开日志目录"
                               Command="{Binding OpenLogFolderCommand}" />
                     <Separator />
-                    <!-- v0.6.22.x:模板更新 — 用户原话"我们默认只有一个模板...只是为下一个
-                         创建的环境更新"。目标 = <projectRoot>/ComfyUITemplate/ master template,
-                         不影响现有 env 的 ComfyUI clones。会弹确认 dialog + 状态面板。 -->
-                    <MenuItem Header="_模板更新..."
-                              Command="{Binding UpdateTemplateCommand}"
-                              ToolTip="wipe projectRoot/ComfyUITemplate/ 全部内容并 git clone ComfyUI,只影响下次创建 env" />
+                    <!-- v1.0.0 T11: removed "模板更新" MenuItem — 模板更新改到
+                         TemplateManagementView 每张模板卡的 "更新源码" 按钮(T9/T11)。
+                         工具菜单不再有全局模板更新入口。 -->
                 </MenuItem>
                 <MenuItem Header="_关于(_H)">
                     <MenuItem Header="关于..."
@@ -160,49 +156,16 @@
                         Content="{Binding CurrentView}"
                         behaviors:ViewFadeTransitionBehavior.IsEnabled="True" />
 
-        <!-- v0.6.22.x:模板更新全局状态面板(工具菜单 → 模板更新触发)。3-state IsVisible,
-             镜像 EnvironmentListView 的旧 inline 面板,BoundWidth=*,Grid.ColumnSpan=2 -->
-        <Border Grid.Row="2" Grid.ColumnSpan="2"
-                Margin="12,8,12,0" Padding="12"
-                Background="{DynamicResource SurfaceBrush}"
-                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                CornerRadius="6"
-                Visibility="{Binding TemplateUpdateStatus.IsVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
-            <StackPanel DataContext="{Binding TemplateUpdateStatus}">
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="✕"
-                            Click="OnTemplateUpdateStatusCloseClicked"
-                            Style="{StaticResource GearIconButtonStyle}"
-                            Foreground="{DynamicResource OnSurfaceBrush}" />
-                    <TextBlock Text="模板更新状态" FontWeight="Bold" FontSize="14"
-                               Foreground="{DynamicResource OnSurfaceBrush}"
-                               VerticalAlignment="Center" />
-                </DockPanel>
-                <TextBlock Text="{Binding StatusText}" FontSize="14" Margin="0,4"
-                           Foreground="{DynamicResource OnSurfaceBrush}" TextWrapping="Wrap" />
-                <ScrollViewer Height="120" Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding LogLines}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
-                                           Foreground="{DynamicResource OutlineBrush}" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-                <TextBlock Text="{Binding Error}" Foreground="{DynamicResource ErrorBrush}"
-                           Margin="0,4,0,0" FontWeight="Bold" TextWrapping="Wrap"
-                           Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
-            </StackPanel>
-        </Border>
+        <!-- v1.0.0 T11: removed TemplateUpdateStatus global Border — 工具菜单 → 模板更新 删除,
+             改到 TemplateManagementView 每张模板卡 "更新源码" 按钮(自带 inline 状态)。 -->
 
         <!-- 底部 ErrorBanner -->
-        <views:ErrorBanner Grid.Row="3" Grid.ColumnSpan="2"
+        <views:ErrorBanner Grid.Row="2" Grid.ColumnSpan="2"
                            DataContext="{Binding ErrorBanner}"
                            MaxHeight="120" />
 
         <!-- v0.6.9.3 T2:底部状态栏显示当前页面与版本号。 -->
-        <views:StatusBar Grid.Row="4" Grid.ColumnSpan="2"
+        <views:StatusBar Grid.Row="3" Grid.ColumnSpan="2"
                          DataContext="{Binding StatusBar}" />
 
         <!-- v0.6.9 T9:主题切换 cross-fade overlay(z-order 顶层,初始 IsHitTestVisible=False + Opacity=0)。

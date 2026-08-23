@@ -104,19 +104,3 @@ public class TemplateManagementViewModel : ViewModelBase
 
 // EditTemplateDialogMode and EditTemplateDialogViewModel were moved to
 // src-wpf/ComfyUI.Manager/ViewModels/EditTemplateDialogViewModel.cs (T10).
-
-// TODO T11: Replace stub with real TemplateSourceUpdater. T11 lands the actual
-// git clone / wipe logic; T8 only needs the constructor + UpdateAsync signature
-// so production wire-up compiles AND test path with `updater: null` passes.
-public class TemplateSourceUpdater
-{
-    public Task<bool> UpdateAsync(string targetDir, string repoUrl, IProgress<string>? progress, CancellationToken ct)
-    {
-        // T8 stub: no-op success. T11 will wipe targetDir + git clone --depth=1.
-        _ = targetDir;
-        _ = repoUrl;
-        _ = progress;
-        _ = ct;
-        return Task.FromResult(true);
-    }
-}

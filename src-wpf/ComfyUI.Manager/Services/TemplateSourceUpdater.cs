@@ -7,49 +7,56 @@ using ComfyUI.Manager.Infrastructure;
 namespace ComfyUI.Manager.Services;
 
 /// <summary>
-/// v0.6.22 T5:ComfyUI template update — wipe contents of a target directory then
-/// git clone comfyanonymous/ComfyUI back to the same path. Destructive.
+/// v1.0.0 T11: 通用 template source updater — wipe contents of any target
+/// directory (which must already exist) then git clone the given repo URL back
+/// to the same path. Destructive.
 ///
-/// v0.6.22.x 改:v0.6.22 T5 是 per-env(env.ComfyuiSource),用户 2026-08-21 反馈
-/// "我们默认只有一个模板...我们不会去更新环境中的环境,只是为下一个创建的
-/// 环境更新" — 重构为 path-based,目标 = &lt;projectRoot&gt;/ComfyUITemplate/ master template
-/// (v1.0.0+ 从 `ComfyUI/` 重命名),用于下一次创建 env 时复制(shared 布局 / script bundle)。
+/// v0.6.22.x evolution:
+/// - v0.6.22 T5: per-env env.ComfyuiSource, hardcoded comfyanonymous/ComfyUI.
+/// - v0.6.22.x: path-based, target = &lt;projectRoot&gt;/ComfyUITemplate/ master
+///   template (only affects next env creation).
+/// - v1.0.0 T11 (G10): per-repo-URL. Takes <c>repoUrl</c> as a parameter so it
+///   can update any template (ComfyUI, A1111, custom). Hardcoded URL removed.
 ///
 /// Confirms:
 /// - Caller MUST gate with confirm dialog before invoking — this service will
 ///   not prompt.
 /// - Keeps the directory itself (junction target / permissions preserved).
-/// - `--depth=1` clone for speed — template just needs current main.
+/// - <c>--depth=1</c> clone for speed — template just needs current main.
 ///
-/// AppLogger subsystem: <c>comfyui-template-update</c>.
+/// AppLogger subsystem: <c>template-source-update</c>.
 /// </summary>
-public class ComfyUITemplateUpdater
+public class TemplateSourceUpdater
 {
     private readonly GitRunner _git;
     private readonly AppLogger? _logger;
 
-    public ComfyUITemplateUpdater(GitRunner git, AppLogger? logger = null)
+    public TemplateSourceUpdater(string gitExe, HttpProxyConfig? gitProxy = null, AppLogger? logger = null)
     {
-        _git = git;
+        _git = new GitRunner(gitExe, gitProxy);
         _logger = logger;
     }
 
     /// <summary>
-    /// Wipe contents of <paramref name="targetDir"/> (must already exist) then git clone
-    /// comfyanonymous/ComfyUI back to the same path. Returns NodeOperationResult —
-    /// never throws on git failure (only on invalid args).
+    /// Wipe contents of <paramref name="targetDir"/> (must already exist) then
+    /// git clone <paramref name="repoUrl"/> back to the same path. Returns
+    /// <see cref="NodeOperationResult"/> — never throws on git failure (only on
+    /// invalid args).
     /// </summary>
     public virtual async Task<NodeOperationResult> UpdateAsync(
         string targetDir,
+        string repoUrl,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(targetDir))
-            return NodeOperationResult.Fail("模板目录不能为空");
+            return NodeOperationResult.Fail("targetDir 不能为空");
+        if (string.IsNullOrWhiteSpace(repoUrl))
+            return NodeOperationResult.Fail("repoUrl 不能为空");
         if (!Directory.Exists(targetDir))
             return NodeOperationResult.Fail($"模板目录不存在:{targetDir}");
 
-        _logger?.Info("comfyui-template-update", $"target='{targetDir}' 开始模板更新");
+        _logger?.Info("template-source-update", $"target='{targetDir}' repo='{repoUrl}' 开始模板更新");
         progress?.Report($"开始模板更新:{targetDir}");
 
         // 1. delete contents (keep dir for permissions/junction)
@@ -65,18 +72,18 @@ public class ComfyUITemplateUpdater
         }
         catch (Exception ex)
         {
-            _logger?.Error("comfyui-template-update", "wipe failed", ex);
+            _logger?.Error("template-source-update", "wipe failed", ex);
             return NodeOperationResult.Fail($"删除模板目录内容失败:{ex.Message}");
         }
 
         // 2. git clone --depth=1 (fast, no history needed for template)
-        progress?.Report("正在 git clone ComfyUI...");
+        progress?.Report($"正在 git clone {repoUrl}...");
         GitResult r;
         try
         {
             r = await _git.RunAsync(
                 workdir: targetDir,
-                args: new[] { "clone", "--depth=1", "https://github.com/comfyanonymous/ComfyUI.git", "." },
+                args: new[] { "clone", "--depth=1", repoUrl, "." },
                 timeout: TimeSpan.FromMinutes(5),
                 ct: ct);
         }
@@ -86,18 +93,18 @@ public class ComfyUITemplateUpdater
         }
         catch (Exception ex)
         {
-            _logger?.Error("comfyui-template-update", "git clone threw", ex);
+            _logger?.Error("template-source-update", "git clone threw", ex);
             return NodeOperationResult.Fail($"git clone 异常:{ex.Message}");
         }
 
         if (!r.Ok)
         {
-            _logger?.Warn("comfyui-template-update", $"target='{targetDir}' git clone 失败:{r.Stderr}");
+            _logger?.Warn("template-source-update", $"target='{targetDir}' git clone 失败:{r.Stderr}");
             return NodeOperationResult.Fail($"git clone 失败:{r.Stderr}");
         }
 
-        progress?.Report("ComfyUI 模板更新完成");
-        _logger?.Info("comfyui-template-update", $"target='{targetDir}' 模板更新完成");
+        progress?.Report("模板更新完成");
+        _logger?.Info("template-source-update", $"target='{targetDir}' 模板更新完成");
         return NodeOperationResult.Ok(null);
     }
 
