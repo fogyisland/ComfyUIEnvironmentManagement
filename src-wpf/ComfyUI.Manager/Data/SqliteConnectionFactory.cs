@@ -162,6 +162,10 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "environments", "bed_failed_reason", "TEXT");
         // v0.6.7.2:用户备注(在 CreateEnvDialog 输入,默认空)
         EnsureColumn(conn, "environments", "notes", "TEXT");
+        // v1.0.0 multi-template T3:每个 env 持久化它创建时的 template kind + 配置快照,
+        // 老行 backfill 到 ComfyUI 默认(snapshot 由 EnvironmentRepository.Read 兜底)。
+        EnsureColumn(conn, "environments", "template_kind", "TEXT NOT NULL DEFAULT 'ComfyUI'");
+        EnsureColumn(conn, "environments", "template_config_snapshot", "TEXT");
         // v0.6.11:scanned_nodes.source(老 db backfill 为 'env';新唯一索引支持 download 行)
         EnsureColumn(conn, "scanned_nodes", "source", "TEXT NOT NULL DEFAULT 'env'");
         // v0.6.15.1 hotfix:节点 git URL(本地下载行才有,env 装行 NULL 即可)

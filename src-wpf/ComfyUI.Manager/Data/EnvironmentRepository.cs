@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services;
 using Microsoft.Data.Sqlite;
 using Environment = ComfyUI.Manager.Models.Environment;
 
@@ -14,10 +16,24 @@ namespace ComfyUI.Manager.Data;
 public sealed class EnvironmentRepository : IEnvironmentRepository
 {
     private readonly SqliteConnectionFactory _factory;
+    // v1.0.0 multi-template T3:老行 backfill ComfyUI snapshot 用。生产代码由 App.xaml.cs
+    // 在 Settings.Templates["ComfyUI"] 应用后注入;测试默认走 TemplateConfigDefaults.ComfyUi(<test>)。
+    // Func<> 而非 TemplateConfig 实例,避免 snapshot 被复用 — 每次 read 都是 fresh copy。
+    private readonly Func<TemplateConfig> _comfyUiSnapshotFactory;
 
     public EnvironmentRepository(SqliteConnectionFactory factory)
+        : this(factory, () => TemplateConfigDefaults.ComfyUi(""))
+    {
+    }
+
+    /// <summary>
+    /// v1.0.0 multi-template T3:DI 测试 seam — 让生产代码注入"当前 Settings.Templates["ComfyUI"]
+    /// 的拷贝 factory",确保老行 backfill 用最新配置而不是 hardcode。
+    /// </summary>
+    public EnvironmentRepository(SqliteConnectionFactory factory, Func<TemplateConfig> comfyUiSnapshotFactory)
     {
         _factory = factory;
+        _comfyUiSnapshotFactory = comfyUiSnapshotFactory ?? throw new ArgumentNullException(nameof(comfyUiSnapshotFactory));
     }
 
     public List<Environment> ListAll()
@@ -26,12 +42,14 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
         using var cmd = conn.CreateCommand();
         // v0.6.15.3: 过滤 id="" sentinel(SqliteConnectionFactory 插入的 FK 占位行,
         // 防止 scanned_nodes.env_id="" FK 失败,但不算真环境)。
+        // v1.0.0 T3: 增加 template_kind / template_config_snapshot 列读取。
         cmd.CommandText = @"
             SELECT id, name, root_path, comfyui_layout, comfyui_source,
                    venv_path, python_executable, custom_nodes_path,
                    extra_model_paths_yaml, port, enabled_node_ids_json,
                    status, base_python_path, python_version, pid,
-                   bed_profile_id, bed_status, bed_failed_reason, notes
+                   bed_profile_id, bed_status, bed_failed_reason, notes,
+                   template_kind, template_config_snapshot
             FROM environments
             WHERE id <> ''
             ORDER BY name";
@@ -55,7 +73,8 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
                    venv_path, python_executable, custom_nodes_path,
                    extra_model_paths_yaml, port, enabled_node_ids_json,
                    status, base_python_path, python_version, pid,
-                   bed_profile_id, bed_status, bed_failed_reason, notes
+                   bed_profile_id, bed_status, bed_failed_reason, notes,
+                   template_kind, template_config_snapshot
             FROM environments WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", envId);
         using var reader = cmd.ExecuteReader();
@@ -66,19 +85,22 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
     {
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
+        // v1.0.0 T3: 增加 template_kind + template_config_snapshot(JSON 序列化)列。
         cmd.CommandText = @"
             INSERT INTO environments
                 (id, name, root_path, comfyui_layout, comfyui_source,
                  venv_path, python_executable, custom_nodes_path,
                  extra_model_paths_yaml, port, enabled_node_ids_json,
                  status, base_python_path, python_version, pid,
-                 bed_profile_id, bed_status, bed_failed_reason, notes)
+                 bed_profile_id, bed_status, bed_failed_reason, notes,
+                 template_kind, template_config_snapshot)
             VALUES
                 (@id, @name, @root_path, @comfyui_layout, @comfyui_source,
                  @venv_path, @python_executable, @custom_nodes_path,
                  @extra_model_paths_yaml, @port, @enabled_node_ids_json,
                  @status, @base_python_path, @python_version, @pid,
-                 @bed_profile_id, @bed_status, @bed_failed_reason, @notes)
+                 @bed_profile_id, @bed_status, @bed_failed_reason, @notes,
+                 @template_kind, @template_config_snapshot)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,
                 root_path=excluded.root_path,
@@ -97,7 +119,9 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
                 bed_profile_id=excluded.bed_profile_id,
                 bed_status=excluded.bed_status,
                 bed_failed_reason=excluded.bed_failed_reason,
-                notes=excluded.notes";
+                notes=excluded.notes,
+                template_kind=excluded.template_kind,
+                template_config_snapshot=excluded.template_config_snapshot";
         Bind(cmd, env);
         cmd.ExecuteNonQuery();
     }
@@ -135,7 +159,7 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
         return result is null or DBNull ? 0 : Convert.ToInt32(result);
     }
 
-    private static Environment Read(SqliteDataReader reader)
+    private Environment Read(SqliteDataReader reader)
     {
         var result = new Environment
         {
@@ -158,6 +182,12 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
             BedStatus = reader.IsDBNull(16) ? null : reader.GetString(16),
             BedFailedReason = reader.IsDBNull(17) ? null : reader.GetString(17),
             Notes = reader.IsDBNull(18) ? null : reader.GetString(18),
+            // v1.0.0 T3:DB DEFAULT 'ComfyUI' 兜底老行;如果将来移除 DEFAULT,
+            // 下方 fallback block 也覆盖 IsDBNull(19)=true 情况。
+            TemplateKind = reader.IsDBNull(19) ? "ComfyUI" : reader.GetString(19),
+            TemplateConfigSnapshot = reader.IsDBNull(20)
+                ? null
+                : JsonSerializer.Deserialize<TemplateConfig>(reader.GetString(20)),
         };
 
         // 老行 fallback:升级前 db 没有 base_python_path / python_version 列,
@@ -167,6 +197,17 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
             result.BasePythonPath = result.PythonExecutable ?? "";
         if (string.IsNullOrEmpty(result.PythonVersion))
             result.PythonVersion = "<unknown>";
+
+        // v1.0.0 T3 老行 backfill:TemplateKind == "ComfyUI" 且 snapshot 为 null →
+        // 用注入的 factory 兜出当前 Settings.Templates["ComfyUI"] 的拷贝,
+        // 让既有 env 在没有 snapshot 列时也能跑 multi-template 路径。
+        // snapshot == null 的非 ComfyUI 行(例如未来某 env 没填 template)不兜底,
+        // 让上层自己处理(后续 T 写 env-create flow 会处理)。
+        if (result.TemplateConfigSnapshot == null
+            && string.Equals(result.TemplateKind, "ComfyUI", StringComparison.Ordinal))
+        {
+            result.TemplateConfigSnapshot = _comfyUiSnapshotFactory();
+        }
         return result;
     }
 
@@ -203,5 +244,13 @@ public sealed class EnvironmentRepository : IEnvironmentRepository
             (object?)env.BedFailedReason ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@notes",
             (object?)env.Notes ?? DBNull.Value);
+        // v1.0.0 T3:TemplateKind 默认 "ComfyUI";snapshot null 写 DB NULL(由
+        // 后续 ListAll Read 时 backfill)。
+        cmd.Parameters.AddWithValue("@template_kind",
+            string.IsNullOrEmpty(env.TemplateKind) ? "ComfyUI" : env.TemplateKind);
+        cmd.Parameters.AddWithValue("@template_config_snapshot",
+            env.TemplateConfigSnapshot == null
+                ? (object)DBNull.Value
+                : JsonSerializer.Serialize(env.TemplateConfigSnapshot));
     }
 }

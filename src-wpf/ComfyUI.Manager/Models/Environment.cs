@@ -52,6 +52,23 @@ public class Environment
     public string? Notes { get; set; }
 
     /// <summary>
+    /// v1.0.0 multi-template T3:此 env 创建时使用的 template kind(对应
+    /// <see cref="Settings.Templates"/> 的 key,例如 "ComfyUI" / "A1111")。
+    /// 持久化到 SQLite <c>environments.template_kind</c> 列;老行 backfill 到 "ComfyUI"。
+    /// </summary>
+    [JsonPropertyName("template_kind")]
+    public string TemplateKind { get; set; } = "ComfyUI";
+
+    /// <summary>
+    /// v1.0.0 multi-template T3:env 创建时 <see cref="TemplateConfig"/> 的快照。
+    /// JSON 序列化为 <c>environments.template_config_snapshot</c> 列;老行(无该列)backfill
+    /// 到当前 <see cref="Settings.Templates"/>["ComfyUI"] 的拷贝。快照设计保证
+    /// <c>Settings.Templates</c> 后续修改不会影响既有 env 的可重现性。
+    /// </summary>
+    [JsonPropertyName("template_config_snapshot")]
+    public TemplateConfig? TemplateConfigSnapshot { get; set; }
+
+    /// <summary>
     /// v0.6.11+ T3:env-list 行 toggle 按钮用 — true = ComfyUI Manager 已装(显示"卸载"),
     /// false = 未装(显示"安装")。每次 Load 末尾重新算,不持久化(避免 stale)。
     /// EnvironmentRepository 用 System.Text.Json 序列化,JsonIgnore 防止 SQLite 写入。
