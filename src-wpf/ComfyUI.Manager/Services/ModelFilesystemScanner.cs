@@ -19,7 +19,7 @@ public class ModelFilesystemScanner
         _logger = logger;
     }
 
-    public IReadOnlyList<DownloadedModel> Scan(string modelsDir)
+    public virtual IReadOnlyList<DownloadedModel> Scan(string modelsDir)
     {
         var results = new List<DownloadedModel>();
         if (string.IsNullOrWhiteSpace(modelsDir) || !Directory.Exists(modelsDir))
