@@ -14,7 +14,7 @@ namespace ComfyUI.Manager.Tests.Services;
 public class SidebarInfParserTests
 {
     private const string DefaultKnownKeys =
-        "Dashboard=1\nEnvironments=1\nCatalog=1\nLocalNodes=1\nWorkflows=1\nTemplates=1\nModels=1\nSettings=1\nBulkUpdate=1\nSystemStatus=1\n";
+        "Dashboard=1\nEnvironments=1\nCatalog=1\nLocalNodes=1\nWorkflows=1\nLocalModels=1\nTemplates=1\nModels=1\nSettings=1\nBulkUpdate=1\nSystemStatus=1\n";
 
     [Fact]
     public void Parse_AllKeysPresent_ReturnsEnabledForAll()
