@@ -138,6 +138,34 @@ public class ModelFilesystemScannerTests : IDisposable
         Assert.Equal(ModelKind.LORA, result[0].Kind);
     }
 
+    [Fact]
+    public void Scan_MetaJsonPath_PreviewImagePath_AlwaysNull()
+    {
+        // v1.0.0 T10:meta.json 路径(marketplace 下载)PreviewImagePath 永远 null,
+        // 即使 sibling 有 .png 也不扫(零本地预览图)。
+        var versionDir = Path.Combine(_tmp, "checkpoints", "realistic-vision-12345678", "v50-fp16-87654321");
+        Directory.CreateDirectory(versionDir);
+        File.WriteAllText(Path.Combine(versionDir, "model.safetensors"), "fake");
+        // 同目录放 preview.png — scanner 必须忽略
+        File.WriteAllBytes(Path.Combine(versionDir, "model.png"), new byte[] { 0x89 });
+        File.WriteAllText(Path.Combine(versionDir, "meta.json"),
+            JsonSerializer.Serialize(new ModelMetaSidecar
+            {
+                Title = "Realistic Vision v5.0",
+                Kind = ModelKind.Checkpoint,
+                Source = "civitai",
+                SourceId = "12345",
+                SourceVersionId = "87654321",
+                DownloadedAt = DateTime.UtcNow,
+            }));
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Null(result[0].PreviewImagePath);
+    }
+
     private void CreateVersion(string kind, string modelSlugId, string versionSlugId, string title)
     {
         var versionDir = Path.Combine(_tmp, kind, modelSlugId, versionSlugId);

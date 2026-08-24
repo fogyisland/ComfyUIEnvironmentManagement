@@ -312,4 +312,88 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         Directory.CreateDirectory(kindDir);
         File.WriteAllText(Path.Combine(kindDir, fileName), "fake");
     }
+
+    // -------- T10 Preview image sibling scan tests --------
+
+    [Fact]
+    public void Scan_StandardLayout_PreviewImage_SiblingPng_ReturnedPath()
+    {
+        // 1 dir × 1 .safetensors + 1 .png 同 basename → PreviewImagePath = png full path
+        CreateModelFile("loras", "mylora", "mylora.safetensors");
+        var modelDir = Path.Combine(_tmp, "loras", "mylora");
+        File.WriteAllBytes(Path.Combine(modelDir, "mylora.png"), new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(Path.Combine(modelDir, "mylora.png"), result[0].PreviewImagePath);
+    }
+
+    [Fact]
+    public void Scan_StandardLayout_PreviewImage_NoSibling_NullPath()
+    {
+        // 1 dir × 1 .safetensors 无 image → PreviewImagePath = null
+        CreateModelFile("loras", "nolora", "nolora.safetensors");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Null(result[0].PreviewImagePath);
+    }
+
+    [Fact]
+    public void Scan_StandardLayout_PreviewImage_MultipleSiblings_FirstByDictionaryOrder()
+    {
+        // 1 dir × model.safetensors + model.gif + model.jpg + model.png + model.webp
+        // → PreviewImagePath = model.gif (字典序 first: gif < jpg < png < webp)
+        var modelDir = Path.Combine(_tmp, "loras", "multi");
+        Directory.CreateDirectory(modelDir);
+        File.WriteAllText(Path.Combine(modelDir, "model.safetensors"), "fake");
+        File.WriteAllBytes(Path.Combine(modelDir, "model.png"), new byte[] { 0 });
+        File.WriteAllBytes(Path.Combine(modelDir, "model.jpg"), new byte[] { 0 });
+        File.WriteAllBytes(Path.Combine(modelDir, "model.webp"), new byte[] { 0 });
+        File.WriteAllBytes(Path.Combine(modelDir, "model.gif"), new byte[] { 0 });
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(Path.Combine(modelDir, "model.gif"), result[0].PreviewImagePath);
+    }
+
+    [Fact]
+    public void Scan_StandardLayout_PreviewImage_DifferentExtension_Ignored()
+    {
+        // 1 dir × model.safetensors + model.txt + model.json → PreviewImagePath = null
+        // (非 image ext 跳过,即使同 basename)
+        var modelDir = Path.Combine(_tmp, "loras", "notext");
+        Directory.CreateDirectory(modelDir);
+        File.WriteAllText(Path.Combine(modelDir, "model.safetensors"), "fake");
+        File.WriteAllText(Path.Combine(modelDir, "model.txt"), "notes");
+        File.WriteAllText(Path.Combine(modelDir, "model.json"), "{}");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Null(result[0].PreviewImagePath);
+    }
+
+    [Fact]
+    public void Scan_FlatLayout_PreviewImage_AlsoScans()
+    {
+        // 扁平布局同样走 BuildFlatModel → preview scan 也工作
+        var loraDir = Path.Combine(_tmp, "loras");
+        Directory.CreateDirectory(loraDir);
+        File.WriteAllText(Path.Combine(loraDir, "flat.safetensors"), "fake");
+        File.WriteAllBytes(Path.Combine(loraDir, "flat.png"), new byte[] { 0x89 });
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(Path.Combine(loraDir, "flat.png"), result[0].PreviewImagePath);
+    }
 }

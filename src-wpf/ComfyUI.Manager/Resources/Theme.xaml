@@ -37,6 +37,8 @@
     <views:BoolToBrushConverter x:Key="BoolToBrush" />
     <views:SeverityToBrushConverter x:Key="SeverityToBrush" />
     <views:NullToVisibilityConverter x:Key="NullToVisibility" />
+    <!-- v1.0.0 T10:本地模型卡片 preview image OR kind badge fallback — null→Visible / 非 null→Collapsed。 -->
+    <views:InverseNullToVisibilityConverter x:Key="InverseNullToVisibility" />
     <views:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
     <views:InverseBoolConverter x:Key="InverseBool" />
     <views:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibility" />

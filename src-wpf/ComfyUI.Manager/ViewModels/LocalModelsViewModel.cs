@@ -98,15 +98,19 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
             .GroupBy(d => d.SourceId)
             .Select(g =>
             {
-                var first = g.First();
+                // v1.0.0 T10:GroupBy first 是 GroupBy 内部顺序,语义模糊(用户重命名 preview 时可能不一致)。
+                // 改为 OrderBy(DownloadedAt).Last() — latest-mtime record wins preview path
+                // (跟 LatestDownloadedAt 一致,卡片显示也是 latest mtime)。
+                var latestRecord = g.OrderBy(d => d.DownloadedAt).Last();
                 var latest = g.Max(d => d.DownloadedAt);
                 return new LocalModelCard(
-                    Title: first.Title ?? "",
-                    Kind: first.Kind,
-                    Source: first.Source,
+                    Title: latestRecord.Title ?? "",
+                    Kind: latestRecord.Kind,
+                    Source: latestRecord.Source,
                     VersionCount: g.Count(),
                     LatestDownloadedAt: latest,
-                    SourceUrl: null);
+                    SourceUrl: null,
+                    PreviewImagePath: latestRecord.PreviewImagePath);
             })
             .OrderByDescending(c => c.LatestDownloadedAt ?? DateTime.MinValue)
             .ToList();
@@ -139,6 +143,7 @@ public sealed record LocalModelCard(
     string Source,
     int VersionCount,
     DateTime? LatestDownloadedAt,
-    string? SourceUrl);
+    string? SourceUrl,
+    string? PreviewImagePath);
 
 public sealed record KindChip(ModelKind? Kind, string Display, int Count);

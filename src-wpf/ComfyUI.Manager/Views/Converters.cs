@@ -45,6 +45,27 @@ public sealed class NullToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// v1.0.0 T10:NullToVisibilityConverter 的反向版本 — null → Visible,非 null → Collapsed。
+/// 用于 "有预览图时显示 Image,无时显示 fallback badge" 模式。
+/// 必须独立 converter — NullToVisibilityConverter 不支持 ConverterParameter=invert
+/// (见 progress.md pre-flight ruling + Views/Converters.cs:32-44 实现)。
+/// </summary>
+public sealed class InverseNullToVisibilityConverter : IValueConverter
+{
+    public static readonly InverseNullToVisibilityConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is null ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
 /// v0.6.19.x UI polish:WorkflowSourceKind → Brush,工作流卡片 source pill badge。
 /// CommunityJson → PrimaryBrush(主题紫) / CivitAi → SecondaryBrush / OpenArt → SuccessBrush。
 /// 用 Application.Current.TryFindResource 走 palette(light/dark 自动跟随);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
@@ -170,6 +171,102 @@ public sealed class LocalModelsViewModelTests
         Assert.Equal("newest", vm.FilteredModels[0].Title);
         Assert.Equal("mid", vm.FilteredModels[1].Title);
         Assert.Equal("old", vm.FilteredModels[2].Title);
+    }
+
+    // -------- T10 PreviewImage 透传 tests --------
+
+    [Fact]
+    public void GroupToCards_PropagatesPreviewImagePath()
+    {
+        // 构造 1 DownloadedModel 带 PreviewImagePath = "/path/preview.png" → LocalModelCard.PreviewImagePath 透传
+        var previewPath = Path.Combine("Z:", "loras", "mylora", "mylora.png");
+        var fake = new FakeScanner
+        {
+            Entries = new List<DownloadedModel>
+            {
+                new()
+                {
+                    Title = "Mylora",
+                    Kind = ModelKind.LORA,
+                    Source = "Local",
+                    SourceId = "local:lora/mylora",
+                    SourceVersionId = "",
+                    DownloadedAt = DateTime.Now,
+                    PreviewImagePath = previewPath,
+                },
+            }
+        };
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), fake);
+        vm.ReloadAsync().GetAwaiter().GetResult();
+
+        Assert.Single(vm.FilteredModels);
+        Assert.Equal(previewPath, vm.FilteredModels[0].PreviewImagePath);
+    }
+
+    [Fact]
+    public void GroupToCards_AggregatesLatestMtime_PreviewFromLatest()
+    {
+        // 2 records 同 SourceId 不同 mtime,GroupBy 后 latest mtime record 的 preview path wins
+        // (T10:GroupToCards 用 OrderBy(DownloadedAt).Last() 代替 First() — deterministic tie-breaker)
+        var oldPreview = Path.Combine("Z:", "loras", "x", "x_old.png");
+        var newPreview = Path.Combine("Z:", "loras", "x", "x_new.png");
+        var fake = new FakeScanner
+        {
+            Entries = new List<DownloadedModel>
+            {
+                new()
+                {
+                    Title = "x",
+                    Kind = ModelKind.LORA,
+                    Source = "Local",
+                    SourceId = "local:lora/x",
+                    SourceVersionId = "v1",
+                    DownloadedAt = DateTime.Now.AddDays(-10),
+                    PreviewImagePath = oldPreview,
+                },
+                new()
+                {
+                    Title = "x",
+                    Kind = ModelKind.LORA,
+                    Source = "Local",
+                    SourceId = "local:lora/x",
+                    SourceVersionId = "v2",
+                    DownloadedAt = DateTime.Now.AddDays(-1),
+                    PreviewImagePath = newPreview,
+                },
+            }
+        };
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), fake);
+        vm.ReloadAsync().GetAwaiter().GetResult();
+
+        Assert.Single(vm.FilteredModels);
+        Assert.Equal(newPreview, vm.FilteredModels[0].PreviewImagePath);
+    }
+
+    [Fact]
+    public void GroupToCards_NoPreviewImagePath_PropagatesNull()
+    {
+        // meta.json 路径 / 无 preview 的 record → PreviewImagePath = null 透传
+        var fake = new FakeScanner
+        {
+            Entries = new List<DownloadedModel>
+            {
+                new()
+                {
+                    Title = "nopreview",
+                    Kind = ModelKind.Checkpoint,
+                    Source = "civitai",
+                    SourceId = "999",
+                    SourceVersionId = "v1",
+                    DownloadedAt = DateTime.Now,
+                },
+            }
+        };
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), fake);
+        vm.ReloadAsync().GetAwaiter().GetResult();
+
+        Assert.Single(vm.FilteredModels);
+        Assert.Null(vm.FilteredModels[0].PreviewImagePath);
     }
 }
 

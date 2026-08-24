@@ -40,6 +40,13 @@ public class ModelFilesystemScanner
         ".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx", ".gguf",
     };
 
+    /// <summary>v1.0.0 T10:preview image 同目录 sibling 扫描 — 同 basename + image extension set,
+    /// 字典序 first match。WPF Image 原生支持 .gif 动画。</summary>
+    private static readonly HashSet<string> PreviewImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".webp", ".gif",
+    };
+
     private readonly AppLogger? _logger;
 
     public ModelFilesystemScanner(AppLogger? logger = null)
@@ -138,7 +145,22 @@ public class ModelFilesystemScanner
             SourceVersionId = "",
             DownloadedAt = File.GetLastWriteTime(fullPath),          // 文件 mtime(不是 dir mtime)
             Kind = InferKind(kindName),
+            PreviewImagePath = FindPreviewImage(fullPath),           // v1.0.0 T10:同目录 sibling scan
         };
+    }
+
+    /// <summary>v1.0.0 T10:同目录扫同 basename + image extension set,字典序 first match。
+    /// 不递归,不交叉 kind 子目录。无 image → null。
+    /// meta.json path 不调此 helper(直接 new DownloadedModel,PreviewImagePath 留默认 null)。</summary>
+    private static string? FindPreviewImage(string fullPath)
+    {
+        var dir = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return null;
+        var basenameNoExt = Path.GetFileNameWithoutExtension(fullPath);
+        var candidates = Directory.EnumerateFiles(dir, $"{basenameNoExt}.*")
+            .Where(f => PreviewImageExtensions.Contains(Path.GetExtension(f)))
+            .OrderBy(f => f, StringComparer.Ordinal);   // 字典序 first
+        return candidates.FirstOrDefault();
     }
 
     private static ModelKind InferKind(string kindDirName)

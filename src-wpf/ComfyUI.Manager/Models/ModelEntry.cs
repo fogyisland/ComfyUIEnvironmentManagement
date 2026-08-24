@@ -181,6 +181,9 @@ public class DownloadedModel
     public string SourceId { get; init; } = "";
     public string SourceVersionId { get; init; } = "";
     public DateTime DownloadedAt { get; init; }
+    /// <summary>v1.0.0 T10:absolute path to local preview image (sibling scan via BuildFlatModel).
+    /// meta.json 路径(marketplace 下载)永远 null — 不扫本地 preview。</summary>
+    public string? PreviewImagePath { get; init; }
 }
 
 /// <summary>v0.6.20:meta.json sidecar 反序列化形状。

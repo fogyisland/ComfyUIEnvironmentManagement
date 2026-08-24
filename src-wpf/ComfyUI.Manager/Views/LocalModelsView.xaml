@@ -132,15 +132,25 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- 左:kind badge — ModelKindBadgeBrushConverter 把 ModelKind 映射到 palette 颜色 -->
-                                    <Border Grid.Column="0"
-                                            Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}"
-                                            CornerRadius="4" Padding="10,4"
-                                            VerticalAlignment="Top">
-                                        <TextBlock Text="{Binding Kind, Mode=OneWay}"
-                                                   Foreground="{DynamicResource OnPrimaryBrush}"
-                                                   FontWeight="Bold" FontSize="11" />
-                                    </Border>
+                                    <!-- 左:80x80 preview image OR kind badge fallback (v1.0.0 T10) -->
+                                    <Grid Grid.Column="0" Width="80" Height="80" Margin="0,0,12,0" VerticalAlignment="Top">
+                                        <!-- Image: 有 PreviewImagePath 时显示 -->
+                                        <Border CornerRadius="6"
+                                                Background="{DynamicResource SurfaceVariantBrush}"
+                                                Visibility="{Binding PreviewImagePath, Converter={StaticResource InverseNullToVisibility}}">
+                                            <Image Source="{Binding PreviewImagePath, Mode=OneWay}"
+                                                   Stretch="UniformToFill" />
+                                        </Border>
+                                        <!-- Kind badge: 无 PreviewImagePath 时显示 (T7 既有 badge fallback) -->
+                                        <Border Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}"
+                                                CornerRadius="6"
+                                                Visibility="{Binding PreviewImagePath, Converter={StaticResource NullToVisibility}}">
+                                            <TextBlock Text="{Binding Kind, Mode=OneWay}"
+                                                       Foreground="{DynamicResource OnPrimaryBrush}"
+                                                       FontWeight="Bold" FontSize="11"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
 
                                     <!-- 右:title + meta -->
                                     <StackPanel Grid.Column="1" Margin="12,0,0,0">
