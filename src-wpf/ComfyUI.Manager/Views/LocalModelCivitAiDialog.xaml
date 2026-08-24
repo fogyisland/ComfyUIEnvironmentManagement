@@ -1,0 +1,160 @@
+<Window x:Class="ComfyUI.Manager.Views.LocalModelCivitAiDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding Title, StringFormat='CivitAI Lookup — {0}'}"
+        Width="700" Height="600"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+    <!--
+      v1.0.0 T11:CivitAI lookup dialog。4 状态机 — Searching / NoMatch / Picker / Detail,
+      用 EnumEqualsVisibility 切 4 个 Grid/StackPanel(state machine 在 VM)。
+      复用 Theme.xaml 既有 converter(EnumEqualsVisibility),不写新 converter。
+      Dialog 是 modal Window(LocalModelsViewModel.ExecuteLookupAsync 调 dialog.ShowDialog()),
+      用户必须关闭才能回主界面(brief design decision B)。
+    -->
+    <Grid Margin="16">
+        <!-- Searching state: indeterminate progress bar + 提示文 -->
+        <StackPanel Visibility="{Binding State, Converter={StaticResource EnumEqualsVisibility}, ConverterParameter=Searching}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="🔍 Searching CivitAI..." FontSize="14"
+                       Foreground="Gray" HorizontalAlignment="Center" />
+            <ProgressBar IsIndeterminate="True" Width="200" Height="4"
+                         Margin="0,8,0,0" />
+        </StackPanel>
+
+        <!-- NoMatch state: 失败 / 0 candidate 都走这里 -->
+        <StackPanel Visibility="{Binding State, Converter={StaticResource EnumEqualsVisibility}, ConverterParameter=NoMatch}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="❌ No CivitAI model matches this name"
+                       FontSize="14" Foreground="Gray"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding Title, StringFormat='Searched: {0}'}"
+                       FontSize="11" Foreground="Gray"
+                       HorizontalAlignment="Center" Margin="0,4,0,0" />
+            <Button Content="关闭" Margin="0,16,0,0" Padding="16,6"
+                    HorizontalAlignment="Center"
+                    Click="OnClose" />
+        </StackPanel>
+
+        <!-- Picker state: 多 candidate 选 1 -->
+        <Grid Visibility="{Binding State, Converter={StaticResource EnumEqualsVisibility}, ConverterParameter=Picker}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Multiple matches — select one:"
+                       FontWeight="Bold" Margin="0,0,0,8" />
+            <ListBox x:Name="CandidatesList"
+                     Grid.Row="1"
+                     ItemsSource="{Binding Candidates}"
+                     SelectedItem="{Binding SelectedCandidate}"
+                     SelectionChanged="CandidatesList_SelectionChanged">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image Grid.Column="0" Source="{Binding ThumbnailUrl}"
+                                   Width="50" Height="50" Stretch="UniformToFill" />
+                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                <TextBlock Text="{Binding Title}" FontWeight="Bold"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock FontSize="11" Foreground="Gray">
+                                    <Run Text="by " /><Run Text="{Binding Username}" />
+                                    <Run Text=" · " /><Run Text="{Binding BaseModel}" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <StackPanel Grid.Row="2" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="取消" Padding="16,6" Click="OnClose" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Detail state: 1 candidate 已选 + 详情可见 -->
+        <Grid Visibility="{Binding State, Converter={StaticResource EnumEqualsVisibility}, ConverterParameter=Detail}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <!-- Header: title + author · baseModel -->
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="{Binding Detail.Title}" FontSize="18" FontWeight="Bold" />
+                <TextBlock FontSize="11" Foreground="Gray">
+                    <Run Text="by " /><Run Text="{Binding Detail.Username}" />
+                    <Run Text=" · " /><Run Text="{Binding Detail.BaseModel}" />
+                </TextBlock>
+            </StackPanel>
+            <!-- Description:surface variant 背景 + 滚动 + raw text(no markdown) -->
+            <Border Grid.Row="1" Background="{DynamicResource SurfaceVariantBrush}"
+                    CornerRadius="4" Padding="8" Margin="0,8,0,0" MaxHeight="120">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <TextBlock Text="{Binding Detail.Description}"
+                               TextWrapping="Wrap" FontSize="11" />
+                </ScrollViewer>
+            </Border>
+            <!-- Tags + Versions + Images:scrollable -->
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+                <StackPanel>
+                    <TextBlock Text="Tags:" FontWeight="Bold" FontSize="12" />
+                    <ItemsControl ItemsSource="{Binding Detail.Tags}" Margin="0,4,0,8">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource SurfaceVariantBrush}"
+                                        CornerRadius="3" Padding="6,2" Margin="2">
+                                    <TextBlock Text="{Binding}" FontSize="10" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Versions:" FontWeight="Bold" FontSize="12" />
+                    <ItemsControl ItemsSource="{Binding Detail.Versions}" Margin="0,4,0,8">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock FontSize="11">
+                                    <Run Text="• " /><Run Text="{Binding Name}" />
+                                    <Run Text=" (" /><Run Text="{Binding BaseModel}" /><Run Text=")" />
+                                </TextBlock>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Images:" FontWeight="Bold" FontSize="12" />
+                    <ItemsControl ItemsSource="{Binding Detail.ImageUrls}" Margin="0,4,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Image Source="{Binding}" Width="120" Height="120"
+                                       Stretch="UniformToFill" Margin="2" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+            <!-- Footer: 返回候选 (only meaningful if 2+ candidates) + 关闭 -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal"
+                        HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="← 返回候选" Padding="12,6"
+                        Visibility="{Binding Candidates.Count, Converter={StaticResource InverseZeroCountToVisibility}}"
+                        Click="OnBackToPicker" />
+                <Button Content="关闭" Margin="8,0,0,0" Padding="16,6" Click="OnClose" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

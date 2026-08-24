@@ -123,7 +123,7 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Width="540" Height="220" Margin="0,0,12,12"
+                            <Border Width="540" Height="250" Margin="0,0,12,12"
                                     Background="{DynamicResource SurfaceBrush}"
                                     CornerRadius="6" Padding="16">
                                 <Grid>
@@ -152,7 +152,7 @@
                                         </Border>
                                     </Grid>
 
-                                    <!-- 右:title + meta -->
+                                    <!-- 右:title + meta + lookup button (T11 加 button row, 卡片 height 220 → 250) -->
                                     <StackPanel Grid.Column="1" Margin="12,0,0,0">
                                         <TextBlock Text="{Binding Title, Mode=OneWay}"
                                                    FontSize="15" FontWeight="Bold"
@@ -170,6 +170,18 @@
                                             <Run Text="📅 " />
                                             <Run Text="{Binding LatestDownloadedAt, Mode=OneWay, StringFormat='{}{0:yyyy-MM-dd}', TargetNullValue='—'}" />
                                         </TextBlock>
+                                        <!-- v1.0.0 T11:CivitAI lookup 按钮 — Source == "Local" 时显示。
+                                             meta.json / civitai / huggingface 卡片(Source != "Local")按钮隐藏 —
+                                             这些卡已有 SourceUrl 直接 web 跳转,不需要再查一遍。
+                                             CardSourceVisibility converter:Source (string) == "Local" → Visible。
+                                             Command 通过 DataContext.RelativeSource 拿 VM 的 LookupCivitAiCommand,
+                                             parameter 是当前 card(record — WPF 自动装箱成 object)。 -->
+                                        <Button Content="🔍 查询 CivitAI"
+                                                Margin="0,8,0,0" Padding="12,4"
+                                                HorizontalAlignment="Left"
+                                                Visibility="{Binding Source, Converter={StaticResource CardSourceVisibility}, ConverterParameter=Local}"
+                                                Command="{Binding DataContext.LookupCivitAiCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding Mode=Self}" />
                                     </StackPanel>
                                 </Grid>
                             </Border>

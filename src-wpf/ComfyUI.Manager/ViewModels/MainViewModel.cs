@@ -723,16 +723,50 @@ public class MainViewModel : ViewModelBase
         CurrentSection = MainSection.LocalModels;
         if (_localModelsViewModel is null)
         {
+            // v1.0.0 T11:构造 CivitAiLookupService 透传给 LocalModelsViewModel。
+            // 用 _httpBuilder (App.xaml.cs 注入) 复用 per-source proxy + ApiToken +
+            // model-source 决策 — 跟 ModelSourceFactory.CreateCivitAi 同模式构造 HttpClient,
+            // 但不 new CivitAiModelSource(那个是 marketplace aggregator 用的,本任务要的是
+            // 独立 lookup service)。Lookup service 注入失败(无 builder / CivitAI disabled
+            // 等)— 传 null,VM 端 _lookup is null → button 隐藏(canExecute false)。
+            var lookupService = TryCreateCivitAiLookupService();
             _localModelsViewModel = new LocalModelsViewModel(
                 _settings,
                 new ModelFilesystemScanner(_logger),
-                _logger);
+                _logger,
+                lookupService);
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);
             _localModelsViewModel.Initialize();
         }
         CurrentView = _localModelsView;
+    }
+
+    /// <summary>v1.0.0 T11:为本地模型 sidebar 构造 CivitAiLookupService。
+    /// 复用 _httpBuilder(per-source proxy 决策) + _settings.CivitAiApiToken,跟
+    /// ModelSourceFactory.CreateCivitAi 走同一 HttpProxy 决策路径。
+    /// 返回 null 当 CivitAI 在 Settings 中 disabled(用户主动关)或 _httpBuilder 未注入
+    /// (老测试 ctor 兼容路径)— 此时 VM 端 _lookup is null → button canExecute false。
+    /// 不缓存 service:每次 ShowLocalModels 都 new,跟 scanner 同款"一次性 IO"模式 ——
+    /// HttpClient 复用 _httpBuilder 内部的 HttpClientHandler 实例(per-source proxy 应用
+    /// 在 ctor 期一次性配置,运行期 token 改动需要重启,跟 model marketplace 行为一致)。</summary>
+    private CivitAiLookupService? TryCreateCivitAiLookupService()
+    {
+        if (!_settings.ModelSourceCivitAiEnabled) return null;
+        if (_httpBuilder is null) return null;
+
+        var proxy = ModelSourceProxyDecision.Resolve(
+            _settings.HttpProxyMode,
+            _settings.ModelSourceCivitAiProxyMode,
+            _settings);
+        var http = _httpBuilder(proxy);
+        return new CivitAiLookupService(
+            http,
+            ModelSourceFactory.CivitAiOfficial,
+            _settings.CivitAiApiToken,
+            _logger,
+            proxy);
     }
 
     /// <summary>

@@ -446,3 +446,23 @@ public sealed class RelativeTimeConverter : IValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>v1.0.0 T11:LocalModelCard.Source(string) == ConverterParameter(string) → Visible,
+/// 不等 → Collapsed。EnumEqualsVisibilityConverter 跟 string 不匹配 — Source 是从
+/// scanner 来的字符串(Local / CivitAi / HuggingFace 等)不是 enum,需要专门的 string 版本。
+/// 用途:Local-source 卡片显示 [🔍 查询 CivitAI] 按钮,meta.json / civitai / hf 卡片隐藏。</summary>
+public sealed class CardSourceVisibilityConverter : IValueConverter
+{
+    public static readonly CardSourceVisibilityConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is null || parameter is null) return Visibility.Collapsed;
+        return string.Equals(value.ToString(), parameter.ToString(), StringComparison.Ordinal)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => Binding.DoNothing;
+}

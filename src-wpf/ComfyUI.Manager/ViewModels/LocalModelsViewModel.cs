@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Views;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -17,7 +18,10 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     private readonly Settings _settings;
     private readonly ModelFilesystemScanner _scanner;
     private readonly AppLogger? _logger;
+    private readonly CivitAiLookupService? _lookup;
     private readonly RelayCommand _reloadCommand;
+    private readonly RelayCommand _lookupCivitAiCommand;
+    private readonly HashSet<string> _lookupsInFlight = new();
     private List<LocalModelCard> _allCards = new();
 
     public ObservableCollection<LocalModelCard> FilteredModels { get; } = new();
@@ -28,6 +32,10 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     public bool IsEmpty => EmptyMessage is not null;
 
     public ICommand ReloadCommand => _reloadCommand;
+    /// <summary>v1.0.0 T11:CivitAI lookup 命令 — parameter 是被点的 LocalModelCard。
+    /// 只对 Source="Local" 的卡可用(meta.json 卡已有 SourceUrl 直接 web 跳转,
+    /// 按钮藏起来 + 命令 canExecute 返回 false)。</summary>
+    public ICommand LookupCivitAiCommand => _lookupCivitAiCommand;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -43,12 +51,34 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         }
     }
 
-    public LocalModelsViewModel(Settings settings, ModelFilesystemScanner scanner, AppLogger? logger = null)
+    public LocalModelsViewModel(
+        Settings settings,
+        ModelFilesystemScanner scanner,
+        AppLogger? logger = null,
+        CivitAiLookupService? lookup = null)
     {
         _settings = settings;
         _scanner = scanner;
         _logger = logger;
+        _lookup = lookup;
         _reloadCommand = new RelayCommand(_ => ReloadAsync(), _ => !IsBusy);
+        // v1.0.0 T11:lookup 命令 — canExecute 守卫 (Source="Local" + lookup service 可用 + 无 in-flight)。
+        // Button Visibility 用 IsLookupEnabled(card) 计算属性绑(避免新 converter,逻辑留 VM 可测)。
+        _lookupCivitAiCommand = new RelayCommand(
+            execute: card =>
+            {
+                if (card is LocalModelCard lc && lc.Source == "Local")
+                {
+                    _ = ExecuteLookupAsync(lc);
+                }
+            },
+            canExecute: card =>
+            {
+                if (card is not LocalModelCard lc) return false;
+                if (lc.Source != "Local") return false;
+                if (_lookup is null) return false;
+                return !_lookupsInFlight.Contains(lc.Title);
+            });
     }
 
     public void Initialize() => ReloadAsync();
@@ -134,6 +164,59 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
             ? _allCards
             : _allCards.Where(c => c.Kind == _activeChip!.Kind).ToList();
         foreach (var c in src) FilteredModels.Add(c);
+    }
+
+    // ===== v1.0.0 T11:CivitAI lookup integration =====
+
+    /// <summary>v1.0.0 T11:卡片 lookup 按钮可见性 — Source="Local" 且 lookup service 注入。
+    /// meta.json / civitai / huggingface 卡片(Source != "Local")不显示按钮 — 这些卡已有
+    /// SourceUrl,用户直接 web 跳转,不需要再查一遍。</summary>
+    public bool IsLookupEnabled(LocalModelCard card)
+        => card.Source == "Local" && _lookup is not null;
+
+    /// <summary>v1.0.0 T11:卡片 lookup in-flight 状态 — XAML 绑 button IsEnabled + 忙提示。
+    /// 用 Title 作 key(SourceId 也可,Title 同 kind 下唯一)。同一卡同时只 1 个 lookup 在跑。</summary>
+    public bool IsLookupInProgress(LocalModelCard card)
+        => _lookupsInFlight.Contains(card.Title);
+
+    /// <summary>v1.0.0 T11:执行 lookup — fire-and-forget 在 command execute 启动。
+    /// Modal dialog 在 UI 线程 ShowDialog,LoadAsync 等 await 回 UI SynchronizationContext。
+    /// ConfigureAwait(true) 在 VM 内部仍需(ObservableCollection 跨线程写会抛 — v0.6.19.x lesson)。</summary>
+    private async Task ExecuteLookupAsync(LocalModelCard card)
+    {
+        if (_lookup is null) return;
+
+        _lookupsInFlight.Add(card.Title);
+        RaiseCommandsCanExecuteChanged();
+        try
+        {
+            var dlg = new LocalModelCivitAiDialog
+            {
+                DataContext = new LocalModelCivitAiDialogViewModel(_lookup, card.Title, _logger),
+            };
+            // modal 阻塞到用户关窗
+            dlg.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("local-models",
+                $"Lookup failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _lookupsInFlight.Remove(card.Title);
+            RaiseCommandsCanExecuteChanged();
+        }
+    }
+
+    /// <summary>v1.0.0 T11:in-flight 集合变更后让 button CanExecute 重新计算。
+    /// LocalModelCard 是 record value type — IsLookupEnabled / IsLookupInProgress 接收 card 实例,
+    /// WPF CommandManager 不能直接 re-eval,只能 RaiseCanExecuteChanged on RelayCommand。</summary>
+    private void RaiseCommandsCanExecuteChanged()
+    {
+        _reloadCommand.RaiseCanExecuteChanged();
+        _lookupCivitAiCommand.RaiseCanExecuteChanged();
+        PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
     }
 }
 
