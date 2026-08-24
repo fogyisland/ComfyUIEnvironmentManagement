@@ -55,9 +55,9 @@ public class CreateEnvDialogBuildTemplateConfigTests
         // does not throw TEMPLATE_SOURCE_NOT_FOUND.
         var (vm, _) = BuildVm();
         vm.SelectedTemplateKind = "ComfyUI";
-        // ApplyTemplate may have cleared ComfyuiSource if the directory does not
+        // ApplyTemplate may have cleared TemplateSource if the directory does not
         // exist on disk in the test env — override with the raw relative value.
-        vm.ComfyuiSource = "Templates/ComfyUI";
+        vm.TemplateSource = "Templates/ComfyUI";
         var cfg = vm.BuildTemplateConfig();
         Assert.Equal(Path.Combine("C:/fake-root", "Templates/ComfyUI"), cfg.LocalSourceDir);
     }
@@ -72,7 +72,7 @@ public class CreateEnvDialogBuildTemplateConfigTests
         var abs = Path.IsPathRooted("C:/fake-root")
             ? @"C:\absolute\path\to\template"
             : "/tmp/abs/path";
-        vm.ComfyuiSource = abs;
+        vm.TemplateSource = abs;
         var cfg = vm.BuildTemplateConfig();
         Assert.Equal(abs, cfg.LocalSourceDir);
     }
@@ -84,7 +84,7 @@ public class CreateEnvDialogBuildTemplateConfigTests
         // not always default to ComfyUI.
         var (vm, _) = BuildVm();
         vm.SelectedTemplateKind = "A1111";
-        vm.ComfyuiSource = "Templates/A1111";
+        vm.TemplateSource = "Templates/A1111";
         var cfg = vm.BuildTemplateConfig();
         Assert.Equal("A1111", cfg.Kind);
     }

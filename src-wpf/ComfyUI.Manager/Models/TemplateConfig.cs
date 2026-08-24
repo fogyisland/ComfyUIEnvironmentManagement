@@ -75,4 +75,12 @@ public class TemplateConfig
     public bool CanUpdateSource => SourceKind == TemplateSourceKind.GitHub
         || Kind == "ComfyUI"
         || Kind == "A1111";
+
+    /// <summary>
+    /// Whether the user can delete this template from the management UI. Built-in
+    /// ComfyUI / A1111 are protected (G13) — they always exist as canonical templates.
+    /// v1.0.0.x: hides the grayed-out Delete button on built-in cards.
+    /// </summary>
+    [JsonIgnore]
+    public bool CanDelete => Kind != "ComfyUI" && Kind != "A1111";
 }

@@ -47,14 +47,23 @@ public class TemplateSourceUpdater
 {
     private readonly GitRunner _git;
     private readonly AppLogger? _logger;
+    /// <summary>v1.0.0.x: 模板相对路径锚定父目录 — 通常是 <c>Settings.SystemTemplateLibraryDir</c>
+    /// (用户在设置页配的"系统模板库目录"),非空时所有模板都克隆到该目录下。空 = 锚到
+    /// <see cref="AppContext.BaseDirectory"/>(跨启动方式稳定的 exe 所在目录)。</summary>
+    private readonly string? _basePath;
 
     /// <summary>v1.0.0.x: 暴露代理配置给 Console log helper(FormatProxyInfo 三分支)。</summary>
     protected HttpProxyConfig? Proxy => (_git as GitRunner)?.ProxyConfig;
 
-    public TemplateSourceUpdater(string gitExe, HttpProxyConfig? gitProxy = null, AppLogger? logger = null)
+    public TemplateSourceUpdater(
+        string gitExe,
+        HttpProxyConfig? gitProxy = null,
+        AppLogger? logger = null,
+        string? basePath = null)
     {
         _git = new GitRunner(gitExe, gitProxy);
         _logger = logger;
+        _basePath = string.IsNullOrWhiteSpace(basePath) ? null : basePath;
     }
 
     /// <summary>
@@ -73,6 +82,11 @@ public class TemplateSourceUpdater
             return NodeOperationResult.Fail("targetDir 不能为空");
         if (string.IsNullOrWhiteSpace(repoUrl))
             return NodeOperationResult.Fail("repoUrl 不能为空");
+        // v1.0.0.x: 用户反馈 "下载目录必须和设置一致"。_basePath (非空时 =
+        // system_template_library_dir) 是用户期望的模板存放根;空时回退到
+        // AppContext.BaseDirectory (= exe dir,所有启动方式稳定) 避免 CWD 漂移
+        // 把 clone 写到 settings 之外。
+        targetDir = TemplatePathResolver.Resolve(targetDir, _basePath);
         if (!Directory.Exists(targetDir))
             return NodeOperationResult.Fail($"模板目录不存在:{targetDir}");
 
@@ -162,6 +176,9 @@ public class TemplateSourceUpdater
             return NodeOperationResult.Fail("repoUrl 不能为空");
         if (string.IsNullOrWhiteSpace(targetDir))
             return NodeOperationResult.Fail("targetDir 不能为空");
+        // v1.0.0.x: 锚定到 _basePath (system_template_library_dir,非空时) 或
+        // AppContext.BaseDirectory 回退,保证 clone target == settings 解析结果。
+        targetDir = TemplatePathResolver.Resolve(targetDir, _basePath);
         if (Directory.Exists(targetDir))
             return NodeOperationResult.Fail($"目标目录已存在:{targetDir}");
 
@@ -379,6 +396,11 @@ public class TemplateSourceUpdater
             return NodeOperationResult.Fail("repoUrl 不能为空");
         if (string.IsNullOrWhiteSpace(targetDir))
             return NodeOperationResult.Fail("targetDir 不能为空");
+        // v1.0.0.x: 锚定到 _basePath (system_template_library_dir,非空时) 或
+        // AppContext.BaseDirectory 回退,保证 settings 里的相对路径跟用户实际看到的
+        // clone 目标一致(避免双击启动时 CWD 漂到 %USERPROFILE% 把 clone 写到 settings
+        // 之外)。
+        targetDir = TemplatePathResolver.Resolve(targetDir, _basePath);
 
         progress?.Report($"[src] 检查目标目录: {targetDir}");
         if (Directory.Exists(targetDir))

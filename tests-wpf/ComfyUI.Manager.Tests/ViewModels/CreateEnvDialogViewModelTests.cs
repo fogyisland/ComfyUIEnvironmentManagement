@@ -16,7 +16,7 @@ public class CreateEnvDialogViewModelTests
         List<PythonInterpreter>? pythonInterpreters = null,
         string activePythonInterpreterName = "")
     {
-        // v1.0.0 T7:VM 走 Settings.Templates["ComfyUI"] 解析 ComfyuiSource,
+        // v1.0.0 T7:VM 走 Settings.Templates["ComfyUI"] 解析 TemplateSource,
         // 不再读 TemplateComfyuiDir。helper seed 一个默认 ComfyUI entry。
         var s = new Settings
         {
@@ -82,9 +82,9 @@ public class CreateEnvDialogViewModelTests
                 projectRoot: root,
                 recentBasePythonPath: null);
             Assert.Equal(py, vm.PythonExe);
-            // v1.0.0 T7:ComfyuiSource 现在存模板 raw LocalSourceDir(相对路径 "ComfyUITemplate")。
+            // v1.0.0 T7:TemplateSource 现在存模板 raw LocalSourceDir(相对路径 "ComfyUITemplate")。
             // EnvCreatorService.CreateAsync / BuildTemplateConfig 负责把它 join projectRoot。
-            Assert.Equal("ComfyUITemplate", vm.ComfyuiSource);
+            Assert.Equal("ComfyUITemplate", vm.TemplateSource);
             Assert.Null(vm.TemplateWarningMessage);
         }
         finally { Directory.Delete(root, recursive: true); }
@@ -101,8 +101,8 @@ public class CreateEnvDialogViewModelTests
         {
             var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root);
             Assert.Equal("", vm.PythonExe);
-            // v1.0.0 T7:ComfyuiSource 存 raw template LocalSourceDir("ComfyUITemplate" 相对路径)
-            Assert.Equal("ComfyUITemplate", vm.ComfyuiSource);
+            // v1.0.0 T7:TemplateSource 存 raw template LocalSourceDir("ComfyUITemplate" 相对路径)
+            Assert.Equal("ComfyUITemplate", vm.TemplateSource);
             Assert.NotNull(vm.TemplateWarningMessage);
             Assert.Contains("请在设置页添加 Python 解释器", vm.TemplateWarningMessage);
         }
@@ -110,7 +110,7 @@ public class CreateEnvDialogViewModelTests
     }
 
     [Fact]
-    public void Constructor_LeavesComfyuiSourceBlank_WhenComfyuiTemplateMissing()
+    public void Constructor_LeavesTemplateSourceBlank_WhenComfyuiTemplateMissing()
     {
         var root = Path.Combine(Path.GetTempPath(), "autofill-test-" + Path.GetRandomFileName());
         var py = Path.Combine(root, "python", "3.10", "python.exe");
@@ -121,7 +121,7 @@ public class CreateEnvDialogViewModelTests
         {
             var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10", "python", interpreters, activeName), root);
             Assert.Equal(py, vm.PythonExe);
-            Assert.Equal("", vm.ComfyuiSource);
+            Assert.Equal("", vm.TemplateSource);
             Assert.NotNull(vm.TemplateWarningMessage);
             Assert.Contains("ComfyUI", vm.TemplateWarningMessage);
         }
@@ -137,7 +137,7 @@ public class CreateEnvDialogViewModelTests
         {
             var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root);
             Assert.Equal("", vm.PythonExe);
-            Assert.Equal("", vm.ComfyuiSource);
+            Assert.Equal("", vm.TemplateSource);
             Assert.NotNull(vm.TemplateWarningMessage);
             Assert.Contains("请在设置页添加 Python 解释器", vm.TemplateWarningMessage);
             Assert.Contains("ComfyUI", vm.TemplateWarningMessage);
@@ -158,8 +158,8 @@ public class CreateEnvDialogViewModelTests
                 root,
                 recentBasePythonPath: null);
             Assert.Equal(py, vm.PythonExe);   // active.Path 解析到 3.11 子目录
-            // v1.0.0 T7:ComfyuiSource 存 raw template LocalSourceDir("ComfyUITemplate")
-            Assert.Equal("ComfyUITemplate", vm.ComfyuiSource);
+            // v1.0.0 T7:TemplateSource 存 raw template LocalSourceDir("ComfyUITemplate")
+            Assert.Equal("ComfyUITemplate", vm.TemplateSource);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -188,8 +188,8 @@ public class CreateEnvDialogViewModelTests
             vm.PythonExe = "";  // 模拟用户清空
             vm.ApplyTemplate();
             Assert.Equal(py, vm.PythonExe);
-            // v1.0.0 T7:ComfyuiSource 存 raw template LocalSourceDir("ComfyUITemplate")
-            Assert.Equal("ComfyUITemplate", vm.ComfyuiSource);
+            // v1.0.0 T7:TemplateSource 存 raw template LocalSourceDir("ComfyUITemplate")
+            Assert.Equal("ComfyUITemplate", vm.TemplateSource);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -205,8 +205,8 @@ public class CreateEnvDialogViewModelTests
             vm.PythonExe = "C:\\user-overridden";
             vm.ApplyTemplateCommand.Execute(null);
             Assert.Equal(py, vm.PythonExe);
-            // v1.0.0 T7:ComfyuiSource 存 raw template LocalSourceDir("ComfyUITemplate")
-            Assert.Equal("ComfyUITemplate", vm.ComfyuiSource);
+            // v1.0.0 T7:TemplateSource 存 raw template LocalSourceDir("ComfyUITemplate")
+            Assert.Equal("ComfyUITemplate", vm.TemplateSource);
         }
         finally { Directory.Delete(root, recursive: true); }
     }

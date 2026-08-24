@@ -304,7 +304,8 @@ public partial class App : Application
         // "更新源码" 按钮使用。构造时传 gitExe + gitProxy + logger(不是 gitRunner),
         // service 内部自己 new GitRunner(gitExe, gitProxy)。
         var templateSourceUpdater = new TemplateSourceUpdater(
-            gitExe: gitExe, gitProxy: gitProxy, logger: logger);
+            gitExe: gitExe, gitProxy: gitProxy, logger: logger,
+            basePath: settings.SystemTemplateLibraryDir);   // v1.0.0.x: 锚定到 system_template_library_dir
         // v0.6.11++:常用节点自动装 service(env-create 末尾 + 装依赖末尾触发)。
         // 走注入的 git clone func(包 GitRunner.RunAsync)— 测试可换 fake func。
         // 共享 reqExe + GitRunner,先于 EnvCreatorService / RequirementsInstaller 构造。
@@ -421,7 +422,13 @@ public partial class App : Application
             // v0.6.22+:per-source HttpClient builder — 传给 ModelSourceFactory 让每个 source
             // 拿自己的 HttpClient(per-source proxy toggle 在此生效)。同 BuildHttpClient 静态方法
             // 引用 — 复用同样的 handler 配置 + 60s timeout + Proxy=null/UseProxy=false fallback。
-            httpBuilder: httpBuilder);
+            httpBuilder: httpBuilder,
+            // v1.0.0.x T11 + T15 + Console hotfix:通用 template source updater — 给
+            // TemplateManagementViewModel(ShowTemplateManagement)的每张模板卡
+            // "下载与更新" / "更新源码" 按钮使用。**Hotfix**:之前 App.xaml.cs 构造了
+            // `templateSourceUpdater` 但漏传给 MainViewModel,_templateSourceUpdater 留 null,
+            // 两个按钮静默 no-op(只剩 WARN log "skipped (updater 未注入)")。
+            templateSourceUpdater: templateSourceUpdater);
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

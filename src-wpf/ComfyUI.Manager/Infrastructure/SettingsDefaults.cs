@@ -276,9 +276,14 @@ public static class SettingsDefaults
     /// <summary>
     /// v1.0.0 multi-template:首次启动 seed ComfyUI + A1111 built-in templates(G4 防覆盖。
     /// 只在 Templates dict 缺对应 key 时填默认,用户定制过的 entry 不会被覆盖。
+    /// v1.0.0.x: 新增 <see cref="Settings.DisableBuiltInTemplatesSeed"/> 逃生口 — 设置后整个 seed 跳过,
+    /// 允许 templates 块为空列表(用户随后手动添加)。设为 false 或删除字段恢复默认行为。
     /// </summary>
     private static void SeedBuiltInTemplatesIfMissing(Settings s, string projectRoot)
     {
+        // v1.0.0.x: 用户显式禁用 seed → 完全跳过,允许 templates 块为空
+        if (s.DisableBuiltInTemplatesSeed) return;
+
         // G4: only seed if missing — never overwrite user customization
         if (!s.Templates.ContainsKey("ComfyUI"))
         {

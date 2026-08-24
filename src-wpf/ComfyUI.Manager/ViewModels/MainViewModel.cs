@@ -684,7 +684,8 @@ public class MainViewModel : ViewModelBase
             _templateManagementViewModel = new TemplateManagementViewModel(
                 _settings,
                 editTemplateFactory: null,
-                updater: _templateSourceUpdater);
+                updater: _templateSourceUpdater,
+                logger: _logger);
             _templateManagementView = TemplateManagementViewFactory is null
                 ? new TemplateManagementView { DataContext = _templateManagementViewModel }
                 : TemplateManagementViewFactory(_templateManagementViewModel);

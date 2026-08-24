@@ -4,14 +4,13 @@
         xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
         xmlns:models="clr-namespace:ComfyUI.Manager.Models"
         Title="编辑模板"
-        Width="600" Height="620"
+        Width="600" Height="460"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
-    <!-- v1.0.0 T10 note: G12 (built-in Kind=ReadOnly when editing existing) is
-         deferred to T12 polish. The ComboBox below is always editable in T10;
-         the CanSave validator + duplicate-kind check in EditTemplateDialogViewModel
-         prevents bad data. T12 will bind IsReadOnly to Mode + IsBuiltIn flag.
-         v1.0.0 T14: SourceKind ComboBox + conditional Local/GitHub fields below. -->
+    <!-- Spec §5/§9 G12: ComboBox.IsEditable 绑 VM 的 IsKindEditable —
+         Add 模式始终可编辑;Edit built-in 模板(ComfyUI/A1111)时禁止改 Kind,
+         防止用户改坏 ComfyUI env 的 entry-script/launcher logic。 -->
+
     <Window.Resources>
         <Style TargetType="TextBlock" x:Key="LabelStyle">
             <Setter Property="Margin" Value="0,8,0,4"/>
@@ -29,8 +28,14 @@
                 <TextBlock Text="名称" Style="{StaticResource LabelStyle}"/>
                 <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
 
-                <TextBlock Text="Kind (内置 ComfyUI / A1111 只读)" Style="{StaticResource LabelStyle}"/>
-                <ComboBox IsEditable="True"
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding KindReadOnlyHint}"
+                               Foreground="{DynamicResource OutlineBrush}"
+                               VerticalAlignment="Center" Margin="8,8,0,0"
+                               FontStyle="Italic"/>
+                    <TextBlock Text="Kind (内置 ComfyUI / A1111 只读)" Style="{StaticResource LabelStyle}"/>
+                </DockPanel>
+                <ComboBox IsEditable="{Binding IsKindEditable}"
                           Text="{Binding Kind, UpdateSourceTrigger=PropertyChanged}">
                     <ComboBoxItem Content="ComfyUI"/>
                     <ComboBoxItem Content="A1111"/>
@@ -61,19 +66,10 @@
                     <TextBox Text="{Binding LocalSourceDir, Mode=OneWay}" IsReadOnly="True" Background="#F0F0F0"/>
                 </StackPanel>
 
-                <TextBlock Text="启动脚本" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding EntryScript, UpdateSourceTrigger=PropertyChanged}"/>
-
-                <TextBlock Text="启动参数 (支持 {port} 占位符)" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding EntryArgs, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True" TextWrapping="Wrap" Height="60"/>
-
-                <TextBlock Text="模型子目录" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding ModelsSubdir, UpdateSourceTrigger=PropertyChanged}"/>
-
-                <TextBlock Text="用户附加参数 (启动时附加)" Style="{StaticResource LabelStyle}"/>
-                <TextBox Text="{Binding UserExtraArgs, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True" TextWrapping="Wrap" Height="60"/>
+                <!-- v1.0.0.x simplification: 启动脚本/启动参数/模型子目录/用户附加参数 已从此对话框移除。
+                     这些字段保留在 TemplateConfig 数据模型(已有 settings.json entry_script/entry_args/
+                     models_subdir/user_extra_args 仍可被 EnvCreator/ProcessLauncher/ModelSymlinker 读取),
+                     只是 UI 不可编辑。如需修改,请直接编辑 settings.json 或后续版本提供高级模式。 -->
             </StackPanel>
         </ScrollViewer>
 

@@ -72,7 +72,7 @@
                             Click="BrowseComfyui"
                             IsEnabled="{Binding IsBusy, Converter={x:Static views:NotBoolConverter.Instance}}"
                             Margin="4,0,0,0" />
-                    <TextBox Text="{Binding ComfyuiSource, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Text="{Binding TemplateSource, UpdateSourceTrigger=PropertyChanged}" />
                 </DockPanel>
 
                 <TextBlock Text="端口(默认 = 现有最大端口 + 1,空 DB = 8188)" />

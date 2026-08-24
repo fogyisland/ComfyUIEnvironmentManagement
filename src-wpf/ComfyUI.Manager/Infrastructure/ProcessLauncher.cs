@@ -826,6 +826,11 @@ public sealed class ProcessLauncher : IDisposable
             ? env.PythonExecutable
             : Path.Combine(envRoot, "venv", "Scripts", "python.exe");
         var entryScript = Path.Combine(envRoot, snapshot.EntryScript);
+        // Spec §9: 入口脚本不存在时 throw 清晰指示,而不是 spawn python 然后看到
+        // "ModuleNotFoundError: No module named 'main.py'" 之类的晦涩错。
+        if (!File.Exists(entryScript))
+            throw new InvalidOperationException(
+                $"入口脚本不存在: {entryScript}");
         var port = env.Port?.ToString() ?? "8000";
         var entryArgs = snapshot.EntryArgs.Replace("{port}", port);
         if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))

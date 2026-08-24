@@ -62,12 +62,12 @@ public class CreateEnvDialogTemplateKindTests
     }
 
     [Fact]
-    public void SetSelectedTemplateKind_UpdatesComfyuiSource()
+    public void SetSelectedTemplateKind_UpdatesTemplateSource()
     {
-        // When user picks a kind, the ComfyuiSource auto-fills from that template
+        // When user picks a kind, the TemplateSource auto-fills from that template
         var (vm, _) = BuildVm();
         vm.SelectedTemplateKind = "A1111";
-        Assert.Equal("Templates/A1111", vm.ComfyuiSource);
+        Assert.Equal("Templates/A1111", vm.TemplateSource);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class CreateEnvDialogTemplateKindTests
         vm.Name = "myEnv";
         vm.PythonExe = "python";
         vm.SelectedTemplateKind = "ComfyUI";
-        vm.ComfyuiSource = "Templates/ComfyUI";
+        vm.TemplateSource = "Templates/ComfyUI";
         Assert.True(vm.CanConfirm);
     }
 

@@ -58,7 +58,7 @@ public partial class CreateEnvDialog : Window
         if (dlg.ShowDialog() == true &&
             DataContext is CreateEnvDialogViewModel vm)
         {
-            vm.ComfyuiSource = dlg.FolderName;
+            vm.TemplateSource = dlg.FolderName;
         }
     }
 }

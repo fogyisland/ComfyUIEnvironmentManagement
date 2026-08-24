@@ -420,6 +420,23 @@
             <TextBox Text="{Binding TemplatePythonDir}" IsReadOnly="True"
                      Style="{StaticResource MaterialTextBox}" />
 
+            <!-- v1.0.0.x: 系统模板库目录 — 共享模板根目录,模板管理页可从此处发现/管理内置模板 -->
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="系统模板库目录(空 = 不启用)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[SystemTemplateLibraryDir], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseSystemTemplateLibraryDir"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding SystemTemplateLibraryDir, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
             <!-- v1.0.0 (T12): ComfyUI 模板目录从这里移到「模板管理」sidebar 页 ——
                  模板配置通过 Templates["ComfyUI"].LocalSourceDir 承载,
                  编辑入口见 sidebar 第 9 项 "模板管理"。 -->

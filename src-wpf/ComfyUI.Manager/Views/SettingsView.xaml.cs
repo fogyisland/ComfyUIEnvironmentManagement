@@ -116,6 +116,15 @@ public partial class SettingsView : UserControl
         }
     }
 
+    private void BrowseSystemTemplateLibraryDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.SystemTemplateLibraryDir = picked;
+        }
+    }
+
     private void BrowseWorkflowsDir(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)

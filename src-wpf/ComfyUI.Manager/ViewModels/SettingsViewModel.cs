@@ -471,6 +471,12 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         get => _settings.TemplatePythonDir;
         set { _settings.TemplatePythonDir = value; MarkDirty(nameof(TemplatePythonDir)); RaisePropertyChanged(); }
     }
+    // v1.0.0.x: 系统模板库目录 — 用户配置的共享模板根目录
+    public string SystemTemplateLibraryDir
+    {
+        get => _settings.SystemTemplateLibraryDir;
+        set { _settings.SystemTemplateLibraryDir = value ?? ""; MarkDirty(nameof(SystemTemplateLibraryDir)); RaisePropertyChanged(); }
+    }
     public string EnvsDir
     {
         get => _settings.EnvsDir;
@@ -1162,6 +1168,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(ComfyUiStartupTimeoutSeconds));
         RaisePropertyChanged(nameof(CompatApiBaseUrl));
         RaisePropertyChanged(nameof(TemplatePythonDir));
+        RaisePropertyChanged(nameof(SystemTemplateLibraryDir));
         RaisePropertyChanged(nameof(EnvsDir));
         RaisePropertyChanged(nameof(DefaultPythonVersion));
         RaisePropertyChanged(nameof(GlobalNodesDir));

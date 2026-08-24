@@ -99,9 +99,13 @@ public sealed class EnvCreatorService
         if (string.IsNullOrWhiteSpace(templateConfig.LocalSourceDir))
             throw new CreateEnvException("TEMPLATE_SOURCE_MISSING",
                 "TemplateConfig.LocalSourceDir 不能为空");
-        if (!Directory.Exists(templateConfig.LocalSourceDir))
+        // v1.0.0.x: 锚定到 _settings.SystemTemplateLibraryDir (用户配的"系统模板库目录",
+        // 非空时) 或 BaseDirectory 回退,跟 TemplateSourceUpdater 用同一规则,保证
+        // settings 看到的路径 = 实际下载路径 = env 创建时复制源码的路径。
+        if (!Directory.Exists(TemplatePathResolver.Resolve(
+                templateConfig.LocalSourceDir, _settings.SystemTemplateLibraryDir)))
             throw new CreateEnvException("TEMPLATE_SOURCE_NOT_FOUND",
-                $"Template source 不存在: {templateConfig.LocalSourceDir}");
+                $"模板源码目录不存在: {templateConfig.LocalSourceDir}");
         if (!File.Exists(pythonExe))
             throw new CreateEnvException("VENV_PYTHON_MISSING",
                 $"Python 解释器不存在: {pythonExe}");
@@ -145,7 +149,12 @@ public sealed class EnvCreatorService
         // 现在所有 kind 都是独立 copy,环境间不共享 template 源代码。
         progress?.Report(new CreateStepReport("复制 template 源",
             $"copy: {templateConfig.LocalSourceDir} → {rootPath}"));
-        _linker.CopyDirectory(templateConfig.LocalSourceDir, rootPath);
+        // v1.0.0.x: 锚定到 _settings.SystemTemplateLibraryDir (用户配的"系统模板库目录",
+        // 非空时) 或 BaseDirectory 回退,跟 Directory.Exists 检查用同一规则,
+        // 保证 settings 看到的路径 = 实际 copy 源路径。
+        _linker.CopyDirectory(
+            TemplatePathResolver.Resolve(templateConfig.LocalSourceDir, _settings.SystemTemplateLibraryDir),
+            rootPath);
 
         // 5.5 链接默认 Models 目录(v0.6.11+ T2 合并:Shared 字段删除,只此一条)。
         // v1.0.0 T4:对所有 kind 都生效(不是仅 ComfyUI),让用户配置 default models

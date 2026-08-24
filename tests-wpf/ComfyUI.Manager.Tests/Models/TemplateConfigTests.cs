@@ -135,4 +135,41 @@ public class TemplateConfigTests
         var cfg = new TemplateConfig { Kind = "GhTpl", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
         Assert.Equal("[GitHub]", cfg.SourceKindBadge);
     }
+
+    // --- v1.0.0.x: CanDelete (hides grayed-out Delete button on built-in templates) ---
+
+    [Fact]
+    public void CanDelete_BuiltInComfyUI_False()
+    {
+        var cfg = new TemplateConfig { Kind = "ComfyUI" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInA1111_False()
+    {
+        var cfg = new TemplateConfig { Kind = "A1111" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_CustomLocal_True()
+    {
+        var cfg = new TemplateConfig { Kind = "MySwarm", SourceKind = TemplateSourceKind.Local };
+        Assert.True(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_CustomGitHub_True()
+    {
+        var cfg = new TemplateConfig { Kind = "Forge", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.True(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_EmptyKind_True()
+    {
+        var cfg = new TemplateConfig { Kind = "" };
+        Assert.True(cfg.CanDelete);
+    }
 }

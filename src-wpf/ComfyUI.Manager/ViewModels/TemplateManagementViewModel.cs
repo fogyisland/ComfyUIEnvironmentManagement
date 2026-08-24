@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -20,20 +22,66 @@ public class TemplateManagementViewModel : ViewModelBase
     private readonly Settings _settings;
     private readonly Func<EditTemplateDialogViewModel> _editFactory;
     private readonly TemplateSourceUpdater? _updater;
+    // v1.0.0.x:每条菜单动作打 debug 日志(subsystem "template-mgmt")。
+    // 测试 ctor 不传 → null 安全路径。生产 DI 在 MainViewModel.ShowTemplateManagement 注入。
+    private readonly AppLogger? _logger;
 
     public ObservableCollection<TemplateConfig> Templates { get; } = new();
+
+    /// <summary>
+    /// v1.0.0.x: 模板下载/更新实时日志面板 — <c>TemplateSourceUpdater</c> 通过
+    /// <see cref="IProgress{T}"/> 推 stdout 行,VM 捕到 UI SyncContext 自动 marshal,
+    /// 跟 v0.6.18.4 BulkUpdateView Console 同模式。View Border Visibility 绑 <see cref="IsConsoleVisible"/>。
+    /// 每行格式:<c>[{Kind}] {原 line}</c>(前缀区分多模板并发)。
+    /// </summary>
+    public ObservableCollection<string> ConsoleLog { get; } = new();
+
+    // v1.0.0.x:用户主动点 ✕ 关闭 Console 时置 true。下次 Start() / 一次新点击时复位 false。
+    private bool _userHiddenConsole;
+
+    /// <summary>
+    /// v1.0.0.x: Console 面板可见性 — 有内容就显示,直到用户点 ✕ 关闭(用户意图优先)。
+    /// 三态 = !_userHiddenConsole && ConsoleLog.Count > 0。同 v0.6.18.4 BulkUpdate 模式
+    /// (那里 IsBusy 也参与,这里没有 IsBusy 概念 — 单次点击 fire-and-forget)。
+    /// </summary>
+    [JsonIgnore]
+    public bool IsConsoleVisible => !_userHiddenConsole && ConsoleLog.Count > 0;
+
+    /// <summary>
+    /// v1.0.0.x: 点 Console 面板 ✕ 按钮时调 — 清空 + 隐藏。下次点击模板时
+    /// 自动重新出现(<see cref="ConsoleLog"/> 重新追加)。
+    /// </summary>
+    public void ClearConsoleLog()
+    {
+        ConsoleLog.Clear();
+        _userHiddenConsole = true;
+        RaisePropertyChanged(nameof(IsConsoleVisible));
+    }
 
     public ICommand AddCommand { get; }
     public ICommand EditCommand { get; }
     public ICommand DeleteCommand { get; }
     public ICommand UpdateSourceCommand { get; }
+    public ICommand DownloadOrUpdateCommand { get; }
+
+    /// <summary>
+    /// v1.0.0 hotfix: View layer (TemplateManagementView) subscribes to this event
+    /// to instantiate + ShowDialog() the EditTemplateDialog window. Without this
+    /// subscription the dialog never opens — click [+ 添加模板] silently no-ops.
+    /// T10 originally wired ShowDialogRequested on EditTemplateDialogViewModel
+    /// directly but no View subscribed; routed through this VM as the canonical
+    /// subscription surface so the View only needs one DataContext hook.
+    /// </summary>
+    public event Action<EditTemplateDialogViewModel>? ShowEditDialogRequested;
 
     public TemplateManagementViewModel(
         Settings settings,
         Func<EditTemplateDialogViewModel>? editTemplateFactory,
-        TemplateSourceUpdater? updater)
+        TemplateSourceUpdater? updater,
+        AppLogger? logger = null)
     {
         _settings = settings;
+        _logger = logger;
         // T14: wire cloneFunc from _updater (production-wiring for GitHub-mode Save).
         // null cloneFunc in unit tests (no updater provided) lets GitHub-mode tests use
         // their own mock via the 3-param ctor overload.
@@ -48,6 +96,16 @@ public class TemplateManagementViewModel : ViewModelBase
         foreach (var kvp in _settings.Templates)
             Templates.Add(kvp.Value);
 
+        // v1.0.0.x: Console 行追加 → 通知 IsConsoleVisible 重算(log 数 0→>0 时变 true)。
+        ConsoleLog.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset
+                || (e.NewItems is { Count: > 0 } && ConsoleLog.Count == e.NewItems.Count))
+            {
+                RaisePropertyChanged(nameof(IsConsoleVisible));
+            }
+        };
+
         AddCommand = new RelayCommand(_ => AddTemplate());
         EditCommand = new RelayCommand(
             p => EditTemplate(p as TemplateConfig),
@@ -58,47 +116,79 @@ public class TemplateManagementViewModel : ViewModelBase
         UpdateSourceCommand = new RelayCommand(
             p => UpdateTemplateSource(p as TemplateConfig),
             p => p is TemplateConfig);
+        // v1.0.0.x: 一键下载/更新 — 目标目录不存在则 clone,存在则 wipe + clone (即 pull)。
+        // 区别于 UpdateSourceCommand(UpdateAsync pull-only,目录不存在会报错)。
+        DownloadOrUpdateCommand = new RelayCommand(
+            p => DownloadOrUpdateTemplateSource(p as TemplateConfig),
+            p => p is TemplateConfig);
     }
 
     public bool IsBuiltIn(string kind) => kind == "ComfyUI" || kind == "A1111";
 
     private void AddTemplate()
     {
+        _logger?.Info("template-mgmt", "添加模板:打开对话框");
         var vm = _editFactory();
         vm.Mode = EditTemplateDialogMode.Add;
-        vm.RequestShowDialog();
+        ShowEditDialogRequested?.Invoke(vm);
         if (vm.AppliedToSettings)
         {
-            Templates.Add(vm.WorkingConfig);
-            _settings.Templates[vm.WorkingConfig.Kind] = vm.WorkingConfig;
+            var c = vm.WorkingConfig;
+            _logger?.Info("template-mgmt",
+                $"添加模板已应用: kind='{c.Kind}' name='{c.Name}' sourceKind={c.SourceKind} repoUrl='{c.GitHubRepoUrl}' localDir='{c.LocalSourceDir}'");
+            Templates.Add(c);
+            _settings.Templates[c.Kind] = c;
+        }
+        else
+        {
+            _logger?.Info("template-mgmt", "添加模板已取消");
         }
     }
 
     private void EditTemplate(TemplateConfig? t)
     {
         if (t == null) return;
+        _logger?.Info("template-mgmt", $"编辑模板: kind='{t.Kind}' name='{t.Name}' 打开对话框");
         var vm = _editFactory();
         vm.Mode = EditTemplateDialogMode.Edit;
         vm.LoadFrom(t);
-        vm.RequestShowDialog();
+        ShowEditDialogRequested?.Invoke(vm);
         if (vm.AppliedToSettings)
         {
-            _settings.Templates[vm.WorkingConfig.Kind] = vm.WorkingConfig;
+            var c = vm.WorkingConfig;
+            _logger?.Info("template-mgmt",
+                $"编辑模板已应用: kind='{c.Kind}' name='{c.Name}' sourceKind={c.SourceKind} repoUrl='{c.GitHubRepoUrl}' localDir='{c.LocalSourceDir}'");
+            _settings.Templates[c.Kind] = c;
             var idx = Templates.IndexOf(t);
-            if (idx >= 0) Templates[idx] = vm.WorkingConfig;
+            if (idx >= 0) Templates[idx] = c;
+        }
+        else
+        {
+            _logger?.Info("template-mgmt", $"编辑模板已取消: kind='{t.Kind}'");
         }
     }
 
     private void DeleteTemplate(TemplateConfig? t)
     {
-        if (t == null || IsBuiltIn(t.Kind)) return;
+        if (t == null) return;
+        if (IsBuiltIn(t.Kind))
+        {
+            _logger?.Warn("template-mgmt", $"拒绝删除内置模板: kind='{t.Kind}' name='{t.Name}'");
+            return;
+        }
+        _logger?.Info("template-mgmt", $"删除模板: kind='{t.Kind}' name='{t.Name}' localDir='{t.LocalSourceDir}'");
         _settings.Templates.Remove(t.Kind);
         Templates.Remove(t);
     }
 
-    private void UpdateTemplateSource(TemplateConfig? t)
+    private async void UpdateTemplateSource(TemplateConfig? t)
     {
-        if (t == null || _updater == null) return;
+        if (t == null) return;
+        if (_updater == null)
+        {
+            _logger?.Warn("template-mgmt", $"更新源码 skipped (updater 未注入): kind='{t.Kind}'");
+            return;
+        }
 
         // Resolve URL based on SourceKind:
         //   GitHub templates use their configured repo URL.
@@ -107,9 +197,82 @@ public class TemplateManagementViewModel : ViewModelBase
         var url = t.SourceKind == TemplateSourceKind.GitHub
             ? t.GitHubRepoUrl
             : GetDefaultRepoUrl(t.Kind);
-        if (string.IsNullOrWhiteSpace(url)) return;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            _logger?.Info("template-mgmt", $"更新源码 skipped (无 repo URL): kind='{t.Kind}' sourceKind={t.SourceKind}");
+            return;
+        }
 
-        _ = _updater.UpdateAsync(t.LocalSourceDir, url, null, default);
+        _userHiddenConsole = false;  // 新 run 复位用户上次的 ✕ 隐藏
+        var kind = t.Kind;
+        var progress = new Progress<string>(line => ConsoleLog.Add($"[{kind}] {line}"));
+        ConsoleLog.Add($"[{kind}] 开始更新源码: {url} → {t.LocalSourceDir}");
+        _logger?.Info("template-mgmt",
+            $"更新源码 启动: kind='{kind}' sourceKind={t.SourceKind} url='{url}' target='{t.LocalSourceDir}'");
+
+        try
+        {
+            var result = await _updater.UpdateAsync(t.LocalSourceDir, url, progress, default).ConfigureAwait(true);
+            if (result.Success)
+            {
+                ConsoleLog.Add($"[{kind}] ✓ 更新完成");
+                _logger?.Info("template-mgmt", $"更新源码 完成: kind='{kind}'");
+            }
+            else
+            {
+                ConsoleLog.Add($"[{kind}] ✗ 失败: {result.Reason}");
+                _logger?.Warn("template-mgmt", $"更新源码 失败: kind='{kind}' error='{result.Reason}'");
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Add($"[{kind}] ✗ 异常: {ex.Message}");
+            _logger?.Error("template-mgmt", $"更新源码 异常: kind='{kind}'", ex);
+        }
+    }
+
+    private async void DownloadOrUpdateTemplateSource(TemplateConfig? t)
+    {
+        if (t == null) return;
+        if (_updater == null)
+        {
+            _logger?.Warn("template-mgmt", $"下载与更新 skipped (updater 未注入): kind='{t.Kind}'");
+            return;
+        }
+        var url = t.SourceKind == TemplateSourceKind.GitHub
+            ? t.GitHubRepoUrl
+            : GetDefaultRepoUrl(t.Kind);
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            _logger?.Info("template-mgmt", $"下载与更新 skipped (无 repo URL): kind='{t.Kind}' sourceKind={t.SourceKind}");
+            return;
+        }
+        _userHiddenConsole = false;  // 新 run 复位用户上次的 ✕ 隐藏
+        var kind = t.Kind;
+        var progress = new Progress<string>(line => ConsoleLog.Add($"[{kind}] {line}"));
+        ConsoleLog.Add($"[{kind}] 开始下载/更新: {url} → {t.LocalSourceDir}");
+        _logger?.Info("template-mgmt",
+            $"下载与更新 启动: kind='{kind}' sourceKind={t.SourceKind} url='{url}' target='{t.LocalSourceDir}'");
+
+        try
+        {
+            var result = await _updater.DownloadOrUpdateAsync(url, t.LocalSourceDir, progress, default).ConfigureAwait(true);
+            if (result.Success)
+            {
+                ConsoleLog.Add($"[{kind}] ✓ 完成");
+                _logger?.Info("template-mgmt", $"下载与更新 完成: kind='{kind}'");
+            }
+            else
+            {
+                ConsoleLog.Add($"[{kind}] ✗ 失败: {result.Reason}");
+                _logger?.Warn("template-mgmt", $"下载与更新 失败: kind='{kind}' error='{result.Reason}'");
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Add($"[{kind}] ✗ 异常: {ex.Message}");
+            _logger?.Error("template-mgmt", $"下载与更新 异常: kind='{kind}'", ex);
+        }
     }
 
     private static string GetDefaultRepoUrl(string kind) => kind switch

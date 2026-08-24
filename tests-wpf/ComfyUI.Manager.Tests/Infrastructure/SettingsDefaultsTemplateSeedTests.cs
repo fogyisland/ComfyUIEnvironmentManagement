@@ -100,9 +100,9 @@ public class SettingsDefaultsTemplateSeedTests
         SettingsDefaults.Apply(s, ProjectRoot, rawJson: null);
 
         // Templates["ComfyUI"] 由 SeedBuiltInTemplatesIfMissing 填默认,
-        // LocalSourceDir 指向 <projectRoot>/Templates/ComfyUI。
+        // LocalSourceDir 指向相对路径 envTemplates/ComfyUI(v1.0.0.x)。
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
-        Assert.Equal(Path.Combine(ProjectRoot, "Templates", "ComfyUI"),
+        Assert.Equal(Path.Combine("envTemplates", "ComfyUI"),
             s.Templates["ComfyUI"].LocalSourceDir);
     }
 
@@ -136,9 +136,9 @@ public class SettingsDefaultsTemplateSeedTests
 
         SettingsDefaults.Apply(s, ProjectRoot, oldJson);
 
-        // seed 默认 ComfyUI entry(LocalSourceDir 指向 <projectRoot>/Templates/ComfyUI)
+        // seed 默认 ComfyUI entry(LocalSourceDir 指向 <projectRoot>/envTemplates/ComfyUI,v1.0.0.x 改动)
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
-        Assert.Equal(Path.Combine(ProjectRoot, "Templates", "ComfyUI"),
+        Assert.Equal(Path.Combine("envTemplates", "ComfyUI"),
             s.Templates["ComfyUI"].LocalSourceDir);
     }
 

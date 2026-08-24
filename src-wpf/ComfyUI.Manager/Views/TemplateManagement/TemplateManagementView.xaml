@@ -6,10 +6,16 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              d:DataContext="{d:DesignInstance Type=vm:TemplateManagementViewModel}">
+    <!--
+    v1.0.0.x: 加底部 Console 面板 — 镜像 v0.6.18.4 BulkUpdateView 风格
+    (SurfaceBrush/OutlineBrush/CornerRadius 6 + Consolas monospace + ✕ 关闭)。
+    显示当前下载/更新的 git clone stdout 实时输出。
+    -->
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -36,48 +42,113 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
+                                <!-- Row 0: Name + SourceKindBadge (single line, full width) -->
                                 <DockPanel Grid.Row="0" Grid.Column="0">
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding SourceKindBadge}" Margin="8,0,0,0"
                                                FontSize="12" Foreground="{DynamicResource OutlineBrush}"
                                                VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"/>
                                 </DockPanel>
-                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
-                                    <Button Content="更新源码" Margin="4,0"
+
+                                <!-- Row 1: Kind -->
+                                <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,4,0,0">
+                                    <Run Text="Kind: "/><Run Text="{Binding Kind}"/>
+                                </TextBlock>
+                                <!-- Row 2: Source -->
+                                <TextBlock Grid.Row="2" Grid.Column="0">
+                                    <Run Text="Source: "/><Run Text="{Binding LocalSourceDir}"/>
+                                </TextBlock>
+                                <!-- Row 3: Entry -->
+                                <TextBlock Grid.Row="3" Grid.Column="0">
+                                    <Run Text="Entry: "/><Run Text="{Binding EntryScript}"/><Run Text=" "/><Run Text="{Binding EntryArgs}"/>
+                                </TextBlock>
+                                <!-- Row 4: Models -->
+                                <TextBlock Grid.Row="4" Grid.Column="0">
+                                    <Run Text="Models: "/><Run Text="{Binding ModelsSubdir}"/>
+                                </TextBlock>
+
+                                <!-- v1.0.0.x hotfix: 改 Row 5 分隔 + 4 按钮一行,避免横向溢出导致
+                                     buttons 渲染在 1300px 窗口右外侧(UIA 仍能 report 但视觉 + 鼠标点击拿不到)。
+                                     用 WrapPanel 横排,4 个按钮总宽 ≈ 313px 完全容得下,Window 改大也不会溢出。
+                                     Margin 12,8,0,8 让按钮组跟上方文本分隔但贴左边,UI 更紧凑 -->
+                                <StackPanel Grid.Row="5" Grid.Column="0" Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="下载与更新" Margin="0,0,4,0" Padding="8,4"
+                                            ToolTip="目标目录不存在则 git clone,存在则 wipe + clone (相当于 git pull)。只动源码,不涉及 env/node。"
+                                            Visibility="{Binding CanUpdateSource, Converter={StaticResource BoolToVisibility}}"
+                                            Command="{Binding DataContext.DownloadOrUpdateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="更新源码" Margin="0,0,4,0" Padding="8,4"
+                                            ToolTip="仅 wipe + clone (相当于 git pull)。如果目标目录不存在,会报错 — 用「下载与更新」替代。"
                                             Visibility="{Binding CanUpdateSource, Converter={StaticResource BoolToVisibility}}"
                                             Command="{Binding DataContext.UpdateSourceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"/>
-                                    <Button Content="编辑" Margin="4,0"
+                                    <Button Content="编辑" Margin="0,0,4,0" Padding="8,4"
                                             Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"/>
-                                    <Button Content="删除" Margin="4,0"
+                                    <Button Content="删除" Margin="0" Padding="8,4"
+                                            Visibility="{Binding CanDelete, Converter={StaticResource BoolToVisibility}}"
                                             Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"/>
                                 </StackPanel>
-
-                                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,4,0,0">
-                                    <Run Text="Kind: "/><Run Text="{Binding Kind}"/>
-                                </TextBlock>
-                                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2">
-                                    <Run Text="Source: "/><Run Text="{Binding LocalSourceDir}"/>
-                                </TextBlock>
-                                <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
-                                    <Run Text="Entry: "/><Run Text="{Binding EntryScript}"/><Run Text=" "/><Run Text="{Binding EntryArgs}"/>
-                                </TextBlock>
-                                <TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2">
-                                    <Run Text="Models: "/><Run Text="{Binding ModelsSubdir}"/>
-                                </TextBlock>
                             </Grid>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
+
+        <!-- v1.0.0.x: Console 面板 — 模板下载/更新实时日志(镜像 v0.6.18.4 BulkUpdateView 风格)。
+             IsConsoleVisible 绑 VM 三态:!_userHiddenConsole && ConsoleLog.Count > 0。
+             新点击模板时 _userHiddenConsole 复位 false → 面板自动出现;用户点 ✕ 后
+             ClearConsoleLog() 清空 + 设 _userHiddenConsole=true → 面板隐藏。
+             Auto-scroll:代码 DataContextChanged hook ScrollToEnd 让用户总看最新。 -->
+        <Border Grid.Row="2" Margin="0,8,0,0" Padding="0"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                CornerRadius="6"
+                Visibility="{Binding IsConsoleVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <DockPanel Grid.Row="0" Margin="12,8,8,4">
+                    <Button DockPanel.Dock="Right" Content="✕"
+                            Style="{StaticResource GearIconButtonStyle}"
+                            Foreground="{DynamicResource OnSurfaceBrush}"
+                            Click="OnConsoleCloseClicked"
+                            ToolTip="关闭 Console(下次点击模板时自动重新打开)" />
+                    <TextBlock VerticalAlignment="Center" FontWeight="Bold" FontSize="13"
+                               Foreground="{DynamicResource OnSurfaceBrush}">
+                        <Run Text="Console" />
+                        <Run Text="  " />
+                        <Run Text="{Binding ConsoleLog.Count, Mode=OneWay}" FontSize="11"
+                             Foreground="{DynamicResource OutlineBrush}" />
+                        <Run Text=" 行" FontSize="11" Foreground="{DynamicResource OutlineBrush}" />
+                    </TextBlock>
+                </DockPanel>
+                <ScrollViewer x:Name="ConsoleScrollViewer" Grid.Row="1"
+                              Height="180" Margin="8,0,8,8"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding ConsoleLog}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                                           TextWrapping="NoWrap"
+                                           Foreground="{DynamicResource OnSurfaceBrush}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

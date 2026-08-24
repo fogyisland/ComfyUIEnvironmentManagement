@@ -63,6 +63,10 @@ public class EditTemplateDialogViewModel : ViewModelBase
             if (string.IsNullOrWhiteSpace(WorkingConfig.Kind)) return false;
             if (Mode == EditTemplateDialogMode.Add && _settings.Templates.ContainsKey(WorkingConfig.Kind)) return false;
 
+            // Spec §9: 名称在所有 template 中唯一(不区分大小写)。编辑自己时
+            // 排除自己(kind 可能改了,Name 也可能改了 — 但编辑前后都是同一条)。
+            if (HasNameCollision()) return false;
+
             return WorkingConfig.SourceKind switch
             {
                 TemplateSourceKind.Local => !string.IsNullOrWhiteSpace(WorkingConfig.LocalSourceDir),
@@ -71,6 +75,24 @@ public class EditTemplateDialogViewModel : ViewModelBase
                 _ => false,
             };
         }
+    }
+
+    /// <summary>
+    /// Spec §9 重复 name 校验: case-insensitive 比较。Add 模式任何同名 Name 都冲突;
+    /// Edit 模式排除 _originalKind 自身(用户编辑时 Name 可能没改,Kind 可能改了 —
+    /// 都要排除才能让当前条目通过校验)。
+    /// </summary>
+    private bool HasNameCollision()
+    {
+        var name = (WorkingConfig.Name ?? "").Trim();
+        if (string.IsNullOrEmpty(name)) return false;
+        foreach (var kvp in _settings.Templates)
+        {
+            if (Mode == EditTemplateDialogMode.Edit && kvp.Key == _originalKind) continue;
+            if (string.Equals(kvp.Value.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     // T10 R1: XAML TwoWay bindings target these VM-level proxy properties instead of
@@ -90,6 +112,28 @@ public class EditTemplateDialogViewModel : ViewModelBase
         get => WorkingConfig.Kind;
         set { if (WorkingConfig.Kind != value) { WorkingConfig.Kind = value; RaiseFor(nameof(Kind)); } }
     }
+
+    /// <summary>
+    /// Spec §5 + §9 G12: 编辑现有 built-in 模板(ComfyUI/A1111)时 Kind 不可改 —
+    /// 通过 <see cref="EditTemplateDialog.xaml"/> ComboBox <c>IsEditable</c> 绑定禁用编辑。
+    /// Add 模式始终可编辑(用户输入新 Kind);Edit 模式只在原 Kind 不是 built-in
+    /// 时才可编辑。
+    /// </summary>
+    public bool IsKindEditable =>
+        Mode == EditTemplateDialogMode.Add
+        || !(Mode == EditTemplateDialogMode.Edit && IsBuiltInKind(_originalKind));
+
+    private static bool IsBuiltInKind(string kind) =>
+        kind == "ComfyUI" || kind == "A1111";
+
+    /// <summary>
+    /// Spec §9 友好的 built-in 提示文本(内置即"ComfyUI"/"A1111"时给红字提示,
+    /// 否则显示空 — 别在标签上再加 text)。
+    /// </summary>
+    public string KindReadOnlyHint =>
+        (Mode == EditTemplateDialogMode.Edit && IsBuiltInKind(_originalKind))
+            ? "(内置 Kind 不可修改)"
+            : "";
 
     public string LocalSourceDir
     {
@@ -134,29 +178,10 @@ public class EditTemplateDialogViewModel : ViewModelBase
         }
     }
 
-    public string EntryScript
-    {
-        get => WorkingConfig.EntryScript;
-        set { if (WorkingConfig.EntryScript != value) { WorkingConfig.EntryScript = value; RaiseFor(nameof(EntryScript)); } }
-    }
-
-    public string EntryArgs
-    {
-        get => WorkingConfig.EntryArgs;
-        set { if (WorkingConfig.EntryArgs != value) { WorkingConfig.EntryArgs = value; RaiseFor(nameof(EntryArgs)); } }
-    }
-
-    public string ModelsSubdir
-    {
-        get => WorkingConfig.ModelsSubdir;
-        set { if (WorkingConfig.ModelsSubdir != value) { WorkingConfig.ModelsSubdir = value; RaiseFor(nameof(ModelsSubdir)); } }
-    }
-
-    public string UserExtraArgs
-    {
-        get => WorkingConfig.UserExtraArgs;
-        set { if (WorkingConfig.UserExtraArgs != value) { WorkingConfig.UserExtraArgs = value; RaiseFor(nameof(UserExtraArgs)); } }
-    }
+    // v1.0.0.x: removed 启动脚本/启动参数/模型子目录/用户附加参数 proxy properties.
+    // These fields remain on TemplateConfig data model (backward compat for old settings.json),
+    // LoadFrom still copies them into WorkingConfig, but UI no longer exposes them.
+    // See EditTemplateDialog.xaml for the user-facing rationale.
 
     private void RaiseFor(string prop)
     {
@@ -192,11 +217,10 @@ public class EditTemplateDialogViewModel : ViewModelBase
         RaisePropertyChanged(nameof(LocalSourceDir));
         RaisePropertyChanged(nameof(SourceKind));
         RaisePropertyChanged(nameof(GitHubRepoUrl));
-        RaisePropertyChanged(nameof(EntryScript));
-        RaisePropertyChanged(nameof(EntryArgs));
-        RaisePropertyChanged(nameof(ModelsSubdir));
-        RaisePropertyChanged(nameof(UserExtraArgs));
         RaisePropertyChanged(nameof(CanSave));
+        // G12: Mode + _originalKind 决定 Kind 是否可编辑 — LoadFrom 后必通知。
+        RaisePropertyChanged(nameof(IsKindEditable));
+        RaisePropertyChanged(nameof(KindReadOnlyHint));
     }
 
     private async void Save()
