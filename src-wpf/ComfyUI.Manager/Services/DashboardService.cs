@@ -38,6 +38,9 @@ public sealed class DashboardService : IDashboardService
     private readonly HttpClient _http;
     private readonly GitHubReleaseService? _releaseService;
     private readonly ChangelogParser _changelogParser;
+    private readonly LocalNodeService? _localNodeService;
+    private readonly ModelMarketplaceService? _modelMarketplaceService;
+    private readonly WorkflowMarketplaceService? _workflowMarketplaceService;
     private readonly string _stagingPath;
     private readonly string _releaseUrl;
     private readonly string _changelogPath;
@@ -51,6 +54,15 @@ public sealed class DashboardService : IDashboardService
     /// <param name="changelogParser">null → 内部 new 一个(parser 无状态)。</param>
     /// <param name="stagingPath">null → <c>AppContext.BaseDirectory/ComfyUI.Manager.exe</c>(G7)。</param>
     /// <param name="changelogPath">null → <c>AppContext.BaseDirectory/CHANGELOG.md</c>(G7);测试指向 fixture。</param>
+    /// <param name="localNodeService">
+    /// v1.0.0:null → <see cref="DashboardSnapshot.LocalNodeCount"/> = 0(不注入时静默,旧测试不需要改)。
+    /// </param>
+    /// <param name="modelMarketplaceService">
+    /// v1.0.0:null → <see cref="DashboardSnapshot.ModelMarketplaceCount"/> = 0。
+    /// </param>
+    /// <param name="workflowMarketplaceService">
+    /// v1.0.0:null → <see cref="DashboardSnapshot.WorkflowMarketplaceCount"/> = 0。
+    /// </param>
     public DashboardService(
         IEnvironmentRepository envRepo,
         INodeRepository nodeRepo,
@@ -60,7 +72,10 @@ public sealed class DashboardService : IDashboardService
         ChangelogParser? changelogParser = null,
         string? stagingPath = null,
         string releaseUrl = DashboardSnapshot.DefaultReleaseUrl,
-        string? changelogPath = null)
+        string? changelogPath = null,
+        LocalNodeService? localNodeService = null,
+        ModelMarketplaceService? modelMarketplaceService = null,
+        WorkflowMarketplaceService? workflowMarketplaceService = null)
     {
         _envRepo = envRepo;
         _nodeRepo = nodeRepo;
@@ -71,6 +86,9 @@ public sealed class DashboardService : IDashboardService
         _stagingPath = stagingPath ?? Path.Combine(AppContext.BaseDirectory, "ComfyUI.Manager.exe");
         _releaseUrl = releaseUrl;
         _changelogPath = changelogPath ?? Path.Combine(AppContext.BaseDirectory, "CHANGELOG.md");
+        _localNodeService = localNodeService;
+        _modelMarketplaceService = modelMarketplaceService;
+        _workflowMarketplaceService = workflowMarketplaceService;
     }
 
     public async Task<DashboardSnapshot> GetSnapshotAsync(CancellationToken ct = default)
@@ -82,6 +100,11 @@ public sealed class DashboardService : IDashboardService
         // v0.6.11+ T3:两个新数据源跟原有 4 个并行跑(G7 —— 不串行叠加延迟)。
         var releasesTask = FetchReleaseListAsync(ct);
         var changelogTask = Task.Run(ReadChangelog, ct);
+        // v1.0.0:本地资源 3 个并行 task —— 本地节点(扫盘)+ 模型市场 + 工作流市场
+        // (网络拉取)。每个独立 catch 返回 0,Dashboard 不能因为任一失败而崩。
+        var localNodeTask = FetchLocalNodeCountAsync(ct);
+        var modelMarketplaceTask = FetchModelMarketplaceCountAsync(ct);
+        var workflowMarketplaceTask = FetchWorkflowMarketplaceCountAsync(ct);
 
         EnvironmentCounts counts;
         long nodeCount;
@@ -132,7 +155,90 @@ public sealed class DashboardService : IDashboardService
             StagingPath = _stagingPath,
             ReleaseUrl = _releaseUrl,
             LastChangelogSync = _releaseService?.LastSyncUtc,
+            LocalNodeCount = await localNodeTask.WaitAsync(ct),
+            ModelMarketplaceCount = await modelMarketplaceTask.WaitAsync(ct),
+            WorkflowMarketplaceCount = await workflowMarketplaceTask.WaitAsync(ct),
         };
+    }
+
+    /// <summary>
+    /// v1.0.0:本地节点数 = <see cref="LocalNodeService.ListAsync"/> 返回 list 长度。
+    /// service 未注入或扫盘抛异常 → 0(静默,Dashboard 必须能加载)。
+    /// </summary>
+    private async Task<int> FetchLocalNodeCountAsync(CancellationToken ct)
+    {
+        if (_localNodeService is null) return 0;
+        try
+        {
+            var nodes = await _localNodeService.ListAsync(ct).ConfigureAwait(false);
+            return nodes.Count;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn("dashboard", $"local node count failed: {ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0:模型市场已拉取条目数 = <see cref="ModelMarketplaceService.LoadAllAsync"/>
+    /// 返回 list 长度(maxResultsPerSource=100 = CivitAI 单页最大,代表"已拉到"总数)。
+    /// service 未注入或网络异常 → 0(静默)。
+    /// </summary>
+    private async Task<int> FetchModelMarketplaceCountAsync(CancellationToken ct)
+    {
+        if (_modelMarketplaceService is null) return 0;
+        try
+        {
+            var entries = await _modelMarketplaceService.LoadAllAsync(
+                query: "",
+                maxResultsPerSource: 100,
+                sourceFilter: null,
+                progress: null,
+                includeNsfw: true,
+                baseModel: null,
+                ct: ct).ConfigureAwait(false);
+            return entries.Count;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn("dashboard", $"model marketplace count failed: {ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0:工作流市场已拉取条目数 = <see cref="WorkflowMarketplaceService.LoadAllAsync"/>
+    /// 返回 list 长度(maxResultsPerSource=100)。service 未注入或网络异常 → 0(静默)。
+    /// </summary>
+    private async Task<int> FetchWorkflowMarketplaceCountAsync(CancellationToken ct)
+    {
+        if (_workflowMarketplaceService is null) return 0;
+        try
+        {
+            var entries = await _workflowMarketplaceService.LoadAllAsync(
+                query: "",
+                maxResultsPerSource: 100,
+                ct: ct).ConfigureAwait(false);
+            return entries.Count;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn("dashboard", $"workflow marketplace count failed: {ex.Message}");
+            return 0;
+        }
     }
 
     /// <summary>

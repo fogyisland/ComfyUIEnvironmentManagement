@@ -10,6 +10,7 @@ using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.ViewModels;
 using ComfyUI.Manager.Views;
 using FirstRun = ComfyUI.Manager.Services.FirstRun;
@@ -346,6 +347,24 @@ public partial class App : Application
         // 启动加载:先 LoadFromFile 再 instance MainWindow — MainWindow.OnSourceInitialized
         // 根据 _startupPrefs 应用位置 / 尺寸(G6:ApplyStartupPreferences 必须在 Show() 之前)。
         var uiPrefs = uiPreferencesService.LoadFromFile(uiPreferencesService.DefaultPath);
+        // v1.0.0:Dashboard 「本地资源」3 个并行 task 需要 3 个聚合 service。
+        // 这 3 个 service 也由 MainViewModel 懒构造给对应 sidebar 页面用(同份
+        // settings/http/logger),Dashboard 注入自己的实例,功能上是 stateless
+        // aggregator,重复构造无副作用。等后续 wiring 重构时再统一。
+        var localNodeService = new LocalNodeService(
+            settings, nodeRepo, envRepo, nodeOps, logger);
+        var modelMarketplaceService = new ModelMarketplaceService(
+            ModelSourceFactory.CreateAll(settings, httpBuilder, logger: logger),
+            logger);
+        var workflowMarketplaceService = new WorkflowMarketplaceService(
+            new IWorkflowSource[]
+            {
+                new CommunityJsonSource(http, logger: logger),
+                new CivitAiSource(http, logger: logger),
+                new OpenArtSource(http, logger: logger),
+            },
+            logger: logger,
+            httpClient: http);   // T3: share http with sources for JSON preview fetch
         // v0.6.9 T5:Dashboard 数据聚合 service(接 T4,4 个并行 task:
         // envRepo.ListAll / nodeRepo.CountAllAsync / AppLogger 最近 5 行 / GitHub latest release)。
         // 复用共享 http(15s 超时)+ envRepo/nodeRepo/logger(跟其他 service 同生命周期)。
@@ -353,10 +372,15 @@ public partial class App : Application
         // cache 走 LocalDataPaths 落 <projectRoot>/.manager/release_cache.json)
         // + ChangelogParser(读 AppContext.BaseDirectory/CHANGELOG.md,
         // 解析不出内容时回退 HardcodedFallback)。两者失败都只降级不阻断 dashboard。
+        // v1.0.0:再加 3 个本地资源聚合 service(Dashboard 本地节点 / 模型市场 /
+        // 工作流数)。任一抛异常 → 静默返 0,Dashboard 必须能加载。
         var dashboardService = new DashboardService(
             envRepo, nodeRepo, logger, http,
             new GitHubReleaseService(http, localPaths, logger),
-            new ChangelogParser());
+            new ChangelogParser(),
+            localNodeService: localNodeService,
+            modelMarketplaceService: modelMarketplaceService,
+            workflowMarketplaceService: workflowMarketplaceService);
         // v0.6.9 T7:全局搜索 service(跨 4 kind 索引:env / node / settings section / command)。
         // 复用 envRepo + nodeRepo;首次 OpenSpotlight 时 BuildAsync,后续键入仅走内存(G7)。
         var globalSearchService = new GlobalSearchService(envRepo, nodeRepo);

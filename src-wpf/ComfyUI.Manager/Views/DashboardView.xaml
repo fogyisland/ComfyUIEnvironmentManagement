@@ -123,7 +123,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Card 2 (0,2): Node Count -->
+                <!-- Card 2 (0,2): Local Resources (本地节点 / 可用模型 / 工作流) -->
                 <Border x:Name="NodeCountCard" Grid.Row="0" Grid.Column="2"
                         Background="{DynamicResource SurfaceBrush}"
                         CornerRadius="8" Padding="20"
@@ -131,16 +131,40 @@
                     <Border.RenderTransform>
                         <TranslateTransform Y="20" />
                     </Border.RenderTransform>
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <StackPanel>
                         <TextBlock Text="{x:Static models:DashboardPageLocalizable.NodeCount}"
-                                   FontSize="14" FontWeight="Bold"
-                                   HorizontalAlignment="Center" Margin="0,0,0,12" />
-                        <TextBlock Text="{Binding LastSnapshot.NodeCount, Mode=OneWay}"
-                                   FontSize="48" FontWeight="Bold"
-                                   HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource PrimaryBrush}" />
-                        <TextBlock Text="→ 查看节点目录" Foreground="Gray"
-                                   HorizontalAlignment="Center" Margin="0,8,0,0" />
+                                   FontSize="14" FontWeight="Bold" Margin="0,0,0,12" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding LastSnapshot.LocalNodeCount, Mode=OneWay}"
+                                           FontSize="28" FontWeight="Bold"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="{x:Static models:DashboardPageLocalizable.LocalNodes}"
+                                           Foreground="Gray" FontSize="11"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{Binding LastSnapshot.ModelMarketplaceCount, Mode=OneWay}"
+                                           FontSize="28" FontWeight="Bold"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="{x:Static models:DashboardPageLocalizable.ModelMarketplace}"
+                                           Foreground="Gray" FontSize="11"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{Binding LastSnapshot.WorkflowMarketplaceCount, Mode=OneWay}"
+                                           FontSize="28" FontWeight="Bold"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="{x:Static models:DashboardPageLocalizable.Workflows}"
+                                           Foreground="Gray" FontSize="11"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </Border>
 

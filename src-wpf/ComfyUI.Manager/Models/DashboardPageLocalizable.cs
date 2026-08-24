@@ -33,7 +33,10 @@ public static class DashboardPageLocalizable
     public static string Stopped => Get("DashboardPage_已停止", "停止");
     public static string Undeployed => Get("DashboardPage_未部署", "未装");
     public static string Total => Get("DashboardPage_总数", "总数");
-    public static string NodeCount => Get("DashboardPage_节点总数", "节点总数");
+    public static string NodeCount => Get("DashboardPage_本地资源", "本地资源");
+    public static string LocalNodes => Get("DashboardPage_本地节点", "本地节点");
+    public static string ModelMarketplace => Get("DashboardPage_可用模型", "可用模型");
+    public static string Workflows => Get("DashboardPage_工作流", "工作流");
     public static string RecentOps => Get("DashboardPage_最近操作", "最近操作");
     public static string LatestVersion => Get("DashboardPage_最新版本", "最新版本");
     public static string GitHubFailed => Get("DashboardPage_网络异常", "⚠ 网络异常");

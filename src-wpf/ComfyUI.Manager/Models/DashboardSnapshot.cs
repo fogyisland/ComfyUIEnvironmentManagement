@@ -64,6 +64,25 @@ public sealed record DashboardSnapshot(
 
     public IReadOnlyList<ChangelogEntry> VisibleChangelog =>
         IsChangelogExpanded ? Changelog : Changelog.Take(VisibleChangelogLimit).ToList();
+
+    /// <summary>
+    /// v1.0.0:本地节点目录(<see cref="Models.Settings.LocalNodeDirectory"/>)扫描到的节点数。
+    /// 由 <see cref="Services.LocalNodeService.ListAsync"/> 返回 list 长度;service 抛异常或
+    /// 未注入时为 0(静默,Dashboard 永远加载)。
+    /// </summary>
+    public int LocalNodeCount { get; init; } = 0;
+
+    /// <summary>
+    /// v1.0.0:模型市场已拉取条目数(<see cref="Services.ModelMarketplaceService.LoadAllAsync"/>
+    /// 返回 list 长度,maxResultsPerSource=100)。service 未注入 / 拉取失败 → 0。
+    /// </summary>
+    public int ModelMarketplaceCount { get; init; } = 0;
+
+    /// <summary>
+    /// v1.0.0:工作流市场已拉取条目数(<see cref="Services.WorkflowMarketplaceService.LoadAllAsync"/>
+    /// 返回 list 长度,maxResultsPerSource=100)。service 未注入 / 拉取失败 → 0。
+    /// </summary>
+    public int WorkflowMarketplaceCount { get; init; } = 0;
 }
 
 public sealed record EnvironmentCounts(int Running, int Stopped, int Undeployed);
