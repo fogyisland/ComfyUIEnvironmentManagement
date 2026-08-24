@@ -41,6 +41,10 @@ public enum ModelKind
     TextualInversion,
     Upscaler,
     Hypernetwork,
+    /// <summary>v1.0.0 T12:Hugging Face Diffusers / 多文件文件夹模型 (model_index.json + unet/ + text_encoder/ 等)。
+    /// 检测由 ModelFilesystemScanner 在 kindDir 子目录内进行 — 同子目录有 model_index.json 即视为 1 个 Diffusers 模型卡,
+    /// 不再递归 per-file 扫 unet/ 等子目录的 .safetensors。</summary>
+    Diffusers,
     Other,
 }
 
@@ -170,7 +174,10 @@ public class ModelFile
 }
 
 /// <summary>v0.6.20:filesystem 扫描出来的"已下载"状态(无 DB)。
-/// SubfolderName = "<version-slug>-<vid8>"(per-version subfolder,collision suffix -1/-2 已 strip)。</summary>
+/// SubfolderName = "<version-slug>-<vid8>"(per-version subfolder,collision suffix -1/-2 已 strip)。
+/// v1.0.0 T13:扩展 3 字段供 hash-matching 链(MatcherOrchestrator 在 scan 时填充,
+/// UI card 通过 LocalModelCard.{Hash,MatchedDetail,MatchSource} 透传给 LocalModelCard;
+/// 原始 DownloadedModel 这 3 字段 = match 阶段 in-memory 状态,无需序列化)。</summary>
 public class DownloadedModel
 {
     public string SubfolderName { get; init; } = "";
@@ -184,7 +191,39 @@ public class DownloadedModel
     /// <summary>v1.0.0 T10:absolute path to local preview image (sibling scan via BuildFlatModel).
     /// meta.json 路径(marketplace 下载)永远 null — 不扫本地 preview。</summary>
     public string? PreviewImagePath { get; init; }
+    /// <summary>v1.0.0 T13:SHA256 hash (hex)。Scanner 计算 → MatcherOrchestrator 调
+    /// IModelMatcher 时作为 input(hash matcher 第一关)。未计算或非 model 文件 = null。</summary>
+    public string? Hash { get; init; }
+    /// <summary>v1.0.0 T13:首个 non-null IModelMatcher.MatchAsync 结果(链上的 CivitAiDetailDto)。
+    /// Scanner 阶段填充,UI 通过 LocalModelCard.MatchedDetail 显示非空 badge + pre-fill dialog。
+    /// 永远非 null iff MatchSource 非 null。</summary>
+    public CivitAiDetailDto? MatchedDetail { get; init; }
+    /// <summary>v1.0.0 T13:首个命中 match 的 MatchSource enum 值(null = 还没 match 或 4 个 matcher 全 miss)。
+    /// 顺序在 spec §3.2:Hash → SafetensorsMetadata → CompanionJson → FilenameFuzzy。</summary>
+    public MatchSource? MatchSource { get; init; }
 }
+
+// v1.0.0 T13:Match-source enum + result record — 跟 DownloadedModel 同文件以便
+// 测试 / VM 只需 `using ComfyUI.Manager.Models;`。
+// 历史背景:spec `docs/superpowers/specs/2026-08-24-civitai-hash-matching-design.md` §6.1。
+public enum MatchSource
+{
+    /// <summary>SHA256 → /api/v1/model-versions/by-hash/{hash} exact hit — 最高 confidence。</summary>
+    Hash = 0,
+    /// <summary>.safetensors 内嵌 {"__metadata__": { "modelspec.title": "..." }} 等字段模糊搜。</summary>
+    SafetensorsMetadata = 1,
+    /// <summary>同目录 companion .json(meta.json 之外)title / baseModel 命中。</summary>
+    CompanionJson = 2,
+    /// <summary>文件名 → /api/v1/models?query= filename fuzzy — 最后 fallback。</summary>
+    FilenameFuzzy = 3,
+}
+
+/// <summary>v1.0.0 T13:MatcherOrchestrator.MatchAsync 返回 shape(IModelMatcher.MatchAsync)。
+/// CoverImageUrl 从 Detail.ImageUrls[0] 提取,UI 直接绑 Image.Source。</summary>
+public sealed record MatchResult(
+    MatchSource Source,
+    CivitAiDetailDto Detail,
+    string? CoverImageUrl);
 
 /// <summary>v0.6.20:meta.json sidecar 反序列化形状。
 /// DownloadAsync 写,FilesystemScanner 读。其他字段 forward-compatible。</summary>

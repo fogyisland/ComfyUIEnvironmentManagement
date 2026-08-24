@@ -213,6 +213,76 @@ public sealed class CivitAiLookupService
             throw;
         }
     }
+
+    /// <summary>v1.0.0 T13:Single-model lookup by SHA256 hash via
+    /// <c>GET /api/v1/model-versions/by-hash/{hash}</c>. 404 returns null (not throw).
+    /// Other non-2xx → null + log. Network/JSON errors → null + log.
+    /// <exception cref="OperationCanceledException">ct cancelled</exception>
+    /// </summary>
+    public async Task<CivitAiDetailDto?> LookupByHashAsync(string sha256, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sha256)) return null;
+        var url = $"{_baseUrl}/api/v1/model-versions/by-hash/{sha256}";
+        _logger?.Info(LogSubsystem, $"→ {url}");
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            var resp = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            sw.Stop();
+            _logger?.Info(LogSubsystem,
+                $"← {(int)resp.StatusCode} {resp.StatusCode} ({sw.ElapsedMilliseconds}ms, {body.Length} bytes)");
+
+            if (resp.StatusCode == HttpStatusCode.NotFound)
+            {
+                return null;
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger?.Warn(LogSubsystem,
+                    $"✗ {(int)resp.StatusCode} ({sw.ElapsedMilliseconds}ms): by-hash failed");
+                return null;
+            }
+
+            var dto = JsonSerializer.Deserialize<CivitAiDetailResponse>(body);
+            if (dto is null) return null;
+
+            var versions = (dto.ModelVersions ?? new List<CivitAiVersionWire>())
+                .Select(v => new CivitAiVersionDto(
+                    Name: v.Name ?? "",
+                    BaseModel: v.BaseModel,
+                    CreatedAt: v.CreatedAt))
+                .ToList();
+            var images = (dto.Images ?? new List<CivitAiImageDto>())
+                .Select(i => i.Url ?? "")
+                .Where(u => !string.IsNullOrEmpty(u))
+                .ToList();
+
+            return new CivitAiDetailDto(
+                Id: dto.Id ?? 0,
+                Title: dto.Name ?? "",
+                Username: dto.Creator?.Username ?? "",
+                BaseModel: dto.BaseModel,
+                Description: dto.Description ?? "",
+                Tags: dto.Tags ?? new List<string>(),
+                Versions: versions,
+                ImageUrls: images);
+        }
+        catch (OperationCanceledException)
+        {
+            sw.Stop();
+            _logger?.Info(LogSubsystem, $"⏹ 已取消 ({sw.ElapsedMilliseconds}ms)");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger?.Error(LogSubsystem,
+                $"✗ {ex.GetType().Name} ({sw.ElapsedMilliseconds}ms): {ex.Message}");
+            return null;
+        }
+    }
 }
 
 /// <summary>v1.0.0 T9a:Detail 404 专用 exception,VM 可显式 catch 弹 "未找到"
