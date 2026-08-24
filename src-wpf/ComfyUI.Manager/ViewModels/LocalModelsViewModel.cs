@@ -24,6 +24,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     public ObservableCollection<KindChip> KindChips { get; } = new();
     public string? EmptyMessage { get; private set; }
     public bool IsBusy { get; private set; }
+    /// <summary>v1.0.0 T2:View 绑 IsEmpty 切 empty state vs card grid(NullToVisibilityConverter 不支持 invert 参数)。</summary>
+    public bool IsEmpty => EmptyMessage is not null;
 
     public ICommand ReloadCommand => _reloadCommand;
 
@@ -86,6 +88,7 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         IsBusy = false;
         PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
         PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
+        PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
         _reloadCommand.RaiseCanExecuteChanged();
     }
 

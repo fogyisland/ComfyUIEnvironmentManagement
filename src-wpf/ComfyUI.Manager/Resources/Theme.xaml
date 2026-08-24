@@ -51,6 +51,9 @@
     <views:ModelNsfwBadgeBrushConverter x:Key="ModelNsfwBadgeBrush" />
     <views:ModelNsfwBadgeTextConverter x:Key="ModelNsfwBadgeText" />
     <views:ModelKindBadgeBrushConverter x:Key="ModelKindBadgeBrush" />
+    <!-- v1.0.0:本地模型视图 (T2) 用 — RadioButton.IsChecked (OneWay) 绑 VM.ActiveChip 与 chip item 引用相等 → bool。
+         用户点击 → code-behind 改 VM.ActiveChip setter,不走 ConvertBack,所以 OneWay only。 -->
+    <converters:EqualityToBoolConverter x:Key="EqualityToBool" />
 
     <!-- Palette 资源现在由 Themes/Palette.Light.xaml 或 Themes/Palette.Dark.xaml 提供(经 App.xaml 槽位合并)。
          本文件只保留 converters / font sizes / paddings / styles / data templates。
