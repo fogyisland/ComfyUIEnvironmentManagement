@@ -11,7 +11,11 @@
       v1.0.0 T2:本地模型视图。
       Layout: 顶部 toolbar (title + kind filter chip strip + 刷新) → loading/empty/card grid。
       参考 WorkflowMarketplaceView 的 toolbar 风格 + ModelMarketplaceView 的 2-col card grid。
-      RadioButton 用 OneWay IsChecked 绑 VM.ActiveChip via EqualityToBool (chip item 作为 ConverterParameter),
+      RadioButton 用 OneWay IsChecked 经 MultiBinding + KindChipEquality converter 拿
+      [VM.ActiveChip via RelativeSource, chip item itself] → Equals → bool(T2 fix r1:
+      不能用 ConverterParameter={Binding} — WPF 在 DataTemplate 里把 Binding 实例赋给
+      ConverterParameter 会抛 XamlParseException,跟 v0.6.14 PickerFilterEqualsConverter
+      同样的 pattern)。
       点击通过 code-behind Tag-based setter 改 VM.ActiveChip。
       EmptyMessage 不为空时:empty state Border (IsEmpty=True) 盖住 card grid;
       EmptyMessage 为 null 时:card grid ScrollViewer (IsEmpty=False) 显示。
@@ -72,8 +76,15 @@
                                          Tag="{Binding}"
                                          Margin="0,0,6,0"
                                          Checked="KindChip_Checked"
-                                         IsChecked="{Binding DataContext.ActiveChip, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource EqualityToBool}, ConverterParameter={Binding}, Mode=OneWay}"
-                                         Style="{StaticResource KindChipRadioStyle}" />
+                                         Style="{StaticResource KindChipRadioStyle}">
+                                <RadioButton.IsChecked>
+                                    <MultiBinding Converter="{StaticResource KindChipEquality}" Mode="OneWay">
+                                        <Binding Path="DataContext.ActiveChip"
+                                                 RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                        <Binding />
+                                    </MultiBinding>
+                                </RadioButton.IsChecked>
+                            </RadioButton>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
