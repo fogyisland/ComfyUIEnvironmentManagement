@@ -134,6 +134,14 @@ Write-Host "[7.5/8] Emitting extras..." -ForegroundColor Yellow
 & "$Root/tools/build_release_extras.ps1" -AppDir $AppDir -Version $Version
 if ($LASTEXITCODE -ne 0) { throw "build_release_extras.ps1 failed" }
 
+# 7.6: v1.0.0 sidebar.inf seed — release 包内置 <exeDir>/config/sidebar.inf,
+# 跟 ui-preferences.json 同目录(发布 seed,非用户可变)。用户编辑后重启生效。
+# 仓库根 config/sidebar.inf 是单一 source-of-truth,csproj 也用它拷到 dev 输出。
+Write-Host "[7.6/8] Seeding config/sidebar.inf..." -ForegroundColor Yellow
+$AppConfigDir = Join-Path $AppDir "config"
+New-Item -ItemType Directory -Path $AppConfigDir -Force | Out-Null
+Copy-Item -Force "$Root/config/sidebar.inf" (Join-Path $AppConfigDir "sidebar.inf")
+
 # 8. 顶层目录放 .gitkeep 占位,保证解压后 13 个顶层目录都在(用户目录结构 spec 完整)
 #    Workflow/Envs/Models/Nodes/LocalNodes 是运行期自动创建的空目录
 Write-Host "[8/8] Finalizing + compressing..." -ForegroundColor Yellow

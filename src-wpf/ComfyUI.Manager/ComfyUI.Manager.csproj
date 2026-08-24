@@ -44,6 +44,14 @@
       <Link>CHANGELOG.md</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- v1.0.0 sidebar.inf:发布 seed 的一部分,运行时由 ManagerSidebarConfig 在
+         <exeDir>/config/sidebar.inf 读取。build_release.ps1 也会从仓库根 config/
+         拷到 AppDir/config/ 保证 zip 内存在。dev build 通过 <CopyToOutputDirectory>
+         自动放进 bin/Debug/.../config/,无需手动同步。 -->
+    <None Include="..\..\config\sidebar.inf">
+      <Link>config\sidebar.inf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ComfyUI.Manager.Tests" />

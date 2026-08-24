@@ -33,20 +33,25 @@ public class ManagerSidebarConfigTests : IDisposable
     }
 
     [Fact]
-    public void Initialize_FileMissing_CreatesDefaultTemplate()
+    public void Initialize_FileMissing_DoesNotCreate_AllEnabledByDefault()
     {
+        // v1.0.0:sidebar.inf 是 release seed,App 不自动生成。
+        // 缺失 → 静默,所有按钮默认启用(缺文件 = 全 True)。
         Assert.False(File.Exists(_file));
         var result = ManagerSidebarConfig.Initialize(_file);
-        Assert.True(File.Exists(_file), "default template should be written");
-        Assert.True(result.CreatedDefault, "first launch should report CreatedDefault=true");
+        Assert.False(result.FileExists);
+        foreach (MainSection s in Enum.GetValues<MainSection>())
+        {
+            Assert.True(ManagerSidebarConfig.IsEnabled(s), $"{s} should be enabled when file missing");
+        }
     }
 
     [Fact]
-    public void Initialize_FileExists_DoesNotOverwrite()
+    public void Initialize_FileExists_AppliesValues()
     {
         File.WriteAllText(_file, "Dashboard=0\nEnvironments=1\n");
         var result = ManagerSidebarConfig.Initialize(_file);
-        Assert.False(result.CreatedDefault);
+        Assert.True(result.FileExists);
         Assert.False(ManagerSidebarConfig.IsEnabled(MainSection.Dashboard));
         Assert.True(ManagerSidebarConfig.IsEnabled(MainSection.Environments));
     }
@@ -79,15 +84,16 @@ public class ManagerSidebarConfigTests : IDisposable
     [Fact]
     public void Initialize_CalledTwice_SecondCallIsNoop()
     {
-        ManagerSidebarConfig.Initialize(_file); // 第一次创建默认
-        File.WriteAllText(_file, "Dashboard=0\n"); // 立刻改
-        ManagerSidebarConfig.Initialize(_file); // 第二次不应该重读
-        // 默认模板写的 Dashboard=1 还在缓存里
-        Assert.True(ManagerSidebarConfig.IsEnabled(MainSection.Dashboard));
+        File.WriteAllText(_file, "Dashboard=0\n");
+        ManagerSidebarConfig.Initialize(_file); // 第一次读 → Dashboard=0
+        File.WriteAllText(_file, "Dashboard=1\n"); // 立刻改
+        ManagerSidebarConfig.Initialize(_file); // 第二次不重读
+        // 缓存还是第一次的 Dashboard=0
+        Assert.False(ManagerSidebarConfig.IsEnabled(MainSection.Dashboard));
     }
 
     [Fact]
-    public void Initialize_Resets_CanReloadAfterFirstRead()
+    public void Initialize_AfterReset_CanReload()
     {
         File.WriteAllText(_file, "Dashboard=0\n");
         ManagerSidebarConfig.Initialize(_file);

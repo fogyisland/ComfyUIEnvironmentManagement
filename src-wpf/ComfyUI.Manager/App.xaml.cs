@@ -462,23 +462,24 @@ public partial class App : Application
 
     /// <summary>
     /// v1.0.0 sidebar.inf:加载 + 应用到 MainWindow 9 个 RadioButton。
-    /// 文件不存在 → 自动写默认模板(全启用)。
+    /// 文件路径 <c>&lt;exeDir&gt;/config/sidebar.inf</c>(发布 seed,跟 ui-preferences.json 同目录)。
+    /// 文件不存在 → 静默,所有按钮默认启用。
     /// </summary>
     private static void ApplySidebarInf(MainWindow main)
     {
         var filePath = Path.Combine(
             AppContext.BaseDirectory,
-            ".manager",
+            "config",
             "sidebar.inf");
 
         var init = ManagerSidebarConfig.Initialize(filePath);
-        if (init.CreatedDefault)
+        if (!init.FileExists)
         {
-            Debug.WriteLine($"[sidebar.inf] 默认模板已写入 {filePath}");
+            Debug.WriteLine($"[sidebar.inf] seed 文件缺失 path={filePath},所有按钮默认启用");
         }
 
         // FindName 需走 visual tree,要求 MainWindow 已 Show + Loaded。
-        // 8 个 RadioButton 命名见 MainWindow.xaml(Settings/SystemStatus/Gear 等其他按钮不动)。
+        // 10 个 RadioButton 命名见 MainWindow.xaml(Gear 等其他按钮不动)。
         ApplyButton(main, "DashboardButton", MainSection.Dashboard);
         ApplyButton(main, "EnvironmentsButton", MainSection.Environments);
         ApplyButton(main, "CatalogButton", MainSection.Catalog);
@@ -493,7 +494,7 @@ public partial class App : Application
         static void ApplyButton(MainWindow w, string name, MainSection section)
         {
             var btn = w.FindName(name) as System.Windows.Controls.RadioButton;
-            if (btn is null) return; // XAML 改名/漏配 → 静默 skip(下次 FindName 时报错更显眼)
+            if (btn is null) return; // XAML 改名/漏配 → 静默 skip
             btn.IsEnabled = ManagerSidebarConfig.IsEnabled(section);
         }
     }
