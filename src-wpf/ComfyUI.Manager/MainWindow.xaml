@@ -92,55 +92,53 @@
                 <controls:SpotlightSearchBox
                     DataContext="{Binding Spotlight}"
                     Margin="0,0,0,12" />
-                <RadioButton Content="应用总览" GroupName="SidebarNav"
+                <RadioButton x:Name="DashboardButton" Content="应用总览" GroupName="SidebarNav"
                              Command="{Binding ShowDashboardCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Dashboard, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="环境管理" GroupName="SidebarNav"
+                <RadioButton x:Name="EnvironmentsButton" Content="环境管理" GroupName="SidebarNav"
                              Command="{Binding ShowEnvironmentsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Environments, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v0.6.15:本地节点页 — 跟 Catalog 同位置(节点目录紧邻)。从 Settings.LocalNodeDirectory 拉本地节点列表,可装到任一 env。 -->
-                <RadioButton Content="节点市场" GroupName="SidebarNav"
+                <RadioButton x:Name="CatalogButton" Content="节点市场" GroupName="SidebarNav"
                              Command="{Binding ShowCatalogCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Catalog, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <!-- v0.6.19 T10:工作流市场 — 聚合 3 个 IWorkflowSource (Community/CivitAI/OpenArt) + batch download + env-start 后自动 symlink workflows 到 env。 -->
-                <RadioButton Content="工作流库" GroupName="SidebarNav"
+                <!-- v0.6.19 T10:工作流市场 — 聚合 3 个 IWorkflowSource (Community/CivitAI/OpenArt) + batch download + env-start 后自动 symlink workflows 到 env。
+                     v1.0.0:IsEnabled 由 sidebar.inf 控制(Workflows=0 灰显);命令实现已存在,无需占位 ToolTip。 -->
+                <RadioButton x:Name="WorkflowsButton" Content="工作流库" GroupName="SidebarNav"
                              Command="{Binding ShowWorkflowsCommand}"
-                             IsEnabled="False"
-                             ToolTip="将在后续版本提供"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Workflows, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v1.0.0 T8 (G11):模板管理页 — sidebar 9th entry. 显示 Settings.Templates
                      列表,内置 ComfyUI / A1111 编辑只读 + 自定义模板可增删改 + 源码更新(T11)。
                      真实启用页面,不含 IsEnabled=False 或占位 ToolTip。 -->
-                <RadioButton Content="模板管理" GroupName="SidebarNav"
+                <RadioButton x:Name="TemplatesButton" Content="模板管理" GroupName="SidebarNav"
                              Command="{Binding ShowTemplateManagementCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Templates, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v0.6.20 T9:模型市场 — 紧邻工作流市场(同类"市场"分区,UI 连排便于切换)。
                      聚合 IModelSource (CivitAI full + HF placeholder) + batch download +
-                     env-start 后自动 symlink 已下载 models 到 env。 -->
-                <RadioButton Content="模型市场" GroupName="SidebarNav"
+                     env-start 后自动 symlink 已下载 models 到 env。
+                     v1.0.0:IsEnabled 由 sidebar.inf 控制(Models=0 灰显);命令实现已存在。 -->
+                <RadioButton x:Name="ModelsButton" Content="模型市场" GroupName="SidebarNav"
                              Command="{Binding ShowModelsCommand}"
-                             IsEnabled="False"
-                             ToolTip="将在后续版本提供"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Models, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="本地节点" GroupName="SidebarNav"
+                <RadioButton x:Name="LocalNodesButton" Content="本地节点" GroupName="SidebarNav"
                              Command="{Binding ShowLocalNodesCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=LocalNodes, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="批量更新" GroupName="SidebarNav"
+                <RadioButton x:Name="BulkUpdateButton" Content="批量更新" GroupName="SidebarNav"
                              Command="{Binding OpenBulkUpdateCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=BulkUpdate, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="应用设置" GroupName="SidebarNav"
+                <RadioButton x:Name="SettingsButton" Content="应用设置" GroupName="SidebarNav"
                              Command="{Binding ShowSettingsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Settings, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <RadioButton Content="系统状态" GroupName="SidebarNav"
+                <RadioButton x:Name="SystemStatusButton" Content="系统状态" GroupName="SidebarNav"
                              Command="{Binding ShowSystemStatusCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=SystemStatus, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />

@@ -438,6 +438,10 @@ public partial class App : Application
         main.Show();
         Application.Current.MainWindow = main;
 
+        // v1.0.0 sidebar.inf:首次启动写默认模板,后续按文件启用侧栏项。
+        // 必须 Show() 之后 — FindName 要走 visual tree,构造期按钮还没 materialize。
+        ApplySidebarInf(main);
+
         // v0.6.16: --auto-refresh-catalog CLI flag — 启动后后台触发 catalog 刷新
         // (含 GitHub metadata enrichment 如果 settings.FetchCatalogMetadata=true)。
         // fire-and-forget,不阻塞 UI;异常由 CatalogRefreshService 内部处理 + AppLogger。
@@ -454,6 +458,44 @@ public partial class App : Application
 
         // v0.6.8: MainWindow 显示后通知 splash VM 启动最少 3s 计时 + fade
         _splashVm?.NotifyMainWindowReady();
+    }
+
+    /// <summary>
+    /// v1.0.0 sidebar.inf:加载 + 应用到 MainWindow 9 个 RadioButton。
+    /// 文件不存在 → 自动写默认模板(全启用)。
+    /// </summary>
+    private static void ApplySidebarInf(MainWindow main)
+    {
+        var filePath = Path.Combine(
+            AppContext.BaseDirectory,
+            ".manager",
+            "sidebar.inf");
+
+        var init = ManagerSidebarConfig.Initialize(filePath);
+        if (init.CreatedDefault)
+        {
+            Debug.WriteLine($"[sidebar.inf] 默认模板已写入 {filePath}");
+        }
+
+        // FindName 需走 visual tree,要求 MainWindow 已 Show + Loaded。
+        // 8 个 RadioButton 命名见 MainWindow.xaml(Settings/SystemStatus/Gear 等其他按钮不动)。
+        ApplyButton(main, "DashboardButton", MainSection.Dashboard);
+        ApplyButton(main, "EnvironmentsButton", MainSection.Environments);
+        ApplyButton(main, "CatalogButton", MainSection.Catalog);
+        ApplyButton(main, "WorkflowsButton", MainSection.Workflows);
+        ApplyButton(main, "TemplatesButton", MainSection.Templates);
+        ApplyButton(main, "ModelsButton", MainSection.Models);
+        ApplyButton(main, "LocalNodesButton", MainSection.LocalNodes);
+        ApplyButton(main, "BulkUpdateButton", MainSection.BulkUpdate);
+        ApplyButton(main, "SettingsButton", MainSection.Settings);
+        ApplyButton(main, "SystemStatusButton", MainSection.SystemStatus);
+
+        static void ApplyButton(MainWindow w, string name, MainSection section)
+        {
+            var btn = w.FindName(name) as System.Windows.Controls.RadioButton;
+            if (btn is null) return; // XAML 改名/漏配 → 静默 skip(下次 FindName 时报错更显眼)
+            btn.IsEnabled = ManagerSidebarConfig.IsEnabled(section);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
