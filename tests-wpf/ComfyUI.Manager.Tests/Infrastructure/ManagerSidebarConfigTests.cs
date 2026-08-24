@@ -72,7 +72,7 @@ public class ManagerSidebarConfigTests : IDisposable
     [Fact]
     public void IsEnabled_AllSectionsCanBeDisabled()
     {
-        var text = "Dashboard=0\nEnvironments=0\nCatalog=0\nLocalNodes=0\nWorkflows=0\nTemplates=0\nModels=0\nSettings=0\nBulkUpdate=0\nSystemStatus=0\n";
+        var text = "Dashboard=0\nEnvironments=0\nCatalog=0\nLocalNodes=0\nWorkflows=0\nLocalModels=0\nTemplates=0\nModels=0\nSettings=0\nBulkUpdate=0\nSystemStatus=0\n";
         File.WriteAllText(_file, text);
         ManagerSidebarConfig.Initialize(_file);
         foreach (MainSection s in Enum.GetValues<MainSection>())

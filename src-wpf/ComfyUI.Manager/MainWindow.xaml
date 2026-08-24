@@ -111,6 +111,12 @@
                              Command="{Binding ShowWorkflowsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Workflows, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
+                <!-- v1.0.0 T3: 本地模型页 — sidebar 新 entry. 已下载模型纯查看页,Kind 分类 + 切走再回来保留 sort/filter。
+                     紧邻 Workflows(同类"内容源"分区)。IsEnabled 由 sidebar.inf 控制(LocalModels=1 启用)。 -->
+                <RadioButton x:Name="LocalModelsButton" Content="本地模型" GroupName="SidebarNav"
+                             Command="{Binding ShowLocalModelsCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=LocalModels, Mode=OneWay}"
+                             Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v1.0.0 T8 (G11):模板管理页 — sidebar 9th entry. 显示 Settings.Templates
                      列表,内置 ComfyUI / A1111 编辑只读 + 自定义模板可增删改 + 源码更新(T11)。
                      真实启用页面,不含 IsEnabled=False 或占位 ToolTip。 -->

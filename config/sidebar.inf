@@ -2,14 +2,15 @@
 # 本文件是 v1.0.0 发布 seed 的一部分,位于 <exeDir>/config/sidebar.inf。
 # 用户可手动编辑后重启 App 生效;首次启动若文件缺失,所有项默认启用(1)。
 # Dashboard=应用总览, Environments=环境管理, Catalog=节点市场,
-# LocalNodes=本地节点, Workflows=工作流库, Templates=模板管理,
-# Models=模型市场, Settings=应用设置, BulkUpdate=批量更新,
-# SystemStatus=系统状态
+# LocalNodes=本地节点, Workflows=工作流库, LocalModels=本地模型,
+# Templates=模板管理, Models=模型市场, Settings=应用设置,
+# BulkUpdate=批量更新, SystemStatus=系统状态
 Dashboard=1
 Environments=1
 Catalog=0
 LocalNodes=0
 Workflows=0
+LocalModels=1
 Templates=1
 Models=0
 Settings=1

@@ -27,6 +27,9 @@ public enum MainSection
     LocalNodes,  // v0.6.15
     // v0.6.19: 工作流市场 — between LocalNodes and Settings
     Workflows,
+    // v1.0.0 本地模型: 已下载模型纯查看页 — Kind 分类 + 切走再回来保留 sort/filter。
+    // 紧邻 Workflows(同类"内容源"分区,UI 连排便于切换)。
+    LocalModels,
     // v1.0.0 multi-template T8: 模板管理 — 紧邻 Workflows(同类"内容源"分区,
     // UI 上连排便于切换)。
     Templates,
@@ -150,6 +153,11 @@ public class MainViewModel : ViewModelBase
     // 切走再回来复用同一份 VM,保留编辑状态(选中/滚动位置)。
     private TemplateManagementViewModel? _templateManagementViewModel;
     private object? _templateManagementView;
+    // v1.0.0 T3: 本地模型页 VM/View 缓存(同 ShowTemplateManagement 懒构造模式)。
+    // 首次进入 new VM(注入 Settings + scanner + logger),View 由 T3 factory 注入;
+    // 切走再回来复用同一份 VM 保留 kind chip 选中 / sort / 滚动位置。
+    private LocalModelsViewModel? _localModelsViewModel;
+    private object? _localModelsView;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
@@ -219,6 +227,12 @@ public class MainViewModel : ViewModelBase
     /// 测试可注入 stub 返回,绕开 WPF STA 初始化。
     /// </summary>
     internal Func<TemplateManagementViewModel, object?>? TemplateManagementViewFactory { get; set; }
+
+    /// <summary>
+    /// v1.0.0 T3: 构造本地模型 View 的工厂 hook。
+    /// 默认 new <see cref="LocalModelsView"/>;测试可注入 stub 返回,绕开 WPF STA 初始化。
+    /// </summary>
+    internal Func<LocalModelsViewModel, object?>? LocalModelsViewFactory { get; set; }
 
     /// <summary>
     /// 测试用:获取当前缓存的"环境"页 VM(若有)。用于断言 ShowEnvironments
@@ -301,6 +315,7 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowWorkflowsCommand { get; }    // v0.6.19 T10: 侧栏 8th "工作流市场"
     public RelayCommand ShowModelsCommand { get; }      // v0.6.20 T9: 侧栏 9th "模型市场"
     public RelayCommand ShowTemplateManagementCommand { get; }  // v1.0.0 T8: 模板管理
+    public RelayCommand ShowLocalModelsCommand { get; }       // v1.0.0 T3: 本地模型
     public RelayCommand ShowSettingsCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
@@ -455,6 +470,8 @@ public class MainViewModel : ViewModelBase
         ShowModelsCommand = new RelayCommand(_ => ShowModels());
         // v1.0.0 T8:模板管理命令。ShowTemplateManagement 懒构造 TemplateManagementViewModel。
         ShowTemplateManagementCommand = new RelayCommand(_ => ShowTemplateManagement());
+        // v1.0.0 T3:本地模型命令。ShowLocalModels 懒构造 LocalModelsViewModel + 触发 Initialize。
+        ShowLocalModelsCommand = new RelayCommand(_ => ShowLocalModels());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
         OpenBulkUpdateCommand = new RelayCommand(_ => OpenBulkUpdate());
         ShowSystemStatusCommand = new RelayCommand(_ => ShowSystemStatus());
@@ -691,6 +708,31 @@ public class MainViewModel : ViewModelBase
                 : TemplateManagementViewFactory(_templateManagementViewModel);
         }
         CurrentView = _templateManagementView;
+    }
+
+    // v1.0.0 T3: 本地模型页 — 侧栏新 entry "本地模型"。跟 ShowTemplateManagement
+    // 同款懒构造模式。首次进入 new VM(注入 Settings + scanner + logger),
+    // View 由 T3 factory 注入(默认 new LocalModelsView);
+    // 切走再回来复用同一份 VM 保留 kind chip 选中 / sort / 滚动位置。
+    // Initialize() 触发后台 ReloadAsync(scanner 扫 DefaultModelsDirectory),
+    // 失败由 VM 内部 try/catch cover 并设 EmptyMessage。MainViewModel 没持
+    // _modelScanner 字段(跟 ShowModels 在方法内 new ModelFilesystemScanner 一致),
+    // 单例化无收益 — 每次扫都是一次性 IO。
+    private void ShowLocalModels()
+    {
+        CurrentSection = MainSection.LocalModels;
+        if (_localModelsViewModel is null)
+        {
+            _localModelsViewModel = new LocalModelsViewModel(
+                _settings,
+                new ModelFilesystemScanner(_logger),
+                _logger);
+            _localModelsView = LocalModelsViewFactory is null
+                ? new LocalModelsView { DataContext = _localModelsViewModel }
+                : LocalModelsViewFactory(_localModelsViewModel);
+            _localModelsViewModel.Initialize();
+        }
+        CurrentView = _localModelsView;
     }
 
     /// <summary>

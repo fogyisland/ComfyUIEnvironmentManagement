@@ -508,6 +508,7 @@ public partial class App : Application
         ApplyButton(main, "EnvironmentsButton", MainSection.Environments);
         ApplyButton(main, "CatalogButton", MainSection.Catalog);
         ApplyButton(main, "WorkflowsButton", MainSection.Workflows);
+        ApplyButton(main, "LocalModelsButton", MainSection.LocalModels);
         ApplyButton(main, "TemplatesButton", MainSection.Templates);
         ApplyButton(main, "ModelsButton", MainSection.Models);
         ApplyButton(main, "LocalNodesButton", MainSection.LocalNodes);
