@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services.Civitai;
 
 namespace ComfyUI.Manager.Services;
 
@@ -37,6 +38,7 @@ public sealed class CivitAiLookupService
     private readonly string _baseUrl;
     private readonly string _apiToken;
     private readonly AppLogger? _logger;
+    private readonly CivitaiMatcherOrchestrator? _orchestrator;
 
     public CivitAiLookupService(
         HttpClient http,
@@ -58,6 +60,31 @@ public sealed class CivitAiLookupService
         {
             _http.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", _apiToken);
+        }
+    }
+
+    /// <summary>v1.0.0 T13-5:Optional ctor overload that wires 4 IModelMatcher instances
+    /// into a <see cref="CivitaiMatcherOrchestrator"/>. Same HttpClient + auth + proxy
+    /// as the base 5-arg ctor — the orchestrator shares the service so all matchers
+    /// see the same HttpClient (token / proxy already applied). If <paramref name="hashMatcher"/>
+    /// is null, no orchestrator is created and <see cref="MatchAsync"/> returns null
+    /// (preserves back-compat for callers that haven't migrated yet).</summary>
+    public CivitAiLookupService(
+        HttpClient http,
+        string baseUrl,
+        string apiToken,
+        AppLogger? logger,
+        HttpProxyConfig? proxy,
+        CivitaiHashMatcher? hashMatcher,
+        SafetensorsMetadataMatcher? metadataMatcher,
+        CompanionJsonMatcher? companionMatcher,
+        FilenameMatcher? filenameMatcher)
+        : this(http, baseUrl, apiToken, logger, proxy)
+    {
+        if (hashMatcher is not null)
+        {
+            _orchestrator = new CivitaiMatcherOrchestrator(
+                hashMatcher, metadataMatcher!, companionMatcher!, filenameMatcher!, logger);
         }
     }
 
@@ -282,6 +309,15 @@ public sealed class CivitAiLookupService
                 $"✗ {ex.GetType().Name} ({sw.ElapsedMilliseconds}ms): {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>v1.0.0 T13-5:Orchestrator-based match. Returns null if no orchestrator was
+    /// wired up via the 9-arg ctor (i.e. service constructed with the original 5-arg ctor)
+    /// or if all 4 strategies fail. Cancellation propagates as <see cref="OperationCanceledException"/>.</summary>
+    public async Task<MatchResult?> MatchAsync(DownloadedModel model, CancellationToken ct = default)
+    {
+        if (_orchestrator is null) return null;
+        return await _orchestrator.MatchAsync(model, ct).ConfigureAwait(false);
     }
 }
 

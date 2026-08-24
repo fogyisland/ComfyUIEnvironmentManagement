@@ -12,6 +12,7 @@ using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Search;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.Civitai;
 using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.Views;
 using ComfyUI.Manager.Views.TemplateManagement;
@@ -761,12 +762,26 @@ public class MainViewModel : ViewModelBase
             _settings.ModelSourceCivitAiProxyMode,
             _settings);
         var http = _httpBuilder(proxy);
-        return new CivitAiLookupService(
+
+        // v1.0.0 T13-5:Build base service first(matchers depend on it),then wire the
+        // 4 IModelMatcher strategies into a CivitaiMatcherOrchestrator via the 9-arg ctor.
+        // All 4 matchers share the same HttpClient (token/proxy already applied).
+        var baseService = new CivitAiLookupService(
             http,
             ModelSourceFactory.CivitAiOfficial,
             _settings.CivitAiApiToken,
             _logger,
             proxy);
+        return new CivitAiLookupService(
+            http,
+            ModelSourceFactory.CivitAiOfficial,
+            _settings.CivitAiApiToken,
+            _logger,
+            proxy,
+            new CivitaiHashMatcher(baseService, _logger),
+            new SafetensorsMetadataMatcher(baseService, _logger),
+            new CompanionJsonMatcher(baseService, _logger),
+            new FilenameMatcher(baseService, _logger));
     }
 
     /// <summary>
