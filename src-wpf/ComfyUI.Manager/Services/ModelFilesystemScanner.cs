@@ -3,18 +3,32 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services.Civitai;
 
 namespace ComfyUI.Manager.Services;
+
+/// <summary>v1.0.0 T13:Optional context for hash computation + bulk match during scan.
+/// All fields nullable for back-compat. Pass null <see cref="ScanContext"/> (or omit)
+/// for the legacy pure-enumeration scan used by 23 existing tests.</summary>
+public sealed class ScanContext
+{
+    public CivitaiHashCache? HashCache { get; init; }
+    public CivitaiMatcherOrchestrator? Matcher { get; init; }
+    public IProgress<string>? Progress { get; init; }
+}
 
 /// <summary>v0.6.20:扫描 ModelsDirectory 找到已下载的 model versions。
 /// v1.0.0 T5:同遍既识别 meta.json 三层布局 <see cref="SourceKind"/> meta.json paths,
 /// 也识别标准 ComfyUI 二层布局 <kind>/<model>/<file>.ext (Source="Local", SourceId="local:...").
 /// v1.0.0 T6:同遍也识别扁平布局 <kind>/<file>.ext,每顶层 model 文件 = 1 条记录(SourceId="local:{kind}/{file}".ToLowerInvariant())。
 /// v1.0.0 T7:3-level 二层布局也改成 per-file(每 <kind>/<model>/<file>.ext = 1 card,Title=文件名),统一 flat/3-level 都走 BuildFlatModel helper。
-/// </summary>
+/// v1.0.0 T13:可选 <see cref="ScanContext"/> 启用 hash compute + bulk match + cover download。</summary>
 public class ModelFilesystemScanner
 {
     private static readonly Dictionary<string, ModelKind> KindAliases = new(StringComparer.OrdinalIgnoreCase)
@@ -33,6 +47,10 @@ public class ModelFilesystemScanner
         ["upscale_models"]  = ModelKind.Upscaler,
         ["hypernetwork"]    = ModelKind.Hypernetwork,
         ["hypernetworks"]   = ModelKind.Hypernetwork,
+        // v1.0.0 T12:Diffusers 文件夹模型 — kindDir 名 = "diffusers" 时也走 Diffusers 检测
+        // (注意:即便 kindDir 不是 diffusers,subdir 有 model_index.json 仍 emit Diffusers — Kind 强写)
+        ["diffusers"]       = ModelKind.Diffusers,
+        ["diffuser"]        = ModelKind.Diffusers,
     };
 
     private static readonly HashSet<string> ModelFileExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -54,7 +72,19 @@ public class ModelFilesystemScanner
         _logger = logger;
     }
 
-    public virtual IReadOnlyList<DownloadedModel> Scan(string modelsDir)
+    public virtual IReadOnlyList<DownloadedModel> Scan(string modelsDir) => Scan(modelsDir, ctx: null);
+
+    /// <summary>v1.0.0 T13:Scan with optional hash compute + bulk match + cover download.
+    /// When <paramref name="ctx"/> is null, behaves exactly like the legacy
+    /// <see cref="Scan(string)"/> overload.</summary>
+    public virtual IReadOnlyList<DownloadedModel> Scan(string modelsDir, ScanContext? ctx)
+    {
+        var raw = ScanCore(modelsDir);
+        if (ctx is null) return raw;
+        return HashAndMatch(raw, ctx);
+    }
+
+    private IReadOnlyList<DownloadedModel> ScanCore(string modelsDir)
     {
         var results = new List<DownloadedModel>();
         if (string.IsNullOrWhiteSpace(modelsDir) || !Directory.Exists(modelsDir))
@@ -70,6 +100,37 @@ public class ModelFilesystemScanner
 
             foreach (var modelDir in Directory.EnumerateDirectories(kindDir))
             {
+                // v1.0.0 T12:Diffusers 文件夹模型 — 同 subdir 内存在 model_index.json 即视为 1 个 Diffusers 模型卡,
+                // 不再递归 per-file 扫 unet/ 等子目录里的 .safetensors(那些是模型文件组件,不是独立模型)。
+                // Kind 强写为 Diffusers(不依赖 kindDir 名推断 — 即便 kindDir="checkpoints",
+                // 内部 subdir 有 model_index.json 仍认 Diffusers,semantic 比 dir name 更准确)。
+                if (File.Exists(Path.Combine(modelDir, "model_index.json")))
+                {
+                    var subdirName = Path.GetFileName(modelDir);
+                    // 跳过 hidden dirs(.DS_Store, .git 等)
+                    if (!subdirName.StartsWith("."))
+                    {
+                        var latestMtime = Directory.EnumerateFiles(modelDir, "*", SearchOption.AllDirectories)
+                            .Select(File.GetLastWriteTime)
+                            .DefaultIfEmpty(DateTime.MinValue)
+                            .Max();
+                        var previewPath = FindFirstPngInDir(modelDir);
+                        results.Add(new DownloadedModel
+                        {
+                            Title = subdirName,                                       // 无扩展名(目录名)
+                            SubfolderName = kindName,
+                            FullPath = modelDir,                                      // 目录路径,不是文件路径
+                            Kind = ModelKind.Diffusers,                               // 强类型 = Diffusers
+                            Source = "Local",
+                            SourceId = $"local:{kindName}/{subdirName}".ToLowerInvariant(),
+                            SourceVersionId = "",
+                            DownloadedAt = latestMtime,                               // 子目录内最新文件 mtime(递归)
+                            PreviewImagePath = previewPath,                           // subdir 内字典序 first .png
+                        });
+                    }
+                    continue;   // 跳过后续 meta.json 路径 + 3-level per-file 扫描
+                }
+
                 // 现有 meta.json 路径: <kind>/<model>/<version>/meta.json
                 foreach (var versionDir in Directory.EnumerateDirectories(modelDir))
                 {
@@ -163,6 +224,18 @@ public class ModelFilesystemScanner
         return candidates.FirstOrDefault();
     }
 
+    /// <summary>v1.0.0 T12:Diffusers 文件夹模型 — subdir 内第一个 .png (字典序,顶层, 不递归)。
+    /// 跟 FindPreviewImage 不同:这个找 subdir 内**任意** .png(无 basename 约束,Diffusers folder 里 preview 图通常不跟 dir 同名),
+    /// 不递归(unet/preview.png 这种子目录里的图忽略,只看 Diffusers 根目录的 preview 图)。
+    /// 无 .png → null(卡片显示 kind badge fallback)。</summary>
+    private static string? FindFirstPngInDir(string dirPath)
+    {
+        if (string.IsNullOrEmpty(dirPath) || !Directory.Exists(dirPath)) return null;
+        return Directory.EnumerateFiles(dirPath, "*.png", SearchOption.TopDirectoryOnly)
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
     private static ModelKind InferKind(string kindDirName)
         => KindAliases.TryGetValue(kindDirName, out var k) ? k : ModelKind.Other;
 
@@ -170,5 +243,115 @@ public class ModelFilesystemScanner
     {
         var spaced = raw.Replace('-', ' ').Replace('_', ' ');
         return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(spaced.ToLowerInvariant());
+    }
+
+    /// <summary>v1.0.0 T13:Compute SHA256 for each model (parallel, max 4 concurrent, with cache),
+    /// then run the matcher chain sequentially per model and download cover images.
+    /// <see cref="DownloadedModel"/> is a class with init-only properties, so mutations
+    /// produce a new instance with augmented <c>Hash</c>/<c>MatchedDetail</c>/<c>MatchSource</c> fields.</summary>
+    private IReadOnlyList<DownloadedModel> HashAndMatch(IReadOnlyList<DownloadedModel> raw, ScanContext ctx)
+    {
+        var n = raw.Count;
+        var byIndex = new DownloadedModel?[n];
+        for (int k = 0; k < n; k++) byIndex[k] = raw[k];
+
+        // Parallel hash compute (max 4 concurrent)
+        Parallel.For(0, n, new ParallelOptions { MaxDegreeOfParallelism = 4 }, k =>
+        {
+            try
+            {
+                var m = byIndex[k]!;
+                if (m.Hash is not null || ctx.HashCache is null) return;
+                if (string.IsNullOrEmpty(m.FullPath) || !File.Exists(m.FullPath)) return;
+
+                var info = new FileInfo(m.FullPath);
+                var cached = ctx.HashCache.Lookup(m.FullPath, info.Length, info.LastWriteTimeUtc.Ticks);
+                string hash;
+                if (cached is not null)
+                {
+                    hash = cached;
+                    ctx.Progress?.Report($"[hash] cache hit: {Path.GetFileName(m.FullPath)}");
+                }
+                else
+                {
+                    hash = ModelHasher.ComputeSha256(m.FullPath);
+                    ctx.HashCache.Store(m.FullPath, info.Length, info.LastWriteTimeUtc.Ticks, hash);
+                    ctx.Progress?.Report($"[hash] computed: {Path.GetFileName(m.FullPath)} → {hash[..8]}…");
+                }
+                byIndex[k] = CopyWith(m, hash: hash);
+            }
+            catch (Exception ex)
+            {
+                ctx.Progress?.Report($"[scan] ⚠ hash failed: {byIndex[k]!.FullPath} {ex.GetType().Name}: {ex.Message}");
+            }
+        });
+
+        // Sequential match per model + cover download (no batch /by-hash endpoint yet — YAGNI for v1.0.0)
+        for (int k = 0; k < n; k++)
+        {
+            var m = byIndex[k]!;
+            if (m.Hash is null || ctx.Matcher is null) continue;
+            MatchResult? result = null;
+            try
+            {
+                result = ctx.Matcher.MatchAsync(m, CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch { /* orchestrator logs and returns null on errors */ }
+            if (result is null) continue;
+
+            TryDownloadCover(m, result, ctx);
+            byIndex[k] = CopyWith(m, matchedDetail: result.Detail, matchSource: result.Source);
+            ctx.Progress?.Report($"[match] {k + 1}/{n} {m.Title} → {result.Source}");
+        }
+
+        var result2 = new List<DownloadedModel>(n);
+        for (int k = 0; k < n; k++) result2.Add(byIndex[k]!);
+        return result2;
+    }
+
+    /// <summary>Helper to construct a new <see cref="DownloadedModel"/> carrying the augmented field(s).
+    /// DownloadedModel is a class with init-only properties — no <c>with</c> expression available.</summary>
+    private static DownloadedModel CopyWith(
+        DownloadedModel src,
+        string? hash = null,
+        CivitAiDetailDto? matchedDetail = null,
+        MatchSource? matchSource = null) => new()
+    {
+        SubfolderName = src.SubfolderName,
+        FullPath = src.FullPath,
+        Kind = src.Kind,
+        Title = src.Title,
+        Source = src.Source,
+        SourceId = src.SourceId,
+        SourceVersionId = src.SourceVersionId,
+        DownloadedAt = src.DownloadedAt,
+        PreviewImagePath = src.PreviewImagePath,
+        Hash = hash ?? src.Hash,
+        MatchedDetail = matchedDetail ?? src.MatchedDetail,
+        MatchSource = matchSource ?? src.MatchSource,
+    };
+
+    /// <summary>v1.0.0 T13:Idempotent cover image download to <c>&lt;basename&gt;.preview.png</c> next to the model.
+    /// Skips if file already exists. Errors reported via <see cref="ScanContext.Progress"/> — never throws.</summary>
+    private static void TryDownloadCover(DownloadedModel model, MatchResult result, ScanContext ctx)
+    {
+        if (string.IsNullOrEmpty(result.CoverImageUrl)) return;
+        if (string.IsNullOrEmpty(model.FullPath)) return;
+        var dir = Path.GetDirectoryName(model.FullPath);
+        var basename = Path.GetFileNameWithoutExtension(model.FullPath);
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(basename)) return;
+        var target = Path.Combine(dir, $"{basename}.preview.png");
+        if (File.Exists(target)) return;
+        try
+        {
+            using var http = new HttpClient();
+            var bytes = http.GetByteArrayAsync(result.CoverImageUrl).GetAwaiter().GetResult();
+            File.WriteAllBytes(target, bytes);
+            ctx.Progress?.Report($"[preview] saved: {Path.GetFileName(target)}");
+        }
+        catch (Exception ex)
+        {
+            ctx.Progress?.Report($"[preview] ✗ download failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 }
