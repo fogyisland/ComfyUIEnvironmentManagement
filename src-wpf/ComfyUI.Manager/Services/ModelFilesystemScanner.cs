@@ -13,6 +13,7 @@ namespace ComfyUI.Manager.Services;
 /// v1.0.0 T5:同遍既识别 meta.json 三层布局 <see cref="SourceKind"/> meta.json paths,
 /// 也识别标准 ComfyUI 二层布局 <kind>/<model>/<file>.ext (Source="Local", SourceId="local:...").
 /// v1.0.0 T6:同遍也识别扁平布局 <kind>/<file>.ext,每顶层 model 文件 = 1 条记录(SourceId="local:{kind}/{file}".ToLowerInvariant())。
+/// v1.0.0 T7:3-level 二层布局也改成 per-file(每 <kind>/<model>/<file>.ext = 1 card,Title=文件名),统一 flat/3-level 都走 BuildFlatModel helper。
 /// </summary>
 public class ModelFilesystemScanner
 {
@@ -54,15 +55,14 @@ public class ModelFilesystemScanner
 
         // 三布局同遍:
         //   meta.json 三层: <kind>/<model>/<version>/meta.json     (v0.6.20 marketplace)
-        //   标准二层:      <kind>/<model>/<file>.{ext}              (标准 ComfyUI 用户手工放, T5)
-        //   扁平布局:      <kind>/<file>.{ext}                       (T6:每顶层 model 文件 = 1 record)
+        //   标准二层 (T7): <kind>/<model>/<file>.{ext}             (每文件 = 1 card, Title=文件名)
+        //   扁平布局 (T6): <kind>/<file>.{ext}                      (每顶层 model 文件 = 1 record)
         foreach (var kindDir in Directory.EnumerateDirectories(modelsDir))
         {
             var kindName = Path.GetFileName(kindDir);
+
             foreach (var modelDir in Directory.EnumerateDirectories(kindDir))
             {
-                var modelName = Path.GetFileName(modelDir);
-
                 // 现有 meta.json 路径: <kind>/<model>/<version>/meta.json
                 foreach (var versionDir in Directory.EnumerateDirectories(modelDir))
                 {
@@ -102,67 +102,42 @@ public class ModelFilesystemScanner
                     }
                 }
 
-                // 新标准布局: <kind>/<model>/*.{ext} 直接子文件
-                var directModelFiles = Directory.EnumerateFiles(modelDir)
-                    .Where(f => ModelFileExtensions.Contains(Path.GetExtension(f)))
-                    .ToList();
-                if (directModelFiles.Count > 0)
+                // 3-level standard layout (T5 → T7): <kind>/<model>/<file>.ext — 每个文件 = 1 卡
+                foreach (var file in Directory.EnumerateFiles(modelDir))
                 {
-                    results.Add(BuildLocalModel(kindName, modelName, modelDir, _logger));
+                    if (!ModelFileExtensions.Contains(Path.GetExtension(file)))
+                        continue;
+                    var fileNameNoExt = Path.GetFileNameWithoutExtension(file);
+                    results.Add(BuildFlatModel(kindName, fileNameNoExt, file));
                 }
             }
 
-            // 新扁平布局 (T6): <kind>/<file>.ext 直接子文件,无 model-name 子目录
-            //   - 每个 model 文件 = 1 card
-            //   - SourceId = "local:{kindName}/{filename-no-ext}" 小写(防与 3-level "local:{kindName}/{modelDirName}" 碰撞)
-            //   - Title = PrettyPrint(filename-no-ext)
-            //   - Kind = InferKind(kindName)
-            //   - 顶层文件与子目录是 disjoint 的 → 不需 hasAnyModel 短路
-            var flatModelFiles = Directory.EnumerateFiles(kindDir)
-                .Where(f => ModelFileExtensions.Contains(Path.GetExtension(f)))
-                .ToList();
-            foreach (var flatFile in flatModelFiles)
+            // 扁平布局 (T6): <kind>/<file>.ext 直接子文件 — 每个文件 = 1 卡
+            //   SourceId 与 3-level 路径格式相同("local:{kind}/{filename-no-ext}") — 同文件无论布局只 1 卡
+            foreach (var file in Directory.EnumerateFiles(kindDir))
             {
-                var fileNameNoExt = Path.GetFileNameWithoutExtension(flatFile);
-                results.Add(new DownloadedModel
-                {
-                    SubfolderName = kindName,           // = parent dir 名作 subfolder label (T6 语义)
-                    FullPath = flatFile,
-                    Title = PrettyPrint(fileNameNoExt),
-                    Source = "Local",
-                    SourceId = $"local:{kindName}/{fileNameNoExt}".ToLowerInvariant(),
-                    SourceVersionId = "",
-                    DownloadedAt = File.GetLastWriteTime(flatFile),
-                    Kind = InferKind(kindName),
-                });
+                if (!ModelFileExtensions.Contains(Path.GetExtension(file)))
+                    continue;
+                var fileNameNoExt = Path.GetFileNameWithoutExtension(file);
+                results.Add(BuildFlatModel(kindName, fileNameNoExt, file));
             }
         }
 
         return results;
     }
 
-    private static DownloadedModel BuildLocalModel(string kindDir, string modelDir, string modelDirPath, AppLogger? logger)
+    private static DownloadedModel BuildFlatModel(string kindName, string fileNameNoExt, string fullPath)
     {
-        var modelFiles = Directory.EnumerateFiles(modelDirPath)
-            .Where(f => ModelFileExtensions.Contains(Path.GetExtension(f)))
-            .ToList();
-
-        DateTime downloadedAt;
-        if (modelFiles.Count > 0)
-            downloadedAt = modelFiles.Max(f => File.GetLastWriteTime(f));
-        else
-            downloadedAt = Directory.GetLastWriteTime(modelDirPath);
-
         return new DownloadedModel
         {
-            SubfolderName = modelDir,
-            FullPath = modelDirPath,
-            Title = PrettyPrint(modelDir),
+            SubfolderName = kindName,                                // 统一 flat/3-level 都用 kindName
+            FullPath = fullPath,
+            Title = PrettyPrint(fileNameNoExt),                      // 用文件名(不是 dir 名)
             Source = "Local",
-            SourceId = $"local:{kindDir}/{modelDir}".ToLowerInvariant(),
+            SourceId = $"local:{kindName}/{fileNameNoExt}".ToLowerInvariant(),  // 统一 flat/3-level 格式
             SourceVersionId = "",
-            DownloadedAt = downloadedAt,
-            Kind = InferKind(kindDir),
+            DownloadedAt = File.GetLastWriteTime(fullPath),          // 文件 mtime(不是 dir mtime)
+            Kind = InferKind(kindName),
         };
     }
 

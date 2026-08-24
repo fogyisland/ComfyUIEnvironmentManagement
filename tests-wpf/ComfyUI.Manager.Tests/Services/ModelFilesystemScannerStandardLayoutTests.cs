@@ -27,12 +27,12 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
     }
 
     [Fact]
-    public void Scan_StandardLayout_ReturnsOneRecordPerModel()
+    public void Scan_StandardLayout_OneCardPerFile()
     {
-        // <checkpoints>/<modelA>/<file>.safetensors, B, C → 3 records
-        CreateModelFile("checkpoints", "modelA", "modelA.safetensors");
-        CreateModelFile("checkpoints", "modelB", "modelB.ckpt");
-        CreateModelFile("checkpoints", "modelC", "modelC.safetensors");
+        // <checkpoints>/<modela>/<file>.safetensors, b, c → 3 records (T7: 每文件 = 1 卡)
+        CreateModelFile("checkpoints", "modela", "modela.safetensors");
+        CreateModelFile("checkpoints", "modelb", "modelb.ckpt");
+        CreateModelFile("checkpoints", "modelc", "modelc.safetensors");
 
         var scanner = new ModelFilesystemScanner();
         var result = scanner.Scan(_tmp);
@@ -42,16 +42,74 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         {
             Assert.Equal("Local", r.Source);
             Assert.Equal(ModelKind.Checkpoint, r.Kind);
+            Assert.Equal("checkpoints", r.SubfolderName);   // NEW: 统一 kindName
         });
-        Assert.Contains(result, r => r.SubfolderName == "modelA");
-        Assert.Contains(result, r => r.SubfolderName == "modelB");
-        Assert.Contains(result, r => r.SubfolderName == "modelC");
+        Assert.Contains(result, r => r.Title == "Modela");     // NEW: Title = PrettyPrint(filename-no-ext)
+        Assert.Contains(result, r => r.Title == "Modelb");
+        Assert.Contains(result, r => r.Title == "Modelc");
+        Assert.All(result, r => Assert.StartsWith("local:checkpoints/", r.SourceId));  // NEW
+    }
+
+    [Fact]
+    public void Scan_StandardLayout_MultipleFilesInOneModelDir_OneCardPerFile()
+    {
+        // T7: 1 个 model dir 含多个 model 文件 → 每个文件 = 1 card,Title = 各自文件名
+        var modelDir = Path.Combine(_tmp, "Lora", "animefullfinalpruned");
+        Directory.CreateDirectory(modelDir);
+        File.WriteAllText(Path.Combine(modelDir, "animefullfinalpruned.safetensors"), "fake1");
+        File.WriteAllText(Path.Combine(modelDir, "animefullfinalpruned_v2.safetensors"), "fake2");
+        File.WriteAllText(Path.Combine(modelDir, "extra_weights.pt"), "fake3");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Equal(3, result.Count);
+        Assert.All(result, r =>
+        {
+            Assert.Equal("Local", r.Source);
+            Assert.Equal(ModelKind.LORA, r.Kind);
+            Assert.Equal("Lora", r.SubfolderName);   // T7: SubfolderName = kindName,不是 modelDirName
+        });
+        Assert.Contains(result, r => r.Title == "Animefullfinalpruned");
+        Assert.Contains(result, r => r.Title == "Animefullfinalpruned V2");
+        Assert.Contains(result, r => r.Title == "Extra Weights");
+        Assert.Contains(result, r => r.SourceId == "local:lora/animefullfinalpruned");
+        Assert.Contains(result, r => r.SourceId == "local:lora/animefullfinalpruned_v2");
+        Assert.Contains(result, r => r.SourceId == "local:lora/extra_weights");
+    }
+
+    [Fact]
+    public void Scan_MixedLayout_FlatAndThreeLevel_SameSourceIdDeduped()
+    {
+        // T7: 同文件 <Lora>/foo.safetensors (flat) + <Lora>/someModel/foo.safetensors (3-level, 不同 mtime)
+        //   → Scan() 返回 2 records 都 SourceId="local:lora/foo"
+        //   → GroupToCards 在 VM 端 dedup 成 1 card(取最新 DownloadedAt),Scan 层直接 2 条
+        CreateFlatFile("Lora", "foo.safetensors");
+        CreateModelFile("Lora", "someModel", "foo.safetensors");
+
+        var flatStamp = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Local);
+        var threeStamp = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Local);
+        File.SetLastWriteTime(Path.Combine(_tmp, "Lora", "foo.safetensors"), flatStamp);
+        File.SetLastWriteTime(Path.Combine(_tmp, "Lora", "someModel", "foo.safetensors"), threeStamp);
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        // Scan() 返回 2 条 SourceId 相同的 records(VM GroupToCards 端去重 → 1 card)
+        Assert.Equal(2, result.Count);
+        Assert.All(result, r => Assert.Equal("local:lora/foo", r.SourceId));
+        Assert.All(result, r => Assert.Equal("Foo", r.Title));
+        Assert.All(result, r => Assert.Equal("Local", r.Source));
+        Assert.All(result, r => Assert.Equal(ModelKind.LORA, r.Kind));
+        // mtime 各自保留:flat stamp 在直接子文件上,3-level stamp 在子目录文件上
+        Assert.Equal(flatStamp.Ticks, result.Single(r => r.FullPath == Path.Combine(_tmp, "Lora", "foo.safetensors")).DownloadedAt.Ticks);
+        Assert.Equal(threeStamp.Ticks, result.Single(r => r.FullPath == Path.Combine(_tmp, "Lora", "someModel", "foo.safetensors")).DownloadedAt.Ticks);
     }
 
     [Fact]
     public void Scan_StandardLayout_InfersKindCaseInsensitively()
     {
-        // PascalCase / lowercase / camelCase 全部命中 KindAliases
+        // PascalCase / lowercase / camelCase 全部命中 KindAliases (T7: SubfolderName = kindName)
         CreateModelFile("CheckPoint", "m1", "m1.safetensors");
         CreateModelFile("Lora", "m2", "m2.safetensors");
         CreateModelFile("VAE", "m3", "m3.safetensors");
@@ -62,11 +120,11 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         var result = scanner.Scan(_tmp);
 
         Assert.Equal(5, result.Count);
-        Assert.Equal(ModelKind.Checkpoint, result.Single(r => r.SubfolderName == "m1").Kind);
-        Assert.Equal(ModelKind.LORA,       result.Single(r => r.SubfolderName == "m2").Kind);
-        Assert.Equal(ModelKind.VAE,        result.Single(r => r.SubfolderName == "m3").Kind);
-        Assert.Equal(ModelKind.Controlnet, result.Single(r => r.SubfolderName == "m4").Kind);
-        Assert.Equal(ModelKind.LORA,       result.Single(r => r.SubfolderName == "m5").Kind);
+        Assert.Equal(ModelKind.Checkpoint, result.Single(r => r.SubfolderName == "CheckPoint").Kind);
+        Assert.Equal(ModelKind.LORA,       result.Single(r => r.SubfolderName == "Lora").Kind);
+        Assert.Equal(ModelKind.VAE,        result.Single(r => r.SubfolderName == "VAE").Kind);
+        Assert.Equal(ModelKind.Controlnet, result.Single(r => r.SubfolderName == "controlnet").Kind);
+        Assert.Equal(ModelKind.LORA,       result.Single(r => r.SubfolderName == "loras").Kind);
     }
 
     [Fact]
@@ -86,8 +144,9 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
     }
 
     [Fact]
-    public void Scan_StandardLayout_DownloadedAtIsNewestFileMtime()
+    public void Scan_StandardLayout_DownloadedAtIsFileMtime()
     {
+        // T7: 每个文件 = 1 record,DownloadedAt = 该文件自己的 mtime(不是 dir latest)
         var modelDir = Path.Combine(_tmp, "checkpoints", "multi");
         Directory.CreateDirectory(modelDir);
         var oldFile = Path.Combine(modelDir, "old.safetensors");
@@ -103,9 +162,10 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         var scanner = new ModelFilesystemScanner();
         var result = scanner.Scan(_tmp);
 
-        Assert.Single(result);
+        Assert.Equal(2, result.Count);
         // NTFS 不保证 round-trip Kind 一致,只断言 value ticks 相等
-        Assert.Equal(newStamp.Ticks, result[0].DownloadedAt.Ticks);
+        Assert.Equal(oldStamp.Ticks, result.Single(r => r.Title == "Old").DownloadedAt.Ticks);
+        Assert.Equal(newStamp.Ticks, result.Single(r => r.Title == "New").DownloadedAt.Ticks);
     }
 
     [Fact]
@@ -113,6 +173,7 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
     {
         // PrettyPrint = Replace('-', ' ').Replace('_', ' ').ToLowerInvariant().ToTitleCase()
         // ToTitleCase 只按 whitespace 分词,不会 split camelCase (per brief tolerance)
+        // T7: Title 来自文件名(不是 dir 名)
         CreateModelFile("checkpoints", "animateLight_v1Final", "animateLight_v1Final.safetensors");
         CreateModelFile("checkpoints", "my-cool-model", "my-cool-model.safetensors");
 
@@ -120,8 +181,8 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         var result = scanner.Scan(_tmp);
 
         Assert.Equal(2, result.Count);
-        Assert.Equal("Animatelight V1final", result.Single(r => r.SubfolderName == "animateLight_v1Final").Title);
-        Assert.Equal("My Cool Model", result.Single(r => r.SubfolderName == "my-cool-model").Title);
+        Assert.Equal("Animatelight V1final", result.Single(r => r.Title == "Animatelight V1final").Title);
+        Assert.Equal("My Cool Model", result.Single(r => r.Title == "My Cool Model").Title);
     }
 
     [Fact]
@@ -150,9 +211,10 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         var metaEntry = result.Single(r => r.Source == "civitai");
         var localEntry = result.Single(r => r.Source == "Local");
         Assert.Equal("11111", metaEntry.SourceId);
-        Assert.Equal("local:checkpoints/mixedmodel", localEntry.SourceId);
+        Assert.Equal("local:checkpoints/test", localEntry.SourceId);   // T7: SourceId 用 filename,不是 modelDirName
         Assert.NotEqual(metaEntry.SourceId, localEntry.SourceId);
         Assert.Equal(ModelKind.Checkpoint, localEntry.Kind);
+        Assert.Equal("Test", localEntry.Title);   // T7: Title = PrettyPrint("test")
     }
 
     private void CreateModelFile(string kind, string modelName, string fileName)
@@ -209,7 +271,7 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
     [Fact]
     public void Scan_MixedLayout_ThreeLevelAndFlatInSameKind_NoDuplicates()
     {
-        // <Lora>/<sub1>/x.safetensors (3-level) + <Lora>/y.safetensors (flat) → 各 1 record,SourceId 不同
+        // <Lora>/<sub1>/x.safetensors (3-level) + <Lora>/y.safetensors (flat) → 各 1 record,T7: SourceId 用 filename
         CreateModelFile("Lora", "sub1", "x.safetensors");
         CreateFlatFile("Lora", "y.safetensors");
 
@@ -217,9 +279,9 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         var result = scanner.Scan(_tmp);
 
         Assert.Equal(2, result.Count);
-        var threeLevel = result.Single(r => r.SubfolderName == "sub1");
+        var threeLevel = result.Single(r => r.Title == "X");
         var flat = result.Single(r => r.Title == "Y");
-        Assert.Equal("local:lora/sub1", threeLevel.SourceId);
+        Assert.Equal("local:lora/x", threeLevel.SourceId);
         Assert.Equal("local:lora/y", flat.SourceId);
         Assert.NotEqual(threeLevel.SourceId, flat.SourceId);
         Assert.Equal(ModelKind.LORA, threeLevel.Kind);
