@@ -292,8 +292,24 @@
                             Background="{TemplateBinding Background}"
                             CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                            <!-- v1.0.0:禁用时显示"未启用"小标签(sidebar.inf 控制 IsEnabled 后,
+                                 让用户一眼看出"为什么这个菜单点不动")。Visibility 默认 Collapsed,
+                                 IsEnabled=False 触发器翻成 Visible。 -->
+                            <Border x:Name="DisabledBadge"
+                                    Margin="8,0,0,0"
+                                    Padding="6,1"
+                                    CornerRadius="3"
+                                    Background="{DynamicResource SurfaceVariantBrush}"
+                                    VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                                <TextBlock Text="未启用"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource OnSurfaceVariantBrush}" />
+                            </Border>
+                        </StackPanel>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -304,6 +320,15 @@
                             <Setter TargetName="Bd" Property="Background"
                                     Value="{DynamicResource PrimaryBrush}" />
                             <Setter Property="Foreground" Value="{DynamicResource OnPrimaryBrush}" />
+                        </Trigger>
+                        <!-- v1.0.0:sidebar.inf 控制 IsEnabled 时显示灰底 + 标签 + 改 cursor。
+                             灰底用 SurfaceVariantBrush 跟标签背景同色,视觉统一。 -->
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background"
+                                    Value="{DynamicResource SurfaceVariantBrush}" />
+                            <Setter TargetName="DisabledBadge" Property="Visibility" Value="Visible" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnSurfaceVariantBrush}" />
+                            <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
