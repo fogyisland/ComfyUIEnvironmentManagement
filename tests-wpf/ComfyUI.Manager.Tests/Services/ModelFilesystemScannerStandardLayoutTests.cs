@@ -161,4 +161,93 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         Directory.CreateDirectory(modelDir);
         File.WriteAllText(Path.Combine(modelDir, fileName), "fake");
     }
+
+    // -------- T6 扁平布局 tests (<kind>/<file>.ext) --------
+
+    [Fact]
+    public void Scan_FlatLayout_ReturnsOneRecordPerFile()
+    {
+        // <Lora>/<file1>.safetensors, <file2>.safetensors, <file3>.safetensors → 3 records
+        CreateFlatFile("Lora", "animatelcm_sd15.safetensors");
+        CreateFlatFile("Lora", "anime_slider_v2.safetensors");
+        CreateFlatFile("Lora", "detail_tweaker.safetensors");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Equal(3, result.Count);
+        Assert.All(result, r =>
+        {
+            Assert.Equal("Local", r.Source);
+            Assert.Equal(ModelKind.LORA, r.Kind);
+            Assert.Equal("Lora", r.SubfolderName);
+        });
+        Assert.Contains(result, r => r.SourceId == "local:lora/animatelcm_sd15");
+        Assert.Contains(result, r => r.SourceId == "local:lora/anime_slider_v2");
+        Assert.Contains(result, r => r.SourceId == "local:lora/detail_tweaker");
+    }
+
+    [Fact]
+    public void Scan_FlatLayout_DownloadedAtIsFileMtime()
+    {
+        // 2 文件不同 mtime,各取自己的 mtime(不是 kindDir / latest)
+        CreateFlatFile("VAE", "ae.safetensors");
+        CreateFlatFile("VAE", "animevae.pt");
+        var oldStamp = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Local);
+        var newStamp = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Local);
+        File.SetLastWriteTime(Path.Combine(_tmp, "VAE", "ae.safetensors"), oldStamp);
+        File.SetLastWriteTime(Path.Combine(_tmp, "VAE", "animevae.pt"), newStamp);
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal(oldStamp.Ticks, result.Single(r => r.SubfolderName == "VAE" && r.Title == "Ae").DownloadedAt.Ticks);
+        Assert.Equal(newStamp.Ticks, result.Single(r => r.SubfolderName == "VAE" && r.Title == "Animevae").DownloadedAt.Ticks);
+    }
+
+    [Fact]
+    public void Scan_MixedLayout_ThreeLevelAndFlatInSameKind_NoDuplicates()
+    {
+        // <Lora>/<sub1>/x.safetensors (3-level) + <Lora>/y.safetensors (flat) → 各 1 record,SourceId 不同
+        CreateModelFile("Lora", "sub1", "x.safetensors");
+        CreateFlatFile("Lora", "y.safetensors");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Equal(2, result.Count);
+        var threeLevel = result.Single(r => r.SubfolderName == "sub1");
+        var flat = result.Single(r => r.Title == "Y");
+        Assert.Equal("local:lora/sub1", threeLevel.SourceId);
+        Assert.Equal("local:lora/y", flat.SourceId);
+        Assert.NotEqual(threeLevel.SourceId, flat.SourceId);
+        Assert.Equal(ModelKind.LORA, threeLevel.Kind);
+        Assert.Equal(ModelKind.LORA, flat.Kind);
+        Assert.Equal("Local", threeLevel.Source);
+        Assert.Equal("Local", flat.Source);
+    }
+
+    [Fact]
+    public void Scan_FlatLayout_UnknownKindBecomesOther()
+    {
+        // <unet>/<file>.bin (不在 KindAliases) → Kind=Other,Source=Local
+        CreateFlatFile("unet", "bigModel.bin");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(ModelKind.Other, result[0].Kind);
+        Assert.Equal("Local", result[0].Source);
+        Assert.Equal("local:unet/bigmodel", result[0].SourceId);
+        Assert.Equal("Bigmodel", result[0].Title);
+    }
+
+    private void CreateFlatFile(string kind, string fileName)
+    {
+        var kindDir = Path.Combine(_tmp, kind);
+        Directory.CreateDirectory(kindDir);
+        File.WriteAllText(Path.Combine(kindDir, fileName), "fake");
+    }
 }
