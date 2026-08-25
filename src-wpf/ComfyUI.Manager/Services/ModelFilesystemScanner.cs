@@ -15,12 +15,16 @@ namespace ComfyUI.Manager.Services;
 
 /// <summary>v1.0.0 T13:Optional context for hash computation + bulk match during scan.
 /// All fields nullable for back-compat. Pass null <see cref="ScanContext"/> (or omit)
-/// for the legacy pure-enumeration scan used by 23 existing tests.</summary>
+/// for the legacy pure-enumeration scan used by 23 existing tests.
+/// v1.0.0 T-D5:<see cref="ModelUpdated"/> 让 scanner 把每条 model entry 在 ScanCore 完成时
+/// + HashAndMatch 阶段每个模型匹配完成时都 emit 出来 — VM 收 stream 立即建卡 + 后续就地更新
+/// match status,用户首屏秒级看到卡片(纯 enumeration),不用等 hash+match 全跑完。</summary>
 public sealed class ScanContext
 {
     public CivitaiHashCache? HashCache { get; init; }
     public CivitaiMatcherOrchestrator? Matcher { get; init; }
     public IProgress<string>? Progress { get; init; }
+    public IProgress<DownloadedModel>? ModelUpdated { get; init; }
 }
 
 /// <summary>v0.6.20:扫描 ModelsDirectory 找到已下载的 model versions。
@@ -76,10 +80,21 @@ public class ModelFilesystemScanner
 
     /// <summary>v1.0.0 T13:Scan with optional hash compute + bulk match + cover download.
     /// When <paramref name="ctx"/> is null, behaves exactly like the legacy
-    /// <see cref="Scan(string)"/> overload.</summary>
+    /// <see cref="Scan(string)"/> overload.
+    /// v1.0.0 T-D5:<see cref="ScanContext.ModelUpdated"/> 收到后,scanner 在 2 个时机 emit 每条
+    /// DownloadedModel:(1) ScanCore 完成时 emit 全部 raw entries — VM 立即建卡;(2) HashAndMatch
+    /// 每个模型 match 完成时 emit 更新版 entries — VM 就地更新卡(match badge / matchedDetail)。
+    /// 用户首屏秒级看到卡(纯 enumeration),不用等 hash+match(慢,网络)全跑完。Pass null ctx 时
+    /// 不 emit(back-compat,跟 23 个老 test 一致)。</summary>
     public virtual IReadOnlyList<DownloadedModel> Scan(string modelsDir, ScanContext? ctx)
     {
         var raw = ScanCore(modelsDir);
+        if (ctx?.ModelUpdated is { } p1)
+        {
+            // Phase 1 emit:所有 raw entries 一次性 emit — VM 收后立即 RebuildCardsFromRaw,
+            // 用户秒级看到卡(纯 filesystem enumeration 耗时远小于 hash+match 网络轮询)。
+            foreach (var m in raw) p1.Report(m);
+        }
         if (ctx is null) return raw;
         return HashAndMatch(raw, ctx);
     }
@@ -329,7 +344,10 @@ public class ModelFilesystemScanner
     /// <summary>v1.0.0 T13:Compute SHA256 for each model (parallel, max 4 concurrent, with cache),
     /// then run the matcher chain sequentially per model and download cover images.
     /// <see cref="DownloadedModel"/> is a class with init-only properties, so mutations
-    /// produce a new instance with augmented <c>Hash</c>/<c>MatchedDetail</c>/<c>MatchSource</c> fields.</summary>
+    /// produce a new instance with augmented <c>Hash</c>/<c>MatchedDetail</c>/<c>MatchSource</c> fields.
+    /// v1.0.0 T-D5:每 match 完成 emit 一条 ctx.ModelUpdated(updated entry) — VM 收后按 SourceId
+    /// 找到对应 LocalModelCard 就地更新(match badge / matchedDetail / matchSource),用户首屏
+    /// 在 ScanCore 完成时已经看到卡,后续逐张更新 match 状态而不是等全跑完。</summary>
     private IReadOnlyList<DownloadedModel> HashAndMatch(IReadOnlyList<DownloadedModel> raw, ScanContext ctx)
     {
         var n = raw.Count;
@@ -409,7 +427,11 @@ public class ModelFilesystemScanner
             if (result is null) continue;
 
             TryDownloadCover(m, result, ctx);
-            byIndex[k] = CopyWith(m, matchedDetail: result.Detail, matchSource: result.Source);
+            var updated = CopyWith(m, matchedDetail: result.Detail, matchSource: result.Source);
+            byIndex[k] = updated;
+            // v1.0.0 T-D5:emit 更新版 entry — VM 收后更新对应卡的 match badge / matchedDetail。
+            // Phase 1 emit 已经 emit 过 raw 版,这是覆盖式 update(VM 按 SourceId 定位卡)。
+            ctx.ModelUpdated?.Report(updated);
             ctx.Progress?.Report($"[match] {k + 1}/{n} {m.Title} → {result.Source}");
         }
 

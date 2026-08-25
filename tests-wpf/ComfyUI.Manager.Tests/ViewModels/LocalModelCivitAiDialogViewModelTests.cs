@@ -343,6 +343,7 @@ public sealed class LocalModelCivitAiDialogViewModelTests : IDisposable
     {
         var (svc, _) = Build(ZeroCandidatesJson);
         var card = new LocalModelCard(
+            SourceId: "local:99",
             Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
             LatestDownloadedAt: DateTime.UtcNow, SourceUrl: null, PreviewImagePath: null,
             Hash: "ABC",
@@ -372,6 +373,7 @@ public sealed class LocalModelCivitAiDialogViewModelTests : IDisposable
     {
         var (svc, _) = Build(ZeroCandidatesJson);
         var card = new LocalModelCard(
+            SourceId: "local:99",
             Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
             LatestDownloadedAt: DateTime.UtcNow, SourceUrl: null, PreviewImagePath: null,
             Hash: "ABC",

@@ -234,6 +234,10 @@ public sealed record MatchResult(
 /// 当 card.MatchedDetail 非 null → 用户点 [查询 CivitAI] 按钮时 dialog 直接开 Detail state,
 /// 跳过 searching 阶段(对本地卡用户体验大幅提升:首次扫描后单 click 看详情,不用再打字搜)。</summary>
 public sealed record LocalModelCard(
+    /// <summary>v1.0.0 T-D5:GroupToCards group key,从 DownloadedModel 透传。用来 streaming Phase 2
+    /// 按 SourceId 就地找到对应 card 做 match status 更新(其他字段 Title / Kind / VersionCount
+    /// 不变 — Phase 1 已经填好)。</summary>
+    string SourceId,
     string Title,
     ModelKind Kind,
     string Source,
@@ -248,7 +252,15 @@ public sealed record LocalModelCard(
     CivitAiDetailDto? MatchedDetail,
     /// <summary>v1.0.0 T13:首个命中 match 的 MatchSource enum 值(跟 MatchedDetail 同步 — 同时 null 或同时非 null)。
     /// 顺序 Hash → SafetensorsMetadata → CompanionJson → FilenameFuzzy。</summary>
-    MatchSource? MatchSource);
+    MatchSource? MatchSource)
+{
+    /// <summary>v1.0.0 T-D5:streaming scanner Phase 2 更新 match status — 返回新 record(positional record
+    /// 不可变,mutation 要重建)。调用方负责在 _allCards + FilteredModels 两处用旧实例找 index 替换成新实例。
+    /// 任一传入值非 null 时覆盖(允许只更新 Hash 不更新 Detail 这种部分填充 — scanner HashAndMatch
+    /// 不同阶段产出形状不同:hash match 阶段只填 Hash,safetensors 阶段填 Hash+MatchedDetail)。</summary>
+    public LocalModelCard WithMatchStatus(string? hash, CivitAiDetailDto? matchedDetail, MatchSource? matchSource)
+        => this with { Hash = hash, MatchedDetail = matchedDetail, MatchSource = matchSource };
+}
 
 /// <summary>v0.6.20:meta.json sidecar 反序列化形状。
 /// DownloadAsync 写,FilesystemScanner 读。其他字段 forward-compatible。</summary>

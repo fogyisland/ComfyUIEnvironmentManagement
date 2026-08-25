@@ -19,6 +19,7 @@ public sealed class LocalModelsViewModelLookupTests
     private static Settings SettingsWith(string modelsDir) => new() { DefaultModelsDirectory = modelsDir };
 
     private static LocalModelCard LocalCard(string title = "animatelora") => new(
+        SourceId: "local:lora/" + title,
         Title: title,
         Kind: ModelKind.LORA,
         Source: "Local",
@@ -31,6 +32,7 @@ public sealed class LocalModelsViewModelLookupTests
         MatchSource: null);
 
     private static LocalModelCard CivitAiCard(string title = "downloaded-model") => new(
+        SourceId: "civitai:12345",
         Title: title,
         Kind: ModelKind.LORA,
         Source: ModelSourceKind.CivitAi.ToString(),
@@ -133,6 +135,7 @@ public sealed class LocalModelsViewModelLookupTests
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: BuildLookupService());
         var card = new LocalModelCard(
+            SourceId: "local:99",
             Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
             LatestDownloadedAt: DateTime.Now, SourceUrl: null, PreviewImagePath: null,
             Hash: "ABCDEF",
@@ -153,6 +156,7 @@ public sealed class LocalModelsViewModelLookupTests
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: svc);
         var card = new LocalModelCard(
+            SourceId: "local:1",
             Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
             LatestDownloadedAt: DateTime.Now, SourceUrl: null, PreviewImagePath: null,
             Hash: null, MatchedDetail: null, MatchSource: null);

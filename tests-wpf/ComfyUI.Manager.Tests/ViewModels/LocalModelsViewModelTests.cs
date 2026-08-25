@@ -270,7 +270,89 @@ public sealed class LocalModelsViewModelTests
         Assert.Null(vm.FilteredModels[0].PreviewImagePath);
     }
 
-    // -------- v1.0.0 T12:Diffusers 透传 test --------
+    // -------- v1.0.0 T-D5:streaming scanner tests --------
+
+    /// <summary>v1.0.0 T-D5:streaming scanner — Phase 1 emit 期间 IsBusy=true,VM 立即 RebuildCardsAndChips
+    /// 让用户秒级看到卡(不再等 hash+match 流水线结束)。验证:scan 阻塞期间(Scan() 还没 return),
+    /// ctx.ModelUpdated callback 已经把 entry 推进 FilteredModels。
+    /// 这是用户反馈 "本地模型一直出在加载中,感觉是不是数据还是没进数据库" 的修复核心:
+    /// 之前 scanner 把整段 hash+match 串行化,Phase 1 跟 Phase 2 一起出卡;现在 Phase 1 一完成(秒级)
+    /// 就出卡,Phase 2 在背后渐进更新。</summary>
+    [Fact]
+    public async Task ReloadAsync_StreamsEntriesToCardsBeforeScanCompletes()
+    {
+        // 自定义 scanner:Phase 1 (ScanCore 模拟) 立即 emit 1 条;Phase 2 (hash match 模拟) emit 1 条 update;
+        // 然后 Sleep 让 VM 有时间消费 callback,再 return final list(模拟 await Task.Run 还没完成)。
+        var streamed = new List<DownloadedModel>();
+        var phase2Gate = new ManualResetEventSlim(false);
+        var streaming = new StreamingFakeScanner(
+            phase1Entries: new List<DownloadedModel>
+            {
+                new() { Title = "streamed1", Kind = ModelKind.LORA, Source = "Local",
+                        SourceId = "streamed:1", SourceVersionId = "v1", DownloadedAt = DateTime.Now },
+            },
+            phase2Entry: new DownloadedModel
+            {
+                Title = "streamed1", Kind = ModelKind.LORA, Source = "Local",
+                SourceId = "streamed:1", SourceVersionId = "v1", DownloadedAt = DateTime.Now,
+                Hash = "CAFEBABE",
+            },
+            phase2Gate: phase2Gate);
+
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), streaming);
+        var task = vm.ReloadAsync();
+
+        // 等 Phase 1 emit 触发 OnModelStreamed → RebuildCardsAndChips → FilteredModels 填好 1 卡
+        // (但 scan 还没 return,所以 IsBusy 仍 true)。这是 UX 关键:用户立刻看到 1 张卡,而不是空白。
+        SpinWait.SpinUntil(() => vm.FilteredModels.Count == 1, TimeSpan.FromSeconds(1));
+
+        Assert.True(vm.IsBusy, "scan still in flight");
+        Assert.Single(vm.FilteredModels);
+        Assert.Equal("streamed1", vm.FilteredModels[0].Title);
+        Assert.Null(vm.FilteredModels[0].Hash);   // Phase 1 raw — hash 还没 match
+
+        // 释放 Phase 2 emit(gate 让 scanner emit + return final)
+        phase2Gate.Set();
+        await task;
+
+        // Phase 2 emit 应该就地更新 card.Hash(通过 WithMatchStatus + IndexOf 替换)
+        Assert.False(vm.IsBusy);
+        Assert.Single(vm.FilteredModels);
+        Assert.Equal("CAFEBABE", vm.FilteredModels[0].Hash);
+    }
+
+    /// <summary>v1.0.0 T-D5:test seam — 自定义 scanner 控制 Phase 1 emit 时机(立即)+ Phase 2 emit 时机(等 gate)。
+    /// 真实 scanner 是 ScanCore() 同步返回所有 raw → emit,然后 HashAndMatch 逐条 match emit。
+    /// 这里 gate 让 test 能在 Phase 1 emit 跟 Phase 2 emit 之间插入 assertion。</summary>
+    private sealed class StreamingFakeScanner : ModelFilesystemScanner
+    {
+        private readonly IReadOnlyList<DownloadedModel> _phase1Entries;
+        private readonly DownloadedModel _phase2Entry;
+        private readonly ManualResetEventSlim _phase2Gate;
+
+        public StreamingFakeScanner(
+            IReadOnlyList<DownloadedModel> phase1Entries,
+            DownloadedModel phase2Entry,
+            ManualResetEventSlim phase2Gate)
+        {
+            _phase1Entries = phase1Entries;
+            _phase2Entry = phase2Entry;
+            _phase2Gate = phase2Gate;
+        }
+
+        public override IReadOnlyList<DownloadedModel> Scan(string modelsDir, ScanContext? ctx)
+        {
+            // Phase 1:模拟 ScanCore 立即返回所有 raw entries,通过 ModelUpdated emit
+            foreach (var e in _phase1Entries) ctx?.ModelUpdated?.Report(e);
+
+            // Phase 2:等 gate 再 emit(hash match 完成的模拟)+ return final list
+            _phase2Gate.Wait();
+            ctx?.ModelUpdated?.Report(_phase2Entry);
+            return _phase1Entries
+                .Select(e => e.SourceId == _phase2Entry.SourceId ? _phase2Entry : e)
+                .ToList();
+        }
+    }
 
     [Fact]
     public void GroupToCards_DiffusersModel_PassesThroughKind()
@@ -319,11 +401,16 @@ public sealed class LocalModelsViewModelTests
         {
             ScanCallCount++;
             _gate.Wait();
-            return new List<DownloadedModel>
+            // v1.0.0 T-D5:扫描"完成"时再通过 ModelUpdated 推一条更新版 entry(hash match 模拟)。
+            // 验证 streaming 路径在 scan await 期间 + 完成后都能正确推 card 到 FilteredModels。
+            var matched = new DownloadedModel
             {
-                new() { Title = "m1", Kind = ModelKind.Checkpoint, Source = "Local",
-                        SourceId = "1", SourceVersionId = "v1", DownloadedAt = DateTime.Now },
+                Title = "m1", Kind = ModelKind.Checkpoint, Source = "Local",
+                SourceId = "1", SourceVersionId = "v1", DownloadedAt = DateTime.Now,
+                Hash = "DEADBEEF",
             };
+            ctx?.ModelUpdated?.Report(matched);
+            return new List<DownloadedModel> { matched };
         }
 
         public void CloseGate() => _gate.Reset();

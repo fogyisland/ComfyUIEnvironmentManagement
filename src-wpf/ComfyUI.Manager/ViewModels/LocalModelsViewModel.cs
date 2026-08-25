@@ -26,6 +26,9 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     private readonly RelayCommand _lookupCivitAiCommand;
     private readonly HashSet<string> _lookupsInFlight = new();
     private List<LocalModelCard> _allCards = new();
+    /// <summary>v1.0.0 T-D5:scanner streaming emit 的累加器 — Phase 1 一波填满,Phase 2 增量覆盖同 SourceId 行。
+    /// Task.Run 完后 final 列表覆盖这里(streaming 可能有 race 覆盖错),作为 authoritative result。</summary>
+    private readonly List<DownloadedModel> _streamedRaw = new();
 
     public ObservableCollection<LocalModelCard> FilteredModels { get; } = new();
     public ObservableCollection<KindChip> KindChips { get; } = new();
@@ -103,7 +106,14 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     /// 行为跟 T11 一致。MainVM 传 progress 时,用户能在日志/Console 看到 `[hash] N/总数` 等行。
     /// 用户反馈 "本地模型一直出在加载中" — ShowLocalModels 每次进入都触发本方法,带 in-flight 守卫:
     /// 上一次 reload 还没跑完时跳过(避免 sidebar 反复切导致并发 scan 互踩 FilteredModels)。
-    /// skip-path 返回 completed task 让 caller 的 `_ = ReloadAsync()` 不报 unobserved exception。</summary>
+    /// skip-path 返回 completed task 让 caller 的 `_ = ReloadAsync()` 不报 unobserved exception。
+    /// v1.0.0 T-D5:scanner 通过 ctx.ModelUpdated stream emit DownloadedModel — Phase 1
+    /// (ScanCore 完)emit 所有 raw entries → 立即建卡 + IsBusy=false → 用户秒级看到卡;
+    /// Phase 2 (HashAndMatch 每个 match 完)emit 更新版 → 按 SourceId 就地更新卡(match badge)。
+    /// 这样 hash+match 阶段网络慢不再挡 UI(用户观察的 "一直出在加载中" 是 scanner 把整段
+    /// 串行化导致 — 之前 Phase 2 完成才出卡,现在 Phase 1 完就出卡,Phase 2 在背后渐进更新)。
+    /// Progress&lt;DownloadedModel&gt; 捕获 UI SyncContext,callback 自动 marshal 回 UI 线程更新
+    /// ObservableCollection — 跟 v0.6.18.4 / v0.6.19 / v0.6.22.++ 同款 progress pattern。</summary>
     public async Task ReloadAsync(IProgress<string>? progress = null)
     {
         if (IsBusy) return;
@@ -118,33 +128,52 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         {
             EmptyMessage = "未配置 Models 目录 — 请在设置中配置";
             _allCards = new();
+            RebuildKindChips();
+            ActiveChip = KindChips[0];
+            ApplyFilter();
         }
         else
         {
-            IReadOnlyList<DownloadedModel> raw;
+            // v1.0.0 T-D5:用 _streamedRaw 累加 scanner stream 出来的 entries — Phase 1 一波填满,
+            // Phase 2 增量覆盖同 SourceId 行;scan 完成后用 final Raw 校正(可能并发 race 的覆盖)。
+            _streamedRaw.Clear();
+            var modelUpdated = new Progress<DownloadedModel>(OnModelStreamed);
+
+            ScanContext? ctx = null;
+            if (_hashCache is not null && _orchestrator is not null)
+            {
+                ctx = new ScanContext
+                {
+                    HashCache = _hashCache,
+                    Matcher = _orchestrator,
+                    Progress = progress,
+                    ModelUpdated = modelUpdated,
+                };
+            }
+            else
+            {
+                // v1.0.0 T-D5:即使没 hash+match,仍用 streaming 路径 — 一致性 + 让用户秒级看到卡。
+                ctx = new ScanContext { ModelUpdated = modelUpdated };
+            }
+
+            IReadOnlyList<DownloadedModel> final;
             try
             {
-                // v1.0.0 T13-7:Build ScanContext 当 hash cache + orchestrator 都注入时(scanner 内部
-                // 检测 ctx != null 才启用 hash+match+cover 路径,T11 旧 caller 走 ctx=null 保持纯 enumeration)。
-                ScanContext? ctx = null;
-                if (_hashCache is not null && _orchestrator is not null)
-                {
-                    ctx = new ScanContext { HashCache = _hashCache, Matcher = _orchestrator, Progress = progress };
-                }
-                raw = await Task.Run(() => _scanner.Scan(dir, ctx)).ConfigureAwait(true);
+                final = await Task.Run(() => _scanner.Scan(dir, ctx)).ConfigureAwait(true);
             }
             catch (Exception ex)
             {
                 _logger?.Warn("local-models", $"scan failed: {ex.Message}");
-                raw = Array.Empty<DownloadedModel>();
+                final = Array.Empty<DownloadedModel>();
             }
-            _allCards = GroupToCards(raw);
+
+            // scanner 返回的 final 列表是权威结果(streaming 可能有 race 覆盖错) — 用它覆盖 _streamedRaw。
+            _streamedRaw.Clear();
+            foreach (var m in final) _streamedRaw.Add(m);
+            RebuildCardsAndChips();
+
             EmptyMessage = _allCards.Count == 0 ? "暂无已下载模型" : null;
         }
-
-        RebuildKindChips();
-        ActiveChip = KindChips[0];   // "全部" chip
-        ApplyFilter();
 
         IsBusy = false;
         PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
@@ -153,6 +182,79 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
         PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
         _reloadCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>v1.0.0 T-D5:scanner stream callback — Phase 1 一次性收到所有 raw entries,
+    /// 立即 RebuildCardsAndChips → IsBusy 由调用方在 Task.Run await 完成后置 false,
+    /// 但因为 callback 已经填好卡,用户在等 final scan 期间(可能 0 ms — filesystem enumeration)
+    /// 已经能看到卡。如果 Phase 2 来(同 SourceId 已存在卡),则 merge:Hash / MatchedDetail /
+    /// MatchSource / PreviewImagePath 任一非空时覆盖 card 对应字段。</summary>
+    private void OnModelStreamed(DownloadedModel m)
+    {
+        // Phase 1:第一次见到 SourceId 时 append
+        var existingIdx = _streamedRaw.FindIndex(x => x.SourceId == m.SourceId);
+        if (existingIdx < 0)
+        {
+            _streamedRaw.Add(m);
+        }
+        else
+        {
+            // Phase 2 update:覆盖同 SourceId 行(scanner HashAndMatch emit 更新版 entries),
+            // 保留 Phase 1 已经有但 Phase 2 没改的字段(VersionCount 等)。
+            _streamedRaw[existingIdx] = m;
+        }
+
+        // 第一次见到任何 entry 时(Phase 1 第一条)就重建卡 + 关掉 IsBusy — 用户秒级看到。
+        // 后续 emit(Phase 2 更新)就地更新对应卡 — 不重建整个 FilteredModels(避免 ObservableCollection clear+re-add 闪烁)。
+        if (IsBusy)
+        {
+            RebuildCardsAndChips();
+            // 注意:此时不设 IsBusy=false — final 还没回,可能还有 stream emit。IsBusy 在 caller await 完时设 false。
+        }
+        else
+        {
+            UpdateCardForEntry(m);
+        }
+    }
+
+    /// <summary>v1.0.0 T-D5:用 _streamedRaw 重算 _allCards + KindChips + FilteredModels。
+    /// 比旧的 _allCards = GroupToCards(raw) 更通用 — 同样能 list 整 raw 列表。</summary>
+    private void RebuildCardsAndChips()
+    {
+        _allCards = GroupToCards(_streamedRaw);
+        EmptyMessage = _allCards.Count == 0 ? "暂无已下载模型" : null;
+        RebuildKindChips();
+        ActiveChip = KindChips[0];
+        ApplyFilter();
+
+        PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
+        PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
+        PropertyChanged?.Invoke(this, new(nameof(ShowLoadingOverlay)));
+        PropertyChanged?.Invoke(this, new(nameof(IsRefreshingInBackground)));
+    }
+
+    /// <summary>v1.0.0 T-D5:按 SourceId 找到对应 LocalModelCard 就地更新 Hash / MatchedDetail /
+    /// MatchSource 字段(其他字段 Title / Kind / VersionCount 等不变)。LocalModelCard 是
+    /// positional record 属性 init-only,所以用 `with` 建新 card → 替换 _allCards[i] →
+    /// 同步替换 FilteredModels 里同一实例引用(ObservableCollection<T> reference equality
+    /// 通过 oldCard.IndexOf 定位)。如果找不到 SourceId(罕见 — Phase 1 emit 漏了某条),
+    /// fallback RebuildCardsAndChips。</summary>
+    private void UpdateCardForEntry(DownloadedModel m)
+    {
+        var idx = _allCards.FindIndex(c => c.SourceId == m.SourceId);
+        if (idx < 0)
+        {
+            RebuildCardsAndChips();
+            return;
+        }
+        if (m.MatchedDetail is null && m.MatchSource is null && m.Hash is null) return;
+
+        var oldCard = _allCards[idx];
+        var newCard = oldCard.WithMatchStatus(m.Hash, m.MatchedDetail, m.MatchSource);
+        _allCards[idx] = newCard;
+
+        var fIdx = FilteredModels.IndexOf(oldCard);
+        if (fIdx >= 0) FilteredModels[fIdx] = newCard;
     }
 
     private static List<LocalModelCard> GroupToCards(IReadOnlyList<DownloadedModel> raw)
@@ -167,6 +269,7 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                 var latestRecord = g.OrderBy(d => d.DownloadedAt).Last();
                 var latest = g.Max(d => d.DownloadedAt);
                 return new LocalModelCard(
+                    SourceId: g.Key,
                     Title: latestRecord.Title ?? "",
                     Kind: latestRecord.Kind,
                     Source: latestRecord.Source,
