@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
+using ComfyUI.Manager.Services.Inf;
 
 namespace ComfyUI.Manager.Data;
 
@@ -12,6 +13,12 @@ namespace ComfyUI.Manager.Data;
 /// (默认 &lt;projectRoot&gt;/.manager/settings.json;旧版 %APPDATA%/ComfyUI-Manager/settings.json
 /// 由 <see cref="LocalDataMigrationService"/> 一次性迁过来)。
 /// 绑定 <see cref="Settings"/> model,WPF UI / load / save 共享同一 shape。
+///
+/// v1.0.0.1 (settings-to-inf):持久化从 JSON 迁到 INF ——
+///   - 主路径:&lt;projectRoot&gt;/config/settings.inf(由 <see cref="InfParser"/>/<see cref="InfWriter"/> + <see cref="InfSettingsSerializer"/> 处理)
+///   - 兼容路径:&lt;projectRoot&gt;/.manager/settings.json(老用户数据)
+///   - Load 优先 .inf,fallback 老 .json(自动写 .inf + 删 .json 一次性迁移)
+///   - Save 只写 .inf
 /// </summary>
 public class SettingsRepository
 {
@@ -25,107 +32,139 @@ public class SettingsRepository
         Converters = { new JsonStringEnumConverter() },
     };
 
-    private readonly string _settingsPath;
+    private readonly string _settingsInfPath;
+    private readonly string _legacyJsonPath;
 
     /// <summary>
-    /// 生产 DI 入口 —— 接受 <see cref="LocalDataPaths"/> 提供路径。
+    /// 生产 DI 入口 —— 接受 <see cref="LocalDataPaths"/> 提供 .inf + .json 路径。
     /// </summary>
     public SettingsRepository(LocalDataPaths paths)
     {
-        _settingsPath = paths.SettingsFile;
+        _settingsInfPath = paths.SettingsInfFile;
+        _legacyJsonPath = paths.SettingsFile;
     }
 
     /// <summary>
-    /// 测试 seam —— 显式传入路径。生产代码走 LocalDataPaths ctor。
+    /// 测试 seam —— 显式传入 .inf 路径。legacy .json 路径为 null 时 Load 永不 fallback。
     /// </summary>
-    public SettingsRepository(string settingsPath)
+    public SettingsRepository(string settingsInfPath)
+        : this(settingsInfPath, legacyJsonPath: null)
     {
-        _settingsPath = settingsPath;
     }
 
-    public string SettingsPath => _settingsPath;
+    /// <summary>
+    /// 测试 seam 重载 —— 显式传 .inf + 兼容 .json 路径,方便测迁移。
+    /// </summary>
+    public SettingsRepository(string settingsInfPath, string? legacyJsonPath)
+    {
+        if (string.IsNullOrEmpty(settingsInfPath))
+            throw new ArgumentException("settingsInfPath 不能为空", nameof(settingsInfPath));
+        _settingsInfPath = settingsInfPath;
+        _legacyJsonPath = legacyJsonPath ?? string.Empty;
+    }
+
+    public string SettingsPath => _settingsInfPath;
 
     public virtual Settings Load()
     {
-        if (!File.Exists(_settingsPath))
+        // 1) 主 .inf 路径优先
+        if (File.Exists(_settingsInfPath))
         {
-            return new Settings();
+            return LoadFromInf(_settingsInfPath);
         }
 
-        var json = File.ReadAllText(_settingsPath);
-        if (string.IsNullOrWhiteSpace(json))
+        // 2) fallback 老 .json:读 → 写 .inf → 删 .json 一次性迁移
+        if (!string.IsNullOrEmpty(_legacyJsonPath) && File.Exists(_legacyJsonPath))
         {
-            return new Settings();
+            var s = LoadInternalJson(_legacyJsonPath);
+            Save(s);
+            TryDeleteLegacy();
+            return s;
         }
 
-        return LoadInternal(json);
+        // 3) 都没有 → 默认 settings
+        return new Settings();
     }
 
     /// <summary>
     /// v1.0.0 (T12):Load 重载,把磁盘上的 raw JSON 文本也一并返出来,
     /// 让调用方能把 JSON 喂给 SettingsDefaults.Apply(s, projectRoot, rawJson)
-    /// 触发老字段迁移(template_comfyui_dir 等)。file 不存在或空白 → 返 (new Settings(), null)。
+    /// 触发老字段迁移(template_comfyui_dir 等)。
+    ///
+    /// v1.0.0.1:从 .inf 路径读时 rawJson = null(无老字段要迁移);
+    /// 从 .json legacy fallback 时 rawJson = .json 文本。
     /// </summary>
     public virtual (Settings Settings, string? RawJson) LoadWithRawJson()
     {
-        if (!File.Exists(_settingsPath))
+        if (File.Exists(_settingsInfPath))
         {
-            return (new Settings(), null);
+            return (LoadFromInf(_settingsInfPath), null);
         }
 
-        var json = File.ReadAllText(_settingsPath);
-        if (string.IsNullOrWhiteSpace(json))
+        if (!string.IsNullOrEmpty(_legacyJsonPath) && File.Exists(_legacyJsonPath))
         {
-            return (new Settings(), null);
+            var json = File.ReadAllText(_legacyJsonPath);
+            var s = LoadInternalJson(_legacyJsonPath);
+            Save(s);
+            TryDeleteLegacy();
+            return (s, string.IsNullOrWhiteSpace(json) ? null : json);
         }
 
-        return (LoadInternal(json), json);
+        return (new Settings(), null);
     }
 
-    private Settings LoadInternal(string json)
+    private void TryDeleteLegacy()
     {
+        try
+        {
+            if (!string.IsNullOrEmpty(_legacyJsonPath) && File.Exists(_legacyJsonPath))
+            {
+                File.Delete(_legacyJsonPath);
+            }
+        }
+        catch
+        {
+            // 删不掉老 JSON 不影响功能 — 下次启动再 fallback 时 INF 已经存在会走主路径。
+        }
+    }
+
+    private static Settings LoadFromInf(string path)
+    {
+        var dict = InfParser.ParseFile(path);
+        var s = new Settings();
+        InfSettingsSerializer.ApplyDictToSettings(s, dict);
+
+        // v0.6.9 T2:G5 缺省 Dark;非法 theme_mode(老 settings.json 残留 "system"
+        // 之外的不可识别值)normalize 到 "dark",避免下游 ParseThemeMode 失败。
+        if (s.ThemeMode != "light" && s.ThemeMode != "dark" && s.ThemeMode != "system")
+        {
+            s.ThemeMode = "dark";
+        }
+        return s;
+    }
+
+    private static Settings LoadInternalJson(string jsonPath)
+    {
+        var json = File.ReadAllText(jsonPath);
+        if (string.IsNullOrWhiteSpace(json)) return new Settings();
+
         // v0.6.15.4: 检测旧 schema 字段 (git_proxy_*) → 迁移到新 schema (http_proxy_*)
-        // 并 Save 写回 (持久化迁移)。Pay-for-once: 第一次启动 v0.6.15.4 触发一次,
-        // 后续启动走新 schema 没迁移开销。
         var (migratedJson, migrated) = TryMigrateOldGitProxyKeys(json);
         if (migrated)
         {
-            // 写回新 schema (旧 key 删, 新 key 落)
-            try
-            {
-                var dir = Path.GetDirectoryName(_settingsPath);
-                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                File.WriteAllText(_settingsPath, migratedJson);
-            }
-            catch
-            {
-                // 迁移失败不影响 Load 行为 (return migrated settings)
-            }
             json = migratedJson;
         }
 
         // v0.6.22++:迁移 2-bool(http_proxy_enabled + http_proxy_use_system)→ HttpProxyMode enum。
-        // 同时迁移 per-source use_proxy bool → ModelSourceProxyMode enum。首次启动 v0.6.22++ 时
-        // 触发一次,后续启动走新 schema 没迁移开销。
         var (migratedJsonV22, migratedV22) = TryMigrateOldProxyBoolFields(json);
         if (migratedV22)
         {
-            try
-            {
-                var dir = Path.GetDirectoryName(_settingsPath);
-                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                File.WriteAllText(_settingsPath, migratedJsonV22);
-            }
-            catch { }
             json = migratedJsonV22;
         }
 
         var s = JsonSerializer.Deserialize<Settings>(json, JsonOptions)
             ?? new Settings();
 
-        // v0.6.9 T2:G5 缺省 Dark;非法 theme_mode(老 settings.json 残留 "system"
-        // 之外的不可识别值)normalize 到 "dark",避免下游 ParseThemeMode 失败。
-        // "light"/"dark"/"system" 都是合法值,保留原样。
         if (s.ThemeMode != "light" && s.ThemeMode != "dark" && s.ThemeMode != "system")
         {
             s.ThemeMode = "dark";
@@ -145,13 +184,7 @@ public class SettingsRepository
 
         try
         {
-            // 简化 path: 走 JsonNode (System.Text.Json.Nodes) 文档模型
-            // 先读旧值,再删旧 key,再写新 key —— JsonNode indexer 返回 null
-            // 表示 key 不存在,所以 partial / corrupt settings.json 不抛。
             var node = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
-
-            // 只在 git_proxy_enabled 存在时触发迁移 —— 避免 partial migration
-            // (settings.json 残缺 / 误填了 url+port 但没 enabled 不动)
             if (node["git_proxy_enabled"] is null) return (json, false);
 
             var enabled = node["git_proxy_enabled"]?.GetValue<bool>() ?? false;
@@ -175,15 +208,7 @@ public class SettingsRepository
 
     /// <summary>
     /// v0.6.22++: 旧 settings.json 含 bool 字段(http_proxy_enabled / http_proxy_use_system +
-    /// model_source_{civitai,huggingface}_use_proxy)迁移到新 enum 字段
-    /// (http_proxy_mode / model_source_{civitai,huggingface}_proxy_mode)。
-    ///
-    /// 旧 bool 含义:
-    /// - http_proxy_enabled=false → HttpProxyMode.Off
-    /// - http_proxy_enabled=true + http_proxy_use_system=true → HttpProxyMode.InheritSystem
-    /// - http_proxy_enabled=true + http_proxy_use_system=false → HttpProxyMode.Custom
-    /// - model_source_*_use_proxy=true → ModelSourceProxyMode.InheritGlobal
-    /// - model_source_*_use_proxy=false → ModelSourceProxyMode.Off
+    /// model_source_{civitai,huggingface}_use_proxy)迁移到新 enum 字段。
     /// </summary>
     private static (string Json, bool Migrated) TryMigrateOldProxyBoolFields(string json)
     {
@@ -238,13 +263,12 @@ public class SettingsRepository
 
     public virtual void Save(Settings s)
     {
-        var dir = Path.GetDirectoryName(_settingsPath);
-        if (!string.IsNullOrEmpty(dir))
+        var dict = InfSettingsSerializer.SerializeToDict(s);
+        InfWriter.Write(_settingsInfPath, dict, new[]
         {
-            Directory.CreateDirectory(dir);
-        }
-
-        var json = JsonSerializer.Serialize(s, JsonOptions);
-        File.WriteAllText(_settingsPath, json);
+            "settings.inf — main user config",
+            "Located at <projectRoot>/config/settings.inf",
+            "Simple fields: direct key=value. Complex fields (List/Dict): JSON-encoded value.",
+        });
     }
 }

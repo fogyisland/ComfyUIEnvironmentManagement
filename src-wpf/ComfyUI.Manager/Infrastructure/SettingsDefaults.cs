@@ -305,11 +305,19 @@ public static class SettingsDefaults
     ///
     /// 只在用户没设过 ComfyUI template 时迁移 — 否则视为用户已经表达过意图,
     /// 不让旧字段覆盖当前 entry。
+    ///
+    /// v1.0.0.1 (settings-to-inf):SettingsRepository 从 .inf 读时 rawJson = null;
+    /// 从老 .json 读时 rawJson 是 JSON 文本。**只对看着像 JSON 的 rawJson 跑迁移** —
+    /// .inf 文本以 '#' / 'theme = ' 等开头,JsonDocument.Parse 会抛。
     /// </summary>
     private static void TryMigrateOldTemplateComfyuiDir(Settings s, string? rawJson)
     {
         if (s.Templates.ContainsKey("ComfyUI")) return;
         if (string.IsNullOrWhiteSpace(rawJson)) return;
+        // 粗筛:看着像 JSON 才解析。INF 文件首字符可能是 '#'(注释)或字母,JSON 首字符
+        // 必定是 '{' 或 '['。这样 .inf 文本不会触发 JsonDocument.Parse 抛错。
+        var trimmed = rawJson.TrimStart();
+        if (trimmed.Length == 0 || (trimmed[0] != '{' && trimmed[0] != '[')) return;
 
         string? oldDir = null;
         try
@@ -338,7 +346,7 @@ public static class SettingsDefaults
             ModelsSubdir = "models",
         };
         // 老字段在 Settings 类已删除,无需再清。SettingsRepository 持久化时也不会
-        // 再带这个 key,自然从用户的 settings.json 里消失(G6)。
+        // 再带这个 key,自然从用户的 settings.json / settings.inf 里消失(G6)。
     }
 
     /// <summary>
