@@ -599,4 +599,69 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
 
         Assert.Null(result);
     }
+
+    // -------- Diffusers model_index.json name field (T-D3): Title extraction tests --------
+
+    [Fact]
+    public void Scan_DiffusersFolder_NameFieldFromModelIndexJson_UsedAsTitle()
+    {
+        // model_index.json has top-level "name" field → Title = that name (not folder name)
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "sdxl-base");
+        Directory.CreateDirectory(diffusersDir);
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"),
+            "{\"name\": \"SDXL Base 1.0\", \"_class_name\": \"StableDiffusionXLPipeline\"}");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal("SDXL Base 1.0", result[0].Title);
+        Assert.Equal(diffusersDir, result[0].FullPath);
+    }
+
+    [Fact]
+    public void Scan_DiffusersFolder_NoNameField_UsesFolderNameAsTitle()
+    {
+        // model_index.json exists but no "name" field → fall back to folder name (T12 behavior)
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "sdxl-base");
+        Directory.CreateDirectory(diffusersDir);
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"),
+            "{\"_class_name\": \"StableDiffusionXLPipeline\"}");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal("sdxl-base", result[0].Title);
+    }
+
+    [Fact]
+    public void Scan_DiffusersFolder_InvalidModelIndexJson_FallsBackToFolderName()
+    {
+        // model_index.json with invalid JSON → tolerate, fall back to folder name
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "broken");
+        Directory.CreateDirectory(diffusersDir);
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"), "{invalid json");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal("broken", result[0].Title);
+    }
+
+    [Fact]
+    public void Scan_DiffusersFolder_EmptyModelIndexJson_FallsBackToFolderName()
+    {
+        // model_index.json is empty (zero bytes) → no name → fall back to folder name
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "empty");
+        Directory.CreateDirectory(diffusersDir);
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"), "");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal("empty", result[0].Title);
+    }
 }

@@ -110,14 +110,26 @@ public class ModelFilesystemScanner
                     // 跳过 hidden dirs(.DS_Store, .git 等)
                     if (!subdirName.StartsWith("."))
                     {
-                        var latestMtime = Directory.EnumerateFiles(modelDir, "*", SearchOption.AllDirectories)
-                            .Select(File.GetLastWriteTime)
-                            .DefaultIfEmpty(DateTime.MinValue)
-                            .Max();
+                        var title = ResolveDiffusersTitle(modelDir, subdirName, _logger);
+                        DateTime latestMtime;
+                        try
+                        {
+                            latestMtime = Directory.EnumerateFiles(modelDir, "*", SearchOption.AllDirectories)
+                                .Select(File.GetLastWriteTime)
+                                .DefaultIfEmpty(DateTime.MinValue)
+                                .Max();
+                        }
+                        catch (Exception ex)
+                        {
+                            // v1.0.0 T-D3:symlink loops or perms errors — skip folder, don't crash scan
+                            _logger?.Warn("model-scanner",
+                                $"skip {modelDir}: enumerate failed {ex.GetType().Name}: {ex.Message}");
+                            continue;
+                        }
                         var previewPath = FindFirstPngInDir(modelDir);
                         results.Add(new DownloadedModel
                         {
-                            Title = subdirName,                                       // 无扩展名(目录名)
+                            Title = title,
                             SubfolderName = kindName,
                             FullPath = modelDir,                                      // 目录路径,不是文件路径
                             Kind = ModelKind.Diffusers,                               // 强类型 = Diffusers
@@ -275,6 +287,34 @@ public class ModelFilesystemScanner
         }
 
         return null;
+    }
+
+    /// <summary>v1.0.0 T-D3:Extract Title from <c>model_index.json["name"]</c>.
+    /// Falls back to <paramref name="fallbackName"/> (folder name) when:
+    /// file is empty, JSON is invalid, or <c>name</c> field is missing/empty/non-string.
+    /// Logs warning at <c>"model-scanner"</c> on invalid JSON; silent on missing field.</summary>
+    private static string ResolveDiffusersTitle(string modelDir, string fallbackName, AppLogger? logger = null)
+    {
+        var indexPath = Path.Combine(modelDir, "model_index.json");
+        try
+        {
+            var json = File.ReadAllText(indexPath);
+            if (string.IsNullOrWhiteSpace(json)) return fallbackName;
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("name", out var nameEl)
+                && nameEl.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(nameEl.GetString()))
+            {
+                return nameEl.GetString()!;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Invalid JSON or IO error — fall back, log so user can investigate
+            logger?.Warn("model-scanner",
+                $"invalid model_index.json at {modelDir}: {ex.GetType().Name}: {ex.Message}");
+        }
+        return fallbackName;
     }
 
     private static ModelKind InferKind(string kindDirName)
