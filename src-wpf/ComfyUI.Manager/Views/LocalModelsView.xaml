@@ -192,7 +192,7 @@
                                                 HorizontalAlignment="Left"
                                                 Visibility="{Binding Source, Converter={StaticResource CardSourceVisibility}, ConverterParameter=Local}"
                                                 Command="{Binding DataContext.LookupCivitAiCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding Mode=Self}" />
+                                                CommandParameter="{Binding}" />
                                     </StackPanel>
                                     <!-- v1.0.0 T13-7:status dot — bottom-right of card。
                                          MatchedDetail 非 null → 绿 / null → 灰。
