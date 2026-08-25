@@ -74,11 +74,12 @@ public class ModelMarketplaceViewModelTests
     public void KindFilters_ContainsAllModelKindValues()
     {
         var vm = new ModelMarketplaceViewModel(null!, null!, null!, null!, null);
-        // 9 enum values, 1 (Unknown) excluded = 8 visible filters
-        Assert.Equal(8, vm.KindFilters.Count);
+        // 10 enum values (T12 added Diffusers), 1 (Unknown) excluded = 9 visible filters
+        Assert.Equal(9, vm.KindFilters.Count);
         Assert.Contains(ModelKind.Checkpoint, vm.KindFilters);
         Assert.Contains(ModelKind.LORA, vm.KindFilters);
         Assert.Contains(ModelKind.VAE, vm.KindFilters);
+        Assert.Contains(ModelKind.Diffusers, vm.KindFilters);   // v1.0.0 T-D4:T12 added Diffusers
         Assert.DoesNotContain(ModelKind.Unknown, vm.KindFilters);
     }
 
