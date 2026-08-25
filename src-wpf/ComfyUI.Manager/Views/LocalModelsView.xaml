@@ -58,9 +58,18 @@
         <Border Grid.Row="0" Padding="12" Margin="0,0,0,12"
                 Background="{DynamicResource SurfaceBrush}" CornerRadius="6">
             <DockPanel>
-                <Button DockPanel.Dock="Right" Content="🔄 刷新"
-                        Command="{Binding ReloadCommand}"
-                        Style="{StaticResource MaterialButton}" MinWidth="80" />
+                <!-- 右侧:刷新中…指示 + 刷新按钮。IsBusy=true 时(background refresh 在跑)
+                     "刷新中…"label 出现,刷新按钮 disabled(防止并发 scan)。
+                     user 看到的语义:"刷新中…"= 静默更新现有数据,而不是 "加载中… 旧数据全清"。 -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="刷新中…"
+                               Foreground="Gray" FontSize="11"
+                               VerticalAlignment="Center" Margin="0,0,8,0"
+                               Visibility="{Binding IsRefreshingInBackground, Converter={StaticResource BoolToVisibility}}" />
+                    <Button Content="🔄 刷新"
+                            Command="{Binding ReloadCommand}"
+                            Style="{StaticResource MaterialButton}" MinWidth="80" />
+                </StackPanel>
                 <TextBlock Text="本地模型" FontSize="16" FontWeight="Bold"
                            VerticalAlignment="Center" Margin="0,0,12,0" />
                 <ItemsControl ItemsSource="{Binding KindChips, Mode=OneWay}">
@@ -93,10 +102,12 @@
 
         <!-- ============ Loading / Empty / Cards ============ -->
         <Grid Grid.Row="1">
-            <!-- 加载中 overlay -->
+            <!-- 加载中 overlay:只在 IsBusy && _allCards.Count==0 时显示(首屏或被外部清空后)。
+                 已有卡片时(切走再回来 + background refresh)overlay 不出现 — 直接显示现有 card grid,
+                 toolbar 的"刷新中…"指示让用户知道正在更新。这是用户反馈 "一直出在加载中" 的修复。 -->
             <TextBlock Text="加载中..."
                        Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center"
-                       Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                       Visibility="{Binding ShowLoadingOverlay, Converter={StaticResource BoolToVisibility}}" />
 
             <!-- Empty state:只在 VM.IsEmpty=true 时显示 (EmptyMessage 非空)。
                  IsEmpty 而不是 NullToVisibilityConverter invert — NullToVisibilityConverter

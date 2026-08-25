@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -300,6 +301,120 @@ public sealed class LocalModelsViewModelTests
         Assert.Equal(1, vm.FilteredModels[0].VersionCount);
         // Kind chip 列表应包含 Diffusers
         Assert.Contains(vm.KindChips, c => c.Kind == ModelKind.Diffusers && c.Display == "Diffusers");
+    }
+
+    // -------- 用户反馈 "本地模型一直出在加载中" 修复 tests --------
+
+    /// <summary>Slow scanner — Scan() 阻塞直到 ReleaseGate,模拟慢磁盘场景。
+    /// 用来验证 ReloadAsync 的 in-flight 守卫:scan 还没完成时第二次调用必须 skip
+    /// (否则 sidebar 反复切会启动多个并发 scan,互踩 FilteredModels)。
+    /// AutoResetEvent-style gate:CloseGate 让下次 Scan 阻塞,ReleaseGate 释放阻塞。
+    /// 必须成对调用 CloseGate/ReleaseGate 才能精确控制每次 Scan 的阻塞/释放。</summary>
+    private sealed class SlowFakeScanner : ModelFilesystemScanner
+    {
+        private readonly ManualResetEventSlim _gate = new(true);   // initial: open
+        public int ScanCallCount;
+
+        public override IReadOnlyList<DownloadedModel> Scan(string modelsDir, ScanContext? ctx)
+        {
+            ScanCallCount++;
+            _gate.Wait();
+            return new List<DownloadedModel>
+            {
+                new() { Title = "m1", Kind = ModelKind.Checkpoint, Source = "Local",
+                        SourceId = "1", SourceVersionId = "v1", DownloadedAt = DateTime.Now },
+            };
+        }
+
+        public void CloseGate() => _gate.Reset();
+        public void ReleaseGate() => _gate.Set();
+    }
+
+    [Fact]
+    public void ReloadAsync_WhenAlreadyBusy_SkipsSecondCall()
+    {
+        // 用户反馈修复:ShowLocalModels 每次进入都 fire ReloadAsync,如果上次 scan 还在跑
+        // (sidebar 反复切 + 慢磁盘),第二次必须 no-op 而不是并发跑两个 scan。
+        // 验证:SlowFakeScanner.ScanCallCount 在 in-flight 期间第二次 ReloadAsync 后仍 == 1。
+        var slow = new SlowFakeScanner();
+        slow.CloseGate();   // 让首次 Scan 阻塞
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), slow);
+
+        // fire first reload — Scan() 阻塞在 gate 上,IsBusy=true
+        var firstTask = vm.ReloadAsync();
+        // 等 task.Run 把 Scan() 调度起来 (否则 ScanCallCount 还是 0)
+        SpinWait.SpinUntil(() => slow.ScanCallCount == 1, TimeSpan.FromSeconds(1));
+
+        // 不等第一次完成,直接 fire 第二次 — 应该 skip (in-flight 守卫)
+        var secondTask = vm.ReloadAsync();
+        secondTask.GetAwaiter().GetResult();   // 同步等(应该立即返回)
+
+        Assert.True(vm.IsBusy, "first scan still in flight");
+        Assert.Equal(1, slow.ScanCallCount);    // 第二次 ReloadAsync 没进 Scan
+
+        // 释放 first scan,让它完成
+        slow.ReleaseGate();
+        firstTask.GetAwaiter().GetResult();
+
+        Assert.False(vm.IsBusy);
+        Assert.Single(vm.FilteredModels);   // 第一个 scan 的结果生效
+    }
+
+    [Fact]
+    public void ShowLoadingOverlay_TrueDuringFirstLoad_FalseAfterLoadComplete()
+    {
+        // 用户反馈修复:首次扫描时 overlay 应显示;加载完成后 overlay 消失。
+        // 这是 XAML 绑 ShowLoadingOverlay 的基础契约。
+        var slow = new SlowFakeScanner();
+        slow.CloseGate();
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), slow);
+
+        var task = vm.ReloadAsync();
+        // 等 Scan 启动
+        SpinWait.SpinUntil(() => slow.ScanCallCount == 1, TimeSpan.FromSeconds(1));
+
+        // first load in flight — overlay should be on
+        Assert.True(vm.ShowLoadingOverlay);
+
+        slow.ReleaseGate();
+        task.GetAwaiter().GetResult();
+
+        // first load done — overlay off
+        Assert.False(vm.ShowLoadingOverlay);
+    }
+
+    [Fact]
+    public void IsRefreshingInBackground_FalseOnFirstLoad_TrueWhenRefreshingExistingData()
+    {
+        // 用户反馈修复:首次加载时 toolbar 不显示 "刷新中…"(避免误导);
+        // 已有数据再触发 reload 时显示 — 跟 ShowLoadingOverlay 互补。
+        var slow = new SlowFakeScanner();
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), slow);
+
+        // 首次加载(open gate,scan 立即完成)— 验证 toolbar 指示 OFF
+        slow.CloseGate();
+        var initTask = vm.ReloadAsync();
+        SpinWait.SpinUntil(() => slow.ScanCallCount == 1, TimeSpan.FromSeconds(1));
+        Assert.True(vm.IsBusy);
+        Assert.True(vm.ShowLoadingOverlay);
+        Assert.False(vm.IsRefreshingInBackground);   // 首次:overlay 而非 toolbar
+        slow.ReleaseGate();
+        initTask.GetAwaiter().GetResult();
+
+        Assert.Single(vm.FilteredModels);
+        Assert.False(vm.IsBusy);
+
+        // 现在模拟 background refresh:close gate,开第二次 reload,_allCards 已非空
+        slow.CloseGate();
+        var refreshTask = vm.ReloadAsync();
+        SpinWait.SpinUntil(() => slow.ScanCallCount == 2, TimeSpan.FromSeconds(1));
+
+        Assert.True(vm.IsRefreshingInBackground);
+        Assert.False(vm.ShowLoadingOverlay);   // 互补:refresh 中不显示 loading overlay
+        slow.ReleaseGate();
+        refreshTask.GetAwaiter().GetResult();
+
+        Assert.False(vm.IsRefreshingInBackground);
     }
 }
 

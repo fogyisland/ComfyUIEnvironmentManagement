@@ -750,8 +750,13 @@ public class MainViewModel : ViewModelBase
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);
-            _localModelsViewModel.Initialize();
         }
+        // 用户反馈 "本地模型一直出在加载中,其实应该首先加载完了,再刷新这样比较好":
+        // 每次进入 sidebar 都 fire-and-forget 触发一次 ReloadAsync — 已有卡片时(后续访问)
+        // 走 background refresh,VM.ShowLoadingOverlay=false 不挡 card grid,toolbar 显示
+        // "刷新中…"指示;首次访问时(VM 刚 new,AllCards 空)走 ShowLoadingOverlay=true 显示
+        // loading 短暂出现直到 scan 完成。这样语义 = "现有数据 → 后台刷新",匹配 user 期望。
+        _ = _localModelsViewModel.ReloadAsync();
         CurrentView = _localModelsView;
     }
 

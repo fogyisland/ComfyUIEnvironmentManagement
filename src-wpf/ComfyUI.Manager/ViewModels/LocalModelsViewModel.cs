@@ -33,6 +33,14 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     public bool IsBusy { get; private set; }
     /// <summary>v1.0.0 T2:View 绑 IsEmpty 切 empty state vs card grid(NullToVisibilityConverter 不支持 invert 参数)。</summary>
     public bool IsEmpty => EmptyMessage is not null;
+    /// <summary>首次扫描时(scanner 还没产数据 + IsBusy=true)显示"加载中…"overlay。
+    /// 已有卡片时(用户切走再回来触发 background refresh)不挡 card grid — 直接刷新现有数据,
+    /// toolbar 显示细"刷新中…"指示。这是用户反馈 "本地模型一直出在加载中,其实应该首先加载完了,
+    /// 再刷新这样比较好" 的修复:首屏可能短暂显示 loading,后续进入永远先看到现有卡。</summary>
+    public bool ShowLoadingOverlay => IsBusy && _allCards.Count == 0;
+    /// <summary>Toolbar 上的 "刷新中…" 指示 — IsBusy && _allCards.Count > 0(已有数据 + 正在刷新)。
+    /// 跟 ShowLoadingOverlay 互补:loading overlay 走首次,刷新中走后续。</summary>
+    public bool IsRefreshingInBackground => IsBusy && _allCards.Count > 0;
 
     public ICommand ReloadCommand => _reloadCommand;
     /// <summary>v1.0.0 T11:CivitAI lookup 命令 — parameter 是被点的 LocalModelCard。
@@ -92,11 +100,17 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
 
     /// <summary>v1.0.0 T13-7:reload + 可选 progress forward 到 scanner(hash + match + cover 下载进度)。
     /// 调用方(Initialize / 按钮 click)不传 progress → 走 null 路径,scanner 内部 ctx.Progress 也是 null,
-    /// 行为跟 T11 一致。MainVM 传 progress 时,用户能在日志/Console 看到 `[hash] N/总数` 等行。</summary>
+    /// 行为跟 T11 一致。MainVM 传 progress 时,用户能在日志/Console 看到 `[hash] N/总数` 等行。
+    /// 用户反馈 "本地模型一直出在加载中" — ShowLocalModels 每次进入都触发本方法,带 in-flight 守卫:
+    /// 上一次 reload 还没跑完时跳过(避免 sidebar 反复切导致并发 scan 互踩 FilteredModels)。
+    /// skip-path 返回 completed task 让 caller 的 `_ = ReloadAsync()` 不报 unobserved exception。</summary>
     public async Task ReloadAsync(IProgress<string>? progress = null)
     {
+        if (IsBusy) return;
         IsBusy = true;
         PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
+        PropertyChanged?.Invoke(this, new(nameof(ShowLoadingOverlay)));
+        PropertyChanged?.Invoke(this, new(nameof(IsRefreshingInBackground)));
         _reloadCommand.RaiseCanExecuteChanged();
 
         var dir = _settings.DefaultModelsDirectory;
@@ -134,6 +148,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
 
         IsBusy = false;
         PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
+        PropertyChanged?.Invoke(this, new(nameof(ShowLoadingOverlay)));
+        PropertyChanged?.Invoke(this, new(nameof(IsRefreshingInBackground)));
         PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
         PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
         _reloadCommand.RaiseCanExecuteChanged();
