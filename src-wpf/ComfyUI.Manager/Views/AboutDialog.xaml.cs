@@ -31,6 +31,11 @@ public partial class AboutDialog : Window
             // 在 AboutDialog 上点"查看赞助二维码"→ 弹独立 DonateQrWindow(也非模态)
             DonateQrWindow.Show(dlg, projectRoot);
         };
+        vm.OpenComfyUIGroupRequested += (_, _) =>
+        {
+            // v1.0.0:在 AboutDialog 上点"查看ComfyUI技术组"→ 弹独立 ComfyUIGroupQrWindow(也非模态)
+            ComfyUIGroupQrWindow.Show(dlg, projectRoot);
+        };
         dlg.Show();  // 非模态:不阻塞主窗口,用户可一边看 About 一边操作主界面
     }
 

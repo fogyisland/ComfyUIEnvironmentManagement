@@ -180,6 +180,9 @@
   <data name="About_OpenDonateButton" xml:space="preserve">
     <value>查看赞助二维码</value>
   </data>
+  <data name="About_OpenComfyUIGroupButton" xml:space="preserve">
+    <value>加入ComfyUI技术组</value>
+  </data>
   <data name="About_CoursesHeader" xml:space="preserve">
     <value>课程链接</value>
   </data>
@@ -202,6 +205,15 @@
     <value>一块两块不嫌少,你的爱心是我继续下去的动力 ❤</value>
   </data>
   <data name="Donate_Placeholder" xml:space="preserve">
+    <value>二维码未配置,请联系作者</value>
+  </data>
+  <data name="ComfyUIGroup_Title" xml:space="preserve">
+    <value>ComfyUI 技术组</value>
+  </data>
+  <data name="ComfyUIGroup_Hint" xml:space="preserve">
+    <value>使用微信扫码加入ComfyUI技术组,共同学习交流、答疑解惑、资源分享。</value>
+  </data>
+  <data name="ComfyUIGroup_Placeholder" xml:space="preserve">
     <value>二维码未配置,请联系作者</value>
   </data>
   <data name="EnvList_UninstallBaseEnv" xml:space="preserve">

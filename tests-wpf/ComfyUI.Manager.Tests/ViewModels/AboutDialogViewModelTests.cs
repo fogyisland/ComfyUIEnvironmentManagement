@@ -59,6 +59,16 @@ public class AboutDialogViewModelTests : IDisposable
     }
 
     [Fact]
+    public void OpenComfyUIGroupCommand_Execute_FiresOpenComfyUIGroupRequested()
+    {
+        var vm = new AboutDialogViewModel(_projectRoot);
+        var fired = false;
+        vm.OpenComfyUIGroupRequested += (_, _) => fired = true;
+        vm.OpenComfyUIGroupCommand.Execute(null);
+        Assert.True(fired);
+    }
+
+    [Fact]
     public void CloseCommand_Execute_FiresRequestClose()
     {
         var vm = new AboutDialogViewModel(_projectRoot);
