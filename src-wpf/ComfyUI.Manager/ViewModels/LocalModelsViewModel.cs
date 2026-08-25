@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.Civitai;
 using ComfyUI.Manager.Views;
 
 namespace ComfyUI.Manager.ViewModels;
@@ -19,6 +20,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     private readonly ModelFilesystemScanner _scanner;
     private readonly AppLogger? _logger;
     private readonly CivitAiLookupService? _lookup;
+    private readonly CivitaiHashCache? _hashCache;
+    private readonly CivitaiMatcherOrchestrator? _orchestrator;
     private readonly RelayCommand _reloadCommand;
     private readonly RelayCommand _lookupCivitAiCommand;
     private readonly HashSet<string> _lookupsInFlight = new();
@@ -55,12 +58,16 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         Settings settings,
         ModelFilesystemScanner scanner,
         AppLogger? logger = null,
-        CivitAiLookupService? lookup = null)
+        CivitAiLookupService? lookup = null,
+        CivitaiHashCache? hashCache = null,
+        CivitaiMatcherOrchestrator? orchestrator = null)
     {
         _settings = settings;
         _scanner = scanner;
         _logger = logger;
         _lookup = lookup;
+        _hashCache = hashCache;
+        _orchestrator = orchestrator;
         _reloadCommand = new RelayCommand(_ => ReloadAsync(), _ => !IsBusy);
         // v1.0.0 T11:lookup 命令 — canExecute 守卫 (Source="Local" + lookup service 可用 + 无 in-flight)。
         // Button Visibility 用 IsLookupEnabled(card) 计算属性绑(避免新 converter,逻辑留 VM 可测)。
@@ -83,7 +90,10 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
 
     public void Initialize() => ReloadAsync();
 
-    public async Task ReloadAsync()
+    /// <summary>v1.0.0 T13-7:reload + 可选 progress forward 到 scanner(hash + match + cover 下载进度)。
+    /// 调用方(Initialize / 按钮 click)不传 progress → 走 null 路径,scanner 内部 ctx.Progress 也是 null,
+    /// 行为跟 T11 一致。MainVM 传 progress 时,用户能在日志/Console 看到 `[hash] N/总数` 等行。</summary>
+    public async Task ReloadAsync(IProgress<string>? progress = null)
     {
         IsBusy = true;
         PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
@@ -100,7 +110,14 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
             IReadOnlyList<DownloadedModel> raw;
             try
             {
-                raw = await Task.Run(() => _scanner.Scan(dir)).ConfigureAwait(true);
+                // v1.0.0 T13-7:Build ScanContext 当 hash cache + orchestrator 都注入时(scanner 内部
+                // 检测 ctx != null 才启用 hash+match+cover 路径,T11 旧 caller 走 ctx=null 保持纯 enumeration)。
+                ScanContext? ctx = null;
+                if (_hashCache is not null && _orchestrator is not null)
+                {
+                    ctx = new ScanContext { HashCache = _hashCache, Matcher = _orchestrator, Progress = progress };
+                }
+                raw = await Task.Run(() => _scanner.Scan(dir, ctx)).ConfigureAwait(true);
             }
             catch (Exception ex)
             {
@@ -140,7 +157,14 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                     VersionCount: g.Count(),
                     LatestDownloadedAt: latest,
                     SourceUrl: null,
-                    PreviewImagePath: latestRecord.PreviewImagePath);
+                    PreviewImagePath: latestRecord.PreviewImagePath,
+                    // v1.0.0 T13-7:3 个 hash-matching 字段从 DownloadedModel 透传到 card。
+                    // latestRecord 已是 sorted-by-mtime Last(),其 Hash/MatchedDetail/MatchSource
+                    // 由 scanner 的 HashAndMatch 阶段填入(scanner 内部所有同 SourceId record 共享
+                    // 同一文件 hash,MatchSource/MatchedDetail 也一致 — 这里取 latestRecord 即可)。
+                    Hash: latestRecord.Hash,
+                    MatchedDetail: latestRecord.MatchedDetail,
+                    MatchSource: latestRecord.MatchSource);
             })
             .OrderByDescending(c => c.LatestDownloadedAt ?? DateTime.MinValue)
             .ToList();
@@ -181,7 +205,9 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
 
     /// <summary>v1.0.0 T11:执行 lookup — fire-and-forget 在 command execute 启动。
     /// Modal dialog 在 UI 线程 ShowDialog,LoadAsync 等 await 回 UI SynchronizationContext。
-    /// ConfigureAwait(true) 在 VM 内部仍需(ObservableCollection 跨线程写会抛 — v0.6.19.x lesson)。</summary>
+    /// ConfigureAwait(true) 在 VM 内部仍需(ObservableCollection 跨线程写会抛 — v0.6.19.x lesson)。
+    /// v1.0.0 T13-7:把 card 传给 dialog VM — 如果 card 已被 scanner 在 Reload 阶段 hash-matched
+    /// (MatchedDetail 非 null),dialog 直接开 Detail state,跳过 searching。</summary>
     private async Task ExecuteLookupAsync(LocalModelCard card)
     {
         if (_lookup is null) return;
@@ -192,7 +218,7 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         {
             var dlg = new LocalModelCivitAiDialog
             {
-                DataContext = new LocalModelCivitAiDialogViewModel(_lookup, card.Title, _logger),
+                DataContext = new LocalModelCivitAiDialogViewModel(_lookup, card.Title, _logger, card: card),
             };
             // modal 阻塞到用户关窗
             dlg.ShowDialog();
@@ -219,14 +245,5 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
     }
 }
-
-public sealed record LocalModelCard(
-    string Title,
-    ModelKind Kind,
-    string Source,
-    int VersionCount,
-    DateTime? LatestDownloadedAt,
-    string? SourceUrl,
-    string? PreviewImagePath);
 
 public sealed record KindChip(ModelKind? Kind, string Display, int Count);

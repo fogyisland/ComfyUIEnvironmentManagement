@@ -13,7 +13,12 @@ namespace ComfyUI.Manager.ViewModels;
 /// v1.0.0 T11:CivitAI lookup dialog VM — 4 状态机(Searching / NoMatch / Picker / Detail)。
 /// 调用方(<see cref="LocalModelsViewModel"/>)在用户点 Local 卡片的 [查询 CivitAI] 按钮后
 /// new 一个本 VM + 新 Window,modal 弹给用户选 / 看。Service 注入而非自己构造 ——
-/// T9a CivitAiLookupService 是真服务,T11 是消费者。
+/// T9a CivitAiLookupService 是真服务,T11 是消费者.
+///
+/// v1.0.0 T13-7:加可选 <c>card</c> ctor 参数 — Scanner 在 Reload 时已经 hash-match 过的话
+/// (4 策略链),card.MatchedDetail 非 null → dialog 直接开 Detail state,跳过 Searching。
+/// 用户对已 matched 的本地卡单击按钮直接看详情(不再打字搜),loading 阶段从 scan 移到按钮 click。
+/// card = null (默认) 时维持旧 behavior — LoadAsync 走 search-by-title 路径.
 ///
 /// 状态流:
 ///   LoadAsync(searchTitle)
@@ -29,15 +34,29 @@ public sealed class LocalModelCivitAiDialogViewModel : INotifyPropertyChanged
     private readonly CivitAiLookupService _lookup;
     private readonly AppLogger? _logger;
     private readonly string _searchTitle;
+    private readonly LocalModelCard? _card;
 
     public LocalModelCivitAiDialogViewModel(
         CivitAiLookupService lookup,
         string searchTitle,
-        AppLogger? logger = null)
+        AppLogger? logger = null,
+        LocalModelCard? card = null)
     {
         _lookup = lookup ?? throw new ArgumentNullException(nameof(lookup));
         _searchTitle = searchTitle ?? "";
         _logger = logger;
+        _card = card;
+
+        // v1.0.0 T13-7:Pre-matched card (Scanner 在 ReloadAsync 时已经命中 hash-match chain)
+        // → dialog 直接开 Detail state,跳过 Searching 阶段。MatchedDetail 在 scanner 阶段
+        // 已经从 CivitAI 拉过详情,不需要再查一遍。
+        if (card?.MatchedDetail is not null)
+        {
+            State = DialogState.Detail;
+            Detail = card.MatchedDetail;
+            SelectedCandidate = null;
+            Candidates = Array.Empty<CivitAiCandidate>();
+        }
     }
 
     public string Title => _searchTitle;
@@ -57,6 +76,13 @@ public sealed class LocalModelCivitAiDialogViewModel : INotifyPropertyChanged
     /// </summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
+        // v1.0.0 T13-7:Pre-matched card → ctor 已开 Detail state,LoadAsync 不再 search
+        // (MatchedDetail 已在 scanner 阶段 fetch 过,再搜是浪费 + 浪费 token)。
+        if (_card?.MatchedDetail is not null)
+        {
+            return;
+        }
+
         State = DialogState.Searching;
         Raise(nameof(State));
 
@@ -105,6 +131,10 @@ public sealed class LocalModelCivitAiDialogViewModel : INotifyPropertyChanged
     /// <summary>Picker 选中 1 个 candidate → fetch 详情 + 切 Detail state。</summary>
     public async Task SelectCandidateAsync(CivitAiCandidate c, CancellationToken ct = default)
     {
+        // v1.0.0 T13-7:Pre-matched card → 状态已在 Detail,忽略 SelectCandidate 调用
+        // (CardFromCardFlow 不应该发生,但防 caller 错误调一次也无害)
+        if (_card?.MatchedDetail is not null) return;
+
         SelectedCandidate = c;
         Raise(nameof(SelectedCandidate));
         await LoadDetailAsync(c.Id, ct).ConfigureAwait(true);

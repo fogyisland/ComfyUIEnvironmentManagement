@@ -185,7 +185,8 @@ public sealed class ModelNsfwBadgeTextConverter : IValueConverter
 /// v0.6.20 T7:ModelKind → Brush(8 kind 各自的 palette 颜色)。
 /// Checkpoint=PrimaryBrush,LORA=SecondaryBrush,VAE=TertiaryBrush,Controlnet=SuccessBrush,
 /// TextualInversion=WarningBrush,Upscaler=InfoBrush,Hypernetwork=ErrorBrush,Other/Unknown=OutlineBrush。
-/// palette fallback 8 种颜色全部硬编码,确保无 Application.Current 时 XAML 不会 UnsetValue。
+/// v1.0.0 T12:Diffusers=WarningContainerBrush (palette 已定义,在 SettingsView/RateLimitBanner 用过,跟其他 kind 区分明显)。
+/// palette fallback 9 种颜色全部硬编码,确保无 Application.Current 时 XAML 不会 UnsetValue。
 /// </summary>
 public sealed class ModelKindBadgeBrushConverter : IValueConverter
 {
@@ -195,15 +196,16 @@ public sealed class ModelKindBadgeBrushConverter : IValueConverter
     {
         var (key, fallback) = value switch
         {
-            ModelKind.Checkpoint       => ("PrimaryBrush",   Color.FromRgb(0x67, 0x50, 0xA4)),
-            ModelKind.LORA             => ("SecondaryBrush", Color.FromRgb(0x4F, 0x6D, 0x8C)),
-            ModelKind.VAE              => ("TertiaryBrush",  Color.FromRgb(0x6B, 0x8E, 0x23)),
-            ModelKind.Controlnet       => ("SuccessBrush",   Color.FromRgb(0x38, 0x8E, 0x3C)),
-            ModelKind.TextualInversion => ("WarningBrush",   Color.FromRgb(0xE6, 0x7E, 0x22)),
-            ModelKind.Upscaler         => ("InfoBrush",      Color.FromRgb(0x19, 0x76, 0xD2)),
-            ModelKind.Hypernetwork     => ("ErrorBrush",     Color.FromRgb(0xBA, 0x1A, 0x1A)),
-            ModelKind.Other            => ("OutlineBrush",   Color.FromRgb(0x75, 0x75, 0x75)),
-            _                          => ("OutlineBrush",   Color.FromRgb(0xCC, 0xCC, 0xCC)),
+            ModelKind.Checkpoint       => ("PrimaryBrush",         Color.FromRgb(0x67, 0x50, 0xA4)),
+            ModelKind.LORA             => ("SecondaryBrush",       Color.FromRgb(0x4F, 0x6D, 0x8C)),
+            ModelKind.VAE              => ("TertiaryBrush",        Color.FromRgb(0x6B, 0x8E, 0x23)),
+            ModelKind.Controlnet       => ("SuccessBrush",         Color.FromRgb(0x38, 0x8E, 0x3C)),
+            ModelKind.TextualInversion => ("WarningBrush",         Color.FromRgb(0xE6, 0x7E, 0x22)),
+            ModelKind.Upscaler         => ("InfoBrush",            Color.FromRgb(0x19, 0x76, 0xD2)),
+            ModelKind.Hypernetwork     => ("ErrorBrush",           Color.FromRgb(0xBA, 0x1A, 0x1A)),
+            ModelKind.Diffusers        => ("WarningContainerBrush", Color.FromRgb(0xFF, 0xB3, 0x00)),  // amber gold (HF Diffusers 识别色)
+            ModelKind.Other            => ("OutlineBrush",         Color.FromRgb(0x75, 0x75, 0x75)),
+            _                          => ("OutlineBrush",         Color.FromRgb(0xCC, 0xCC, 0xCC)),
         };
         if (System.Windows.Application.Current?.TryFindResource(key) is Brush b)
         {
@@ -465,4 +467,56 @@ public sealed class CardSourceVisibilityConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => Binding.DoNothing;
+}
+
+/// <summary>v1.0.0 T13-7:本地模型卡片右下角 status dot 的填充颜色。
+/// 输入 LocalModelCard.MatchedDetail (CivitAiDetailDto?):
+///   - 非 null → 已 matched,显示 SuccessBrush(绿)
+///   - null    → 未 matched(还没 scan 或 4 策略全 miss),显示 OutlineBrush(灰)
+/// palette fallback:SuccessBrush → (0x38, 0x8E, 0x3C) 绿 / OutlineBrush → (0xCC, 0xCC, 0xCC) 灰。</summary>
+public sealed class MatchStatusToBrushConverter : IValueConverter
+{
+    public static readonly MatchStatusToBrushConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var key = value is CivitAiDetailDto ? "SuccessBrush" : "OutlineBrush";
+        if (System.Windows.Application.Current?.TryFindResource(key) is Brush b)
+        {
+            return b;
+        }
+        return key == "SuccessBrush"
+            ? new SolidColorBrush(Color.FromRgb(0x38, 0x8E, 0x3C))
+            : new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC));
+    }
+
+    public object ConvertBack(object value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>v1.0.0 T13-7:本地模型卡片右下角 status dot 的 tooltip 文本。
+/// 输入 LocalModelCard.MatchSource (MatchSource?):
+///   - Hash                → "Matched via SHA256 hash"
+///   - SafetensorsMetadata → "Matched via safetensors metadata"
+///   - CompanionJson       → "Matched via .civitai.info sidecar"
+///   - FilenameFuzzy       → "Matched via filename fuzzy search"
+///   - null                → "Not on CivitAI"(还没 scan 或 4 策略全 miss)</summary>
+public sealed class MatchSourceToTooltipConverter : IValueConverter
+{
+    public static readonly MatchSourceToTooltipConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value switch
+        {
+            MatchSource.Hash => "Matched via SHA256 hash",
+            MatchSource.SafetensorsMetadata => "Matched via safetensors metadata",
+            MatchSource.CompanionJson => "Matched via .civitai.info sidecar",
+            MatchSource.FilenameFuzzy => "Matched via filename fuzzy search",
+            _ => "Not on CivitAI",
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }

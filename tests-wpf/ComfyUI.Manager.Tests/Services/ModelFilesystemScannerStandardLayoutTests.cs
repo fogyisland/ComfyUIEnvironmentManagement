@@ -396,4 +396,118 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         Assert.Single(result);
         Assert.Equal(Path.Combine(loraDir, "flat.png"), result[0].PreviewImagePath);
     }
+
+    // -------- v1.0.0 T12:Diffusers 文件夹模型 tests --------
+
+    [Fact]
+    public void Scan_DiffusersFolder_KindDirSubdir_WithModelIndexJson_ReturnsDiffusersModel()
+    {
+        // <root>/diffusers/sdxl-base/model_index.json + unet/ + text_encoder/ → 1 record
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "sdxl-base");
+        Directory.CreateDirectory(Path.Combine(diffusersDir, "unet"));
+        Directory.CreateDirectory(Path.Combine(diffusersDir, "text_encoder"));
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"), "{}");
+        File.WriteAllText(Path.Combine(diffusersDir, "unet", "diffusion_pytorch_model.safetensors"), "fake-unet");
+        File.WriteAllText(Path.Combine(diffusersDir, "text_encoder", "model.safetensors"), "fake-te");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        var r = result[0];
+        Assert.Equal(ModelKind.Diffusers, r.Kind);
+        Assert.Equal("sdxl-base", r.Title);
+        Assert.Equal(diffusersDir, r.FullPath);    // FullPath = subdir 目录路径,不是文件路径
+        Assert.Equal("Local", r.Source);
+        Assert.Equal("local:diffusers/sdxl-base", r.SourceId);
+        Assert.Equal("diffusers", r.SubfolderName);
+        Assert.Equal("", r.SourceVersionId);
+    }
+
+    [Fact]
+    public void Scan_DiffusersFolder_NoModelIndexJson_NotDetected()
+    {
+        // <root>/checkpoints/sdxl-base/unet/model.safetensors 无 model_index.json
+        // → 走 T7 per-file 逻辑:unet/model.safetensors 不是 model 顶层,不扫,0 records
+        // (T7 只看 modelDir 直接子文件,不递归进 subdir)
+        var modelDir = Path.Combine(_tmp, "checkpoints", "sdxl-base");
+        Directory.CreateDirectory(Path.Combine(modelDir, "unet"));
+        File.WriteAllText(Path.Combine(modelDir, "unet", "model.safetensors"), "fake");
+        // 注意 modelDir 直接子无 .safetensors/.ckpt 等 → 0 records
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Scan_DiffusersFolder_WithPreviewPng_PreviewImagePathSet()
+    {
+        // folder 里有 model_index.json + preview.png → PreviewImagePath = preview.png full path
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "sdxl-turbo");
+        Directory.CreateDirectory(diffusersDir);
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"), "{}");
+        File.WriteAllBytes(Path.Combine(diffusersDir, "preview.png"), new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(Path.Combine(diffusersDir, "preview.png"), result[0].PreviewImagePath);
+    }
+
+    [Fact]
+    public void Scan_DiffusersFolder_DownloadedAtIsNewestFileMtime_Recursive()
+    {
+        // folder 里有 model_index.json + unet/diffusion_pytorch_model.safetensors(mtime=t1)
+        //   + text_encoder/model.safetensors(mtime=t2>t1) → DownloadedAt = t2
+        // 注意:必须 set model_index.json mtime = t1 否则 file write 当前时间比 t2 还晚,变 max
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "sdxl-base");
+        var unetDir = Path.Combine(diffusersDir, "unet");
+        var teDir = Path.Combine(diffusersDir, "text_encoder");
+        Directory.CreateDirectory(unetDir);
+        Directory.CreateDirectory(teDir);
+        var indexFile = Path.Combine(diffusersDir, "model_index.json");
+        var unetFile = Path.Combine(unetDir, "diffusion_pytorch_model.safetensors");
+        var teFile = Path.Combine(teDir, "model.safetensors");
+        File.WriteAllText(indexFile, "{}");
+        File.WriteAllText(unetFile, "fake-unet");
+        File.WriteAllText(teFile, "fake-te");
+        var indexStamp = new DateTime(2025, 12, 1, 0, 0, 0, DateTimeKind.Local);  // 最早
+        var oldStamp = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Local);
+        var newStamp = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Local);     // 最晚
+        File.SetLastWriteTime(indexFile, indexStamp);
+        File.SetLastWriteTime(unetFile, oldStamp);
+        File.SetLastWriteTime(teFile, newStamp);
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(newStamp.Ticks, result[0].DownloadedAt.Ticks);
+    }
+
+    [Fact]
+    public void Scan_DiffusersFolder_KindDirIsCheckpoints_StillDetected()
+    {
+        // <root>/checkpoints/sdxl-base/model_index.json(kindDir name = "checkpoints",
+        //   但 subdir 里有 model_index.json) → Kind 仍 = Diffusers
+        // (T12 brief — Kind 强写,不依赖 kindDir name)
+        var diffusersDir = Path.Combine(_tmp, "checkpoints", "sdxl-base");
+        var unetDir = Path.Combine(diffusersDir, "unet");
+        Directory.CreateDirectory(diffusersDir);
+        Directory.CreateDirectory(unetDir);
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"), "{}");
+        File.WriteAllText(Path.Combine(unetDir, "diffusion_pytorch_model.safetensors"), "fake-unet");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Single(result);
+        Assert.Equal(ModelKind.Diffusers, result[0].Kind);   // 强写,不是 Checkpoint
+        Assert.Equal("sdxl-base", result[0].Title);
+        Assert.Equal("checkpoints", result[0].SubfolderName);   // SubfolderName 仍 = kindName
+        Assert.Equal("local:checkpoints/sdxl-base", result[0].SourceId);
+    }
 }

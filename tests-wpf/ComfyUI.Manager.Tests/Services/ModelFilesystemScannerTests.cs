@@ -166,6 +166,48 @@ public class ModelFilesystemScannerTests : IDisposable
         Assert.Null(result[0].PreviewImagePath);
     }
 
+    [Fact]
+    public void Scan_MetaJsonPath_Unaffected_ByDiffusersDetection()
+    {
+        // v1.0.0 T12:meta.json 路径 + diffusers 路径同 modelsDir 共存,互不影响
+        //   - meta.json: <root>/checkpoints/<model>/<version>/meta.json → 1 卡 (走 T7 路径)
+        //   - diffusers: <root>/diffusers/<model>/model_index.json → 1 卡 (走 T12 路径)
+        // 共存 = 2 records,各走各的分支
+        // Part 1: marketplace meta.json 三层
+        var versionDir = Path.Combine(_tmp, "checkpoints", "realistic-vision-12345678", "v50-fp16-87654321");
+        Directory.CreateDirectory(versionDir);
+        File.WriteAllText(Path.Combine(versionDir, "model.safetensors"), "fake");
+        File.WriteAllText(Path.Combine(versionDir, "meta.json"),
+            JsonSerializer.Serialize(new ModelMetaSidecar
+            {
+                Title = "Realistic Vision v5.0",
+                Kind = ModelKind.Checkpoint,
+                Source = "civitai",
+                SourceId = "12345",
+                SourceVersionId = "87654321",
+                DownloadedAt = DateTime.UtcNow,
+            }));
+        // Part 2: diffusers 文件夹 (在同一 modelsDir 下)
+        var diffusersDir = Path.Combine(_tmp, "diffusers", "sdxl-base");
+        Directory.CreateDirectory(Path.Combine(diffusersDir, "unet"));
+        File.WriteAllText(Path.Combine(diffusersDir, "model_index.json"), "{}");
+        File.WriteAllText(Path.Combine(diffusersDir, "unet", "diffusion_pytorch_model.safetensors"), "fake");
+
+        var scanner = new ModelFilesystemScanner();
+        var result = scanner.Scan(_tmp);
+
+        Assert.Equal(2, result.Count);
+        var metaEntry = result.Single(r => r.Source == "civitai");
+        var diffusersEntry = result.Single(r => r.Source == "Local");
+        Assert.Equal("v50-fp16-87654321", metaEntry.SubfolderName);
+        Assert.Equal(ModelKind.Checkpoint, metaEntry.Kind);
+        Assert.Null(metaEntry.PreviewImagePath);   // meta.json path 永远 null (T10)
+        Assert.Equal(ModelKind.Diffusers, diffusersEntry.Kind);
+        Assert.Equal("sdxl-base", diffusersEntry.Title);
+        Assert.Equal(diffusersDir, diffusersEntry.FullPath);
+        Assert.Equal("local:diffusers/sdxl-base", diffusersEntry.SourceId);
+    }
+
     private void CreateVersion(string kind, string modelSlugId, string versionSlugId, string title)
     {
         var versionDir = Path.Combine(_tmp, kind, modelSlugId, versionSlugId);

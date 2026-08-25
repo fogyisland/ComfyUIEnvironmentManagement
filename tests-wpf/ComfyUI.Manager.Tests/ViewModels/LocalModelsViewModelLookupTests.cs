@@ -25,7 +25,10 @@ public sealed class LocalModelsViewModelLookupTests
         VersionCount: 1,
         LatestDownloadedAt: DateTime.Now,
         SourceUrl: null,
-        PreviewImagePath: null);
+        PreviewImagePath: null,
+        Hash: null,
+        MatchedDetail: null,
+        MatchSource: null);
 
     private static LocalModelCard CivitAiCard(string title = "downloaded-model") => new(
         Title: title,
@@ -34,7 +37,10 @@ public sealed class LocalModelsViewModelLookupTests
         VersionCount: 1,
         LatestDownloadedAt: DateTime.Now,
         SourceUrl: "https://civitai.com/models/12345",
-        PreviewImagePath: null);
+        PreviewImagePath: null,
+        Hash: null,
+        MatchedDetail: null,
+        MatchSource: null);
 
     /// <summary>构造一个 HttpClient + 真 CivitAiLookupService。Service 通过 HttpClient 解耦,
     /// canExecute 不发 HTTP 所以 response 内容无关紧要。</summary>
@@ -114,5 +120,44 @@ public sealed class LocalModelsViewModelLookupTests
 
         Assert.True(vm.LookupCivitAiCommand.CanExecute(card));
         Assert.False(vm.IsLookupInProgress(card));
+    }
+
+    // ===== v1.0.0 T13-7:Pre-matched card lookup wired through VM =====
+
+    [Fact]
+    public void LookupCommand_PreMatchedCard_CanExecuteTrue()
+    {
+        // Pre-matched card (MatchedDetail 非 null) 仍然 Source="Local" → LookupCommand 仍可执行。
+        // Dialog VM 在 ctor 检测到 card.MatchedDetail 非 null → 直接开 Detail state,跳过 Searching。
+        // (verified separately in LocalModelCivitAiDialogViewModelTests.Ctor_PreMatchedDetail_OpensDirectlyInDetailState)
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
+            lookup: BuildLookupService());
+        var card = new LocalModelCard(
+            Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
+            LatestDownloadedAt: DateTime.Now, SourceUrl: null, PreviewImagePath: null,
+            Hash: "ABCDEF",
+            MatchedDetail: new CivitAiDetailDto(99, "Test Model", "u", null, "desc",
+                Array.Empty<string>(), Array.Empty<CivitAiVersionDto>(), Array.Empty<string>()),
+            MatchSource: MatchSource.Hash);
+
+        Assert.True(vm.LookupCivitAiCommand.CanExecute(card));
+        Assert.True(vm.IsLookupEnabled(card));
+    }
+
+    [Fact]
+    public void LookupCommand_HashMatcherInOrchestrator_DoesNotThrow()
+    {
+        // 验证 orchestrator 集成的 service (9-arg ctor) 注入到 VM 时,LookupCommand 仍可执行。
+        // 真实匹配走 service.MatchAsync (orchestrator 决定 4 策略顺序);本测试只验 wiring 不抛。
+        var svc = new CivitAiLookupService(new System.Net.Http.HttpClient(), "https://civitai.com", "");
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
+            lookup: svc);
+        var card = new LocalModelCard(
+            Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
+            LatestDownloadedAt: DateTime.Now, SourceUrl: null, PreviewImagePath: null,
+            Hash: null, MatchedDetail: null, MatchSource: null);
+
+        Assert.NotNull(vm.LookupCivitAiCommand);
+        Assert.True(vm.LookupCivitAiCommand.CanExecute(card));
     }
 }

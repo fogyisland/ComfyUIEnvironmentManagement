@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
 using Moq;
@@ -333,5 +334,56 @@ public sealed class LocalModelCivitAiDialogViewModelTests : IDisposable
         Assert.Null(vm.SelectedCandidate);
         Assert.Null(vm.Detail);
         Assert.Equal("x", vm.Title);
+    }
+
+    // ===== v1.0.0 T13-7:Pre-matched card opens directly in Detail state =====
+
+    [Fact]
+    public void Ctor_PreMatchedDetail_OpensDirectlyInDetailState()
+    {
+        var (svc, _) = Build(ZeroCandidatesJson);
+        var card = new LocalModelCard(
+            Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
+            LatestDownloadedAt: DateTime.UtcNow, SourceUrl: null, PreviewImagePath: null,
+            Hash: "ABC",
+            MatchedDetail: new CivitAiDetailDto(99, "Test Model", "u", null, "desc",
+                Array.Empty<string>(), Array.Empty<CivitAiVersionDto>(), Array.Empty<string>()),
+            MatchSource: MatchSource.Hash);
+
+        var vm = new LocalModelCivitAiDialogViewModel(svc, card.Title, card: card);
+
+        Assert.Equal(DialogState.Detail, vm.State);
+        Assert.Equal("Test Model", vm.Detail!.Title);
+        Assert.Equal(99, vm.Detail.Id);
+    }
+
+    [Fact]
+    public void Ctor_NullCard_BackCompat_NoDetailState()
+    {
+        var (svc, _) = Build(ZeroCandidatesJson);
+        var vm = new LocalModelCivitAiDialogViewModel(svc, "AnimateLCM", card: null);
+
+        // 默认 Searching state — 跟旧 ctor 行为完全一致(card=null)
+        Assert.Equal(DialogState.Searching, vm.State);
+    }
+
+    [Fact]
+    public async Task SelectCandidate_WithPreMatched_DoesNothing_DetailAlreadyShown()
+    {
+        var (svc, _) = Build(ZeroCandidatesJson);
+        var card = new LocalModelCard(
+            Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
+            LatestDownloadedAt: DateTime.UtcNow, SourceUrl: null, PreviewImagePath: null,
+            Hash: "ABC",
+            MatchedDetail: new CivitAiDetailDto(99, "Test Model", "u", null, "",
+                Array.Empty<string>(), Array.Empty<CivitAiVersionDto>(), Array.Empty<string>()),
+            MatchSource: MatchSource.Hash);
+
+        var vm = new LocalModelCivitAiDialogViewModel(svc, card.Title, card: card);
+        Assert.Equal(DialogState.Detail, vm.State);
+
+        // 试图调 SelectCandidateAsync — 状态应保持 Detail(不重新搜)
+        await vm.SelectCandidateAsync(new CivitAiCandidate(99, "x", "u", null, null));
+        Assert.Equal(DialogState.Detail, vm.State);
     }
 }

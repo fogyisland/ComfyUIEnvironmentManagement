@@ -183,6 +183,13 @@
                                                 Command="{Binding DataContext.LookupCivitAiCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding Mode=Self}" />
                                     </StackPanel>
+                                    <!-- v1.0.0 T13-7:status dot — bottom-right of card。
+                                         MatchedDetail 非 null → 绿 / null → 灰。
+                                         Tooltip 显示 MatchSource enum 的人话描述。 -->
+                                    <Ellipse Width="10" Height="10" Margin="0,0,4,4"
+                                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                             Fill="{Binding MatchedDetail, Converter={StaticResource MatchStatusToBrush}}"
+                                             ToolTip="{Binding MatchSource, Converter={StaticResource MatchSourceToTooltip}}" />
                                 </Grid>
                             </Border>
                         </DataTemplate>

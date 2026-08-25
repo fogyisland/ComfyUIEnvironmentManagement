@@ -225,6 +225,31 @@ public sealed record MatchResult(
     CivitAiDetailDto Detail,
     string? CoverImageUrl);
 
+/// <summary>v1.0.0:本地模型 UI 卡片 record — ViewModel 用,View 直接绑。
+/// 跟 <see cref="DownloadedModel"/> 不同:<see cref="DownloadedModel"/> 是 scanner emit 的
+/// per-file 记录(per-version),本 record 是按 <see cref="SourceId"/> group 后的 per-model 卡片
+/// (per-model + version count + latest mtime)。
+/// v1.0.0 T13:扩展 3 字段给 hash-matching 链 — Scanner 在 ScanContext 启用时填充,
+/// View 通过 converter 显示 badge (MatchStatusToBrush) + tooltip (MatchSourceToTooltip)。
+/// 当 card.MatchedDetail 非 null → 用户点 [查询 CivitAI] 按钮时 dialog 直接开 Detail state,
+/// 跳过 searching 阶段(对本地卡用户体验大幅提升:首次扫描后单 click 看详情,不用再打字搜)。</summary>
+public sealed record LocalModelCard(
+    string Title,
+    ModelKind Kind,
+    string Source,
+    int VersionCount,
+    DateTime? LatestDownloadedAt,
+    string? SourceUrl,
+    string? PreviewImagePath,
+    /// <summary>v1.0.0 T13:SHA256 hex hash(可能 null,例如 meta.json 模型无文件 hash)。</summary>
+    string? Hash,
+    /// <summary>v1.0.0 T13:hash-matching chain 首个非 null IModelMatcher.MatchAsync 结果。
+    /// 非 null 时 = card 是 pre-matched 状态,UI 显示绿 badge + tooltip + dialog 开 Detail state。</summary>
+    CivitAiDetailDto? MatchedDetail,
+    /// <summary>v1.0.0 T13:首个命中 match 的 MatchSource enum 值(跟 MatchedDetail 同步 — 同时 null 或同时非 null)。
+    /// 顺序 Hash → SafetensorsMetadata → CompanionJson → FilenameFuzzy。</summary>
+    MatchSource? MatchSource);
+
 /// <summary>v0.6.20:meta.json sidecar 反序列化形状。
 /// DownloadAsync 写,FilesystemScanner 读。其他字段 forward-compatible。</summary>
 public class ModelMetaSidecar

@@ -159,6 +159,12 @@ public class MainViewModel : ViewModelBase
     // 切走再回来复用同一份 VM 保留 kind chip 选中 / sort / 滚动位置。
     private LocalModelsViewModel? _localModelsViewModel;
     private object? _localModelsView;
+    // v1.0.0 T13-7:hash cache + matcher orchestrator — ShowLocalModels 时构造一次,透传给
+    // LocalModelsViewModel 的 ScanContext(走 hash + 4 策略 match + cover download 路径)。
+    // 不放字段 → 每次 ShowLocalModels 重新 new → SQLite 重新打开 + 4 matchers 重新构造 → 浪费。
+    // null 表示 CivitAI disabled 或 _httpBuilder 缺失 → 走 legacy 纯 enumeration 路径。
+    private CivitaiHashCache? _civitaiHashCache;
+    private CivitaiMatcherOrchestrator? _civitaiMatcherOrchestrator;
 
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
@@ -730,12 +736,17 @@ public class MainViewModel : ViewModelBase
             // 但不 new CivitAiModelSource(那个是 marketplace aggregator 用的,本任务要的是
             // 独立 lookup service)。Lookup service 注入失败(无 builder / CivitAI disabled
             // 等)— 传 null,VM 端 _lookup is null → button 隐藏(canExecute false)。
+            // v1.0.0 T13-7:TryCreateCivitAiLookupService 同时构造 + cache hash cache + orchestrator
+            // 到 instance 字段(_civitaiHashCache / _civitaiMatcherOrchestrator),这里一起透传。
+            // 若 lookup service 注入失败(_httpBuilder is null),cache + orchestrator 也保持 null。
             var lookupService = TryCreateCivitAiLookupService();
             _localModelsViewModel = new LocalModelsViewModel(
                 _settings,
                 new ModelFilesystemScanner(_logger),
                 _logger,
-                lookupService);
+                lookupService,
+                _civitaiHashCache,
+                _civitaiMatcherOrchestrator);
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);
@@ -751,7 +762,10 @@ public class MainViewModel : ViewModelBase
     /// (老测试 ctor 兼容路径)— 此时 VM 端 _lookup is null → button canExecute false。
     /// 不缓存 service:每次 ShowLocalModels 都 new,跟 scanner 同款"一次性 IO"模式 ——
     /// HttpClient 复用 _httpBuilder 内部的 HttpClientHandler 实例(per-source proxy 应用
-    /// 在 ctor 期一次性配置,运行期 token 改动需要重启,跟 model marketplace 行为一致)。</summary>
+    /// 在 ctor 期一次性配置,运行期 token 改动需要重启,跟 model marketplace 行为一致)。
+    /// v1.0.0 T13-7:同时构造 + 缓存 hash cache + matcher orchestrator,透给 LocalModelsViewModel
+    /// 让 ReloadAsync 走 ScanContext(hash + match + cover download 路径)。两个字段懒初始化一次
+    /// (ShowLocalModels 单例缓存),后续 reuse 同一份 cache(避免每次重开 SQLite)。</summary>
     private CivitAiLookupService? TryCreateCivitAiLookupService()
     {
         if (!_settings.ModelSourceCivitAiEnabled) return null;
@@ -772,16 +786,34 @@ public class MainViewModel : ViewModelBase
             _settings.CivitAiApiToken,
             _logger,
             proxy);
+
+        // v1.0.0 T13-7:Build hash cache at %APPDATA%/ComfyUI.Manager/civitai-hash-cache.sqlite。
+        // 跨启动复用 — 第二次启动时 scanner 直接 cache hit 跳过 SHA256 compute(5s/model → 0s)。
+        var hashCachePath = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+            "ComfyUI.Manager", "civitai-hash-cache.sqlite");
+        var hashCache = new CivitaiHashCache(hashCachePath, _logger);
+
+        var hashMatcher = new CivitaiHashMatcher(baseService, _logger);
+        var metadataMatcher = new SafetensorsMetadataMatcher(baseService, _logger);
+        var companionMatcher = new CompanionJsonMatcher(baseService, _logger);
+        var filenameMatcher = new FilenameMatcher(baseService, _logger);
+
+        // Store in fields for reuse across ShowLocalModels calls(scanner 复用同一 cache)。
+        _civitaiHashCache = hashCache;
+        _civitaiMatcherOrchestrator = new CivitaiMatcherOrchestrator(
+            hashMatcher, metadataMatcher, companionMatcher, filenameMatcher, _logger);
+
         return new CivitAiLookupService(
             http,
             ModelSourceFactory.CivitAiOfficial,
             _settings.CivitAiApiToken,
             _logger,
             proxy,
-            new CivitaiHashMatcher(baseService, _logger),
-            new SafetensorsMetadataMatcher(baseService, _logger),
-            new CompanionJsonMatcher(baseService, _logger),
-            new FilenameMatcher(baseService, _logger));
+            hashMatcher,
+            metadataMatcher,
+            companionMatcher,
+            filenameMatcher);
     }
 
     /// <summary>

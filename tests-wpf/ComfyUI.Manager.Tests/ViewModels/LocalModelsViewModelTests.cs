@@ -268,6 +268,39 @@ public sealed class LocalModelsViewModelTests
         Assert.Single(vm.FilteredModels);
         Assert.Null(vm.FilteredModels[0].PreviewImagePath);
     }
+
+    // -------- v1.0.0 T12:Diffusers 透传 test --------
+
+    [Fact]
+    public void GroupToCards_DiffusersModel_PassesThroughKind()
+    {
+        // 构造 1 DownloadedModel(Kind=ModelKind.Diffusers) → LocalModelCard.Kind = ModelKind.Diffusers
+        var fake = new FakeScanner
+        {
+            Entries = new List<DownloadedModel>
+            {
+                new()
+                {
+                    Title = "sdxl-base",
+                    Kind = ModelKind.Diffusers,
+                    Source = "Local",
+                    SourceId = "local:diffusers/sdxl-base",
+                    SourceVersionId = "",
+                    DownloadedAt = DateTime.Now,
+                },
+            }
+        };
+        var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), fake);
+        vm.ReloadAsync().GetAwaiter().GetResult();
+
+        Assert.Single(vm.FilteredModels);
+        Assert.Equal(ModelKind.Diffusers, vm.FilteredModels[0].Kind);
+        Assert.Equal("sdxl-base", vm.FilteredModels[0].Title);
+        Assert.Equal("Local", vm.FilteredModels[0].Source);
+        Assert.Equal(1, vm.FilteredModels[0].VersionCount);
+        // Kind chip 列表应包含 Diffusers
+        Assert.Contains(vm.KindChips, c => c.Kind == ModelKind.Diffusers && c.Display == "Diffusers");
+    }
 }
 
 internal sealed class FakeScanner : ModelFilesystemScanner
@@ -275,7 +308,7 @@ internal sealed class FakeScanner : ModelFilesystemScanner
     public IReadOnlyList<DownloadedModel> Entries { get; set; } = Array.Empty<DownloadedModel>();
     public Exception? Throw { get; set; }
 
-    public override IReadOnlyList<DownloadedModel> Scan(string modelsDir)
+    public override IReadOnlyList<DownloadedModel> Scan(string modelsDir, ScanContext? ctx)
     {
         if (Throw is not null) throw Throw;
         return Entries;
