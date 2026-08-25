@@ -236,6 +236,47 @@ public class ModelFilesystemScanner
             .FirstOrDefault();
     }
 
+    /// <summary>v1.0.0 T-D1:Select a single file to hash from a Diffusers folder.
+    /// Priority order (first match wins):
+    /// 1. <c>unet/diffusion_pytorch_model.safetensors</c> (SD 1.5 / SDXL canonical)
+    /// 2. <c>transformer/diffusion_pytorch_model.safetensors</c> (FLUX-style)
+    /// 3. <c>unet/diffusion_pytorch_model.bin</c> (legacy .bin variant)
+    /// 4-7. Largest file in folder (recursive) by extension preference:
+    ///      <c>.safetensors</c> → <c>.bin</c> → <c>.ckpt</c> → <c>.pt</c>
+    /// 8. None → return <c>null</c> (orchestrator may still match via safetensors/companion/filename).
+    /// Internal so tests can call directly via <c>InternalsVisibleTo</c>.</summary>
+    internal static string? FindCanonicalHashFile(string dirPath)
+    {
+        if (string.IsNullOrEmpty(dirPath) || !Directory.Exists(dirPath)) return null;
+
+        foreach (var rel in new[]
+        {
+            "unet/diffusion_pytorch_model.safetensors",
+            "transformer/diffusion_pytorch_model.safetensors",
+            "unet/diffusion_pytorch_model.bin",
+        })
+        {
+            // Use '/' separator inside rel, then normalize for Windows so returned path
+            // matches the test fixture's Path.Combine(...) output (all-platform separator).
+            var p = Path.GetFullPath(Path.Combine(dirPath, rel.Replace('/', Path.DirectorySeparatorChar)));
+            if (File.Exists(p)) return p;
+        }
+
+        foreach (var ext in new[] { ".safetensors", ".bin", ".ckpt", ".pt" })
+        {
+            string? largest = null;
+            long maxLen = -1;
+            foreach (var f in Directory.EnumerateFiles(dirPath, "*" + ext, SearchOption.AllDirectories))
+            {
+                var len = new FileInfo(f).Length;
+                if (len > maxLen) { maxLen = len; largest = f; }
+            }
+            if (largest is not null) return largest;
+        }
+
+        return null;
+    }
+
     private static ModelKind InferKind(string kindDirName)
         => KindAliases.TryGetValue(kindDirName, out var k) ? k : ModelKind.Other;
 

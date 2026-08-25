@@ -510,4 +510,93 @@ public class ModelFilesystemScannerStandardLayoutTests : IDisposable
         Assert.Equal("checkpoints", result[0].SubfolderName);   // SubfolderName 仍 = kindName
         Assert.Equal("local:checkpoints/sdxl-base", result[0].SourceId);
     }
+
+    // -------- Diffusers hash chain (T-D1): FindCanonicalHashFile helper tests --------
+
+    [Fact]
+    public void FindCanonicalHashFile_PrefersUnetSafetensors()
+    {
+        // unet/diffusion_pytorch_model.safetensors + vae/diffusion_pytorch_model.safetensors → unet (priority 1 wins)
+        var dir = Path.Combine(_tmp, "diffusers", "sdxl-base");
+        var unetDir = Path.Combine(dir, "unet");
+        var vaeDir = Path.Combine(dir, "vae");
+        Directory.CreateDirectory(unetDir);
+        Directory.CreateDirectory(vaeDir);
+        var unetFile = Path.Combine(unetDir, "diffusion_pytorch_model.safetensors");
+        var vaeFile = Path.Combine(vaeDir, "diffusion_pytorch_model.safetensors");
+        File.WriteAllText(unetFile, "unet");
+        File.WriteAllText(vaeFile, "vae");
+
+        var result = ModelFilesystemScanner.FindCanonicalHashFile(dir);
+
+        Assert.Equal(unetFile, result);
+    }
+
+    [Fact]
+    public void FindCanonicalHashFile_FallsBackToTransformerSafetensors()
+    {
+        // No unet. transformer/diffusion_pytorch_model.safetensors exists → transformer (priority 2)
+        var dir = Path.Combine(_tmp, "diffusers", "flux-base");
+        var transformerDir = Path.Combine(dir, "transformer");
+        Directory.CreateDirectory(transformerDir);
+        var transformerFile = Path.Combine(transformerDir, "diffusion_pytorch_model.safetensors");
+        File.WriteAllText(transformerFile, "transformer");
+
+        var result = ModelFilesystemScanner.FindCanonicalHashFile(dir);
+
+        Assert.Equal(transformerFile, result);
+    }
+
+    [Fact]
+    public void FindCanonicalHashFile_FallsBackToUnetBin()
+    {
+        // No safetensors. unet/diffusion_pytorch_model.bin exists → unet bin (priority 3)
+        var dir = Path.Combine(_tmp, "diffusers", "sd15-legacy");
+        var unetDir = Path.Combine(dir, "unet");
+        Directory.CreateDirectory(unetDir);
+        var unetBin = Path.Combine(unetDir, "diffusion_pytorch_model.bin");
+        File.WriteAllText(unetBin, "unet-bin");
+
+        var result = ModelFilesystemScanner.FindCanonicalHashFile(dir);
+
+        Assert.Equal(unetBin, result);
+    }
+
+    [Fact]
+    public void FindCanonicalHashFile_FallsBackToLargestSafetensors()
+    {
+        // No well-known paths. 3 .safetensors files of sizes 100/500/200 → largest (500) wins
+        var dir = Path.Combine(_tmp, "diffusers", "custom-layout");
+        var sub1 = Path.Combine(dir, "sub1");
+        var sub2 = Path.Combine(dir, "sub2");
+        var sub3 = Path.Combine(dir, "sub3");
+        Directory.CreateDirectory(sub1);
+        Directory.CreateDirectory(sub2);
+        Directory.CreateDirectory(sub3);
+        var small1 = Path.Combine(sub1, "a.safetensors");
+        var large = Path.Combine(sub2, "b.safetensors");
+        var small2 = Path.Combine(sub3, "c.safetensors");
+        File.WriteAllBytes(small1, new byte[100]);
+        File.WriteAllBytes(large, new byte[500]);
+        File.WriteAllBytes(small2, new byte[200]);
+
+        var result = ModelFilesystemScanner.FindCanonicalHashFile(dir);
+
+        Assert.Equal(large, result);
+    }
+
+    [Fact]
+    public void FindCanonicalHashFile_NoMatchableFiles_ReturnsNull()
+    {
+        // Only config files (model_index.json + json sidecars), no model files → null
+        var dir = Path.Combine(_tmp, "diffusers", "config-only");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "model_index.json"), "{}");
+        File.WriteAllText(Path.Combine(dir, "config.json"), "{}");
+        File.WriteAllText(Path.Combine(dir, "tokenizer_config.json"), "{}");
+
+        var result = ModelFilesystemScanner.FindCanonicalHashFile(dir);
+
+        Assert.Null(result);
+    }
 }
