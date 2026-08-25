@@ -687,7 +687,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
             Path.Combine(configDir, "base-env-profiles.inf"),
             $"# base-env-profiles.inf — user override (v1.0.0.1+)\nprofiles = {json}\n");
 
-        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir, cacheDir: null, http: null);
         var profiles = await loader.LoadAsync();
 
         Assert.Equal(2, profiles.Count);
@@ -720,7 +720,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         var jsonPath = Path.Combine(_tempDir, "base_env_profiles.json");
         File.WriteAllText(jsonPath, JsonSerializer.Serialize(jsonProfiles));
 
-        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir, cacheDir: null, http: null);
         var profiles = await loader.LoadAsync();
 
         Assert.Single(profiles);
@@ -741,7 +741,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
             Path.Combine(_tempDir, "base_env_profiles.json"),
             JsonSerializer.Serialize(custom));
 
-        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir, cacheDir: null, http: null);
         var profiles = await loader.LoadAsync();
 
         Assert.Single(profiles);
@@ -767,7 +767,7 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
             Path.Combine(_tempDir, "base_env_profiles.json"),
             JsonSerializer.Serialize(custom));
 
-        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir, cacheDir: null, http: null);
         var profiles = await loader.LoadAsync();
 
         Assert.Single(profiles);
