@@ -303,21 +303,49 @@ public class ModelFilesystemScanner
             {
                 var m = byIndex[k]!;
                 if (m.Hash is not null || ctx.HashCache is null) return;
-                if (string.IsNullOrEmpty(m.FullPath) || !File.Exists(m.FullPath)) return;
+                if (string.IsNullOrEmpty(m.FullPath)) return;
 
-                var info = new FileInfo(m.FullPath);
-                var cached = ctx.HashCache.Lookup(m.FullPath, info.Length, info.LastWriteTimeUtc.Ticks);
+                // v1.0.0 T-D2:resolve hash target — file for single-file models, canonical file inside
+                // Diffusers folder for multi-file. Skip if neither exists.
+                string? hashTarget;
+                long sizeBytes;
+                long mtimeTicks;
+                if (File.Exists(m.FullPath))
+                {
+                    hashTarget = m.FullPath;
+                    var info = new FileInfo(m.FullPath);
+                    sizeBytes = info.Length;
+                    mtimeTicks = info.LastWriteTimeUtc.Ticks;
+                }
+                else if (Directory.Exists(m.FullPath))
+                {
+                    hashTarget = FindCanonicalHashFile(m.FullPath);
+                    if (hashTarget is null) return;   // no hashable file — orchestrator may still match other strategies
+                    var files = Directory.EnumerateFiles(m.FullPath, "*", SearchOption.AllDirectories).ToList();
+                    sizeBytes = files.Sum(f => new FileInfo(f).Length);
+                    mtimeTicks = files.Count > 0
+                        ? files.Max(f => new FileInfo(f).LastWriteTimeUtc.Ticks)
+                        : 0;
+                }
+                else
+                {
+                    return;
+                }
+
+                // Cache key uses the folder path for Diffusers (so it survives adding/removing files).
+                // For single-file models, m.FullPath == hashTarget so the cache key is unchanged.
+                var cached = ctx.HashCache.Lookup(m.FullPath, sizeBytes, mtimeTicks);
                 string hash;
                 if (cached is not null)
                 {
                     hash = cached;
-                    ctx.Progress?.Report($"[hash] cache hit: {Path.GetFileName(m.FullPath)}");
+                    ctx.Progress?.Report($"[hash] cache hit: {Path.GetFileName(hashTarget)}");
                 }
                 else
                 {
-                    hash = ModelHasher.ComputeSha256(m.FullPath);
-                    ctx.HashCache.Store(m.FullPath, info.Length, info.LastWriteTimeUtc.Ticks, hash);
-                    ctx.Progress?.Report($"[hash] computed: {Path.GetFileName(m.FullPath)} → {hash[..8]}…");
+                    hash = ModelHasher.ComputeSha256(hashTarget);
+                    ctx.HashCache.Store(m.FullPath, sizeBytes, mtimeTicks, hash);
+                    ctx.Progress?.Report($"[hash] computed: {Path.GetFileName(hashTarget)} → {hash[..8]}…");
                 }
                 byIndex[k] = CopyWith(m, hash: hash);
             }
