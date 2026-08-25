@@ -341,7 +341,7 @@ public partial class App : Application
         var systemInfoCollector = new SystemInfoCollector(logger);
         // v0.6.5.21: UI 偏好持久化(<projectRoot>/config/ui-preferences.json)— Menu 的
         // Save/Load UI 偏好命令 + MainWindow Window 尺寸 / LastViewName 应用都靠它。
-        var uiPreferencesService = new UiPreferencesService(projectRoot, logger);
+        var uiPreferencesService = new UiPreferencesService(localPaths, logger);
         // 挂到静态属性 → MainWindow.OnClosing 写回时(G7)用;App 进程内单例 OK。
         UiPreferencesService = uiPreferencesService;
         // 启动加载:先 LoadFromFile 再 instance MainWindow — MainWindow.OnSourceInitialized
