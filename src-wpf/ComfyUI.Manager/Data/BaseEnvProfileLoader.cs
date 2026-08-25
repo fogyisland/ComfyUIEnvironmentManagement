@@ -17,10 +17,18 @@ namespace ComfyUI.Manager.Data;
 /// (运行时拉取 PyTorch stable 版本生成 6 个默认 profile);拉取失败再回退
 /// <see cref="GetHardcodedDefaults"/>(v0.6.5 硬编码 5 个)。
 /// 设计上宁可回退到默认值也不要因为 JSON 损坏 / 网络断就让 UI 空掉。
+///
+/// v1.0.0.1 (settings-to-inf):user-override 配置从 .manager/base_env_profiles.json 迁到
+/// config/base-env-profiles.inf —— 跟 sidebar.inf / ui-preferences.inf 同目录。
+/// INF 持久化在文件里只有一个 key:<c>profiles = [...]</c>(JSON-encode 的 list)。
+/// LoadAsync 优先读 INF,fallback 老 .json。
+/// 写回(.inf)不在这里 —— user-override 文件无 UI 入口,本 loader 是 read-only。
 /// </summary>
 public class BaseEnvProfileLoader
 {
     public const string FileName = "base_env_profiles.json";
+    /// <summary>新 INF 文件名。</summary>
+    public const string InfFileName = "base-env-profiles.inf";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -28,6 +36,7 @@ public class BaseEnvProfileLoader
     };
 
     private readonly string _localDataDir;
+    private readonly string? _configDir;
     private readonly string? _cacheDir;
     private readonly HttpClient? _http;
 
@@ -40,23 +49,52 @@ public class BaseEnvProfileLoader
         string localDataDir,
         string? cacheDir = null,
         HttpClient? http = null)
+        : this(localDataDir, configDir: null, cacheDir, http)
+    {
+    }
+
+    /// <summary>
+    /// v1.0.0.1 (settings-to-inf):重载,显式传 <paramref name="configDir"/> 用于读 .inf。
+    /// null → 不查 .inf(只走老 .json)。
+    /// </summary>
+    public BaseEnvProfileLoader(
+        string localDataDir,
+        string? configDir,
+        string? cacheDir,
+        HttpClient? http)
     {
         if (string.IsNullOrWhiteSpace(localDataDir))
         {
             throw new ArgumentException("localDataDir must be non-empty", nameof(localDataDir));
         }
         _localDataDir = localDataDir;
+        _configDir = configDir;
         _cacheDir = cacheDir;
         _http = http;
     }
 
     /// <summary>
-    /// 从 <c>&lt;localDataDir&gt;/base_env_profiles.json</c> 加载 profiles。
-    /// 文件缺失 / 解析失败 / 空字符串 → 走 <see cref="GetLiveDefaultsAsync"/>。
-    /// 有效空数组 "[]" 视为用户明确选择空列表,直接返回(不回退)。
+    /// 加载 profiles。优先级:
+    ///   1) <c>&lt;configDir&gt;/base-env-profiles.inf</c>(v1.0.0.1 新格式)
+    ///   2) <c>&lt;localDataDir&gt;/base_env_profiles.json</c>(v0.6.16 老 JSON 兼容)
+    ///   3) <see cref="GetLiveDefaultsAsync"/>(运行时 PyTorch versions)
+    ///   4) <see cref="GetHardcodedDefaults"/>
+    /// 文件缺失 / 解析失败 → 静默回退下一步。有效空数组视为用户明确选择空列表。
     /// </summary>
     public virtual async Task<IReadOnlyList<BaseEnvProfile>> LoadAsync(CancellationToken ct = default)
     {
+        // 1) 新 .inf 路径
+        if (!string.IsNullOrEmpty(_configDir))
+        {
+            var infPath = Path.Combine(_configDir, InfFileName);
+            if (File.Exists(infPath))
+            {
+                var profiles = await LoadFromInfFileAsync(infPath, ct).ConfigureAwait(false);
+                if (profiles != null) return profiles;
+            }
+        }
+
+        // 2) 老 .json 兼容
         var path = Path.Combine(_localDataDir, FileName);
         if (File.Exists(path))
         {
@@ -76,6 +114,26 @@ public class BaseEnvProfileLoader
         }
 
         return await GetLiveDefaultsAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 从 .inf 读 profiles:解析 key <c>profiles</c> 的 JSON-encoded value。
+    /// 损坏 → 返 null(让 LoadAsync 走 fallback)。
+    /// </summary>
+    private static async Task<IReadOnlyList<BaseEnvProfile>?> LoadFromInfFileAsync(
+        string path, CancellationToken ct)
+    {
+        try
+        {
+            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            var dict = ComfyUI.Manager.Services.Inf.InfParser.Parse(text);
+            if (!dict.TryGetValue("profiles", out var raw)) return null;
+            return JsonSerializer.Deserialize<List<BaseEnvProfile>>(raw, JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>

@@ -668,4 +668,109 @@ public sealed class BaseEnvProfileLoaderTests : IDisposable
         Assert.EndsWith(" (不推荐 — comfy_kitchen 不兼容)", p.Name);
         Assert.Equal("1.5.0", p.TorchVersion);
     }
+
+    // —— v1.0.0.1 (settings-to-inf):INF 持久化路径 + 老 JSON fallback ——
+
+    [Fact]
+    public async Task LoadAsync_InfFileExists_ReturnsFileContents()
+    {
+        var configDir = Path.Combine(_tempDir, "config");
+        Directory.CreateDirectory(configDir);
+
+        var custom = new List<BaseEnvProfile>
+        {
+            new() { Id = "custom-inf-1", Name = "Custom INF 1", TorchVersion = "2.4.1", CudaVersion = "cu118", Channel = "stable" },
+            new() { Id = "custom-inf-2", Name = "Custom INF 2", TorchVersion = "2.4.1", CudaVersion = "cu121", Channel = "stable" },
+        };
+        var json = JsonSerializer.Serialize(custom);
+        File.WriteAllText(
+            Path.Combine(configDir, "base-env-profiles.inf"),
+            $"# base-env-profiles.inf — user override (v1.0.0.1+)\nprofiles = {json}\n");
+
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var profiles = await loader.LoadAsync();
+
+        Assert.Equal(2, profiles.Count);
+        Assert.Equal("custom-inf-1", profiles[0].Id);
+        Assert.Equal("custom-inf-2", profiles[1].Id);
+        Assert.Equal("2.4.1", profiles[0].TorchVersion);
+    }
+
+    [Fact]
+    public async Task LoadAsync_InfPrefersOverJson_WhenBothExist()
+    {
+        var configDir = Path.Combine(_tempDir, "config");
+        Directory.CreateDirectory(configDir);
+
+        // .inf 写 "from-inf"
+        var infProfiles = new List<BaseEnvProfile>
+        {
+            new() { Id = "from-inf", Name = "INF", TorchVersion = "2.4.1", CudaVersion = "cu118", Channel = "stable" },
+        };
+        var infJson = JsonSerializer.Serialize(infProfiles);
+        File.WriteAllText(
+            Path.Combine(configDir, "base-env-profiles.inf"),
+            $"profiles = {infJson}\n");
+
+        // .json 写 "from-json"
+        var jsonProfiles = new List<BaseEnvProfile>
+        {
+            new() { Id = "from-json", Name = "JSON", TorchVersion = "2.4.1", CudaVersion = "cu118", Channel = "stable" },
+        };
+        var jsonPath = Path.Combine(_tempDir, "base_env_profiles.json");
+        File.WriteAllText(jsonPath, JsonSerializer.Serialize(jsonProfiles));
+
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var profiles = await loader.LoadAsync();
+
+        Assert.Single(profiles);
+        Assert.Equal("from-inf", profiles[0].Id);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyJsonOnly_StillWorks()
+    {
+        // 没有 .inf,只有老 .json — fallback 兼容
+        var configDir = Path.Combine(_tempDir, "config");
+        Directory.CreateDirectory(configDir);
+        var custom = new List<BaseEnvProfile>
+        {
+            new() { Id = "legacy-1", Name = "Legacy 1", TorchVersion = "2.4.1", CudaVersion = "cu118", Channel = "stable" },
+        };
+        File.WriteAllText(
+            Path.Combine(_tempDir, "base_env_profiles.json"),
+            JsonSerializer.Serialize(custom));
+
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var profiles = await loader.LoadAsync();
+
+        Assert.Single(profiles);
+        Assert.Equal("legacy-1", profiles[0].Id);
+    }
+
+    [Fact]
+    public async Task LoadAsync_CorruptInf_FallsBackToLegacyJson()
+    {
+        var configDir = Path.Combine(_tempDir, "config");
+        Directory.CreateDirectory(configDir);
+        // .inf 故意写坏
+        File.WriteAllText(
+            Path.Combine(configDir, "base-env-profiles.inf"),
+            "profiles = not valid json [[[");
+
+        // .json 仍然有效
+        var custom = new List<BaseEnvProfile>
+        {
+            new() { Id = "fallback-1", Name = "F", TorchVersion = "2.4.1", CudaVersion = "cu118", Channel = "stable" },
+        };
+        File.WriteAllText(
+            Path.Combine(_tempDir, "base_env_profiles.json"),
+            JsonSerializer.Serialize(custom));
+
+        var loader = new BaseEnvProfileLoader(localDataDir: _tempDir, configDir: configDir);
+        var profiles = await loader.LoadAsync();
+
+        Assert.Single(profiles);
+        Assert.Equal("fallback-1", profiles[0].Id);
+    }
 }

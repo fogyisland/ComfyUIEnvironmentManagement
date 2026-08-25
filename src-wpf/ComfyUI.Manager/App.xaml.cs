@@ -336,7 +336,10 @@ public partial class App : Application
         // v0.6.5.1: BaseEnvProfileLoader 运行时拉取真实 PyTorch stable 版本。
         // v0.6.16: cache 目录 = <projectRoot>/.manager (PyTorchVersionCache 直接在此存
         // pytorch_versions_cache.json);复用共享 http(15s 超时)。拉取失败静默回退。
-        var profileLoader = new BaseEnvProfileLoader(projectRoot, localPaths.Directory, http);
+        // v1.0.0.1 (settings-to-inf):加 configDir 参数 — 让 loader 优先读
+        // config/base-env-profiles.inf(新格式),fallback 老 .manager/base_env_profiles.json。
+        var profileLoader = new BaseEnvProfileLoader(
+            projectRoot, localPaths.ConfigDirectory, localPaths.Directory, http);
         // v0.6.5.x: 系统状态 tab 数据收集器(进入 tab 时拉一次 OS/CPU/Mem/Disk/GPU/CUDA)
         var systemInfoCollector = new SystemInfoCollector(logger);
         // v0.6.5.21: UI 偏好持久化(<projectRoot>/config/ui-preferences.json)— Menu 的
