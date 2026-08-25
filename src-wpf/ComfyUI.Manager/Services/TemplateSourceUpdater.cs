@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -93,15 +95,42 @@ public class TemplateSourceUpdater
         _logger?.Info("template-source-update", $"target='{targetDir}' repo='{repoUrl}' 开始模板更新");
         progress?.Report($"开始模板更新:{targetDir}");
 
-        // 1. delete contents (keep dir for permissions/junction)
+        // 1. delete contents (keep dir for permissions/junction)。
+        // v1.0.0.x hotfix:用户反馈"再点击就发现删除不完全"。原 TryDelete 吞所有 exception,
+        // 单个 read-only / locked entry 失败导致 wipe 不完整 → 后续 git clone . 失败
+        // ("destination path '.' already exists and is not an empty directory")。
+        // 修法:TryDelete 清 ReadOnly 标志 + IOException 重试 1 次;失败累加到 leftover。
+        // 外层 foreach 改 while 反复扫(新 TryDelete 可能解锁之前扫不到的);
+        // 全部跑完 leftover !=0 → wipe 不完整 → 直接返回 Fail(不进入 git clone 阶段)。
         try
         {
-            foreach (var entry in Directory.EnumerateFileSystemEntries(targetDir))
+            var leftover = new List<string>();
+            var passes = 0;
+            const int maxPasses = 3;
+            while (passes < maxPasses)
             {
-                if (ct.IsCancellationRequested)
-                    return NodeOperationResult.Fail("用户取消");
-                TryDelete(entry);
-                progress?.Report($"已删除:{Path.GetFileName(entry)}");
+                leftover.Clear();
+                passes++;
+                foreach (var entry in Directory.EnumerateFileSystemEntries(targetDir))
+                {
+                    if (ct.IsCancellationRequested)
+                        return NodeOperationResult.Fail("用户取消");
+                    if (TryDelete(entry, out var err))
+                    {
+                        progress?.Report($"已删除:{Path.GetFileName(entry)}");
+                    }
+                    else
+                    {
+                        leftover.Add($"{Path.GetFileName(entry)}: {err}");
+                    }
+                }
+                if (leftover.Count == 0) break;
+            }
+            if (leftover.Count > 0)
+            {
+                var msg = $"删除模板目录内容失败,{leftover.Count} 项残留:{string.Join("; ", leftover.Take(5))}";
+                _logger?.Error("template-source-update", msg);
+                return NodeOperationResult.Fail(msg);
             }
         }
         catch (Exception ex)
@@ -249,16 +278,69 @@ public class TemplateSourceUpdater
         return NodeOperationResult.Ok(null);
     }
 
-    private static void TryDelete(string path)
+    /// <summary>
+    /// v1.0.0.x hotfix:删除单个 entry — Windows read-only 文件 (.git/objects/pack/*.pack 等)
+    /// 默认 Directory.Delete 会抛 UnauthorizedAccessException。先清 Normal + Hidden + ReadOnly
+    /// 属性,IOException 重试 1 次(常见:其他进程刚刚释放文件句柄)。
+    /// 返回 true = 成功;false = 失败(out err 带原因)。错误不再 swallow,让外层 leftover
+    /// 列表收集起来给用户清晰的"残留 N 项"。
+    /// </summary>
+    private static bool TryDelete(string path, out string? err)
     {
+        err = null;
+        // 1. 清属性:Recursive 删除子目录树前先 reset 顶层 + 尝试 reset 每个 file。
         try
         {
-            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
-            else if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                var f = new FileInfo(path);
+                if (f.IsReadOnly) f.IsReadOnly = false;
+                File.Delete(path);
+                return true;
+            }
+            if (Directory.Exists(path))
+            {
+                // 先清所有 file 的 read-only 标志(子目录 + 顶层)
+                foreach (var f in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        var fi = new FileInfo(f);
+                        if (fi.IsReadOnly) fi.IsReadOnly = false;
+                    }
+                    catch { /* 单个 file 标 reset 失败不阻塞 */ }
+                }
+                Directory.Delete(path, recursive: true);
+                return true;
+            }
+            err = "既不是文件也不是目录";
+            return false;
         }
-        catch
+        catch (IOException ex1)
         {
-            // 单个 entry 失败继续(让其他 entry 删掉)— wipe 整体失败会被外层 catch 抓到。
+            // 2. 重试 1 次(文件句柄刚释放 / antivirus 扫描刚结束 / junction 异步拆除)。
+            try
+            {
+                System.Threading.Thread.Sleep(50);
+                if (File.Exists(path)) File.Delete(path);
+                else if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+                return true;
+            }
+            catch (Exception ex2)
+            {
+                err = $"IOException 重试失败: {ex2.GetType().Name}: {ex2.Message}";
+                return false;
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            err = $"UnauthorizedAccess: {ex.Message}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            err = $"{ex.GetType().Name}: {ex.Message}";
+            return false;
         }
     }
 
