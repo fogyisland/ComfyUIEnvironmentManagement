@@ -448,24 +448,28 @@
                                             Command="{Binding DataContext.StopCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <!-- v0.6.11+ T1:Requirements toggle — 已装显"卸依赖",未装显"装依赖",
-                                         busy 时按钮灰 + label 变"装依赖中..."/"卸依赖中..."。
-                                         复用现有 RequirementsStatus inline 面板显示进度。 -->
-                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.ToggleRequirementsCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
+                                    <!-- v1.0.0.x: 按钮顺序 = 启动 | 停止 | 安装基础环境 | 装依赖 | ComfyUI Manager。
+                                         基础环境(picker dialog 装 PyTorch+CUDA)是装依赖(pip install -r requirements)
+                                         的前置条件 — 必须先有 Python+CUDA runtime 才能跑 pip 装 torch 等带 CUDA 的依赖。
+                                         所以「安装基础环境」放「装依赖」前面(用户原话)。 -->
                                     <!-- v0.6.11+ T1:BED toggle — 已装显"卸载基础环境",未装显"安装基础环境",
                                          busy 时按钮灰 + label 变"安装基础环境中..."/"卸载基础环境中..."。
                                          复用 BaseEnvUninstallStatus inline 面板;BED picker dialog 走 OpenBaseEnvProgressAsync。 -->
-                                    <Button Grid.Row="0" Grid.Column="3" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleBaseEnvCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
+                                    <!-- v0.6.11+ T1:Requirements toggle — 已装显"卸依赖",未装显"装依赖",
+                                         busy 时按钮灰 + label 变"装依赖中..."/"卸依赖中..."。
+                                         复用现有 RequirementsStatus inline 面板显示进度。 -->
+                                    <Button Grid.Row="0" Grid.Column="3" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
+                                            Style="{StaticResource MaterialButton}"
+                                            Command="{Binding DataContext.ToggleRequirementsCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
                                     <!-- v0.6.11+ T4:ComfyUI Manager toggle — 同 col 0-3 pattern,共用 5 列 Grid。 -->
                                     <Button Grid.Row="0" Grid.Column="4" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
