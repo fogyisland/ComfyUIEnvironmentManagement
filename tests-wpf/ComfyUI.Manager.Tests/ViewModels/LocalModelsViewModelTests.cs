@@ -503,6 +503,33 @@ public sealed class LocalModelsViewModelTests
 
         Assert.False(vm.IsRefreshingInBackground);
     }
+
+    // --- v1.0.0.x: 默认不自动刷新 ---
+    // 用户反馈:"本地模型默认情况刷新操作不自动启动,只有手动启动才去进行刷新操作"。
+    // VM 构造完未调 ReloadAsync 时,EmptyMessage 应为 placeholder 提示用户点「🔄 刷新」按钮,
+    // IsBusy=false 且 ShowLoadingOverlay/IsRefreshingInBackground 都 false(无任何 spinner)。
+    // Test 不调 ReloadAsync → VM 应保持"未扫描"状态,等用户手动触发。
+
+    [Fact]
+    public void Constructor_NoReloadCalled_EmptyMessageIsPlaceholder()
+    {
+        var vm = new LocalModelsViewModel(SettingsWith(@"Z:\fake"), new FakeScanner());
+
+        Assert.False(vm.IsBusy);
+        Assert.False(vm.ShowLoadingOverlay);
+        Assert.False(vm.IsRefreshingInBackground);
+        Assert.Equal("点击「🔄 刷新」加载本地模型", vm.EmptyMessage);
+        Assert.Empty(vm.FilteredModels);
+    }
+
+    [Fact]
+    public void Constructor_NoReloadCalled_ReloadCommandCanExecute()
+    {
+        // 默认状态 — 「🔄 刷新」按钮可点(canExecute !IsBusy)
+        var vm = new LocalModelsViewModel(SettingsWith(@"Z:\fake"), new FakeScanner());
+
+        Assert.True(vm.ReloadCommand.CanExecute(null));
+    }
 }
 
 internal sealed class FakeScanner : ModelFilesystemScanner

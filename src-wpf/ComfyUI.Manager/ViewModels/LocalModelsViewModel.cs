@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -26,12 +27,27 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     private readonly RelayCommand _lookupCivitAiCommand;
     private readonly HashSet<string> _lookupsInFlight = new();
     private List<LocalModelCard> _allCards = new();
+    /// <summary>v1.0.0 Console panel:用户 ✕ 关闭意图必须保留,下次 Reload 复位。
+    /// 三态可见性 = !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0)。</summary>
+    private bool _userHiddenConsole;
+    /// <summary>v1.0.0 Console panel:内部 Progress&lt;string&gt; sink — 接收 scanner [hash]/[match]/[preview] 行,
+    /// 推 ConsoleLog ObservableCollection。ctor 构造时捕获 UI SynchronizationContext
+    /// 自动 marshal 回 UI 线程(同 v0.6.18.4 BulkUpdate 模式)。</summary>
+    private readonly IProgress<string> _consoleSink;
     /// <summary>v1.0.0 T-D5:scanner streaming emit 的累加器 — Phase 1 一波填满,Phase 2 增量覆盖同 SourceId 行。
     /// Task.Run 完后 final 列表覆盖这里(streaming 可能有 race 覆盖错),作为 authoritative result。</summary>
     private readonly List<DownloadedModel> _streamedRaw = new();
 
     public ObservableCollection<LocalModelCard> FilteredModels { get; } = new();
     public ObservableCollection<KindChip> KindChips { get; } = new();
+    /// <summary>v1.0.0 Console panel:[hash]/[match]/[preview] 实时日志流。
+    /// 镜像 v0.6.18.4 批量更新 Console 模式 — Progress&lt;string&gt; 构造时捕获 UI SynchronizationContext,
+    /// 自动 marshal 回 UI 线程避免 STA 跨线程异常(同 v0.6.19.x hotfix)。</summary>
+    public ObservableCollection<string> ConsoleLog { get; } = new();
+    /// <summary>v1.0.0 三态可见性:用户未关 && (busy 或 有内容)。Start() 复位 _userHiddenConsole,
+    /// 用户点 ✕ 设 true(下次 Start 才重新显示,意图优先)。</summary>
+    public bool IsConsoleVisible =>
+        !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0);
     public string? EmptyMessage { get; private set; }
     public bool IsBusy { get; private set; }
     /// <summary>v1.0.0 T2:View 绑 IsEmpty 切 empty state vs card grid(NullToVisibilityConverter 不支持 invert 参数)。</summary>
@@ -79,6 +95,24 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         _lookup = lookup;
         _hashCache = hashCache;
         _orchestrator = orchestrator;
+        // v1.0.0 Console panel:内部 sink 接收 scanner progress 行,推 ConsoleLog。
+        // ctor 在 UI 线程跑 → Progress 捕获 UI SyncContext → Report 自动 marshal 回 UI 线程。
+        _consoleSink = new Progress<string>(line =>
+        {
+            ConsoleLog.Add(line);
+            PropertyChanged?.Invoke(this, new(nameof(IsConsoleVisible)));
+        });
+        // v1.0.0 Console panel:ConsoleLog.CollectionChanged 也触发 IsConsoleVisible 重算
+        // (覆盖 ClearConsoleLog 等直接改 ObservableCollection 的路径)。
+        ConsoleLog.CollectionChanged += (_, _) =>
+            PropertyChanged?.Invoke(this, new(nameof(IsConsoleVisible)));
+        // v1.0.0.x:用户反馈"本地模型默认情况刷新操作不自动启动,只有手动启动才去进行刷新操作"。
+        // VM ctor 设 EmptyMessage placeholder 提醒用户点「🔄 刷新」按钮 — 不再 fire-and-forget 触发
+        // ReloadAsync。IsBusy 默认 false → ShowLoadingOverlay / IsRefreshingInBackground 都 false,
+        // 用户首屏看到 placeholder 提示而非 loading 圈。
+        EmptyMessage = "点击「🔄 刷新」加载本地模型";
+        PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
+        PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
         _reloadCommand = new RelayCommand(_ => ReloadAsync(), _ => !IsBusy);
         // v1.0.0 T11:lookup 命令 — canExecute 守卫 (Source="Local" + lookup service 可用 + 无 in-flight)。
         // Button Visibility 用 IsLookupEnabled(card) 计算属性绑(避免新 converter,逻辑留 VM 可测)。
@@ -98,8 +132,6 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                 return !_lookupsInFlight.Contains(lc.Title);
             });
     }
-
-    public void Initialize() => ReloadAsync();
 
     /// <summary>v1.0.0 T13-7:reload + 可选 progress forward 到 scanner(hash + match + cover 下载进度)。
     /// 调用方(Initialize / 按钮 click)不传 progress → 走 null 路径,scanner 内部 ctx.Progress 也是 null,
@@ -134,10 +166,34 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         }
         else
         {
+            // v1.0.0 Console panel:重置 console 状态 — 清旧行 + 复位 _userHiddenConsole 让 ✕ 关闭意图在下一次 Reload 解除。
+            ConsoleLog.Clear();
+            _userHiddenConsole = false;
+            PropertyChanged?.Invoke(this, new(nameof(IsConsoleVisible)));
+
             // v1.0.0 T-D5:用 _streamedRaw 累加 scanner stream 出来的 entries — Phase 1 一波填满,
             // Phase 2 增量覆盖同 SourceId 行;scan 完成后用 final Raw 校正(可能并发 race 的覆盖)。
             _streamedRaw.Clear();
             var modelUpdated = new Progress<DownloadedModel>(OnModelStreamed);
+
+            // v1.0.0 Console panel:链式转发 scanner progress 行到 (a) 本 VM 内部 _consoleSink → ConsoleLog
+            // (用户可见 UI 面板) + (b) 调用方传入的 progress(MainVM 转发到自己的 logger)。
+            // progress 为 null 时直接用 _consoleSink — 没调用方要转发。两条路径都 Push 到 UI 线程,
+            // 顺序由各自 Post 排队决定,可接受(行号按 scanner emit 顺序,只是 UI 显示可能交错)。
+            IProgress<string> ctxProgress;
+            if (progress is null)
+            {
+                ctxProgress = _consoleSink;
+            }
+            else
+            {
+                var outer = progress;
+                ctxProgress = new Progress<string>(line =>
+                {
+                    _consoleSink.Report(line);
+                    outer.Report(line);
+                });
+            }
 
             ScanContext? ctx = null;
             if (_hashCache is not null && _orchestrator is not null)
@@ -146,13 +202,14 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                 {
                     HashCache = _hashCache,
                     Matcher = _orchestrator,
-                    Progress = progress,
+                    Progress = ctxProgress,
                     ModelUpdated = modelUpdated,
                 };
             }
             else
             {
                 // v1.0.0 T-D5:即使没 hash+match,仍用 streaming 路径 — 一致性 + 让用户秒级看到卡。
+                // 没 hash+match 时 scanner 不 emit [hash]/[match] 行,console 会空 — 这是正确行为。
                 ctx = new ScanContext { ModelUpdated = modelUpdated };
             }
 
@@ -362,6 +419,14 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         _reloadCommand.RaiseCanExecuteChanged();
         _lookupCivitAiCommand.RaiseCanExecuteChanged();
         PropertyChanged?.Invoke(this, new(nameof(IsBusy)));
+    }
+
+    /// <summary>v1.0.0 Console panel:用户点 ✕ — 清空行 + 记录"用户主动隐藏"意图。
+    /// 下次 Start()/Reload() 重置 _userHiddenConsole → IsConsoleVisible 自动重算。</summary>
+    public void ClearConsoleLog()
+    {
+        _userHiddenConsole = true;
+        ConsoleLog.Clear();
     }
 }
 

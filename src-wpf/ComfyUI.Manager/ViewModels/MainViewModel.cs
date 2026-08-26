@@ -736,9 +736,13 @@ public class MainViewModel : ViewModelBase
     private void ShowLocalModels()
     {
         CurrentSection = MainSection.LocalModels;
-        // 用户反馈 "每次点到本地模型都会刷新,这其实不对; 刷新应该是后台刷新"。
-        // 缓存已构造的 VM:用户切走再切回 tab 零 IO,直接显示已缓存的 AllCards;
-        // 首次进 tab 才 fire-and-forget 跑首次 ReloadAsync(scanner 扫磁盘 + 4 matchers 跑)。
+        // v1.0.0.x:用户反馈 "本地模型默认情况刷新操作不自动启动,只有手动启动才去进行刷新操作。
+        // 刷新也是后台执行,不要让前台冻住"。
+        // 修复:VM ctor 设 EmptyMessage placeholder 提醒点「🔄 刷新」;ShowLocalModels **不**
+        // fire-and-forget 触发 ReloadAsync。后续切回(VM 已 cache)也直接显示缓存数据,零 IO。
+        // 用户点 toolbar 「🔄 刷新」按钮 → _reloadCommand → ReloadAsync → Task.Run 后台 scanner,
+        // toolbar 显示 "刷新中…" 细指示,前台 Grid 仍可滚动/点击(loading overlay 只在
+        // IsBusy && 已有数据为空时才挡,本次首屏已有数据是空 → 不会有 loading 圈)。
         bool isFirstVisit = _localModelsViewModel is null;
         if (isFirstVisit)
         {
@@ -766,19 +770,8 @@ public class MainViewModel : ViewModelBase
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);
         }
-        // 用户反馈 "每次点到本地模型都会刷新,这其实不对; 刷新应该是后台刷新":
-        // - 首次进入(VM 刚 new)→ fire-and-forget 触发首次 ReloadAsync(scanner 扫磁盘 +
-        //   matcher 跑 hash/safetensors/companion/filename)。fire-and-forget 不阻塞 UI —
-        //   toolbar 显示 "刷新中…" 细指示,VM.IsRefreshingInBackground=true。
-        // - 后续进入(VM 已 cache)→ 不触发,直接用 _localModelsViewModel.AllCards 已缓存的
-        //   数据;用户切走再切回 tab 零延迟无 IO。新数据(用户下载了新模型放进目录)需
-        //   通过 toolbar "🔄 刷新" 按钮显式触发 ReloadCommand,或后续接入"下载完成 → vm
-        //   通知 reload" 钩子。设计 trade-off:用户多点击一次刷新换来不反复扫盘;
-        //   VM 内部 IsBusy 守卫保留防用户反复点刷新按钮并发 scan。
-        if (isFirstVisit)
-        {
-            _ = _localModelsViewModel.ReloadAsync();
-        }
+        // v1.0.0.x:删 fire-and-forget `_ = _localModelsViewModel.ReloadAsync()` — 默认不刷。
+        // 用户手动点 toolbar 「🔄 刷新」按钮 → _reloadCommand → ReloadAsync → 后台 Task.Run。
         CurrentView = _localModelsView;
     }
 
