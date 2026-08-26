@@ -241,8 +241,10 @@ public class TemplateConfigTests
     [Fact]
     public void LocalDirExists_AbsolutePathExists_True()
     {
+        // v1.0.0.x hotfix:目录非空才算存在,加 .git 子目录模拟已 clone 产物
         var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-test-" + Path.GetRandomFileName());
         Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(Path.Combine(dir, ".git"));
         try
         {
             var cfg = new TemplateConfig { LocalSourceDir = dir };
@@ -250,7 +252,7 @@ public class TemplateConfigTests
             Assert.True(cfg.LocalDirExists(""));   // 空 anchor → AppContext.BaseDirectory fallback
             Assert.True(cfg.LocalDirExists(@"D:\some\nonexistent\anchor"));  // absolute path 不看 anchor
         }
-        finally { try { Directory.Delete(dir); } catch { } }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
     }
 
     [Fact]
@@ -262,6 +264,67 @@ public class TemplateConfigTests
     }
 
     [Fact]
+    public void LocalDirExists_EmptyDirectory_False()
+    {
+        // v1.0.0.x hotfix: 用户反馈"检查文件不能只检查目录在不在"。
+        // 空目录(用户手建 / git clone 中途中断) → 算缺失,badge 显示"本地目录为空"。
+        var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-empty-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var cfg = new TemplateConfig { LocalSourceDir = dir };
+            Assert.False(cfg.LocalDirExists(null));
+        }
+        finally { try { Directory.Delete(dir); } catch { } }
+    }
+
+    [Fact]
+    public void LocalDirExists_DirectoryWithGitSubdir_True()
+    {
+        // 标准 git clone 产物 → .git 子目录就足以判定就位(即使其它文件还没完全 clone,
+        // 因为 .git 是 clone 第一步产物)。这是 shipped ComfyUI/A1111 等路径的典型形态。
+        var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-git-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(Path.Combine(dir, ".git"));
+        try
+        {
+            var cfg = new TemplateConfig { LocalSourceDir = dir };
+            Assert.True(cfg.LocalDirExists(null));
+        }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
+    }
+
+    [Fact]
+    public void LocalDirExists_DirectoryWithOneFile_True()
+    {
+        // 用户手动 copy / 部分下载 — 至少一个文件即判定就位
+        var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-onefile-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "README.md"), "fake");
+        try
+        {
+            var cfg = new TemplateConfig { LocalSourceDir = dir };
+            Assert.True(cfg.LocalDirExists(null));
+        }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
+    }
+
+    [Fact]
+    public void LocalDirExists_DirectoryWithOneSubdirNoGit_True()
+    {
+        // 子目录(非 .git)算 entry,目录非空 → 就位
+        var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-subdir-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(Path.Combine(dir, "submodule"));
+        try
+        {
+            var cfg = new TemplateConfig { LocalSourceDir = dir };
+            Assert.True(cfg.LocalDirExists(null));
+        }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
+    }
+
+    [Fact]
     public void LocalDirExists_RelativePath_WithAnchorThatExists_True()
     {
         var dirName = "tmplcfg-rel-" + Path.GetRandomFileName();
@@ -270,6 +333,7 @@ public class TemplateConfigTests
         // 在 anchor 下创建子目录,LocalSourceDir 用子目录名 → resolve = anchor/dirName
         var subDir = Path.Combine(anchor, dirName);
         Directory.CreateDirectory(subDir);
+        Directory.CreateDirectory(Path.Combine(subDir, ".git"));   // 非空
         try
         {
             var cfg = new TemplateConfig { LocalSourceDir = dirName };
@@ -288,15 +352,17 @@ public class TemplateConfigTests
     [Fact]
     public void LocalDirBadge_ExistsDirectory_ReturnsEmpty_HintStringMatches()
     {
+        // v1.0.0.x hotfix:目录非空才算存在,加 .git 子目录
         var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-badge-" + Path.GetRandomFileName());
         Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(Path.Combine(dir, ".git"));
         try
         {
             var cfg = new TemplateConfig { LocalSourceDir = dir };
             Assert.Equal("", cfg.LocalDirBadge(null));
             Assert.Equal("本地目录为空", TemplateConfig.LocalDirBadgeHint);
         }
-        finally { try { Directory.Delete(dir); } catch { } }
+        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json.Serialization;
 using ComfyUI.Manager.Services;
 
@@ -98,17 +99,29 @@ public class TemplateConfig
 
     /// <summary>
     /// v1.0.0.x:本地源码目录是否存在(走 <see cref="TemplatePathResolver.Resolve"/> 把
-    /// <c>LocalSourceDir</c> 解析为绝对路径,再 <see cref="Directory.Exists"/> 检查)。
+    /// <c>LocalSourceDir</c> 解析为绝对路径,再检查目录 + 内部 entries)。
     /// 由 TemplateManagementViewModel 传 <see cref="ComfyUI.Manager.Infrastructure.Settings.SystemTemplateLibraryDir"/>
     /// 作 anchor(template 列表 vs 磁盘检查,内置模板路径 anchor 改内置后由 SettingsDefaults
     /// seed)。
     /// 不带 <c>[JsonIgnore]</c> — 实例方法不是 property,JsonSerializer 自然忽略。
+    ///
+    /// 判定规则 — 严格于 <see cref="Directory.Exists"/>:
+    /// <list type="number">
+    ///   <item>目录不存在 → false</item>
+    ///   <item>目录存在但内部为空(用户手建空目录 / git clone 中途中断)— false</item>
+    ///   <item>目录存在且有 <c>.git</c> 子目录(典型 git clone 产物)— true</item>
+    ///   <item>目录存在且至少有一个文件/子目录(用户手动 copy / 部分下载)— true</item>
+    /// </list>
     /// </summary>
     public bool LocalDirExists(string? systemTemplateLibraryDir)
     {
         var resolved = TemplatePathResolver.Resolve(LocalSourceDir, systemTemplateLibraryDir);
         if (string.IsNullOrWhiteSpace(resolved)) return false;
-        return Directory.Exists(resolved);
+        if (!Directory.Exists(resolved)) return false;
+        // v1.0.0.x hotfix:用户反馈"检查文件不能只检查目录在不在"。
+        // .git 优先(标准 git clone 产物),其次只要目录非空就算有内容。
+        if (Directory.Exists(Path.Combine(resolved, ".git"))) return true;
+        return Directory.EnumerateFileSystemEntries(resolved).Any();
     }
 
     /// <summary>
