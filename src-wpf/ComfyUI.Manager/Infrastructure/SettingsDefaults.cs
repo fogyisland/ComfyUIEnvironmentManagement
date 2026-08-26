@@ -13,10 +13,13 @@ namespace ComfyUI.Manager.Infrastructure;
 /// 并给 template 类 path 字段填上 package root 下的默认子目录名。
 ///
 /// 区分两类 path:
-/// - **template paths** (TemplatePythonDir) — 默认填子目录名,
-///   因为这些是 "包自带的资源" 类的东西(模板 Python 源)应该落在程序根下,
+/// - **template paths** (TemplatePythonDir / SystemTemplateLibraryDir) — 默认填子目录名,
+///   因为这些是 "包自带的资源" 类的东西(模板 Python 源 / 系统模板库)应该落在程序根下,
 ///   不需要跑到额外的地方。ComfyUI 模板源目录由 Settings.Templates["ComfyUI"].LocalSourceDir
 ///   承载(v1.0.0 multi-template 重构),老 template_comfyui_dir 字段在 T12 移除。
+///   v1.0.0.x #569 phase 2:SystemTemplateLibraryDir 空时 seed 相对 "ENVTemplate",
+///   让 TemplatePathResolver.Resolve 拼出 <projectRoot>/ENVTemplate/<Kind>,
+///   符合"项目目录+envtemplate+模板路径"约定。
 /// - **user-configured paths** (EnvsDir / GlobalNodesDir) — 默认保持空,
 ///   因为这些是用户主动管理的数据(env 列表 / 全局 catalog),不预创建不预填,
 ///   留到用户配置后再用。服务使用点(EnvCreatorService)在 path 为空时主动报错。
@@ -28,6 +31,8 @@ namespace ComfyUI.Manager.Infrastructure;
 /// 默认子目录名:
 ///   - Python    : 模板 Python 根(指向 package 自带的 portable Python/ 目录,
 ///                 内含 3.10/3.11/.../python.exe)
+///   - ENVTemplate: 系统模板库根(v1.0.0.x seed,放所有内置 + 用户模板源码 ——
+///                 ComfyUI / A1111 / Forge / SwarmUI / OpenVoice / Whisper / CoquiTTS / Bark)
 ///   - ComfyUITemplate : shared 布局的 ComfyUI 源(package root/ComfyUITemplate/,v1.0.0+ 从 `ComfyUI/` 重命名)
 ///   - Envs      : EnvCreatorService 创建 env 时放这里(空 → 不预创建)
 ///   - Nodes     : 全局 catalog 节点根(空 → 不预创建)
@@ -43,6 +48,15 @@ public static class SettingsDefaults
 {
     public const string TemplatePythonSubdir = "Python";
     public const string TemplateComfyuiSubdir = "ComfyUITemplate";
+    /// <summary>
+    /// v1.0.0.x #569 phase 2: 系统模板库目录的默认相对子目录名。
+    /// 用户原话"新建的时候发现模板源路径一样不对,按道理他应该是
+    /// 项目目录 + envtemplate + 模板路径"。空 settings + 模板解析 fallback
+    /// 到 AppContext.BaseDirectory(= bin/Debug/net8.0-windows/)污染 dev build,
+    /// 所以空时主动 seed 相对 "ENVTemplate",让 TemplatePathResolver.Resolve
+    /// 在运行时拼出 &lt;projectRoot&gt;/ENVTemplate/&lt;Kind&gt;。
+    /// </summary>
+    public const string SystemTemplateLibrarySubdir = "ENVTemplate";
     public const string EnvsSubdir = "Envs";
     public const string GlobalNodesSubdir = "Nodes";
     public const string LocalNodesSubdir = "LocalNodes";
@@ -132,6 +146,11 @@ public static class SettingsDefaults
 
         s.TemplatePythonDir = Resolve(s.TemplatePythonDir, TemplatePythonSubdir, projectRoot);
         // 注:旧单行 s.TemplateComfyuiDir = Resolve(...) 删除 — 现由 Templates dict 接管。
+        // v1.0.0.x #569 phase 2: SystemTemplateLibraryDir 空时 seed 相对 "ENVTemplate"。
+        // 老用户 settings.json 里若写了大/小写不一致的 "envtemplate" 也迁过来。绝对路径
+        // 在 projectRoot 下 → 转相对(剥前缀),外面 → 保留(用户故意选的别处)。
+        s.SystemTemplateLibraryDir = MigrateOldSubdirName(s.SystemTemplateLibraryDir, "envtemplate", SystemTemplateLibrarySubdir);
+        s.SystemTemplateLibraryDir = Resolve(s.SystemTemplateLibraryDir, SystemTemplateLibrarySubdir, projectRoot);
         s.EnvsDir = MigrateOnly(s.EnvsDir, projectRoot);
         s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
         s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);

@@ -88,8 +88,14 @@ public partial class App : Application
             System.Diagnostics.Debug.WriteLine($"splash failed: {ex.Message}");
         }
 
-        var projectRoot = Path.GetDirectoryName(
-            Environment.ProcessPath)!.TrimEnd('\\');
+        // v1.0.0.x bug fix:Path.GetDirectoryName(Environment.ProcessPath) 在 dev 模式
+        // 直接 launch bin/Debug/net8.0-windows/ComfyUI.Manager.exe 时,把 projectRoot 算成
+        // bin/Debug/net8.0-windows/ — 结果 <projectRoot>/config/ 和 <projectRoot>/.manager/
+        // 被错误地写到 bin 输出目录里,污染每个 dev build(每次 build 重新清空 user data)。
+        // 修法:从 exe 所在目录向上 walk 找真项目根(marker = src-wpf/ 子目录),只在上方有
+        // src-wpf/ 时才走 walk-up 路径;否则(release publish)fallback 回到原行为 —
+        // publish 出来的 .exe 旁边没有 src-wpf/,直接以 exe dir 作 root 是 release 的预期。
+        var projectRoot = ResolveDevProjectRoot(Environment.ProcessPath);
 
         // M5.2: WPF 完全独立 —— 不启动任何 Python control service。
         // 直连 SQLite + 直 Process.Start ComfyUI + 直调 git。
@@ -601,6 +607,44 @@ public partial class App : Application
             // 解析 / IO 异常 → 静默回退到默认 loader(G6)。
         }
         return null;
+    }
+
+    /// <summary>
+    /// v1.0.0.x:解析 projectRoot —— dev 模式从 exe 目录向上 walk 找 <c>src-wpf/</c> 子目录
+    /// 作 marker,release publish 模式下 exe 旁边没有 src-wpf/,fallback 回 exe 目录。
+    ///
+    /// 背景:<see cref="Environment.ProcessPath"/> 在 dev 指向
+    /// <c>bin/Debug/net8.0-windows/ComfyUI.Manager.exe</c>,直接 <c>Path.GetDirectoryName</c>
+    /// 拿到的是 bin 输出目录 → <c>LocalDataPaths(projectRoot)</c> 把 <c>config/</c> 和
+    /// <c>.manager/</c> 写到 bin 输出里,污染每个 dev build(用户 git pull + dotnet build
+    /// 后 settings.inf / state.db 还在,但 IDE Rebuild 会清 bin/,用户配置无声丢失)。
+    ///
+    /// 修法:dev 模式(dotnet build 出来的 .exe)周围有 <c>src-wpf/</c> 标记(项目根的唯一
+    /// 标志),向上 walk 直到找到含 <c>src-wpf/</c> 的目录,那就是真项目根。
+    /// Release publish 模式(<c>bin/Release/.../publish/ComfyUI.Manager.exe</c>)旁边
+    /// 没有 <c>src-wsp/</c>,原 <c>Path.GetDirectoryName</c> 行为就是 publish 想要的(以
+    /// exe 旁目录作 root)。
+    ///
+    /// 上限 8 层防 OS 边缘路径(<c>C:\</c> / <c>/</c>)无限 walk;找不到 fallback 到
+    /// exe 目录,保持原行为不破 release。
+    /// </summary>
+    internal static string ResolveDevProjectRoot(string? processPath)
+    {
+        var exeDir = string.IsNullOrWhiteSpace(processPath)
+            ? AppContext.BaseDirectory
+            : Path.GetDirectoryName(processPath) ?? AppContext.BaseDirectory;
+        var probe = exeDir.TrimEnd('\\');
+        for (var i = 0; i < 8 && !string.IsNullOrEmpty(probe); i++)
+        {
+            if (Directory.Exists(Path.Combine(probe, "src-wpf")))
+            {
+                return probe.TrimEnd('\\');
+            }
+            var parent = Directory.GetParent(probe);
+            if (parent is null) break;
+            probe = parent.FullName;
+        }
+        return exeDir.TrimEnd('\\');
     }
 
     private static string ResolveGitExe(string projectRoot, string? settingsGitExe = null)

@@ -500,4 +500,76 @@ public class SettingsDefaultsTests
         // (作为 sanity check 提醒开发者切换配置后跑 full suite)
         Assert.True(DevMode.IsEnabled);
     }
+
+    // —— v1.0.0.x #569 phase 2: SystemTemplateLibraryDir 默认值 ——
+    // 用户反馈"新建 env 时模板源路径一样不对,按道理应该 = 项目目录 + envtemplate + 模板路径"。
+    // 之前空字段 → TemplatePathResolver fallback 到 AppContext.BaseDirectory(= bin/Debug/...)污染 dev。
+    // SettingsDefaults.Apply 现在空字段 seed 相对 "ENVTemplate",resolve 拼出 <projectRoot>/ENVTemplate/<Kind>。
+
+    [Fact]
+    public void Apply_SystemTemplateLibraryDir_Empty_DefaultsToRelativeEnvTemplate()
+    {
+        // 空 → seed 相对 "ENVTemplate" (template-style path,跟 LocalNodeDirectory / WorkflowsDirectory 同款)
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("ENVTemplate", s.SystemTemplateLibraryDir);
+    }
+
+    [Fact]
+    public void Apply_SystemTemplateLibraryDir_LegacyLowercase_MigratedToEnvTemplate()
+    {
+        // 老 settings 里大/小写不一致的 "envtemplate" → 迁到 "ENVTemplate"
+        var s = new Settings
+        {
+            SystemTemplateLibraryDir = "envtemplate",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("ENVTemplate", s.SystemTemplateLibraryDir);
+    }
+
+    [Fact]
+    public void Apply_SystemTemplateLibraryDir_PreservesUserCustomRelativePath()
+    {
+        // 用户主动填了相对路径(非默认)→ 保留
+        var s = new Settings
+        {
+            SystemTemplateLibraryDir = "my-templates",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("my-templates", s.SystemTemplateLibraryDir);
+    }
+
+    [Fact]
+    public void Apply_SystemTemplateLibraryDir_AbsoluteUnderProjectRoot_MigratedToRelative()
+    {
+        // 用户老 settings 写了绝对路径且在 projectRoot 下 → 转相对(剥前缀)
+        var s = new Settings
+        {
+            SystemTemplateLibraryDir = @"D:\ToolDevelop\ComfyUI\old-ENVTemplate",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("old-ENVTemplate", s.SystemTemplateLibraryDir);
+    }
+
+    [Fact]
+    public void Apply_SystemTemplateLibraryDir_AbsoluteOutsideProjectRoot_Preserved()
+    {
+        // 用户故意选了别处的绝对路径 → 保留(不强行改)
+        var s = new Settings
+        {
+            SystemTemplateLibraryDir = @"E:\external\env-templates",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(@"E:\external\env-templates", s.SystemTemplateLibraryDir);
+    }
 }

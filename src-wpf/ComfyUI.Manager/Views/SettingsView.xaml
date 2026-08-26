@@ -420,8 +420,10 @@
                  老用户值在)但 Settings 页不再暴露编辑入口(用户原话"干脆这个模板目录就不能设置,
                  就直接内置到当前系统中")。TemplatePathResolver 仍走 Settings 字段 →
                  AppContext.BaseDirectory fallback 链,行为不变。新装用户 settings.inf 默认
-                 填 <projectRoot>/ENVTemplate (SettingsDefaults seed)。模板管理页看本地
-                 目录是否存在用 TemplateConfig.LocalDirBadge()。 -->
+                 填相对 "ENVTemplate"(SettingsDefaults seed);运行时 TemplatePathResolver
+                 按 SystemTemplateLibraryDir("ENVTemplate")锚定 → 解析为
+                 <projectRoot>/ENVTemplate/<Kind>,符合"项目目录+envtemplate+模板路径"约定。
+                 模板管理页看本地目录是否存在用 TemplateConfig.LocalDirBadge()。 -->
 
             <!-- v1.0.0.x: 模板 Python 目录 / 默认 Python 版本 两个 legacy 字段已从 UI 移除 —
                  模板 Python 目录早被「系统模板库目录」取代;默认 Python 版本已迁到下方
