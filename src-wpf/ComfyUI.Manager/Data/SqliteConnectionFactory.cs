@@ -149,6 +149,14 @@ public sealed class SqliteConnectionFactory
                 pid INTEGER NOT NULL,
                 port INTEGER NOT NULL,
                 started_at TIMESTAMP NOT NULL
+            );
+            -- v1.0.0.x: 用户为本地模型手设的本地绝对路径覆盖(默认 = scanner 推算的 FullPath)。
+            -- key = DownloadedModel.SourceId;UI 在 LocalModelsView 显示 + 提供编辑 dialog。
+            -- Phase B (后续): EnvCreatorService / ProcessLauncher 用 override_path 替代扫描路径做 junction。
+            CREATE TABLE IF NOT EXISTS local_model_overrides (
+                source_id TEXT PRIMARY KEY,
+                override_path TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );";
         cmd.ExecuteNonQuery();
 

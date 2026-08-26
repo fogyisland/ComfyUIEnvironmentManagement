@@ -472,6 +472,12 @@ public partial class App : Application
             // 两个按钮静默 no-op(只剩 WARN log "skipped (updater 未注入)")。
             templateSourceUpdater: templateSourceUpdater);
 
+        // v1.0.0.x: 用户覆盖本地路径 repo factory — MainViewModel 在 ShowLocalModels 懒构造
+        // LocalModelsViewModel 时调 factory 拿 repo(透传给 LocalModelsViewModel 的 _overridesRepo)。
+        // 复用同一份 dbFactory(SqliteConnectionFactory)— schema 在 SqliteConnectionFactory.InitSchemaIfMissing
+        // 里已 CREATE local_model_overrides 表。
+        _mainVm.SetLocalModelOverridesFactory(() => new LocalModelOverridesRepository(dbFactory));
+
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
         // v0.6.9.1 修复:Splash 先于 MainWindow Show,WPF 默认把第一个 Show 的窗口

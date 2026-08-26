@@ -252,7 +252,11 @@ public sealed record LocalModelCard(
     CivitAiDetailDto? MatchedDetail,
     /// <summary>v1.0.0 T13:首个命中 match 的 MatchSource enum 值(跟 MatchedDetail 同步 — 同时 null 或同时非 null)。
     /// 顺序 Hash → SafetensorsMetadata → CompanionJson → FilenameFuzzy。</summary>
-    MatchSource? MatchSource)
+    MatchSource? MatchSource,
+    /// <summary>v1.0.0.x: 用户手动覆盖的本地绝对路径(从 <c>local_model_overrides</c> 表读)。
+    /// null = 用 scanner 推算的 FullPath(默认)。非空时 UI 在卡片显示这条 + [复制]
+    /// + [编辑/清除] 按钮;后续 env 启动(junction)用这条替代扫描路径。</summary>
+    string? LocalPathOverride = null)
 {
     /// <summary>v1.0.0 T-D5:streaming scanner Phase 2 更新 match status — 返回新 record(positional record
     /// 不可变,mutation 要重建)。调用方负责在 _allCards + FilteredModels 两处用旧实例找 index 替换成新实例。
@@ -260,6 +264,11 @@ public sealed record LocalModelCard(
     /// 不同阶段产出形状不同:hash match 阶段只填 Hash,safetensors 阶段填 Hash+MatchedDetail)。</summary>
     public LocalModelCard WithMatchStatus(string? hash, CivitAiDetailDto? matchedDetail, MatchSource? matchSource)
         => this with { Hash = hash, MatchedDetail = matchedDetail, MatchSource = matchSource };
+
+    /// <summary>v1.0.0.x: 用户改 override path 后 rebuild card — 用旧 card 找 index
+    /// 替换成新 card(保留其他字段不变)。Empty/null overridePath 视作「恢复默认」。</summary>
+    public LocalModelCard WithLocalPathOverride(string? overridePath)
+        => this with { LocalPathOverride = string.IsNullOrEmpty(overridePath) ? null : overridePath };
 }
 
 /// <summary>v0.6.20:meta.json sidecar 反序列化形状。

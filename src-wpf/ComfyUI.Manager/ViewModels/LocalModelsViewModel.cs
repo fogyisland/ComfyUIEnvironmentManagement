@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Services.Civitai;
@@ -25,6 +26,9 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     private readonly CivitaiMatcherOrchestrator? _orchestrator;
     private readonly RelayCommand _reloadCommand;
     private readonly RelayCommand _lookupCivitAiCommand;
+    // v1.0.0.x: 用户手动覆盖本地路径 repository — 持久化到 SQLite local_model_overrides。
+    // nullable 兼容(测试 ctor 不传 repo → 「改路径」命令 disable)。
+    private readonly LocalModelOverridesRepository? _overridesRepo;
     private readonly HashSet<string> _lookupsInFlight = new();
     private List<LocalModelCard> _allCards = new();
     /// <summary>v1.0.0 Console panel:用户 ✕ 关闭意图必须保留,下次 Reload 复位。
@@ -87,7 +91,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         AppLogger? logger = null,
         CivitAiLookupService? lookup = null,
         CivitaiHashCache? hashCache = null,
-        CivitaiMatcherOrchestrator? orchestrator = null)
+        CivitaiMatcherOrchestrator? orchestrator = null,
+        LocalModelOverridesRepository? overridesRepo = null)
     {
         _settings = settings;
         _scanner = scanner;
@@ -95,6 +100,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         _lookup = lookup;
         _hashCache = hashCache;
         _orchestrator = orchestrator;
+        // v1.0.0.x: 用户本地路径覆盖 repo(可为 null — 测试场景 / 老 DI 路径)。
+        _overridesRepo = overridesRepo;
         // v1.0.0 Console panel:内部 sink 接收 scanner progress 行,推 ConsoleLog。
         // ctor 在 UI 线程跑 → Progress 捕获 UI SyncContext → Report 自动 marshal 回 UI 线程。
         _consoleSink = new Progress<string>(line =>
@@ -131,6 +138,66 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                 if (_lookup is null) return false;
                 return !_lookupsInFlight.Contains(lc.Title);
             });
+
+        // v1.0.0.x: 「编辑本地路径」命令 — 点 [📁] 按钮时执行。
+        // XAML 绑 EditLocalPathCommand,parameter = LocalModelCard。
+        // 当前实现:弹 modal EditLocalPathDialog,用户输入新路径 → SetOverridePath。
+        // 这里只 expose command,实际 UI 由 dialog 触发 SetOverridePath 完成持久化。
+    }
+
+    /// <summary>v1.0.0.x: 用户改某张卡的本地绝对路径覆盖 → 写 DB + 重建 card。
+    /// empty/null path 视作「清除覆盖,恢复 scanner FullPath」。
+    /// 调用方(EditLocalPathDialog)负责先弹窗收集用户输入,再 invoke 本方法。</summary>
+    public void SetOverridePath(string sourceId, string? overridePath)
+    {
+        if (_overridesRepo is null)
+        {
+            _logger?.Warn("local-models", "SetOverridePath skipped: overrides repo not injected");
+            return;
+        }
+        if (string.IsNullOrEmpty(sourceId)) return;
+        try
+        {
+            _overridesRepo.Upsert(sourceId, overridePath);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("local-models", $"SetOverridePath failed: {ex.Message}", ex);
+            return;
+        }
+
+        // 重建 _allCards + FilteredModels 里对应 card
+        var idx = _allCards.FindIndex(c => c.SourceId == sourceId);
+        if (idx < 0) return;
+        var oldCard = _allCards[idx];
+        var newCard = oldCard.WithLocalPathOverride(overridePath);
+        _allCards[idx] = newCard;
+
+        var fIdx = FilteredModels.IndexOf(oldCard);
+        if (fIdx >= 0) FilteredModels[fIdx] = newCard;
+    }
+
+    /// <summary>v1.0.0.x: 用户卡片展示用的「有效本地绝对路径」= override ?? ""。
+    /// 返回 null 让 XAML 用 converter 隐藏 — 没 override 时不显示「覆盖中」徽章。
+    /// </summary>
+    public string? DisplayPath(LocalModelCard card) => card.LocalPathOverride;
+
+    /// <summary>v1.0.0.x: 给 View 查某 SourceId 的 scanner 默认 FullPath — EditLocalPathDialog
+    /// 默认值用。返回 null 当 SourceId 不在 _streamedRaw(scanner 还没 emit 或 reload 中)。
+    /// 取 latest mtime 的 record(跟 GroupToCards 用 latestRecord 一致 — 卡片 preview 也用这条)。
+    /// </summary>
+    public string? GetDefaultFullPath(string sourceId)
+    {
+        if (string.IsNullOrEmpty(sourceId)) return null;
+        // _streamedRaw 在 ReloadAsync 里被 scanner 持续 append,Reload 完后 stable;中间状态查不到
+        // 是合理的,View 在 EditLocalPathDialog.DefaultFullPath 用 override 兜底显示。
+        DownloadedModel? latest = null;
+        foreach (var m in _streamedRaw)
+        {
+            if (m.SourceId != sourceId) continue;
+            if (latest is null || m.DownloadedAt > latest.DownloadedAt) latest = m;
+        }
+        return latest?.FullPath;
     }
 
     /// <summary>v1.0.0 T13-7:reload + 可选 progress forward 到 scanner(hash + match + cover 下载进度)。
@@ -314,8 +381,11 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         if (fIdx >= 0) FilteredModels[fIdx] = newCard;
     }
 
-    private static List<LocalModelCard> GroupToCards(IReadOnlyList<DownloadedModel> raw)
+    private List<LocalModelCard> GroupToCards(IReadOnlyList<DownloadedModel> raw)
     {
+        // v1.0.0.x: 读所有 user-overridden 路径(SourceId → path),GroupToCards 时套到对应 card。
+        // 一次 LoadAll 避免每张卡都打 DB。
+        var overrides = _overridesRepo?.LoadAll() ?? new Dictionary<string, string>();
         return raw
             .GroupBy(d => d.SourceId)
             .Select(g =>
@@ -325,6 +395,7 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                 // (跟 LatestDownloadedAt 一致,卡片显示也是 latest mtime)。
                 var latestRecord = g.OrderBy(d => d.DownloadedAt).Last();
                 var latest = g.Max(d => d.DownloadedAt);
+                overrides.TryGetValue(g.Key, out var pathOverride);
                 return new LocalModelCard(
                     SourceId: g.Key,
                     Title: latestRecord.Title ?? "",
@@ -340,7 +411,9 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                     // 同一文件 hash,MatchSource/MatchedDetail 也一致 — 这里取 latestRecord 即可)。
                     Hash: latestRecord.Hash,
                     MatchedDetail: latestRecord.MatchedDetail,
-                    MatchSource: latestRecord.MatchSource);
+                    MatchSource: latestRecord.MatchSource,
+                    // v1.0.0.x: 用户覆盖的本地绝对路径(null = 用 scanner FullPath)。
+                    LocalPathOverride: string.IsNullOrEmpty(pathOverride) ? null : pathOverride);
             })
             .OrderByDescending(c => c.LatestDownloadedAt ?? DateTime.MinValue)
             .ToList();

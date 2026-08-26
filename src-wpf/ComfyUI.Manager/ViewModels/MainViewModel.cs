@@ -733,6 +733,12 @@ public class MainViewModel : ViewModelBase
     // 单例化无收益 — 每次扫都是一次性 IO。
     internal Func<ModelFilesystemScanner>? LocalModelsScannerFactoryOverride { get; set; }   // v1.0.0:ShowLocalModels 不再每次重 reload → 测试要用 counting scanner 验证"无自动 reload"
 
+    // v1.0.0.x: 用户覆盖本地路径 repo factory — App.xaml.cs 注入 SqliteConnectionFactory 包装的
+    // LocalModelOverridesRepository。nullable 兼容老测试 ctor 路径(直接传 null 不注入)。
+    internal Func<LocalModelOverridesRepository>? _localModelOverridesFactory;
+    internal void SetLocalModelOverridesFactory(Func<LocalModelOverridesRepository> factory)
+        => _localModelOverridesFactory = factory;
+
     private void ShowLocalModels()
     {
         CurrentSection = MainSection.LocalModels;
@@ -765,7 +771,10 @@ public class MainViewModel : ViewModelBase
                 _logger,
                 lookupService,
                 _civitaiHashCache,
-                _civitaiMatcherOrchestrator);
+                _civitaiMatcherOrchestrator,
+                // v1.0.0.x: 用户覆盖本地路径 repo — 持久化到 SQLite local_model_overrides。
+                // 测试 ctor 不传 factory → null → 「改路径」命令 graceful disable。
+                _localModelOverridesFactory?.Invoke());
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);
