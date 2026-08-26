@@ -98,12 +98,12 @@ public class ComfyUIManagerInstaller
         }
         catch (OperationCanceledException)
         {
-            TryDelete(targetDir);
+            TryDeleteQuiet(targetDir);
             return NodeOperationResult.Fail("用户取消");
         }
         catch (Exception ex)
         {
-            TryDelete(targetDir);
+            TryDeleteQuiet(targetDir);
             return NodeOperationResult.Fail($"启动 git 失败:{ex.Message}");
         }
 
@@ -111,7 +111,7 @@ public class ComfyUIManagerInstaller
         {
             var reason = FirstLine(cloneResult.Stderr, cloneResult.Stdout)
                 ?? $"git 退出码 {cloneResult.ExitCode}";
-            TryDelete(targetDir);
+            TryDeleteQuiet(targetDir);
             return NodeOperationResult.Fail($"克隆失败:{reason}");
         }
 
@@ -127,7 +127,7 @@ public class ComfyUIManagerInstaller
             // pip 失败 / 取消 → 回滚(rm -rf 整个 Manager 目录)
             _logger?.Warn("comfyui-manager-install",
                 $"env='{env.Id}' pip 失败(reason={pipResult.Reason}),回滚删除整个 Manager 目录");
-            TryDelete(targetDir);
+            TryDeleteQuiet(targetDir);
             return NodeOperationResult.Fail(pipResult.Reason ?? "pip 失败");
         }
 
@@ -174,12 +174,17 @@ public class ComfyUIManagerInstaller
             return NodeOperationResult.Fail("ComfyUI Manager 未安装");
         }
         _logger?.Info("comfyui-manager-uninstall", $"env='{env.Id}' dir={targetDir}");
-        TryDelete(targetDir);
-        if (Directory.Exists(targetDir))
+        try
         {
-            // TryDelete 内部已经 retry 3 次 + Thread.Sleep,这里还是失败说明
-            // 目录被外部锁(防病毒 / 资源管理器打开)。返 Fail 让用户手动删。
-            return NodeOperationResult.Fail("删除目录失败,请手动删除:" + targetDir);
+            RobustDirectoryDelete.Delete(targetDir);
+        }
+        catch (Exception ex)
+        {
+            // RobustDirectoryDelete 已经重试 3 次 + 递增 backoff,仍失败说明
+            // 目录被外部锁(防病毒 / 资源管理器打开)或长路径以外的 OS-level 错误。
+            // 返 Fail 让用户手动删,但带异常详情方便诊断。
+            return NodeOperationResult.Fail(
+                $"删除目录失败(已重试 3 次):{targetDir} — {ex.Message}");
         }
         return NodeOperationResult.Ok(null);
     }
@@ -204,25 +209,16 @@ public class ComfyUIManagerInstaller
         return exe;
     }
 
-    private static void TryDelete(string dir)
+    /// <summary>
+    /// v1.0.0.x: InstallAsync 的 git 取消 / 失败 / pip 失败回滚路径调它 —— 跟
+    /// Uninstall 路径不一样,失败 silent(已经在返 Fail message 描述原始问题,
+    /// 这里再抛 "删除失败" 反而扰乱日志)。走 RobustDirectoryDelete 共享 helper
+    /// 处理 ReadOnly subdir + 长路径 retry 逻辑。
+    /// </summary>
+    private static void TryDeleteQuiet(string dir)
     {
-        if (!Directory.Exists(dir)) return;
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
-                {
-                    try { File.SetAttributes(f, FileAttributes.Normal); } catch { }
-                }
-                Directory.Delete(dir, recursive: true);
-                return;
-            }
-            catch
-            {
-                Thread.Sleep(50);
-            }
-        }
+        try { RobustDirectoryDelete.Delete(dir); }
+        catch { /* best-effort cleanup */ }
     }
 
     private static string? FirstLine(params string[] texts)

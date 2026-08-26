@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.ViewModels;
 using ComfyUI.Manager.Views;
@@ -408,27 +409,13 @@ public class NodeOperations
         return NodeOperationResult.Ok(versionToRecord);
     }
 
+    // v1.0.0.x: 替换原 TryDelete(只清 file attr 不清 subdir attr,Windows 下
+    // ReadOnly subdir 会"Access denied")→ 用共享 RobustDirectoryDelete。
+    // UninstallAsync 已有 try/catch wrap,失败抛 caller 看到。
     private static void TryDelete(string dir)
     {
-        if (!Directory.Exists(dir)) return;
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                // git 在 .git/objects/pack/ 下的 pack/idx 经常是 readonly,
-                // Directory.Delete 在 Windows 上会"Access denied"。先清 attribute 再删。
-                foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
-                {
-                    try { File.SetAttributes(f, FileAttributes.Normal); } catch { /* ignore */ }
-                }
-                Directory.Delete(dir, recursive: true);
-                return;
-            }
-            catch
-            {
-                Thread.Sleep(50);
-            }
-        }
+        try { RobustDirectoryDelete.Delete(dir); }
+        catch { /* UninstallAsync 自己 catch 后转 Fail message */ }
     }
 
     /// <summary>
