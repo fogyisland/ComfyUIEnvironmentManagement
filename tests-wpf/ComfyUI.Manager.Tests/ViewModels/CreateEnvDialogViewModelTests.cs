@@ -18,18 +18,27 @@ public class CreateEnvDialogViewModelTests
     {
         // v1.0.0 T7:VM 走 Settings.Templates["ComfyUI"] 解析 TemplateSource,
         // 不再读 TemplateComfyuiDir。helper seed 一个默认 ComfyUI entry。
+        // v1.0.0.x: 设 SystemTemplateLibraryDir = temp anchor,创建 anchor/ComfyUITemplate/.git
+        // 模拟 "已 clone 模板" — 否则 CreateEnvDialog 在 ApplyTemplate() 检测本地目录
+        // 为空 → IsSelectedTemplateLocalEmpty=true → CanConfirm=false,所有 positive 测试都 fail。
+        var anchor = Path.Combine(Path.GetTempPath(), "T-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(anchor);
         var s = new Settings
         {
             TemplatePythonDir = templatePythonDir,
             DefaultPythonVersion = defaultPythonVersion,
             PythonInterpreters = pythonInterpreters ?? new(),
             ActivePythonInterpreterName = activePythonInterpreterName,
+            SystemTemplateLibraryDir = anchor,
         };
         s.Templates["ComfyUI"] = new TemplateConfig
         {
             Kind = "ComfyUI", LocalSourceDir = "ComfyUITemplate",
             EntryScript = "main.py", EntryArgs = "--port {port}", ModelsSubdir = "models",
         };
+        var dir = Path.Combine(anchor, "ComfyUITemplate");
+        Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(Path.Combine(dir, ".git"));
         return s;
     }
 
@@ -119,11 +128,20 @@ public class CreateEnvDialogViewModelTests
         var (interpreters, activeName) = ActiveAt(py);
         try
         {
-            var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10", "python", interpreters, activeName), root);
+            // v1.0.0.x: MakeSettings 现在 seed 了 SystemTemplateLibraryDir + ComfyUI 目录(模拟已 clone)。
+            // 测「本地为空」分支需要覆盖 MakeSettings 的 seed:重设 SystemTemplateLibraryDir 到
+            // 不存在的 anchor + 清 ComfyUI 目录。
+            var settings = MakeSettings("3.10", "python", interpreters, activeName);
+            // 注意:MakeSettings 在 random anchor 已建好目录,这里强行设到「不存在」的 anchor 让 LocalDirExists=false
+            settings.SystemTemplateLibraryDir = Path.Combine(Path.GetTempPath(), "no-such-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+            var vm = new CreateEnvDialogViewModel(null!, settings, root);
             Assert.Equal(py, vm.PythonExe);
-            Assert.Equal("", vm.TemplateSource);
+            // v1.0.0.x:TemplateSource 现在始终填 LocalSourceDir(让用户看到「待 clone」目录名),
+            // 即便本地为空 — 不再 blank。警告文案继续显示「目标环境模板本地为空...」。
+            Assert.Equal("ComfyUITemplate", vm.TemplateSource);
             Assert.NotNull(vm.TemplateWarningMessage);
-            Assert.Contains("ComfyUI", vm.TemplateWarningMessage);
+            // v1.0.0.x: 警告文案不再包含 "ComfyUI" 字面(模板本地为空 = 通用文案,不点名)。
+            Assert.Contains("目标环境模板本地为空", vm.TemplateWarningMessage);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -135,12 +153,17 @@ public class CreateEnvDialogViewModelTests
         Directory.CreateDirectory(root);
         try
         {
-            var vm = new CreateEnvDialogViewModel(null!, MakeSettings("3.10"), root);
+            // v1.0.0.x: 强制 SystemTemplateLibraryDir 到「不存在」让 ComfyUI 模板本地检测为空
+            var settings = MakeSettings("3.10");
+            settings.SystemTemplateLibraryDir = Path.Combine(Path.GetTempPath(), "no-such-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+            var vm = new CreateEnvDialogViewModel(null!, settings, root);
             Assert.Equal("", vm.PythonExe);
-            Assert.Equal("", vm.TemplateSource);
+            // v1.0.0.x: TemplateSource 现在始终填 LocalSourceDir,不再 blank。
+            Assert.Equal("ComfyUITemplate", vm.TemplateSource);
             Assert.NotNull(vm.TemplateWarningMessage);
             Assert.Contains("请在设置页添加 Python 解释器", vm.TemplateWarningMessage);
-            Assert.Contains("ComfyUI", vm.TemplateWarningMessage);
+            // v1.0.0.x: "目标环境模板本地为空" 警告追加在 Python 警告之后;不再依赖 "ComfyUI" 字面。
+            Assert.Contains("目标环境模板本地为空", vm.TemplateWarningMessage);
         }
         finally { Directory.Delete(root, recursive: true); }
     }

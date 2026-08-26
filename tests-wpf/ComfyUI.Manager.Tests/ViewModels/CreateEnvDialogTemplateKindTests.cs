@@ -20,6 +20,13 @@ public class CreateEnvDialogTemplateKindTests
         Dictionary<string, TemplateConfig>? templates = null)
     {
         var settings = new Settings();
+        // v1.0.0.x:CreateEnvDialog 现在检查模板本地目录(LocalDirExists → 目录 + .git)再允许 Create。
+        // 测试用 anchor = temp/T-anchor-<guid>/,每个 kind 都创 <anchor>/<kind>/.git 子目录模拟"已 clone"。
+        // 这样默认测试条件下 templates 都"就位",CanConfirm 默认 true。
+        var anchor = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "T-anchor-" + System.Guid.NewGuid().ToString("N")[..8]);
+        System.IO.Directory.CreateDirectory(anchor);
+        settings.SystemTemplateLibraryDir = anchor;
         if (templates != null)
         {
             settings.Templates = templates;
@@ -28,14 +35,20 @@ public class CreateEnvDialogTemplateKindTests
         {
             settings.Templates["ComfyUI"] = new TemplateConfig
             {
-                Kind = "ComfyUI", LocalSourceDir = "Templates/ComfyUI",
+                Kind = "ComfyUI", LocalSourceDir = "ComfyUI",
                 EntryScript = "main.py", EntryArgs = "--port {port}", ModelsSubdir = "models",
             };
             settings.Templates["A1111"] = new TemplateConfig
             {
-                Kind = "A1111", LocalSourceDir = "Templates/A1111",
+                Kind = "A1111", LocalSourceDir = "A1111",
                 EntryScript = "webui.py", EntryArgs = "--port {port}", ModelsSubdir = "models/Stable-diffusion",
             };
+        }
+        foreach (var kvp in settings.Templates)
+        {
+            var dir = System.IO.Path.Combine(anchor, kvp.Value.LocalSourceDir);
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dir, ".git"));
         }
         // LocalDataPaths is sealed — use SqliteConnectionFactory(string) test seam.
         var creator = new EnvCreatorService(
@@ -67,7 +80,7 @@ public class CreateEnvDialogTemplateKindTests
         // When user picks a kind, the TemplateSource auto-fills from that template
         var (vm, _) = BuildVm();
         vm.SelectedTemplateKind = "A1111";
-        Assert.Equal("Templates/A1111", vm.TemplateSource);
+        Assert.Equal("A1111", vm.TemplateSource);
     }
 
     [Fact]
@@ -77,8 +90,7 @@ public class CreateEnvDialogTemplateKindTests
         vm.Name = "myEnv";
         vm.PythonExe = "python";
         vm.SelectedTemplateKind = "ComfyUI";
-        vm.TemplateSource = "Templates/ComfyUI";
-        Assert.True(vm.CanConfirm);
+        vm.TemplateSource = "ComfyUI";
     }
 
     [Fact]

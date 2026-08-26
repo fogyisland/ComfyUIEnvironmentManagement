@@ -54,6 +54,8 @@ public class CreateEnvDialogViewModel : ViewModelBase
         {
             TemplateSource = initial.LocalSourceDir;
         }
+        // v1.0.0.x:初次构造后跑一次 LocalDirExists 检查,设 TemplateWarningMessage + 触发 canExecute 重算。
+        UpdateTemplateLocalAvailability();
         ApplyTemplate();   // 初次填充 PythonExe + 警告文案
         // v0.6.7.6:Port 默认填 MAX(port)+1,空 DB / 无 envRepo 时回落 8188
         if (_envRepo is not null)
@@ -101,6 +103,10 @@ public class CreateEnvDialogViewModel : ViewModelBase
                 {
                     TemplateSource = t.LocalSourceDir;
                 }
+                // v1.0.0.x:用户反馈"在新建环境过程中如果模板本地目录为空,
+                // 在选择对应环境的时候提示目标表环境本地为空,请现在本地模板中下载环境"。
+                // 切 template 时算 LocalDirMissing,设 TemplateWarningMessage + 阻 Create 按钮(canExecute 守卫)。
+                UpdateTemplateLocalAvailability();
                 RaiseCommandsChanged();
             }
         }
@@ -198,6 +204,8 @@ public class CreateEnvDialogViewModel : ViewModelBase
     /// <summary>
     /// v1.0.0 T7:Replaces <c>CanCreate</c>。多了"选中的 template kind 必须在
     /// <see cref="TemplateOptions"/> 里"一项校验(防设置被清空时 UI 还显示合法)。
+    /// v1.0.0.x:加"选中 template 的本地源码目录必须存在且非空" — 用户反馈模板本地为空时
+    /// 不应让 Create 走通(避免后续 copy 失败),改为硬阻止 + 提示用户先去 TemplateManagement 下载。
     /// </summary>
     public bool CanConfirm
     {
@@ -210,8 +218,57 @@ public class CreateEnvDialogViewModel : ViewModelBase
             if (string.IsNullOrWhiteSpace(TemplateSource)) return false;
             // T7:校验选中 kind 在 options 里(模板被删 / 设非法值时按钮灰)
             if (!TemplateOptions.Any(t => t.Kind == SelectedTemplateKind)) return false;
+            // v1.0.0.x:模板本地目录必须存在 + 非空(由 UpdateTemplateLocalAvailability 检查)。
+            if (IsSelectedTemplateLocalEmpty) return false;
             return true;
         }
+    }
+
+    /// <summary>
+    /// v1.0.0.x:当前 SelectedTemplateKind 对应 template 的本地源码目录是否"空"。
+    /// 由 <see cref="UpdateTemplateLocalAvailability"/> 写入 <see cref="_isSelectedTemplateLocalEmpty"/>,
+    /// View 也可绑 IsEnabled 让 Create 按钮灰。
+    /// </summary>
+    public bool IsSelectedTemplateLocalEmpty
+    {
+        get => _isSelectedTemplateLocalEmpty;
+        private set { _isSelectedTemplateLocalEmpty = value; RaisePropertyChanged(); }
+    }
+    private bool _isSelectedTemplateLocalEmpty;
+
+    /// <summary>
+    /// v1.0.0.x:每次 SelectedTemplateKind 切换 / ApplyTemplate 时调 — 跑 TemplateConfig.LocalDirExists
+    /// 检查,设 <see cref="IsSelectedTemplateLocalEmpty"/> + 把对应警告注入 <see cref="TemplateWarningMessage"/>
+    /// (已与 Python 解释器警告并列)。
+    /// </summary>
+    private void UpdateTemplateLocalAvailability()
+    {
+        if (_settings.Templates.TryGetValue(_selectedTemplateKind, out var t))
+        {
+            IsSelectedTemplateLocalEmpty = !t.LocalDirExists(_settings.SystemTemplateLibraryDir);
+        }
+        else
+        {
+            IsSelectedTemplateLocalEmpty = false;
+        }
+        AppendTemplateLocalWarning();
+    }
+
+    /// <summary>
+    /// v1.0.0.x:把"模板本地为空"警告追加到 <see cref="TemplateWarningMessage"/>。不重写 Python
+    /// 解释器警告 — 只在末尾追加一行(如有)。TemplateWarningMessage 是 string 拼接,
+    /// 这里解析已有行 + 移除同 kind 旧行 + 加新行,避免重复。
+    /// </summary>
+    private void AppendTemplateLocalWarning()
+    {
+        const string EmptyTemplateWarning = "目标环境模板本地为空,请现在本地模板中下载环境";
+        var existing = (TemplateWarningMessage ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.Trim() != EmptyTemplateWarning)
+            .ToList();
+        if (IsSelectedTemplateLocalEmpty) existing.Add(EmptyTemplateWarning);
+        TemplateWarningMessage = existing.Count == 0 ? null : string.Join("\n", existing);
+        RaiseCommandsChanged();
     }
 
     /// <summary>
@@ -274,31 +331,24 @@ public class CreateEnvDialogViewModel : ViewModelBase
             warnings.Add("当前 Python 解释器路径不存在,请检查设置");
         }
 
-        // v1.0.0 T7:TemplateSource 跟随 SelectedTemplateKind 变化;
-        // 这里补一条警告 — 当模板目录不存在时提示用户下载。
+        // v1.0.0.x:TemplateSource 始终填 LocalSourceDir(选中 template 的目标目录名),
+        // 即便本地目录为空 — 让用户看到「待 clone 的目录」名,而不是空白让人误解。
+        // 本地目录是否可用交给 UpdateTemplateLocalAvailability 统一管(红色警告 +
+        // CanConfirm gate);TemplateSource 只是文本提示,跟 LocalDirExists 解耦。
         if (_settings.Templates.TryGetValue(SelectedTemplateKind, out var t))
         {
-            var templateSource = Path.IsPathRooted(t.LocalSourceDir)
-                ? t.LocalSourceDir
-                : Path.Combine(_projectRoot, t.LocalSourceDir);
-            if (Directory.Exists(templateSource))
-            {
-                TemplateSource = t.LocalSourceDir;
-            }
-            else
-            {
-                warnings.Add($"模板目录({SelectedTemplateKind})未安装,请先在设置页下载");
-                TemplateSource = "";
-            }
+            TemplateSource = t.LocalSourceDir;
         }
         else
         {
             TemplateSource = "";
         }
 
+        // 先把 Python 警告设上,AppendTemplateLocalWarning 会追加"模板本地为空"行(如有)
         TemplateWarningMessage = warnings.Count == 0
             ? null
             : string.Join("\n", warnings);
+        UpdateTemplateLocalAvailability();
     }
 
     private async Task CreateAsync()
