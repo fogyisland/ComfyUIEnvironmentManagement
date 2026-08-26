@@ -69,7 +69,7 @@ public sealed class EnvCreatorServiceTests : IDisposable
         File.WriteAllText(Path.Combine(comfyDir, "main.py"), "");
 
         _service = new EnvCreatorService(
-            _factory, _venvCreator, _linker, _settings, _rootDir, commonNodeInstaller: null);
+            _factory, _venvCreator, _linker, _settings, _rootDir);
     }
 
     public void Dispose()
@@ -204,23 +204,25 @@ public sealed class EnvCreatorServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateAsync_WithCommonNodeInstaller_TriggersHookAfterUpsert()
+    public async Task CreateAsync_DoesNotTriggerCommonNodeHook_UsersTriggerViaButton()
     {
-        // 用 fake CommonNodeInstaller 验证 step 5.7 触发
+        // v1.0.0.x: 常用节点安装不再在 env-create 末尾自动跑 — 由用户在 env 行
+        // 右侧按钮触发(RequirementsInstaller / 行内按钮已存在,逻辑独立)。
+        // 这里验证 env-create 不再调 CommonNodeInstaller git clone func。
+        // 即便 fakeInstaller 在 CommonNodes 里塞了 Enabled=true 的 node,
+        // 也不会被触发。
         var hookCalls = new List<string>();
         var fakeInstaller = BuildFakeCommonNodeInstaller(hookCalls);
 
         var service = new EnvCreatorService(
-            _factory, _venvCreator, _linker, _settings, _rootDir, commonNodeInstaller: fakeInstaller);
+            _factory, _venvCreator, _linker, _settings, _rootDir);
 
         var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
         var env = await service.CreateAsync(
             "hooktest", MakeComfyUITemplate(), basePy,
             port: null);
 
-        // hook 拿到的 env 是 step 8 写库的同一份;fakeInstaller 的 gitClone
-        // lambda 收到 fake/test-node id(因为 Enabled=true)
         Assert.NotNull(env);
-        Assert.Contains("fake/test-node", hookCalls);
+        Assert.Empty(hookCalls);  // 关键断言:env-create 不再调 git clone lambda
     }
 }

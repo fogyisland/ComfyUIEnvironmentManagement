@@ -327,6 +327,8 @@ public partial class App : Application
         // v0.6.11++:常用节点自动装 service(env-create 末尾 + 装依赖末尾触发)。
         // 走注入的 git clone func(包 GitRunner.RunAsync)— 测试可换 fake func。
         // 共享 reqExe + GitRunner,先于 EnvCreatorService / RequirementsInstaller 构造。
+        // v1.0.0.x: EnvCreatorService 不再自动跑常用节点(由 env 行按钮触发),但仍
+        // 需要构造实例供 RequirementsInstaller 内部使用 + 测试 fake。
         var commonNodeInstaller = new CommonNodeInstaller(
             settings,
             (id, args) => gitRunner.RunAsync(".", args).ContinueWith(t =>
@@ -339,8 +341,7 @@ public partial class App : Application
             }),
             logger);
         var envCreator = new EnvCreatorService(
-            dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot,
-            commonNodeInstaller: commonNodeInstaller);
+            dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
         var requirementsInstaller = new RequirementsInstaller(logger, reqFileInstaller, comfyUiManagerInstaller, commonNodeInstaller);
         // v0.6.5.22: 卸载 service(BED reset 跟 requirements pip uninstall)。
         // EnvListVM 行内"卸载基础环境" / "卸载依赖"按钮 + 互斥 mutex 用这两份。

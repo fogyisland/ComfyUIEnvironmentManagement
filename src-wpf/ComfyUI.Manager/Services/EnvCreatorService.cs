@@ -29,9 +29,14 @@ namespace ComfyUI.Manager.Services;
 ///   5. **始终 copy** template source → env 根目录(不 junction)
 ///   5.5 链接默认 Models 目录(Settings.DefaultModelsDirectory 非空时,models → 该目录)
 ///   6. 创建 venv(VenvCreator)
-///   7. 写 extra_model_paths.yaml(占位)
-///   8. 插 SQLite 行(持久化 TemplateKind + TemplateConfigSnapshot JSON 克隆)
-///   9. (kind == ComfyUI 时)best-effort 装常用节点
+///   7. 插 SQLite 行(持久化 TemplateKind + TemplateConfigSnapshot JSON 克隆)
+///
+/// v1.0.0.x: env-create 不再自动跑「安装常用节点」/「写 extra_model_paths.yaml」。
+/// 安装常用节点由用户在 env 列表行点击按钮触发(RequirementsInstaller /
+/// env 行内按钮已存在,逻辑独立)。extra_model_paths.yaml 完全不需要写:
+/// Environment.ExtraModelPathsYaml DB 列已记精确路径,MainViewModel
+/// OpenExtraModelPathsYamlCommand 用路径直接打开,EnsureFileExists 在文件缺失
+/// 时写 placeholder 兜底。
 /// </summary>
 public sealed class EnvCreatorService
 {
@@ -42,23 +47,19 @@ public sealed class EnvCreatorService
     private readonly JunctionLinker _linker;
     private readonly Models.Settings _settings;
     private readonly string _projectRoot;
-    // v0.6.11++:env-create 末尾 best-effort 装常用节点(G5 不阻断 env-create)。
-    private readonly CommonNodeInstaller? _commonNodeInstaller;
 
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
         JunctionLinker linker,
         Models.Settings settings,
-        string projectRoot,
-        CommonNodeInstaller? commonNodeInstaller = null)
+        string projectRoot)
     {
         _dbFactory = dbFactory;
         _venvCreator = venvCreator;
         _linker = linker;
         _settings = settings;
         _projectRoot = projectRoot;
-        _commonNodeInstaller = commonNodeInstaller;
     }
 
     public sealed class CreateEnvException : Exception
@@ -196,15 +197,16 @@ public sealed class EnvCreatorService
             throw new CreateEnvException("VENV_CREATE_FAILED", ex.Message);
         }
 
-        // 7. 写 extra_model_paths.yaml(占位)
-        var extraYaml = Path.Combine(rootPath, "extra_model_paths.yaml");
-        progress?.Report(new CreateStepReport("保存配置", $"yaml = {extraYaml}"));
-        File.WriteAllText(extraYaml, "# TODO: M1 填充\n", System.Text.Encoding.UTF8);
-
-        // 8. 构造 Environment 写库
+        // 7. 构造 Environment 写库
         // v1.0.0 T4 G2:TemplateConfigSnapshot 用 JSON round-trip 克隆,后续 settings
         // 编辑不会 mutate 已存在的 env snapshot(测试 `CreateAsync_SnapshotIsFrozen_*`)。
         // ComfyuiLayout 列保留旧字段("isolated" 标量字面),仍写到 DB 以兼容老 schema。
+        //
+        // v1.0.0.x: 不再创建 extra_model_paths.yaml 占位文件 — DB 列已记精确路径,
+        // MainViewModel.OpenExtraModelPathsYamlCommand 用路径打开,EnsureFileExists
+        // 在文件缺失时写 placeholder 兜底。Env.ExtraModelPathsYaml 字段值仍计算,
+        // 只是不实际写文件。
+        var extraYaml = Path.Combine(rootPath, "extra_model_paths.yaml");
         var env = new Environment
         {
             Id = envId,
@@ -242,26 +244,9 @@ public sealed class EnvCreatorService
             CreatedAt = DateTime.UtcNow.ToString("o"),
         });
 
-        // 9. v1.0.0 T4 G9:仅 ComfyUI kind 跑 CommonNodeInstaller。
-        // 非 ComfyUI(A1111 / 自定义 / etc)无 ComfyUI Manager / 常用节点概念,跳过。
-        if (_commonNodeInstaller is not null
-            && string.Equals(templateConfig.Kind, "ComfyUI", StringComparison.Ordinal))
-        {
-            try
-            {
-                progress?.Report(new CreateStepReport("安装常用节点", "触发 CommonNodeInstaller.InstallEnabledAsync"));
-                var cnResult = await _commonNodeInstaller.InstallEnabledAsync(
-                    env, new Progress<string>(line => progress?.Report(new CreateStepReport("常用节点", line))), ct);
-                if (!cnResult.Success)
-                {
-                    progress?.Report(new CreateStepReport("常用节点", $"warn:{cnResult.Reason}"));
-                }
-            }
-            catch (Exception ex)
-            {
-                progress?.Report(new CreateStepReport("常用节点", $"warn:异常 {ex.Message}"));
-            }
-        }
+        // v1.0.0.x: 常用节点安装不再在 env-create 末尾自动跑 — 用户在 env 行右侧
+        // 按钮触发(RequirementsInstaller / 行内按钮已存在,逻辑独立)。env-create
+        // 只做基础初始化,跟用户「创建 = 模板复制」语义一致。
 
         return env;
     }

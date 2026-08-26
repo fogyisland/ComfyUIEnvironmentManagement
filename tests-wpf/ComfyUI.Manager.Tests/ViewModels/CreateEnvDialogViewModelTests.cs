@@ -366,13 +366,15 @@ public class CreateEnvDialogViewModelTests
         var (vm, _, _, _, _, _) = MakeVm();
 
         // 与 EnvCreatorService.CreateAsync emit 的 6 个 CreateStepReport 一一对应
+        // v1.0.0.x: 「链接 ComfyUI 源」改名为「复制 template 源」(对齐 service emit),
+        // 新增「链接 Models 目录」步骤;「保存配置」步骤删(YAML 不再写)。
         Assert.Equal(6, vm.Steps.Count);
         Assert.Equal("校验输入", vm.Steps[0].Name);
         Assert.Equal("分配端口", vm.Steps[1].Name);
         Assert.Equal("创建 env 根目录", vm.Steps[2].Name);
-        Assert.Equal("链接 ComfyUI 源", vm.Steps[3].Name);
-        Assert.Equal("创建 venv 环境", vm.Steps[4].Name);
-        Assert.Equal("保存配置", vm.Steps[5].Name);
+        Assert.Equal("复制 template 源", vm.Steps[3].Name);
+        Assert.Equal("链接 Models 目录", vm.Steps[4].Name);
+        Assert.Equal("创建 venv 环境", vm.Steps[5].Name);
     }
 
     [Fact]
@@ -438,14 +440,27 @@ public class CreateEnvDialogViewModelTests
     [Fact]
     public void OnStepReport_AllPreviousDone_WhenLastStepEmits()
     {
+        // v1.0.0.x: env-create 步骤列表从 6 项改为 6 项(改名 + 加项):
+        //   1.校验输入 → 2.分配端口 → 3.创建 env 根目录 → 4.复制 template 源
+        //   → 5.链接 Models 目录 → 6.创建 venv 环境
+        // 「保存配置」步骤删(YAML 写不再有);「链接 ComfyUI 源」改名为
+        // 「复制 template 源」;新增「链接 Models 目录」对齐 service 实际进度。
         var (vm, _, _, _, _, _) = MakeVm();
+
+        Assert.Equal(6, vm.Steps.Count);
+        Assert.Equal("校验输入", vm.Steps[0].Name);
+        Assert.Equal("分配端口", vm.Steps[1].Name);
+        Assert.Equal("创建 env 根目录", vm.Steps[2].Name);
+        Assert.Equal("复制 template 源", vm.Steps[3].Name);
+        Assert.Equal("链接 Models 目录", vm.Steps[4].Name);
+        Assert.Equal("创建 venv 环境", vm.Steps[5].Name);
 
         // 一次性推到第 6 个 step
         for (int i = 0; i < vm.Steps.Count - 1; i++)
         {
             vm.OnStepReport(new CreateStepReport(vm.Steps[i].Name));
         }
-        vm.OnStepReport(new CreateStepReport("保存配置", "yaml = /tmp/extra_model_paths.yaml"));
+        vm.OnStepReport(new CreateStepReport("创建 venv 环境", "python -m venv /tmp/venv"));
 
         Assert.Equal(CreateStepStatus.Done, vm.Steps[0].Status);
         Assert.Equal(CreateStepStatus.Done, vm.Steps[1].Status);
@@ -453,7 +468,7 @@ public class CreateEnvDialogViewModelTests
         Assert.Equal(CreateStepStatus.Done, vm.Steps[3].Status);
         Assert.Equal(CreateStepStatus.Done, vm.Steps[4].Status);
         Assert.Equal(CreateStepStatus.Running, vm.Steps[5].Status);
-        Assert.Equal("yaml = /tmp/extra_model_paths.yaml", vm.Steps[5].Detail);
+        Assert.Equal("python -m venv /tmp/venv", vm.Steps[5].Detail);
     }
 
     [Fact]

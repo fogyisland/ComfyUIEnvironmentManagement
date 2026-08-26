@@ -187,9 +187,9 @@ public class CreateEnvDialogViewModel : ViewModelBase
             new CreateStepViewModel("校验输入"),
             new CreateStepViewModel("分配端口"),
             new CreateStepViewModel("创建 env 根目录"),
-            new CreateStepViewModel("链接 ComfyUI 源"),
+            new CreateStepViewModel("复制 template 源"),
+            new CreateStepViewModel("链接 Models 目录"),
             new CreateStepViewModel("创建 venv 环境"),
-            new CreateStepViewModel("保存配置"),
         };
 
     internal void ResetSteps()
