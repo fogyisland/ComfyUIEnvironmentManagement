@@ -61,9 +61,11 @@
         <Border Grid.Row="0" Padding="12" Margin="0,0,0,12"
                 Background="{DynamicResource SurfaceBrush}" CornerRadius="6">
             <DockPanel>
-                <!-- 右侧:刷新中…指示 + 刷新按钮。IsBusy=true 时(background refresh 在跑)
-                     "刷新中…"label 出现,刷新按钮 disabled(防止并发 scan)。
-                     user 看到的语义:"刷新中…"= 静默更新现有数据,而不是 "加载中… 旧数据全清"。 -->
+                <!-- 右侧:🔎 CivitAI 查询 + 刷新中…指示 + 刷新按钮。
+                     v1.0.0.x:CivitAI 查询按钮 toolbar 形态(选中卡片生效)— 用户点 card 设
+                     SelectedCard,button IsEnabled 走 IsLookupEnabledForSelectedCard。
+                     取代之前 inline per-card「🔍 查询 CivitAI」(inline 按钮还留着但 redundant — 隐藏)。
+                     IsRefreshingInBackground / 🔄 刷新 行为不变。 -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="刷新中…"
                                Foreground="Gray" FontSize="11"
@@ -71,7 +73,12 @@
                                Visibility="{Binding IsRefreshingInBackground, Converter={StaticResource BoolToVisibility}}" />
                     <Button Content="🔄 刷新"
                             Command="{Binding ReloadCommand}"
-                            Style="{StaticResource MaterialButton}" MinWidth="80" />
+                            Style="{StaticResource MaterialButton}" MinWidth="80" Margin="0,0,8,0" />
+                    <Button Content="🔎 CivitAI 查询"
+                            Command="{Binding LookupCivitAiCommand}"
+                            Style="{StaticResource MaterialButton}" MinWidth="120"
+                            ToolTip="对当前选中的本地模型卡查询 CivitAI 详情(先点卡片选中)"
+                            IsEnabled="{Binding IsLookupEnabledForSelectedCard}" />
                 </StackPanel>
                 <TextBlock Text="本地模型" FontSize="16" FontWeight="Bold"
                            VerticalAlignment="Center" Margin="0,0,12,0" />
@@ -137,9 +144,41 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
+                            <!-- v1.0.0.x: 卡片 click → 选中(card → VM.SelectedCard) → toolbar「🔎 CivitAI 查询」
+                                 按钮 enable。Border 视觉选中态走 DataTrigger + ReferenceEquals MultiBinding
+                                 把 (card instance) vs (VM.SelectedCard) 比对 → 相等 → BorderBrush 加粗加深。
+                                 卡片本体仍是 Border,MouseLeftButtonDown 用 Bubble strategy — 子控件
+                                 (📋/📁 按钮)的 Click 事件先被 Button handle 不会 bubble 到这里,
+                                 点非按钮区才设 SelectedCard,符合用户预期。 -->
                             <Border Width="540" Height="250" Margin="0,0,12,12"
                                     Background="{DynamicResource SurfaceBrush}"
-                                    CornerRadius="6" Padding="16">
+                                    BorderBrush="Transparent" BorderThickness="1"
+                                    CornerRadius="6" Padding="16"
+                                    Cursor="Hand"
+                                    MouseLeftButtonDown="Card_Click"
+                                    Tag="{Binding}">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <!-- v1.0.0.x: 选中态视觉 — BorderBrush 切到 PrimaryBrush
+                                                 + BorderThickness 加粗到 2。reference-equals 模式 —
+                                                 ApplyUserQueryToCard 走 in-place 替换记录选中态,
+                                                 GroupToCards rebuild 后 ReferenceEquals 失败(新 instance)
+                                                 → 默认不选中,符合"换 card list 后未点不选中"语义。 -->
+                                            <DataTrigger Value="True">
+                                                <DataTrigger.Binding>
+                                                    <MultiBinding Converter="{StaticResource ReferenceEquals}">
+                                                        <Binding />
+                                                        <Binding Path="DataContext.SelectedCard"
+                                                                 RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                    </MultiBinding>
+                                                </DataTrigger.Binding>
+                                                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                                <Setter Property="BorderThickness" Value="2" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -214,18 +253,11 @@
                                                        VerticalAlignment="Center"
                                                        ToolTip="{Binding LocalPathOverride, Mode=OneWay}"/>
                                         </DockPanel>
-                                        <!-- v1.0.0 T11:CivitAI lookup 按钮 — Source == "Local" 时显示。
-                                             meta.json / civitai / huggingface 卡片(Source != "Local")按钮隐藏 —
-                                             这些卡已有 SourceUrl 直接 web 跳转,不需要再查一遍。
-                                             CardSourceVisibility converter:Source (string) == "Local" → Visible。
-                                             Command 通过 DataContext.RelativeSource 拿 VM 的 LookupCivitAiCommand,
-                                             parameter 是当前 card(record — WPF 自动装箱成 object)。 -->
-                                        <Button Content="🔍 查询 CivitAI"
-                                                Margin="0,4,0,0" Padding="12,4"
-                                                HorizontalAlignment="Left"
-                                                Visibility="{Binding Source, Converter={StaticResource CardSourceVisibility}, ConverterParameter=Local}"
-                                                Command="{Binding DataContext.LookupCivitAiCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                CommandParameter="{Binding}" />
+                                        <!-- v1.0.0.x: 原 inline「🔍 查询 CivitAI」按钮已删除。
+                                             toolbar 上统一有「🔎 CivitAI 查询」按钮,选中卡片后启用 —
+                                             single source of truth,避免 inline button + toolbar button
+                                             两套 IsEnabled 路径不一致 + 每个卡片都铺按钮视觉冗余。
+                                             点击卡片 → code-behind 调 VM.SelectedCard = card → 视觉选中态。 -->
                                     </StackPanel>
                                     <!-- v1.0.0 T13-7:status dot — bottom-right of card。
                                          MatchedDetail 非 null → 绿 / null → 灰。

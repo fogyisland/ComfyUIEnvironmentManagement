@@ -29,7 +29,13 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     // v1.0.0.x: 用户手动覆盖本地路径 repository — 持久化到 SQLite local_model_overrides。
     // nullable 兼容(测试 ctor 不传 repo → 「改路径」命令 disable)。
     private readonly LocalModelOverridesRepository? _overridesRepo;
+    // v1.0.0.x: 用户手动 CivitAI 查询结果缓存 — 持久化到 SQLite civitai_card_cache。
+    // nullable 兼容(测试 ctor 不传 repo → 「查询 CivitAI」命令 disable)。
+    private readonly CivitaiCardCacheRepository? _civitaiCacheRepo;
     private readonly HashSet<string> _lookupsInFlight = new();
+    // v1.0.0.x: Toolbar「🔎 CivitAI 查询」选中目标。点 card → SelectedCard = card;
+    // toolbar 按钮 IsEnabled 跟 SelectedCard 走;Source != "Local" / 选 null 时 disable。
+    private LocalModelCard? _selectedCard;
     private List<LocalModelCard> _allCards = new();
     /// <summary>v1.0.0 Console panel:用户 ✕ 关闭意图必须保留,下次 Reload 复位。
     /// 三态可见性 = !_userHiddenConsole && (IsBusy || ConsoleLog.Count > 0)。</summary>
@@ -71,6 +77,33 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     /// 按钮藏起来 + 命令 canExecute 返回 false)。</summary>
     public ICommand LookupCivitAiCommand => _lookupCivitAiCommand;
 
+    /// <summary>v1.0.0.x: 用户点 card 时设这里(VM 唯一选中态)。toolbar 按钮 IsEnabled
+    /// 依赖此属性。点击非 card 区域(null) → ClearSelectedCard。
+    /// LocalModelCard 是 record value type,WPF 选中走 SelectedCard { get; set; } 无 binding path
+    /// (走 ItemsControl DataContext 比对),所以 setter 不需要 PropertyChanged 通知 binding —
+    /// toolbar 按钮绑 IsLookupEnabledForSelectedCard 走 PropertyChanged 触发 re-eval。
+    /// </summary>
+    public LocalModelCard? SelectedCard
+    {
+        get => _selectedCard;
+        set
+        {
+            if (ReferenceEquals(_selectedCard, value)) return;
+            _selectedCard = value;
+            PropertyChanged?.Invoke(this, new(nameof(SelectedCard)));
+            PropertyChanged?.Invoke(this, new(nameof(IsLookupEnabledForSelectedCard)));
+            _lookupCivitAiCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>Toolbar「🔎 CivitAI 查询」按钮 enable 守卫:有选中卡片 + 是 Local 来源 +
+    /// lookup service 可用 + 当前没 in-flight 查询同一张卡。null 时按钮 disable 灰显。</summary>
+    public bool IsLookupEnabledForSelectedCard =>
+        _selectedCard is not null
+        && _selectedCard.Source == "Local"
+        && _lookup is not null
+        && !_lookupsInFlight.Contains(_selectedCard.Title);
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private KindChip? _activeChip;
@@ -92,7 +125,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         CivitAiLookupService? lookup = null,
         CivitaiHashCache? hashCache = null,
         CivitaiMatcherOrchestrator? orchestrator = null,
-        LocalModelOverridesRepository? overridesRepo = null)
+        LocalModelOverridesRepository? overridesRepo = null,
+        CivitaiCardCacheRepository? civitaiCacheRepo = null)
     {
         _settings = settings;
         _scanner = scanner;
@@ -102,6 +136,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         _orchestrator = orchestrator;
         // v1.0.0.x: 用户本地路径覆盖 repo(可为 null — 测试场景 / 老 DI 路径)。
         _overridesRepo = overridesRepo;
+        // v1.0.0.x: CivitAI 缓存 repo(可为 null — 测试场景 / 老 DI 路径)。
+        _civitaiCacheRepo = civitaiCacheRepo;
         // v1.0.0 Console panel:内部 sink 接收 scanner progress 行,推 ConsoleLog。
         // ctor 在 UI 线程跑 → Progress 捕获 UI SyncContext → Report 自动 marshal 回 UI 线程。
         _consoleSink = new Progress<string>(line =>
@@ -121,23 +157,19 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
         PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
         _reloadCommand = new RelayCommand(_ => ReloadAsync(), _ => !IsBusy);
-        // v1.0.0 T11:lookup 命令 — canExecute 守卫 (Source="Local" + lookup service 可用 + 无 in-flight)。
-        // Button Visibility 用 IsLookupEnabled(card) 计算属性绑(避免新 converter,逻辑留 VM 可测)。
+        // v1.0.0.x: lookup 命令改 toolbar 形态 — execute 不接参数,从 SelectedCard 拿目标。
+        // canExecute 也走 IsLookupEnabledForSelectedCard(单点真理,避免 inline 按钮场景需要
+        // per-card 参数化 RelayCommand 的 CanExecute 复杂度)。
+        // 注意:为兼容 #527 之前 inline 按钮埋点的 XAML card-Source="Local" 段,parameter
+        // 仍接收 LocalModelCard 但忽略 — toolbar 走无参数,inline 走忽略参数。
         _lookupCivitAiCommand = new RelayCommand(
-            execute: card =>
+            execute: _ =>
             {
-                if (card is LocalModelCard lc && lc.Source == "Local")
-                {
-                    _ = ExecuteLookupAsync(lc);
-                }
+                var card = _selectedCard;
+                if (card is null || card.Source != "Local" || _lookup is null) return;
+                _ = ExecuteLookupAsync(card);
             },
-            canExecute: card =>
-            {
-                if (card is not LocalModelCard lc) return false;
-                if (lc.Source != "Local") return false;
-                if (_lookup is null) return false;
-                return !_lookupsInFlight.Contains(lc.Title);
-            });
+            canExecute: _ => IsLookupEnabledForSelectedCard);
 
         // v1.0.0.x: 「编辑本地路径」命令 — 点 [📁] 按钮时执行。
         // XAML 绑 EditLocalPathCommand,parameter = LocalModelCard。
@@ -386,6 +418,10 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         // v1.0.0.x: 读所有 user-overridden 路径(SourceId → path),GroupToCards 时套到对应 card。
         // 一次 LoadAll 避免每张卡都打 DB。
         var overrides = _overridesRepo?.LoadAll() ?? new Dictionary<string, string>();
+        // v1.0.0.x: 同样 LoadAll 一次 civitai_card_cache → 用 UserQuery 覆盖 scanner 的
+        // hash-match 结果(用户主动查询优先级最高)。应用启动 / 点 🔄 刷新 都走这里,
+        // 实现"上次查询数据持久可见,除非手动刷新重新 pick"。
+        var civitaiCache = _civitaiCacheRepo?.LoadAll() ?? new Dictionary<string, CivitAiDetailDto>();
         return raw
             .GroupBy(d => d.SourceId)
             .Select(g =>
@@ -396,6 +432,15 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                 var latestRecord = g.OrderBy(d => d.DownloadedAt).Last();
                 var latest = g.Max(d => d.DownloadedAt);
                 overrides.TryGetValue(g.Key, out var pathOverride);
+                // v1.0.0.x: cache 命中 → MatchSource = UserQuery;miss → 透传 scanner 的 hash-match 结果。
+                string? hash = latestRecord.Hash;
+                CivitAiDetailDto? matchedDetail = latestRecord.MatchedDetail;
+                MatchSource? matchSource = latestRecord.MatchSource;
+                if (civitaiCache.TryGetValue(g.Key, out var cached))
+                {
+                    matchedDetail = cached;
+                    matchSource = MatchSource.UserQuery;
+                }
                 return new LocalModelCard(
                     SourceId: g.Key,
                     Title: latestRecord.Title ?? "",
@@ -409,9 +454,10 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                     // latestRecord 已是 sorted-by-mtime Last(),其 Hash/MatchedDetail/MatchSource
                     // 由 scanner 的 HashAndMatch 阶段填入(scanner 内部所有同 SourceId record 共享
                     // 同一文件 hash,MatchSource/MatchedDetail 也一致 — 这里取 latestRecord 即可)。
-                    Hash: latestRecord.Hash,
-                    MatchedDetail: latestRecord.MatchedDetail,
-                    MatchSource: latestRecord.MatchSource,
+                    // v1.0.0.x:上面 civitaiCache 命中时已覆盖 matchedDetail/matchSource。
+                    Hash: hash,
+                    MatchedDetail: matchedDetail,
+                    MatchSource: matchSource,
                     // v1.0.0.x: 用户覆盖的本地绝对路径(null = 用 scanner FullPath)。
                     LocalPathOverride: string.IsNullOrEmpty(pathOverride) ? null : pathOverride);
             })
@@ -463,14 +509,34 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
 
         _lookupsInFlight.Add(card.Title);
         RaiseCommandsCanExecuteChanged();
+        // v1.0.0.x: dialog Detail 落定时通过 callback 同步捕获。modal 关闭后下面用此值
+        // 写 SQLite + 重建 card。如果用户 cancel(NoMatch / 直接关窗)→ callback 不会触发
+        // → capturedDetail 仍 null → 跳过落库。
+        CivitAiDetailDto? capturedDetail = null;
         try
         {
             var dlg = new LocalModelCivitAiDialog
             {
-                DataContext = new LocalModelCivitAiDialogViewModel(_lookup, card.Title, _logger, card: card),
+                DataContext = new LocalModelCivitAiDialogViewModel(
+                    _lookup, card.Title, _logger, card: card,
+                    onDetailResolved: d => capturedDetail = d),
             };
-            // modal 阻塞到用户关窗
+            // modal 阻塞到用户关窗(用户主动操作,非后台)
             dlg.ShowDialog();
+
+            if (capturedDetail is not null)
+            {
+                try
+                {
+                    _civitaiCacheRepo?.Upsert(card.SourceId, capturedDetail);
+                    ApplyUserQueryToCard(card.SourceId, capturedDetail);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Error("local-models",
+                        $"Persisting user lookup failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -481,6 +547,35 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         {
             _lookupsInFlight.Remove(card.Title);
             RaiseCommandsCanExecuteChanged();
+            PropertyChanged?.Invoke(this, new(nameof(IsLookupEnabledForSelectedCard)));
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>v1.0.0.x: 用 UserQuery match 把 _allCards / FilteredModels 里对应 card 替换,
+    /// 触发 UI 重新渲染(status dot → 绿,MatchSource tooltip → "Manually queried by user")。
+    /// record value type — 走 _allCards.IndexOf(old) 替换。</summary>
+    private void ApplyUserQueryToCard(string sourceId, CivitAiDetailDto detail)
+    {
+        var idxAll = _allCards.FindIndex(c => c.SourceId == sourceId);
+        if (idxAll < 0) return;
+        var old = _allCards[idxAll];
+        var updated = old.WithMatchStatus(old.Hash, detail, MatchSource.UserQuery);
+        _allCards[idxAll] = updated;
+
+        // 替换 FilteredModels 里的同 instance(同一个 SourceId,FilteredModels 可能是子集)
+        for (int i = 0; i < FilteredModels.Count; i++)
+        {
+            if (ReferenceEquals(FilteredModels[i], old))
+            {
+                FilteredModels[i] = updated;
+            }
+        }
+        // 重新算 SelectedCard(可能 user 选了同一张 → 引用已变)
+        if (_selectedCard is not null && ReferenceEquals(_selectedCard, old))
+        {
+            _selectedCard = updated;
+            PropertyChanged?.Invoke(this, new(nameof(SelectedCard)));
         }
     }
 

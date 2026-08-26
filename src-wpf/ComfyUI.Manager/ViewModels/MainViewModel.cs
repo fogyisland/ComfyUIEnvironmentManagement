@@ -739,6 +739,11 @@ public class MainViewModel : ViewModelBase
     internal void SetLocalModelOverridesFactory(Func<LocalModelOverridesRepository> factory)
         => _localModelOverridesFactory = factory;
 
+    // v1.0.0.x: CivitAI 详情缓存 repo factory — 同样模式。
+    internal Func<CivitaiCardCacheRepository>? _civitaiCacheRepoFactory;
+    internal void SetCivitaiCacheRepoFactory(Func<CivitaiCardCacheRepository> factory)
+        => _civitaiCacheRepoFactory = factory;
+
     private void ShowLocalModels()
     {
         CurrentSection = MainSection.LocalModels;
@@ -774,7 +779,10 @@ public class MainViewModel : ViewModelBase
                 _civitaiMatcherOrchestrator,
                 // v1.0.0.x: 用户覆盖本地路径 repo — 持久化到 SQLite local_model_overrides。
                 // 测试 ctor 不传 factory → null → 「改路径」命令 graceful disable。
-                _localModelOverridesFactory?.Invoke());
+                _localModelOverridesFactory?.Invoke(),
+                // v1.0.0.x: CivitAI 详情缓存 repo — 持久化到 SQLite civitai_card_cache。
+                // null → 「🔎 CivitAI 查询」走内存 only,关窗即丢(测试路径)。
+                _civitaiCacheRepoFactory?.Invoke());
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);

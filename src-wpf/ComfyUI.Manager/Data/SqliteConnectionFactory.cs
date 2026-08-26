@@ -157,6 +157,18 @@ public sealed class SqliteConnectionFactory
                 source_id TEXT PRIMARY KEY,
                 override_path TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            -- v1.0.0.x:用户手动查询 CivitAI 后的详情缓存。Toolbar「🔎 CivitAI 查询」
+            -- 按钮命中后写一行;LocalModelsViewModel.GroupToCards / ReloadAsync 启动时
+            -- LoadAll → 覆盖到对应 LocalModelCard.MatchedDetail (MatchSource=UserQuery)。
+            -- 应用重启后无刷新动作即可看到上次结果(用户原话:「在没有刷新之前就以上次
+            -- 获取的数据为准,除非手动刷新」)。
+            -- detail_json 存 JSON 序列化的 CivitAiDetailDto(SqliteConnectionFactory 不
+            -- 知道该类型,repository 内部用 System.Text.Json 反序列化)。
+            CREATE TABLE IF NOT EXISTS civitai_card_cache (
+                source_id TEXT PRIMARY KEY,
+                detail_json TEXT NOT NULL,
+                fetched_at TEXT NOT NULL
             );";
         cmd.ExecuteNonQuery();
 

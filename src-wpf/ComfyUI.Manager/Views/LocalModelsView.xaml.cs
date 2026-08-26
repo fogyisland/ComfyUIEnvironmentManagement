@@ -134,4 +134,17 @@ public sealed partial class LocalModelsView : UserControl
         if (_vm is null) return card.LocalPathOverride ?? "";
         return _vm.GetDefaultFullPath(card.SourceId) ?? card.LocalPathOverride ?? "";
     }
+
+    /// <summary>v1.0.0.x: 卡片 click → 选中。Border 用 Bubble MouseLeftButtonDown —
+    /// 子控件(📋/📁 按钮)的 Click 是 Button 内部 handled,不会 bubble 到这里,避免点
+    /// 复制按钮误触发 SelectedCard。点 card 空白区 → 设 VM.SelectedCard = card → toolbar
+    /// 「🔎 CivitAI 查询」按钮 enable(VM IsLookupEnabledForSelectedCard 走 SelectedCard 守卫)。
+    /// 点空白处(view 背景或 console panel)不会触发本 handler — Border 是 click 区域。</summary>
+    private void Card_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Border bd) return;
+        if (bd.Tag is not LocalModelCard card) return;
+        if (_vm is null) return;
+        _vm.SelectedCard = card;
+    }
 }

@@ -513,10 +513,33 @@ public sealed class MatchSourceToTooltipConverter : IValueConverter
             MatchSource.SafetensorsMetadata => "Matched via safetensors metadata",
             MatchSource.CompanionJson => "Matched via .civitai.info sidecar",
             MatchSource.FilenameFuzzy => "Matched via filename fuzzy search",
+            MatchSource.UserQuery => "Manually queried by user",
             _ => "Not on CivitAI",
         };
     }
 
     public object ConvertBack(object value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// v1.0.0.x: MultiBinding reference-equals — 拿 2 个 object 做 ReferenceEquals,返回 bool。
+/// LocalModelsView 卡片 visual selection:把 (current card DataContext) vs
+/// (UserControl.DataContext.SelectedCard) 喂进去 → 相等 → true → DataTrigger 加 border 视觉态。
+/// 为什么 reference-equals 不是 value-equals:LocalModelCard 是 record value type,
+/// GroupToCards 每次 rebuild 都 new 新 instance,即使 SourceId 一样也是不同 instance。
+/// 只在 ApplyUserQueryToCard / UpdateCardForEntry 走 in-place 替换的当前选中态才需要 reference-equals。
+/// </summary>
+public sealed class ReferenceEqualsMultiConverter : IMultiValueConverter
+{
+    public static readonly ReferenceEqualsMultiConverter Instance = new();
+
+    public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (values is null || values.Length < 2) return false;
+        return ReferenceEquals(values[0], values[1]);
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }

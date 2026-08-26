@@ -35,17 +35,23 @@ public sealed class LocalModelCivitAiDialogViewModel : INotifyPropertyChanged
     private readonly AppLogger? _logger;
     private readonly string _searchTitle;
     private readonly LocalModelCard? _card;
+    /// <summary>v1.0.0.x: Detail 落定回调 — 由 caller (LocalModelsViewModel.ExecuteLookupAsync)
+    /// 注入,Detail 切换到非 null 时调(单候选 auto-load 或用户 picker 选完),让 caller 在
+    /// dialog 关窗后拿 Detail 写 SQLite + WithMatchStatus(UserQuery) 覆盖 card。</summary>
+    private readonly Action<CivitAiDetailDto>? _onDetailResolved;
 
     public LocalModelCivitAiDialogViewModel(
         CivitAiLookupService lookup,
         string searchTitle,
         AppLogger? logger = null,
-        LocalModelCard? card = null)
+        LocalModelCard? card = null,
+        Action<CivitAiDetailDto>? onDetailResolved = null)
     {
         _lookup = lookup ?? throw new ArgumentNullException(nameof(lookup));
         _searchTitle = searchTitle ?? "";
         _logger = logger;
         _card = card;
+        _onDetailResolved = onDetailResolved;
 
         // v1.0.0 T13-7:Pre-matched card (Scanner 在 ReloadAsync 时已经命中 hash-match chain)
         // → dialog 直接开 Detail state,跳过 Searching 阶段。MatchedDetail 在 scanner 阶段
@@ -56,6 +62,9 @@ public sealed class LocalModelCivitAiDialogViewModel : INotifyPropertyChanged
             Detail = card.MatchedDetail;
             SelectedCandidate = null;
             Candidates = Array.Empty<CivitAiCandidate>();
+            // v1.0.0.x: 即使 pre-matched,通知 caller 已落 Detail(caller 会 cache 到 SQLite,
+            // 但只在 _civitaiCacheRepo 非 null 时写 — caller 端 Upsert 自带 null-sourceId 守卫)。
+            _onDetailResolved?.Invoke(card.MatchedDetail);
         }
     }
 
@@ -155,6 +164,8 @@ public sealed class LocalModelCivitAiDialogViewModel : INotifyPropertyChanged
         {
             Detail = await _lookup.GetDetailAsync(id, ct).ConfigureAwait(true);
             State = DialogState.Detail;
+            // v1.0.0.x: Detail 落定 → 通知 caller(ExecuteLookupAsync 等 dialog 关窗后写 SQLite)。
+            _onDetailResolved?.Invoke(Detail);
         }
         catch (OperationCanceledException)
         {

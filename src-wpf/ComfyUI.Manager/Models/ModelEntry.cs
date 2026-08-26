@@ -216,6 +216,10 @@ public enum MatchSource
     CompanionJson = 2,
     /// <summary>文件名 → /api/v1/models?query= filename fuzzy — 最后 fallback。</summary>
     FilenameFuzzy = 3,
+    /// <summary>v1.0.0.x:用户在 LocalModelsView toolbar「🔎 CivitAI 查询」手动 picker
+    /// 选中结果,UI 显式写入 SQLite <c>civitai_card_cache</c> 持久化。优先级最高 — 覆盖任何
+    /// hash-match chain 结果(scanner 自动匹配的是猜测,用户主动 pick 才是确认)。</summary>
+    UserQuery = 4,
 }
 
 /// <summary>v1.0.0 T13:MatcherOrchestrator.MatchAsync 返回 shape(IModelMatcher.MatchAsync)。

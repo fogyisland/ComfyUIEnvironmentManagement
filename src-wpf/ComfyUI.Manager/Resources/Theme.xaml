@@ -68,6 +68,11 @@
     <views:MatchStatusToBrushConverter x:Key="MatchStatusToBrush" />
     <!-- v1.0.0 T13-7:本地模型卡片右下角 status dot tooltip — MatchSource enum → 人话 -->
     <views:MatchSourceToTooltipConverter x:Key="MatchSourceToTooltip" />
+    <!-- v1.0.0.x:卡片 visual selection — (card instance) ReferenceEquals (VM.SelectedCard) → bool
+         → DataTrigger 切 border 视觉态。卡片 click → SelectedCard = card(单击卡片选中)。
+         toolbar「🔎 CivitAI 查询」按钮 IsEnabled 走 IsLookupEnabledForSelectedCard(VM 侧守卫),
+         XAML 视觉态独立于此 converter。 -->
+    <views:ReferenceEqualsMultiConverter x:Key="ReferenceEquals" />
 
     <!-- Palette 资源现在由 Themes/Palette.Light.xaml 或 Themes/Palette.Dark.xaml 提供(经 App.xaml 槽位合并)。
          本文件只保留 converters / font sizes / paddings / styles / data templates。

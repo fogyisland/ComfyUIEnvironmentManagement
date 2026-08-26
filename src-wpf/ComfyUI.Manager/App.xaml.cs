@@ -477,6 +477,8 @@ public partial class App : Application
         // 复用同一份 dbFactory(SqliteConnectionFactory)— schema 在 SqliteConnectionFactory.InitSchemaIfMissing
         // 里已 CREATE local_model_overrides 表。
         _mainVm.SetLocalModelOverridesFactory(() => new LocalModelOverridesRepository(dbFactory));
+        // v1.0.0.x: CivitAI 详情缓存 repo — 同模式,持久化到 SQLite civitai_card_cache。
+        _mainVm.SetCivitaiCacheRepoFactory(() => new CivitaiCardCacheRepository(dbFactory));
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

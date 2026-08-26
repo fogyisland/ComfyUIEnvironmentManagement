@@ -58,19 +58,23 @@ public sealed class LocalModelsViewModelLookupTests
     [Fact]
     public void LookupCommand_LocalSourceCard_CanExecuteTrue()
     {
+        // v1.0.0.x: LookupCommand 走 SelectedCard — 先 set 再 CanExecute(null)。
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: BuildLookupService());
+        vm.SelectedCard = LocalCard();
 
-        Assert.True(vm.LookupCivitAiCommand.CanExecute(LocalCard()));
+        Assert.True(vm.LookupCivitAiCommand.CanExecute(null));
     }
 
     [Fact]
     public void LookupCommand_NonLocalSourceCard_CanExecuteFalse()
     {
+        // v1.0.0.x: 选 Source != "Local" 的卡 → 按钮 disable(原 inline 按钮路径)。
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: BuildLookupService());
+        vm.SelectedCard = CivitAiCard();
 
-        Assert.False(vm.LookupCivitAiCommand.CanExecute(CivitAiCard()));
+        Assert.False(vm.LookupCivitAiCommand.CanExecute(null));
     }
 
     [Fact]
@@ -79,13 +83,17 @@ public sealed class LocalModelsViewModelLookupTests
         // lookup = null → 即便 Source="Local" 也禁用(button 也会被 CardSourceVisibility 隐藏)
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: null);
+        vm.SelectedCard = LocalCard();
 
-        Assert.False(vm.LookupCivitAiCommand.CanExecute(LocalCard()));
+        Assert.False(vm.LookupCivitAiCommand.CanExecute(null));
     }
 
     [Fact]
     public void IsLookupEnabled_LocalCardWithLookup_ReturnsTrue()
     {
+        // v1.0.0.x: IsLookupEnabled(card) 是 inline 按钮用的辅助函数,toolbar 走
+        // IsLookupEnabledForSelectedCard。两条路径都保留 — inline 按钮已删,但 helper API
+        // 不删(测试 + 未来可能再启用 inline)。assertion 仍按旧 contract 验。
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: BuildLookupService());
 
@@ -116,11 +124,13 @@ public sealed class LocalModelsViewModelLookupTests
         // 验证 in-flight 集合初始为空,IsLookupInProgress 守卫初始未触发。
         // 真实"双击防抖"靠 GUI smoke 验证(在 UI 线程 ShowDialog block 期间
         // CanExecute 受 IsLookupInProgress 守卫)。
+        // v1.0.0.x: 走 SelectedCard — 设 SelectedCard = LocalCard → CanExecute(null) = true。
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: BuildLookupService());
         var card = LocalCard();
+        vm.SelectedCard = card;
 
-        Assert.True(vm.LookupCivitAiCommand.CanExecute(card));
+        Assert.True(vm.LookupCivitAiCommand.CanExecute(null));
         Assert.False(vm.IsLookupInProgress(card));
     }
 
@@ -132,6 +142,7 @@ public sealed class LocalModelsViewModelLookupTests
         // Pre-matched card (MatchedDetail 非 null) 仍然 Source="Local" → LookupCommand 仍可执行。
         // Dialog VM 在 ctor 检测到 card.MatchedDetail 非 null → 直接开 Detail state,跳过 Searching。
         // (verified separately in LocalModelCivitAiDialogViewModelTests.Ctor_PreMatchedDetail_OpensDirectlyInDetailState)
+        // v1.0.0.x: 走 SelectedCard。
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: BuildLookupService());
         var card = new LocalModelCard(
@@ -142,8 +153,9 @@ public sealed class LocalModelsViewModelLookupTests
             MatchedDetail: new CivitAiDetailDto(99, "Test Model", "u", null, "desc",
                 Array.Empty<string>(), Array.Empty<CivitAiVersionDto>(), Array.Empty<string>()),
             MatchSource: MatchSource.Hash);
+        vm.SelectedCard = card;
 
-        Assert.True(vm.LookupCivitAiCommand.CanExecute(card));
+        Assert.True(vm.LookupCivitAiCommand.CanExecute(null));
         Assert.True(vm.IsLookupEnabled(card));
     }
 
@@ -152,6 +164,7 @@ public sealed class LocalModelsViewModelLookupTests
     {
         // 验证 orchestrator 集成的 service (9-arg ctor) 注入到 VM 时,LookupCommand 仍可执行。
         // 真实匹配走 service.MatchAsync (orchestrator 决定 4 策略顺序);本测试只验 wiring 不抛。
+        // v1.0.0.x: 走 SelectedCard。
         var svc = new CivitAiLookupService(new System.Net.Http.HttpClient(), "https://civitai.com", "");
         var vm = new LocalModelsViewModel(SettingsWith("Z:\\fake"), new FakeScanner(),
             lookup: svc);
@@ -160,8 +173,9 @@ public sealed class LocalModelsViewModelLookupTests
             Title: "Test", Kind: ModelKind.Checkpoint, Source: "Local", VersionCount: 1,
             LatestDownloadedAt: DateTime.Now, SourceUrl: null, PreviewImagePath: null,
             Hash: null, MatchedDetail: null, MatchSource: null);
+        vm.SelectedCard = card;
 
         Assert.NotNull(vm.LookupCivitAiCommand);
-        Assert.True(vm.LookupCivitAiCommand.CanExecute(card));
+        Assert.True(vm.LookupCivitAiCommand.CanExecute(null));
     }
 }
