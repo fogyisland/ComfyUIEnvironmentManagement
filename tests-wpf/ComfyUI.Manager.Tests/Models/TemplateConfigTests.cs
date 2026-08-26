@@ -75,6 +75,8 @@ public class TemplateConfigTests
         Assert.Contains("\"models_subdir\":\"models\"", json);
         Assert.Contains("\"extra_junction_targets\":[]", json);
         Assert.Contains("\"user_extra_args\":\"\"", json);
+        // v1.0.0.x: meta 字典(空 dict 序列化为 {})
+        Assert.Contains("\"meta\":{}", json);
     }
 
     [Fact]
@@ -386,5 +388,127 @@ public class TemplateConfigTests
         var restored = JsonSerializer.Deserialize<TemplateConfig>(json, JsonOptions.Default);
         Assert.NotNull(restored);
         Assert.False(restored!.LocalDirMissing);   // 反序列化回默认 false
+    }
+
+    // --- v1.0.0.x: Meta 字典 round-trip + MetaRaw 解析 ---
+
+    [Fact]
+    public void Meta_DefaultsToEmptyDictionary()
+    {
+        var cfg = new TemplateConfig();
+        Assert.NotNull(cfg.Meta);
+        Assert.Empty(cfg.Meta);
+    }
+
+    [Fact]
+    public void Meta_RoundTrip_PreservesAllEntries()
+    {
+        var cfg = new TemplateConfig
+        {
+            Name = "ComfyUI",
+            Kind = "ComfyUI",
+            Meta = new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["category"] = "图像生成",
+                ["description"] = "节点式 SD 工作流",
+                ["author"] = "comfyanonymous",
+                ["repo"] = "https://github.com/comfyanonymous/ComfyUI",
+            },
+        };
+        var json = JsonSerializer.Serialize(cfg, JsonOptions.Default);
+        Assert.Contains("\"meta\":", json);
+        var restored = JsonSerializer.Deserialize<TemplateConfig>(json, JsonOptions.Default);
+        Assert.NotNull(restored);
+        Assert.Equal(4, restored!.Meta.Count);
+        Assert.Equal("图像生成", restored.Meta["category"]);
+        Assert.Equal("节点式 SD 工作流", restored.Meta["description"]);
+    }
+
+    [Fact]
+    public void MetaRaw_EmptyDict_EmptyString()
+    {
+        var cfg = new TemplateConfig();
+        Assert.Equal("", cfg.MetaRaw);
+    }
+
+    [Fact]
+    public void MetaRaw_MultiEntry_NewlineJoined()
+    {
+        var cfg = new TemplateConfig
+        {
+            Meta = new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["category"] = "图像生成",
+                ["description"] = "描述",
+            },
+        };
+        Assert.Equal("category=图像生成\ndescription=描述", cfg.MetaRaw);
+    }
+
+    [Fact]
+    public void ParseMetaRaw_NormalLines_Kept()
+    {
+        var dict = TemplateConfig.ParseMetaRaw("category=图像生成\ndescription=some text");
+        Assert.Equal(2, dict.Count);
+        Assert.Equal("图像生成", dict["category"]);
+        Assert.Equal("some text", dict["description"]);
+    }
+
+    [Fact]
+    public void ParseMetaRaw_BlankLines_Skipped()
+    {
+        var dict = TemplateConfig.ParseMetaRaw("\ncategory=A\n\n  \ndescription=B\n");
+        Assert.Equal(2, dict.Count);
+        Assert.Equal("A", dict["category"]);
+        Assert.Equal("B", dict["description"]);
+    }
+
+    [Fact]
+    public void ParseMetaRaw_NoEquals_Skipped()
+    {
+        // 用户手抖粘进 "garbage line" / "=no key" — 不抛异常,跳过。
+        var dict = TemplateConfig.ParseMetaRaw("category=A\n=orphan\nkeyonly\ndescription=B");
+        Assert.Equal(2, dict.Count);
+        Assert.True(dict.ContainsKey("category"));
+        Assert.True(dict.ContainsKey("description"));
+    }
+
+    [Fact]
+    public void ParseMetaRaw_ValueContainsEquals_TakesRestAfterFirst()
+    {
+        // value 里有 = 时,只切第一个 — url query / key=value=more=value 全保留。
+        var dict = TemplateConfig.ParseMetaRaw("url=https://x?a=1&b=2");
+        Assert.Equal("https://x?a=1&b=2", dict["url"]);
+    }
+
+    [Fact]
+    public void ParseMetaRaw_RoundTripWithMetaRaw()
+    {
+        var cfg = new TemplateConfig
+        {
+            Meta = new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["category"] = "AI 语音",
+                ["notes"] = "tag1,tag2,tag3",  // value 里不含换行 — round-trip 安全
+                ["url"] = "https://x?a=1&b=2",  // 含 = 也安全(只切第一个 =)
+            },
+        };
+        var raw = cfg.MetaRaw;
+        var parsed = TemplateConfig.ParseMetaRaw(raw);
+        Assert.Equal(cfg.Meta.Count, parsed.Count);
+        foreach (var kvp in cfg.Meta)
+        {
+            Assert.Equal(kvp.Value, parsed[kvp.Key]);
+        }
+    }
+
+    [Fact]
+    public void BackwardCompat_OldJson_NoMeta_DefaultsToEmpty()
+    {
+        // 老 settings.json 没有 meta 字段 → 反序列化后 Meta = 空 dict,不抛。
+        const string oldJson = """{"name":"X","kind":"X","local_source_dir":"x","entry_script":"","entry_args":"","models_subdir":"models","extra_junction_targets":[],"user_extra_args":""}""";
+        var c = JsonSerializer.Deserialize<TemplateConfig>(oldJson, JsonOptions.Default)!;
+        Assert.NotNull(c.Meta);
+        Assert.Empty(c.Meta);
     }
 }

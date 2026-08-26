@@ -30,6 +30,16 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        // v1.0.0.x: 内置 Meta 元数据 — 描述/分类/作者/官方仓库,用户可在
+        // EditTemplateDialog 自由修改;只读内置模板(seed 时填,SettingsDefaults
+        // 不会重新覆盖 — 用户改了永远跟用户走)。
+        Meta = new()
+        {
+            ["category"] = "图像生成",
+            ["description"] = "ComfyUI:节点式 Stable Diffusion 工作流引擎",
+            ["author"] = "comfyanonymous",
+            ["repo"] = "https://github.com/comfyanonymous/ComfyUI",
+        },
     };
 
     public static TemplateConfig A1111(string projectRoot) => new()
@@ -42,6 +52,13 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models/Stable-diffusion",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        Meta = new()
+        {
+            ["category"] = "图像生成",
+            ["description"] = "AUTOMATIC1111 Stable Diffusion WebUI",
+            ["author"] = "AUTOMATIC1111",
+            ["repo"] = "https://github.com/AUTOMATIC1111/stable-diffusion-webui",
+        },
     };
 
     /// <summary>
@@ -59,6 +76,13 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models/Stable-diffusion",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        Meta = new()
+        {
+            ["category"] = "图像生成",
+            ["description"] = "Stable Diffusion WebUI Forge — A1111 优化 fork",
+            ["author"] = "lllyasviel",
+            ["repo"] = "https://github.com/lllyasviel/stable-diffusion-webui-forge",
+        },
     };
 
     /// <summary>

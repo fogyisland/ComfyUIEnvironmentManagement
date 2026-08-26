@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -107,6 +108,39 @@ public class EditTemplateDialogViewModel : ViewModelBase
         set { if (WorkingConfig.Name != value) { WorkingConfig.Name = value; RaiseFor(nameof(Name)); } }
     }
 
+    /// <summary>
+    /// v1.0.0.x: <see cref="TemplateConfig.Meta"/> 字典的字符串视图 — 每行
+    /// <c>key=value</c>,供 EditTemplateDialog 的 Multi-line TextBox 双向绑定。
+    /// WPF 原生 <c>Binding</c> 对 <c>Dictionary&lt;,&gt;</c> 双绑不可靠,改用字符串
+    /// setter 解析回 Dictionary。空行 / 没 <c>=</c> 行忽略。Set 时不抛异常 —
+    /// 用户中途编辑到一半的中间态(<c>key=</c> 没 value)直接跳过,Save 时
+    /// <see cref="LoadFrom"/> 反向会保留上次成功解析的 key。
+    /// </summary>
+    public string MetaRaw
+    {
+        get => WorkingConfig.MetaRaw;
+        set
+        {
+            var parsed = TemplateConfig.ParseMetaRaw(value);
+            // 比对当前 WorkingConfig.Meta;只有真的变了才回写 + 通知。
+            if (!DictionariesEqual(WorkingConfig.Meta, parsed))
+            {
+                WorkingConfig.Meta = parsed;
+                RaiseFor(nameof(MetaRaw));
+            }
+        }
+    }
+
+    private static bool DictionariesEqual(Dictionary<string, string> a, Dictionary<string, string> b)
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var kvp in a)
+        {
+            if (!b.TryGetValue(kvp.Key, out var v) || v != kvp.Value) return false;
+        }
+        return true;
+    }
+
     public string Kind
     {
         get => WorkingConfig.Kind;
@@ -209,6 +243,8 @@ public class EditTemplateDialogViewModel : ViewModelBase
             UserExtraArgs = existing.UserExtraArgs,
             SourceKind = existing.SourceKind,
             GitHubRepoUrl = existing.GitHubRepoUrl,
+            // v1.0.0.x: Meta 字典 deep-copy,避免 Edit 修改直接影响原对象。
+            Meta = new Dictionary<string, string>(existing.Meta),
         };
         RaisePropertyChanged(nameof(WorkingConfig));
         // Refresh proxy properties (they read WorkingConfig.X) and CanSave
@@ -217,6 +253,9 @@ public class EditTemplateDialogViewModel : ViewModelBase
         RaisePropertyChanged(nameof(LocalSourceDir));
         RaisePropertyChanged(nameof(SourceKind));
         RaisePropertyChanged(nameof(GitHubRepoUrl));
+        // v1.0.0.x: MetaRaw 也要通知 — 新建 dialog 时 LoadFrom 之前 MetaRaw 是空串,
+        // 之后要刷成 WorkingConfig.MetaRaw(从源复制过来的字典序列化)。
+        RaisePropertyChanged(nameof(MetaRaw));
         RaisePropertyChanged(nameof(CanSave));
         // G12: Mode + _originalKind 决定 Kind 是否可编辑 — LoadFrom 后必通知。
         RaisePropertyChanged(nameof(IsKindEditable));

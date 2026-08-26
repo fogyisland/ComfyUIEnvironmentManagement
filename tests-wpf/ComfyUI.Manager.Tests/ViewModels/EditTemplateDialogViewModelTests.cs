@@ -289,4 +289,59 @@ public class EditTemplateDialogViewModelTests
         Assert.True(vm.AppliedToSettings);
         Assert.True(s.Templates.ContainsKey("MyTpl"));
     }
+
+    // --- v1.0.0.x: MetaRaw proxy + LoadFrom deep-copy ---
+
+    [Fact]
+    public void MetaRaw_Get_ReflectsWorkingConfigMeta()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.WorkingConfig.Meta["category"] = "图像生成";
+        vm.WorkingConfig.Meta["description"] = "节点式 SD";
+        Assert.Equal("category=图像生成\ndescription=节点式 SD", vm.MetaRaw);
+    }
+
+    [Fact]
+    public void MetaRaw_Set_ParsesAndUpdatesWorkingConfigMeta()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.MetaRaw = "category=AI 语音\nnotes=tag1,tag2";
+        Assert.Equal(2, vm.WorkingConfig.Meta.Count);
+        Assert.Equal("AI 语音", vm.WorkingConfig.Meta["category"]);
+        Assert.Equal("tag1,tag2", vm.WorkingConfig.Meta["notes"]);
+    }
+
+    [Fact]
+    public void MetaRaw_Set_IgnoresBlankAndMalformedLines()
+    {
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Add };
+        vm.MetaRaw = "category=A\n\n  \n=orphan\nnoequals\ndescription=B";
+        Assert.Equal(2, vm.WorkingConfig.Meta.Count);
+        Assert.True(vm.WorkingConfig.Meta.ContainsKey("category"));
+        Assert.True(vm.WorkingConfig.Meta.ContainsKey("description"));
+    }
+
+    [Fact]
+    public void LoadFrom_EditMode_CopiesMetaDeep()
+    {
+        // 防 LoadFrom 后用户改 MetaRaw 影响原对象 — deep-copy 必需。
+        var s = SeedSettings();
+        var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Edit };
+        var existing = new TemplateConfig
+        {
+            Name = "A1111", Kind = "A1111",
+            Meta = new Dictionary<string, string> { ["author"] = "AUTOMATIC1111" },
+        };
+        vm.LoadFrom(existing);
+        Assert.Equal("author=AUTOMATIC1111", vm.MetaRaw);
+
+        // 用户改 MetaRaw
+        vm.MetaRaw = "author=我的版本";
+        // 原 existing.Meta 不应被改
+        Assert.Single(existing.Meta);
+        Assert.Equal("AUTOMATIC1111", existing.Meta["author"]);
+    }
 }

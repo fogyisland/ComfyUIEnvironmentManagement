@@ -56,6 +56,16 @@ public class TemplateConfig
     public string UserExtraArgs { get; set; } = "";
 
     /// <summary>
+    /// v1.0.0.x: 用户/编辑器自由填的元数据(描述/作者/版本/分类/备注等)。
+    /// 跟 <c>CatalogEntry.RawMetadata</c>(从 GitHub API 自动抓)概念不同 — 这是用户在
+    /// <see cref="ComfyUI.Manager.Views.TemplateManagement.EditTemplateDialog"/>
+    /// 编辑的「手动维护」元数据;序列化到 settings.json,EnvCreator / launcher 不读,
+    /// 仅供 UI 显示 / 第三方工具读取。空字典 = 没填。
+    /// </summary>
+    [JsonPropertyName("meta")]
+    public Dictionary<string, string> Meta { get; set; } = new();
+
+    /// <summary>
     /// Human-readable badge for the template kind. v1.0.0+: used by TemplateManagementView
     /// card to display "[GitHub]" / "[本地]". Not serialized — derived from SourceKind.
     /// </summary>
@@ -146,4 +156,35 @@ public class TemplateConfig
     /// </summary>
     [JsonIgnore]
     public bool LocalDirMissing { get; set; }
+
+    /// <summary>
+    /// v1.0.0.x:把 <see cref="Meta"/> 字典序列化/反序列化为多行字符串供
+    /// <see cref="ComfyUI.Manager.Views.TemplateManagement.EditTemplateDialog"/> 的
+    /// TextBox 双向绑定。每行 <c>key=value</c>;空 value 允许;空 key 跳过;
+    /// 含 <c>=</c> 的 value 取第一个 <c>=</c> 后的全部。空字典 → 空串。
+    /// 双向 round-trip 通过 <see cref="ParseMetaRaw"/>。
+    /// </summary>
+    public string MetaRaw => string.Join("\n", Meta.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+
+    /// <summary>
+    /// 反序列化 <see cref="MetaRaw"/> 字符串到字典。空白行忽略;<c>key</c> 为空行跳过;
+    /// 没 <c>=</c> 的行跳过(避免脏数据)。返回新字典(不改 <see cref="Meta"/>)。
+    /// </summary>
+    public static Dictionary<string, string> ParseMetaRaw(string? raw)
+    {
+        var dict = new Dictionary<string, string>();
+        if (string.IsNullOrEmpty(raw)) return dict;
+        foreach (var line in raw.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0) continue;
+            var eq = trimmed.IndexOf('=');
+            if (eq <= 0) continue;  // 没 = 或 key 空 → 跳过
+            var key = trimmed[..eq].Trim();
+            var val = trimmed[(eq + 1)..];
+            if (key.Length == 0) continue;
+            dict[key] = val;
+        }
+        return dict;
+    }
 }

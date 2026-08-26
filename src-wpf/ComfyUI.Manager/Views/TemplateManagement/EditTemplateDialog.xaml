@@ -66,6 +66,18 @@
                     <TextBox Text="{Binding LocalSourceDir, Mode=OneWay}" IsReadOnly="True" Background="#F0F0F0"/>
                 </StackPanel>
 
+                <!-- v1.0.0.x: Meta 元数据手动编辑 — 每行 key=value,空 value 允许,
+                     没 = 的行忽略。常见 key: category/description/author/repo/notes。
+                     TextBox 高度 5 行,AcceptsReturn=True 允许回车换行。 -->
+                <TextBlock Text="Meta 元数据 (每行 key=value,空行忽略)" Style="{StaticResource LabelStyle}"/>
+                <TextBox Text="{Binding MetaRaw, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" TextWrapping="NoWrap"
+                         FontFamily="Consolas" FontSize="12"
+                         MinHeight="100" MaxHeight="160"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Auto"
+                         ToolTip="每行一个 key=value,例如:&#xa;category=图像生成&#xa;description=描述文本&#xa;author=作者名"/>
+
                 <!-- v1.0.0.x simplification: 启动脚本/启动参数/模型子目录/用户附加参数 已从此对话框移除。
                      这些字段保留在 TemplateConfig 数据模型(已有 settings.json entry_script/entry_args/
                      models_subdir/user_extra_args 仍可被 EnvCreator/ProcessLauncher/ModelSymlinker 读取),
