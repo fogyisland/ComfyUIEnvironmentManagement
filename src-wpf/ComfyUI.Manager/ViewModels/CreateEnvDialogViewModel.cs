@@ -318,7 +318,13 @@ public class CreateEnvDialogViewModel : ViewModelBase
         {
             var active = _settings.PythonInterpreters
                 .FirstOrDefault(p => p.Name == _settings.ActivePythonInterpreterName);
-            PythonExe = active?.Path ?? "";
+            // v1.0.0.x: 解释器 Path 存相对路径(SettingsDefaults.Apply auto-seed 时用相对
+            // 路径存盘,跟 EnvsDir / Models 一样 green-portable),运行时拼 projectRoot 解析。
+            // 绝对路径(用户手动 Browse 选的)原样返回。
+            var rawPath = active?.Path ?? "";
+            PythonExe = !string.IsNullOrEmpty(rawPath) && !Path.IsPathRooted(rawPath)
+                ? Path.Combine(_projectRoot, rawPath)
+                : rawPath;
         }
 
         // —— spec §2.5 警告文案 ——

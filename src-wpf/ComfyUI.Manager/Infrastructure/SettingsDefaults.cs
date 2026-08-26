@@ -79,6 +79,31 @@ public static class SettingsDefaults
     {
         if (s is null) return;
 
+        // v1.0.0.x: shipped portable python 存在 + 用户没配过解释器 + 老字段为空
+        // → seed 相对路径 "python/python.exe"。**必须放在 line 99 `s.TemplatePythonDir = Resolve(...)`
+        // 之前** — Resolve 会把空 TemplatePythonDir 填成 "Python",后续 my gate 就 miss 了。
+        // 老 settings.json 有 TemplatePythonDir/DefaultPythonVersion → 不 seed,留给下方
+        // legacy migration 决定(可能合成成功,也可能跳过让用户 Browse)。
+        if (s.PythonInterpreters.Count == 0
+            && string.IsNullOrWhiteSpace(s.TemplatePythonDir)
+            && string.IsNullOrWhiteSpace(s.DefaultPythonVersion))
+        {
+            string? relativeSubdir = null;
+            if (File.Exists(Path.Combine(projectRoot, "python", "python.exe")))
+                relativeSubdir = Path.Combine("python", "python.exe");
+            else if (File.Exists(Path.Combine(projectRoot, "Python", "python.exe")))
+                relativeSubdir = Path.Combine("Python", "python.exe");
+            if (relativeSubdir != null)
+            {
+                s.PythonInterpreters.Add(new PythonInterpreter
+                {
+                    Name = "python",
+                    Path = relativeSubdir,
+                });
+                s.ActivePythonInterpreterName = "python";
+            }
+        }
+
         // v1.0.0 目录结构重构:老 settings.json 里写过的旧子目录名(全小写 / kebab-case)
         // 一次性迁到 PascalCase,避免 service 在 projectRoot/envs/ 和 projectRoot/Envs/ 两边分裂。
         // Resolve 之前的 MigrateOldSubdirName 必须走在前面,否则后续 MigrateOnly 会跳过相对路径。

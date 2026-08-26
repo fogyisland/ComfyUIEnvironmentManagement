@@ -609,9 +609,13 @@ public partial class App : Application
 
     private static string ResolveGitExe(string projectRoot)
     {
-        // v1.0.0:目录重构 bin/ → Embeded/(portable 工具放 Embeded/ 下)。
-        var portable = Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe");
-        if (File.Exists(portable)) return portable;
+        // v1.0.0.x: 优先查 projectRoot/bin/git-portable/cmd/git.exe(shipped portable git)。
+        // Embeded/ 是 v1.0.0 规划中的目录重构,提前留 fallback — 哪天真迁移了直接改一处。
+        // 都没有 → 走 PATH "git"(用户环境装过 git-for-windows 也行)。
+        var portableBin = Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe");
+        if (File.Exists(portableBin)) return portableBin;
+        var portableEmbeded = Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe");
+        if (File.Exists(portableEmbeded)) return portableEmbeded;
         return "git"; // fallback to PATH
     }
 
