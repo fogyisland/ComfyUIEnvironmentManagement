@@ -43,8 +43,6 @@
                     <Separator />
                     <MenuItem Header="打开项目文件夹"
                               Command="{Binding OpenProjectFolderCommand}" />
-                    <MenuItem Header="赞助作者..."
-                              Command="{Binding ShowDonateQrCommand}" />
                     <Separator />
                     <MenuItem Header="_退出"
                               Command="{Binding ExitAppCommand}" />
@@ -65,9 +63,22 @@
                          TemplateManagementView 每张模板卡的 "更新源码" 按钮(T9/T11)。
                          工具菜单不再有全局模板更新入口。 -->
                 </MenuItem>
-                <MenuItem Header="_关于(_H)">
-                    <MenuItem Header="关于..."
+                <!-- v1.0.0.x:把 4 个关于类顶级 dropdown 折成「_关于(_A)」一个顶级
+                     dropdown + 4 个子菜单项(关于系统 / ComfyUI课程 / ComfyUI群组 /
+                     赞助作者)。用户原话:"菜单中的关于系统、comfyui课程、comfyui群组、
+                     赞助作者 都是关于的二级菜单"。
+
+                     助记符:4 个子项各自的 Alt 字母照旧(About=_S, Courses=_C,
+                     Group=_G, Donate=_D)— 父菜单 _A 不冲突。 -->
+                <MenuItem Header="_关于(_A)">
+                    <MenuItem Header="_关于系统(_S)"
                               Command="{Binding ShowAboutCommand}" />
+                    <MenuItem Header="_ComfyUI课程(_C)"
+                              Command="{Binding ShowCoursesCommand}" />
+                    <MenuItem Header="_ComfyUI群组(_G)"
+                              Command="{Binding ShowComfyUIGroupCommand}" />
+                    <MenuItem Header="_赞助作者(_D)"
+                              Command="{Binding ShowDonateQrCommand}" />
                 </MenuItem>
             </Menu>
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">

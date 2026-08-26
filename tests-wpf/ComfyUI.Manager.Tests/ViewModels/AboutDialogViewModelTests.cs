@@ -38,6 +38,8 @@ public class AboutDialogViewModelTests : IDisposable
     public void DonateImageFileName_IsReceiveMarkJpg()
     {
         // v1.0.0:微信支付收款码文件路径 `assets/receiveMark.jpg`(复数 assets/ 统一目录)
+        // 注意:v1.0.0 拆分后 DonateQrViewModel 也用同样的常量 — AboutDialogViewModel 保留
+        // 此 const 作为 "全局路径契约"的源头,以便单点改名,DonateQrViewModel 自动跟随。
         Assert.Equal("receiveMark.jpg", AboutDialogViewModel.DonateImageFileName);
     }
 
@@ -49,26 +51,6 @@ public class AboutDialogViewModelTests : IDisposable
     }
 
     [Fact]
-    public void OpenDonateQrCommand_Execute_FiresOpenDonateQrRequested()
-    {
-        var vm = new AboutDialogViewModel(_projectRoot);
-        var fired = false;
-        vm.OpenDonateQrRequested += (_, _) => fired = true;
-        vm.OpenDonateQrCommand.Execute(null);
-        Assert.True(fired);
-    }
-
-    [Fact]
-    public void OpenComfyUIGroupCommand_Execute_FiresOpenComfyUIGroupRequested()
-    {
-        var vm = new AboutDialogViewModel(_projectRoot);
-        var fired = false;
-        vm.OpenComfyUIGroupRequested += (_, _) => fired = true;
-        vm.OpenComfyUIGroupCommand.Execute(null);
-        Assert.True(fired);
-    }
-
-    [Fact]
     public void CloseCommand_Execute_FiresRequestClose()
     {
         var vm = new AboutDialogViewModel(_projectRoot);
@@ -77,4 +59,11 @@ public class AboutDialogViewModelTests : IDisposable
         vm.CloseCommand.Execute(null);
         Assert.True(fired);
     }
+
+    // v1.0.0 拆分:OpenDonateQrCommand / OpenComfyUIGroupCommand / CoursesHeader / Course*
+    // 全部从 AboutDialogViewModel 删除 — 各自搬到独立顶级 dropdown 触发的
+    // DonateQrViewModel / ComfyUIGroupQrViewModel / ComfyUICoursesViewModel。
+    // 删除原 OpenDonateQrCommand_Execute_FiresOpenDonateQrRequested 和
+    // OpenComfyUIGroupCommand_Execute_FiresOpenComfyUIGroupRequested 2 个测试 — 它们依赖的
+    // 命令/事件不再存在。
 }

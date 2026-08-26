@@ -1,7 +1,7 @@
 <Window x:Class="ComfyUI.Manager.Views.ComfyUIGroupQrWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="{Binding Title}" Width="360" Height="460"
+        Title="{Binding Title}" Width="460" Height="560"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize" ShowInTaskbar="True">
     <Window.InputBindings>
@@ -25,11 +25,15 @@
                    FontSize="12" Foreground="Gray" TextWrapping="Wrap"
                    HorizontalAlignment="Center" Margin="0,0,0,12" />
 
-        <!-- 二维码大图(280x280)+ 占位 -->
+        <!-- 二维码大图(原图比例显示,不裁剪 — 用户反馈 v1.0.0.x 原 280×280
+             定宽高会把 396×396 原图等比缩小 + Border 内部裁切边缘。
+             MaxWidth/MaxHeight + Stretch=Uniform 让图按原比例展示,
+             仅在超过 420×520 时等比缩到上内,从不裁剪。-->
         <Border Grid.Row="2" Background="White" Padding="4" CornerRadius="4"
                 HorizontalAlignment="Center" VerticalAlignment="Center">
             <Grid>
-                <Image x:Name="GroupImage" Width="280" Height="280"
+                <Image x:Name="GroupImage" Stretch="Uniform"
+                       MaxWidth="420" MaxHeight="500"
                        Visibility="{Binding HasGroupImage, Converter={StaticResource BoolToVisibility}}" />
                 <TextBlock Text="{Binding PlaceholderText}" TextWrapping="Wrap"
                            FontSize="13" Foreground="Gray"

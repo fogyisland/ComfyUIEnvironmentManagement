@@ -1,0 +1,56 @@
+<Window x:Class="ComfyUI.Manager.Views.ComfyUICoursesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding Title}" Width="380" Height="380"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="True">
+    <Window.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CloseCommand}" />
+    </Window.InputBindings>
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题 -->
+        <TextBlock Grid.Row="0" Text="{Binding Title}"
+                   FontSize="20" FontWeight="Bold"
+                   HorizontalAlignment="Center" Margin="0,0,0,8" />
+
+        <!-- 提示 -->
+        <TextBlock Grid.Row="1" Text="{Binding Hint}"
+                   FontSize="12" Foreground="Gray" TextWrapping="Wrap"
+                   HorizontalAlignment="Center" Margin="0,0,0,16" />
+
+        <!-- 课程列表(v0.6.15.5 决定:先纯文字展示,后续再加 Hyperlink)。
+             当前版本升级 spec 时再切换到 System.Windows.Documents.Hyperlink;
+             现在每项用 Border + 留白做"卡片"视觉,跟 AboutDialog 里平铺 TextBlock 拉开档次。 -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                CornerRadius="6" Padding="16">
+            <StackPanel>
+                <TextBlock Margin="0,0,0,8">
+                    <Run Text="{Binding CoursesHeader, Mode=OneWay}" FontWeight="Bold" />
+                    <Run Text=":" />
+                </TextBlock>
+                <TextBlock Text="{Binding Course51CTO, Mode=OneWay}"
+                           Margin="8,4,0,4" FontSize="13" />
+                <TextBlock Text="{Binding CourseShenYeCG, Mode=OneWay}"
+                           Margin="8,4,0,4" FontSize="13" />
+                <TextBlock Text="{Binding CourseYihuu, Mode=OneWay}"
+                           Margin="8,4,0,4" FontSize="13" />
+                <TextBlock Text="{Binding CourseUdemy, Mode=OneWay}"
+                           Margin="8,4,0,0" FontSize="13" />
+            </StackPanel>
+        </Border>
+
+        <!-- 关闭按钮 -->
+        <Button Grid.Row="3" Content="关闭" Command="{Binding CloseCommand}"
+                Style="{StaticResource MaterialButton}" HorizontalAlignment="Center"
+                MinWidth="80" Margin="0,16,0,0" />
+    </Grid>
+</Window>

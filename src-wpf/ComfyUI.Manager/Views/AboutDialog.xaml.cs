@@ -13,12 +13,16 @@ public partial class AboutDialog : Window
     }
 
     /// <summary>
-    /// 弹非模态 About 对话框(独立窗口,不阻塞主窗口 — v0.6.5.21 hotfix)。
+    /// 弹非模态 "关于系统" 对话框 — v1.0.0 拆分:只剩系统级信息。
     /// Owner 通常 <c>Application.Current.MainWindow</c>(用于位置关联 + WindowStartupLocation=CenterOwner)。
-    /// projectRoot 用于定位 <c>assets/receiveMark.jpg</c>(QR 单独从 DonateQrWindow 打开)。
+    /// 二维码 / 课程改独立窗口,见 <see cref="DonateQrWindow"/> / <see cref="ComfyUIGroupQrWindow"/> /
+    /// <see cref="ComfyUICoursesWindow"/> — 这几个由主菜单顶级 dropdown 各自触发,不再从此对话框跳。
+    ///
+    /// projectRoot 参数保留以兼容旧 Show 调用位 — 当前 ctor 已不再读它。
     /// </summary>
     public static void Show(Window owner, string projectRoot)
     {
+        _ = projectRoot;   // v1.0.0:VM 不再需要 projectRoot,显式丢弃保持 API 兼容。
         var vm = new AboutDialogViewModel(projectRoot);
         var dlg = new AboutDialog
         {
@@ -26,17 +30,7 @@ public partial class AboutDialog : Window
             DataContext = vm,
         };
         vm.RequestClose += (_, _) => dlg.Close();
-        vm.OpenDonateQrRequested += (_, _) =>
-        {
-            // 在 AboutDialog 上点"查看赞助二维码"→ 弹独立 DonateQrWindow(也非模态)
-            DonateQrWindow.Show(dlg, projectRoot);
-        };
-        vm.OpenComfyUIGroupRequested += (_, _) =>
-        {
-            // v1.0.0:在 AboutDialog 上点"查看ComfyUI技术组"→ 弹独立 ComfyUIGroupQrWindow(也非模态)
-            ComfyUIGroupQrWindow.Show(dlg, projectRoot);
-        };
-        dlg.Show();  // 非模态:不阻塞主窗口,用户可一边看 About 一边操作主界面
+        dlg.Show();  // 非模态:不阻塞主窗口
     }
 
     /// <summary>Hyperlink 点击 → 用默认浏览器开 URL。</summary>

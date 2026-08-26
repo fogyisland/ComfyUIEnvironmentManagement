@@ -6,16 +6,19 @@ using System.Resources;
 namespace ComfyUI.Manager.ViewModels;
 
 /// <summary>
-/// About 对话框的 VM — v0.6.5.21 + hotfix。堆叠顶~下:标题 + 版本 + 描述 + 授权 + 仓库 / 问题
-/// 链接 + "查看赞助二维码"按钮(→ 弹独立 DonateQrWindow 窗口)。
+/// "关于系统" 对话框的 VM — v1.0.0 拆分后只剩系统级信息。
 ///
-/// v0.6.5.21 hotfix 改造:
+/// 历史(v0.6.5.21 hotfix + v0.6.15.5 + 此次):
 /// - AboutDialog 改非模态(Show 而非 ShowDialog)— 用户扫码时主窗口仍可操作;
-/// - 二维码拆到独立 <see cref="DonateQrViewModel"/> 窗口 — AboutDialog 里只放按钮;
-/// - 路径常量 <see cref="DonateImageFileName"/> / <see cref="DonateImageSubdirectory"/> 公开
-///   共享给 <see cref="DonateQrViewModel"/>(单源 — 改一处两处都跟);
-/// - <see cref="HasDonateImage"/> / <see cref="DonateImagePath"/> / <see cref="DonatePlaceholder"/>
-///   / <see cref="CreateDonateImage"/> 全部移走(由 DonateQrViewModel 持有)。
+/// - 二维码 / 课程拆到独立对话框:
+///   - <see cref="DonateQrViewModel"/> — 赞助二维码(从主菜单 "赞助作者" 顶级 dropdown 触发);
+///   - <see cref="ComfyUIGroupQrViewModel"/> — 微信技术组二维码(从主菜单 "ComfyUI 群组" 顶级 dropdown 触发);
+///   - <see cref="ComfyUICoursesViewModel"/> — 4 个课程链接(从主菜单 "ComfyUI 课程" 顶级 dropdown 触发)。
+/// - 此 VM 删掉原 OpenDonateQr/OpenComfyUIGroup 命令 + 4 个课程字段,只剩:
+///   版本 / 标题 / 描述 / 授权 / 仓库 / 问题反馈 / 关闭;
+/// - 路径常量 <see cref="DonateImageFileName"/> / <see cref="DonateImageSubdirectory"/> 仍
+///   保留 — 它们是全局路径契约,DonateQrViewModel 跟此处都引用,任何一处改名另一边跟;
+/// - <see cref="GroupImageFileName"/> 删掉(职责已迁 ComfyUIGroupQrViewModel 那里自己定义)。
 /// </summary>
 public sealed class AboutDialogViewModel : ViewModelBase
 {
@@ -26,8 +29,6 @@ public sealed class AboutDialogViewModel : ViewModelBase
     // 微信支付收款码图片路径:projectRoot/assets/receiveMark.jpg。
     public const string DonateImageFileName = "receiveMark.jpg";
     public const string DonateImageSubdirectory = "assets";
-    // v1.0.0 ComfyUI 技术组微信群二维码图片路径:projectRoot/assets/wechatgroup.png。
-    public const string GroupImageFileName = "wechatgroup.png";
 
     // csproj 用 <Resource Include="Resources\Strings*.resx"> + MSBuild:_GenerateResxSource,
     // 该 generator 只把 .resx 编进二进制资源,不会生成 strong-typed Strings 类。
@@ -39,26 +40,15 @@ public sealed class AboutDialogViewModel : ViewModelBase
     private static string GetString(string key) =>
         StringsResources.GetString(key, CultureInfo.CurrentUICulture) ?? key;
 
-    private readonly string _projectRoot;
-
     public AboutDialogViewModel(string projectRoot)
     {
-        _projectRoot = projectRoot;
+        _ = projectRoot;   // v1.0.0:分离后此 VM 不再直接读 assets,参数保留兼容旧 ctor 调用。
         Version = (Assembly.GetExecutingAssembly().GetName().Version?.ToString()) ?? "0.0.0";
         Title = GetString("About_Title");
         Description = GetString("About_Description");
         LicenseText = LicenseTextValue;
         RepositoryUrl = RepositoryUrlValue;
         IssuesUrl = IssuesUrlValue;
-        OpenDonateQrButtonText = GetString("About_OpenDonateButton");
-        OpenComfyUIGroupButtonText = GetString("About_OpenComfyUIGroupButton");
-        CoursesHeader = GetString("About_CoursesHeader");
-        Course51CTO = GetString("About_Course_51CTO");
-        CourseShenYeCG = GetString("About_Course_ShenYeCG");
-        CourseYihuu = GetString("About_Course_Yihuu");
-        CourseUdemy = GetString("About_Course_Udemy");
-        OpenDonateQrCommand = new RelayCommand(_ => OpenDonateQr());
-        OpenComfyUIGroupCommand = new RelayCommand(_ => OpenComfyUIGroup());
         CloseCommand = new RelayCommand(_ => Close());
     }
 
@@ -68,28 +58,10 @@ public sealed class AboutDialogViewModel : ViewModelBase
     public string LicenseText { get; }
     public string RepositoryUrl { get; }
     public string IssuesUrl { get; }
-    public string OpenDonateQrButtonText { get; }
-    public string OpenComfyUIGroupButtonText { get; }
-    public string CoursesHeader { get; }
-    public string Course51CTO { get; }
-    public string CourseShenYeCG { get; }
-    public string CourseYihuu { get; }
-    public string CourseUdemy { get; }
-    public RelayCommand OpenDonateQrCommand { get; }
-    public RelayCommand OpenComfyUIGroupCommand { get; }
     public RelayCommand CloseCommand { get; }
-
-    private void OpenDonateQr() => OpenDonateQrRequested?.Invoke(this, EventArgs.Empty);
-    private void OpenComfyUIGroup() => OpenComfyUIGroupRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>View code-behind 订阅 → 调 <c>Close()</c>。</summary>
     public event EventHandler? RequestClose;
-
-    /// <summary>View code-behind 订阅 → 弹 DonateQrWindow 独立窗口。</summary>
-    public event EventHandler? OpenDonateQrRequested;
-
-    /// <summary>View code-behind 订阅 → 弹 ComfyUIGroupQrWindow 独立窗口。</summary>
-    public event EventHandler? OpenComfyUIGroupRequested;
 
     public void Close() => RequestClose?.Invoke(this, EventArgs.Empty);
 }
