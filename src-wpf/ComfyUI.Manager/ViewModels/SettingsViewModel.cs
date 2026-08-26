@@ -518,6 +518,18 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
+    // v1.0.0.x #577:本地常用节点根目录(env 行「安装本地常用」按钮的源)。
+    // 空 = 不启用(运行时报错提示)。BrowseLocalNodesDir 帮助选目录。
+    public string LocalNodesDirectory
+    {
+        get => _settings.LocalNodesDirectory;
+        set
+        {
+            _settings.LocalNodesDirectory = value ?? "";
+            MarkDirty(nameof(LocalNodesDirectory));
+            RaisePropertyChanged();
+        }
+    }
     // v0.6.19:工作流市场
     public string WorkflowsDirectory
     {
@@ -1186,6 +1198,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(EnvsDir));
         RaisePropertyChanged(nameof(GlobalNodesDir));
         RaisePropertyChanged(nameof(LocalNodeDirectory));
+        RaisePropertyChanged(nameof(LocalNodesDirectory));
         RaisePropertyChanged(nameof(DefaultModelsDirectory));
         RaisePropertyChanged(nameof(WorkflowsDirectory));
         RaisePropertyChanged(nameof(WorkflowSourceCommunityJsonEnabled));

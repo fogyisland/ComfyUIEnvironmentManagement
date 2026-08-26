@@ -62,6 +62,10 @@ public class Settings
     [JsonPropertyName("global_nodes_dir")] public string GlobalNodesDir { get; set; } = "";
     // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,默认子目录名 "local-nodes"。
     [JsonPropertyName("local_node_directory")] public string LocalNodeDirectory { get; set; } = "";
+    // v1.0.0.x #577:本地常用节点根目录 — env 行「安装本地常用」按钮从该目录枚举子包,
+    // 逐个 copy 到 env/custom_nodes/<子包名> + pip install -r requirements.txt。
+    // 默认 seed 相对 "./localnodes"(项目根下),空 = 不启用(按钮点击会报错提示)。
+    [JsonPropertyName("local_nodes_directory")] public string LocalNodesDirectory { get; set; } = "";
     // v0.6.10 + v0.6.22+:全局默认 Models 目录。两用:
     // 1) env-create 时把 <env-root>/ComfyUI/models junction 到此路径,作为新 env 的默认 models 位置;每 env 可独立覆盖
     // 2) 模型市场下载目录(原 ModelsDirectory 已硬删,所有下载直接走这里)
@@ -223,6 +227,7 @@ public class Settings
         target.EnvsDir = source.EnvsDir;
         target.GlobalNodesDir = source.GlobalNodesDir;
         target.LocalNodeDirectory = source.LocalNodeDirectory;
+        target.LocalNodesDirectory = source.LocalNodesDirectory;
         target.DefaultModelsDirectory = source.DefaultModelsDirectory;
         target.LogDirectory = source.LogDirectory;
         target.WorkflowsDirectory = source.WorkflowsDirectory;

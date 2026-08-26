@@ -83,6 +83,33 @@ public class Environment
     public string ComfyUiManagerButtonText { get; set; } = "安装 ComfyUI Manager";
 
     /// <summary>
+    /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
+    /// (Settings.LocalNodesDirectory 下每个子包都已在 env/custom_nodes/),false = 未装或不全。
+    /// Load 末尾重新算(LocalNodeInstaller.IsInstalled),不持久化(同 IsComfyUiManagerInstalled pattern)。
+    /// </summary>
+    [JsonIgnore]
+    public bool IsLocalNodesInstalled { get; set; }
+
+    /// <summary>
+    /// v1.0.0.x #577:toggle 按钮文字,根据 IsLocalNodesInstalled 切换。
+    /// </summary>
+    [JsonIgnore]
+    public string LocalNodesButtonText { get; set; } = "安装本地常用";
+
+    /// <summary>
+    /// v1.0.0.x #577:启停单按钮文字 — env.Status == running → "停止";其它 → "启动"。
+    /// busy(starting/stopping)时按钮禁用,文字保留以反映"当前要做的事"。
+    /// </summary>
+    [JsonIgnore]
+    public string StartStopButtonText { get; set; } = "启动";
+
+    /// <summary>
+    /// v1.0.0.x #577:启停单按钮 CanExecute — true 表示当前可点(根据 env.Status + busy)。
+    /// </summary>
+    [JsonIgnore]
+    public bool StartStopButtonEnabled { get; set; } = true;
+
+    /// <summary>
     /// v0.6.11+ T1:env-list 行 toggle 按钮用 — true = Requirements 已装(marker 文件存在),
     /// false = 未装。Load 末尾重新算(RequirementsInstaller.IsInstalled),不持久化(同
     /// IsComfyUiManagerInstalled pattern)。EnvironmentRepository 用 System.Text.Json

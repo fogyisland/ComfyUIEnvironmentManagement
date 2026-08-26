@@ -60,6 +60,10 @@ public static class SettingsDefaults
     public const string EnvsSubdir = "Envs";
     public const string GlobalNodesSubdir = "Nodes";
     public const string LocalNodesSubdir = "LocalNodes";
+    // v1.0.0.x #577:本地常用节点根目录(env 行「安装本地常用」按钮的源)— 小写,
+    // 跟仓库根下用户已经手动创建的 `localnodes/` 一致(LocalNodesSubdir PascalCase 是
+    // Catalog 单节点下载目录,语义不同所以分开命名)。
+    public const string LocalNodesBulkSubdir = "localnodes";
     public const string WorkflowsSubdir = "Workflow";
     public const string ModelsSubdir = "Models";
     public const string DefaultQuerySourceName = "comfyui manager";
@@ -138,6 +142,9 @@ public static class SettingsDefaults
         s.GlobalNodesDir = MigrateOldSubdirName(s.GlobalNodesDir, "global-nodes", GlobalNodesSubdir);
         // v0.6.5.9: Catalog 主页「下载」按钮的目标目录。template-style,空字段自动填子目录名。
         s.LocalNodeDirectory = MigrateOldSubdirName(s.LocalNodeDirectory, "local-nodes", LocalNodesSubdir);
+        // v1.0.0.x #577:本地常用节点根目录(env 行「安装本地常用」按钮的源)。
+        // template-style,空字段自动填子目录名。空 = 用户在设置页清空,运行时报错提示。
+        s.LocalNodesDirectory = MigrateOldSubdirName(s.LocalNodesDirectory, "", LocalNodesBulkSubdir);
         // v0.6.19:WorkflowsDirectory — template-style,空字段自动填 "Workflow" 子目录名
         s.WorkflowsDirectory = MigrateOldSubdirName(s.WorkflowsDirectory, "workflows", WorkflowsSubdir);
         // v0.6.22+:DefaultModelsDirectory — 同时担任 env-create junction 目标 + 模型市场下载目录。
@@ -154,6 +161,7 @@ public static class SettingsDefaults
         s.EnvsDir = MigrateOnly(s.EnvsDir, projectRoot);
         s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
         s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
+        s.LocalNodesDirectory = Resolve(s.LocalNodesDirectory, LocalNodesBulkSubdir, projectRoot);
         s.WorkflowsDirectory = Resolve(s.WorkflowsDirectory, WorkflowsSubdir, projectRoot);
         s.DefaultModelsDirectory = Resolve(s.DefaultModelsDirectory, ModelsSubdir, projectRoot);
 

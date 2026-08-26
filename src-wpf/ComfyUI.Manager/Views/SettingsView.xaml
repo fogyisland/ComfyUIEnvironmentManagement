@@ -482,6 +482,26 @@
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
 
+            <!-- v1.0.0.x #577:本地常用节点根目录(env 行「安装本地常用」按钮源)。空 = 不启用。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,16,0,4">
+                <TextBlock Text="本地常用节点目录(env 行「安装本地常用」按钮源)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[LocalNodesDirectory], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <TextBlock Text="该目录下每个子目录 = 一个节点包(env 行按钮会把所有子包 copy 到 env/custom_nodes/ 并装 requirements.txt)。"
+                       Foreground="Gray" FontSize="11" Margin="0,0,0,4" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseLocalNodesDir"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding LocalNodesDirectory, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+
             <!-- ============ v0.6.19:工作流市场 ============ -->
             <TextBlock x:Name="SectionWorkflows" Text="工作流市场" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="共享 workflows 目录(留空 = 默认 workflows/),以及 3 个工作流来源的开关。"

@@ -54,6 +54,9 @@ public class EnvironmentListViewModel : ViewModelBase
     // v0.6.11+ T3:ComfyUI Manager 装/卸 — 跟 BED install/uninstall 同样需要 per-env
     // mutex。null 兜底 new 默认实现(测试 ctor 不传也能构造;生产 DI 注入)。
     private readonly ComfyUIManagerInstaller _comfyUiManagerInstaller;
+    // v1.0.0.x #577:env 行「安装本地常用」按钮 — 批量 copy + pip install。
+    // null 兜底 new 默认实现;生产 DI 在 App.xaml.cs 注入 share。
+    private readonly LocalNodeBulkInstaller _localNodeBulkInstaller;
     // v0.6.22 T5:ComfyUI template update service(wipe env.ComfyuiSource 内容
     // + git clone comfyanonymous/ComfyUI --depth=1)。可空保留旧测试 ctor
     // 兼容;生产 DI 在 App.xaml.cs 注入。
@@ -67,7 +70,7 @@ public class EnvironmentListViewModel : ViewModelBase
     /// v0.6.11+ T3:加 ComfyUiManagerInstall / ComfyUiManagerUninstall 让 toggle 命令
     /// 跟其他长操作互斥(避免并发的 git clone 跟卸载冲突)。
     /// </summary>
-    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete, ComfyUiManagerInstall, ComfyUiManagerUninstall, Restart }   // v0.6.22.x: removed TemplateUpdate (moved to MainViewModel)
+    private enum BusyKind { None, BEDInstall, BEDUninstall, ReqInstall, ReqUninstall, Start, Stop, Delete, ComfyUiManagerInstall, ComfyUiManagerUninstall, Restart, LocalNodesInstall }   // v1.0.0.x #577: LocalNodesInstall for InstallLocalNodesAsync per-env mutex. v0.6.22.x: removed TemplateUpdate (moved to MainViewModel)
 
     private readonly Dictionary<string, BusyKind> _envBusy = new();
 
@@ -188,6 +191,9 @@ public class EnvironmentListViewModel : ViewModelBase
     /// 根据 IsComfyUiManagerInstalled 切换 Install / Uninstall,inline 状态面板显示进度。
     /// </summary>
     public RelayCommand ToggleComfyUiManagerCommand { get; }
+    // v1.0.0.x #577:env 行末位「安装本地常用」按钮(批量 copy + pip)。镜像
+    // ToggleComfyUiManagerCommand 模式(per-env busy guard + inline 状态面板)。
+    public RelayCommand InstallLocalNodesCommand { get; }
 
     /// <summary>
     /// v0.6.11+ T1:env-list 行 toggle "装依赖/卸依赖" 命令 — 根据
@@ -279,6 +285,12 @@ public class EnvironmentListViewModel : ViewModelBase
     public ComfyUIManagerStatusViewModel? ComfyUiManagerStatus { get; private set; }
 
     /// <summary>
+    /// v1.0.0.x #577:env-list 下方「安装本地常用」inline 状态面板(env 行末位按钮触发后)。
+    /// 跟 ComfyUIManagerStatus 同模式,只是批量操作无固定时长所以不 auto-hide,等用户关。
+    /// </summary>
+    public LocalNodeInstallStatusViewModel? LocalNodeInstallStatus { get; private set; }
+
+    /// <summary>
     /// v0.6.22.x 删:模板更新状态面板跟 <see cref="UpdateTemplateCommand"/> 一起
     /// 移到 MainViewModel(env-list 不再展示模板更新状态 — 用户操作的是 global
     /// master template,不是 per-env)。
@@ -311,7 +323,9 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.20 T9: env-start 后异步 sync 已下载 models 到 env。可空保留旧测试 ctor 兼容;
         // 生产 DI 在 App.xaml.cs 注入。Signature(envId, envComfyuiSource, ct) — envId
         // 取 env.Id, envComfyuiSource 取 env.ComfyuiSource(同 workflow hook)。
-        ModelSymlinker? modelSymlinker = null)   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
+        ModelSymlinker? modelSymlinker = null,
+        // v1.0.0.x #577:env 行「安装本地常用」按钮。可空保留测试 ctor 兼容;生产 DI 注入。
+        LocalNodeBulkInstaller? localNodeBulkInstaller = null)   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
     {
         _repo = repo;
         _launcher = launcher;
@@ -332,6 +346,10 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.11+ T3:默认 new 一个 fallback 实例(让测试 ctor 不传也能构造);生产
         // DI 在 App.xaml.cs 注入 shareComfyUiManagerInstaller。
         _comfyUiManagerInstaller = comfyUiManagerInstaller ?? new ComfyUIManagerInstaller(new RequirementsFileInstaller());
+        // v1.0.0.x #577:本地常用节点批量 installer。同 ComfyUIManagerInstaller 兜底
+        // 模式 — 测试 ctor 不传也能构造(_settings 在 line 320 已 set,RequirementsFileInstaller
+        // 跟 ComfyUIManagerInstaller 共用一个 fallback 实例够用)。
+        _localNodeBulkInstaller = localNodeBulkInstaller ?? new LocalNodeBulkInstaller(_settings, new RequirementsFileInstaller(), _logger);
         // v0.6.11+ SDD D1:AppLogger — 自动重启诊断日志(nullable ctor param)。
         _logger = logger;
         // v0.6.14 picker redesign:catalog + node + version repo(默认 null,测试 ctor
@@ -477,6 +495,19 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (IsEnvBusy(env)) return false;
                 return true;
             });
+        // v1.0.0.x #577:env 行末位「安装本地常用」按钮 — 单向 install(不 toggle,没有
+        // uninstall 语义 — 想重新装再点即可,会 rm -rf 已存在的同名节点后重 copy)。
+        InstallLocalNodesCommand = new RelayCommand(
+            async p => await InstallLocalNodesAsync(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (string.IsNullOrWhiteSpace(env.CustomNodesPath)) return false;
+                if (string.IsNullOrWhiteSpace(env.ComfyuiSource)) return false;
+                if (IsEnvBusy(env)) return false;
+                return true;
+            });
         // v0.6.22.x 删:UpdateTemplateCommand 整段移除(改到 MainViewModel)。
         //         env-list 不再有"模板更新"按钮,操作对象是 global master template
         //         (<projectRoot>/ComfyUITemplate/),与 per-env 无关。
@@ -581,6 +612,13 @@ public class EnvironmentListViewModel : ViewModelBase
             var bedInstalled = BaseEnvUninstaller.IsInstalled(env);
             env.IsBaseEnvInstalled = bedInstalled;
             env.BaseEnvButtonText = bedInstalled ? "卸载基础环境" : "安装基础环境";
+
+            // v1.0.0.x #577:本地常用节点装态 + 启停单按钮文字。
+            var localInstalled = _localNodeBulkInstaller.IsInstalled(env);
+            env.IsLocalNodesInstalled = localInstalled;
+            env.LocalNodesButtonText = localInstalled ? "重装本地常用" : "安装本地常用";
+            env.StartStopButtonText = env.Status == "running" ? "停止" : "启动";
+            env.StartStopButtonEnabled = !IsEnvBusy(env) && env.Status is "stopped" or "running";
         }
         RaiseCommandsChanged();
     }
@@ -1473,6 +1511,62 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// v1.0.0.x #577:env 行末位「安装本地常用」按钮 — 批量 copy Settings.LocalNodesDirectory
+    /// 下子目录到 env/custom_nodes/ + 跑每个子目录的 requirements.txt(过滤 torch 行)。
+    /// 跟 <see cref="ToggleComfyUiManagerAsync"/> 同模式(busy guard + inline 状态面板 +
+    /// 末尾 Load 同步 UI),只是面板不 auto-hide — 用户需要看到 "X/Y 个节点已装" 总结。
+    /// 失败一个 skip 下一个(不让单包坏批阻塞整体),最后 Load() 重算 IsLocalNodesInstalled
+    /// + LocalNodesButtonText(下次按按钮可能变成"重装本地常用")。
+    /// </summary>
+    internal async System.Threading.Tasks.Task InstallLocalNodesAsync(Environment? env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;
+
+        var status = new LocalNodeInstallStatusViewModel(env);
+        LocalNodeInstallStatus = status;
+        RaisePropertyChanged(nameof(LocalNodeInstallStatus));
+        status.Begin();
+
+        MarkEnvBusy(env, BusyKind.LocalNodesInstall);
+        try
+        {
+            // Progress<string> 包装捕获 SynchronizationContext(UI 线程),后台线程
+            // Report 自动 marshal 回 UI 线程 — 跟 v0.6.5.11 EnvListVM 修 LogLines
+            // ObservableCollection 跨线程崩溃的模式一致。
+            var progress = new Progress<string>(line => status.Report(line));
+            var result = await _localNodeBulkInstaller.InstallAsync(env, progress, CancellationToken.None);
+
+            // 重新检测(避免 stale)— 即使 result.Success,目录可能已被外部删除/装失败
+            // 回滚;以文件系统为唯一真相。
+            var nowInstalled = _localNodeBulkInstaller.IsInstalled(env);
+            env.IsLocalNodesInstalled = nowInstalled;
+            env.LocalNodesButtonText = nowInstalled ? "重装本地常用" : "安装本地常用";
+
+            if (!result.Success)
+            {
+                status.Fail(result.Reason ?? "未知错误");
+                // 不收起,等用户手动关 — 用户能看到错误总结
+            }
+            else
+            {
+                status.Complete(result.Version ?? "完成");
+                // 不 auto-hide — 批量操作无固定时长,用户需要看总结行后再决定要不要关
+            }
+        }
+        catch (Exception ex)
+        {
+            status.Fail($"操作失败:{ex.Message}");
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
+
+    /// <summary>
     /// v0.6.11+ T1:Requirements toggle 路由 — 已装 → uninstall,未装 → install。
     /// 复用现有 InstallRequirementsAsync / UninstallRequirementsAsync 子命令
     /// (v0.6.5.12 / v0.6.5.22 已落地),不重写 pip / uninstall 逻辑。
@@ -1800,6 +1894,8 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.15.8 T5:NodeManagement open 命令的 CanExecute 依赖 IsEnvBusy(env),
         // busy 状态变化要 refresh 让按钮 enable/disable。
         OpenNodeManagementCommand.RaiseCanExecuteChanged();
+        // v1.0.0.x #577:安装本地常用命令也要 refresh,busy 切换后按钮自动 enable/disable。
+        InstallLocalNodesCommand.RaiseCanExecuteChanged();
         // v0.6.17:启动 / 关面板 / 启动成功 / 删除 env 都会改 _startStatuses dict,
         // "再次打开" 按钮要 refresh。
         ReopenStartStatusCommand.RaiseCanExecuteChanged();

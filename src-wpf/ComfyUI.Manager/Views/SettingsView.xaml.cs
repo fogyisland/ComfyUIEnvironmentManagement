@@ -116,6 +116,16 @@ public partial class SettingsView : UserControl
         }
     }
 
+    // v1.0.0.x #577:本地常用节点根目录的浏览按钮(handler 配 BrowseLocalNodesDir XAML)。
+    private void BrowseLocalNodesDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.LocalNodesDirectory = picked;
+        }
+    }
+
     // v1.0.0.x: 系统模板库目录(Settings.SystemTemplateLibraryDir)改内置,Settings 页
 // 不再暴露 UI,这里 BrowseSystemTemplateLibraryDir 也删除(handler 不再被 XAML 调用)。
 
