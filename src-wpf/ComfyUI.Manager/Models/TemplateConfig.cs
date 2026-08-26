@@ -68,19 +68,29 @@ public class TemplateConfig
     /// Whether this template's source can be updated via
     /// <see cref="ComfyUI.Manager.Services.TemplateSourceUpdater.UpdateAsync"/>.
     /// GitHub templates always can (URL is in config). Local templates only if built-in
-    /// (ComfyUI / A1111 — they have a default repo URL). Custom Local templates have no remote.
+    /// (ComfyUI / A1111 / Forge / SwarmUI — they have a default repo URL). Custom Local
+    /// templates have no remote.
     /// v1.0.0+: used by TemplateManagementView "更新源码" button Visibility binding.
     /// </summary>
     [JsonIgnore]
     public bool CanUpdateSource => SourceKind == TemplateSourceKind.GitHub
         || Kind == "ComfyUI"
-        || Kind == "A1111";
+        || Kind == "A1111"
+        || Kind == "Forge"
+        || Kind == "SwarmUI";
 
     /// <summary>
     /// Whether the user can delete this template from the management UI. Built-in
-    /// ComfyUI / A1111 are protected (G13) — they always exist as canonical templates.
-    /// v1.0.0.x: hides the grayed-out Delete button on built-in cards.
+    /// templates are protected (G13) — they always exist as canonical templates.
+    /// v1.0.0.x: extended to 8 built-in kinds (ComfyUI + A1111 + Forge + SwarmUI +
+    /// OpenVoice + Whisper + CoquiTTS + Bark).Hides the grayed-out Delete button on
+    /// built-in cards.
     /// </summary>
     [JsonIgnore]
-    public bool CanDelete => Kind != "ComfyUI" && Kind != "A1111";
+    public bool CanDelete => Kind switch
+    {
+        "ComfyUI" or "A1111" or "Forge" or "SwarmUI"
+            or "OpenVoice" or "Whisper" or "CoquiTTS" or "Bark" => false,
+        _ => true,
+    };
 }

@@ -279,6 +279,10 @@ public class TemplateManagementViewModel : ViewModelBase
     {
         "ComfyUI" => "https://github.com/comfyanonymous/ComfyUI.git",
         "A1111" => "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git",
+        // v1.0.0.x: Forge/SwarmUI 也是 shipped local(ENVTemplate/)+ 用户常想更新
+        // 源码到上游。GitHub 模板走自己的 GitHubRepoUrl,这里只填 local 内置。
+        "Forge" => "https://github.com/lllyasviel/stable-diffusion-webui-forge.git",
+        "SwarmUI" => "https://github.com/mcmonkeyprojects/StableSwarmUI.git",
         _ => "",
     };
 }

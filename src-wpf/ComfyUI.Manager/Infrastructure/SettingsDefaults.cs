@@ -285,6 +285,9 @@ public static class SettingsDefaults
         if (s.DisableBuiltInTemplatesSeed) return;
 
         // G4: only seed if missing — never overwrite user customization
+        // v1.0.0.x: 加 6 个 built-in defaults — Forge/SwarmUI(#497 修复)+
+        // OpenVoice/Whisper/CoquiTTS/Bark(AI 语音 GitHub clone)。G13 delete 保护
+        // 通过 TemplateConfig.CanDelete 里的 hardcoded kind 白名单保护所有 8 个。
         if (!s.Templates.ContainsKey("ComfyUI"))
         {
             s.Templates["ComfyUI"] = TemplateConfigDefaults.ComfyUi(projectRoot);
@@ -292,6 +295,30 @@ public static class SettingsDefaults
         if (!s.Templates.ContainsKey("A1111"))
         {
             s.Templates["A1111"] = TemplateConfigDefaults.A1111(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("Forge"))
+        {
+            s.Templates["Forge"] = TemplateConfigDefaults.Forge(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("SwarmUI"))
+        {
+            s.Templates["SwarmUI"] = TemplateConfigDefaults.SwarmUi(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("OpenVoice"))
+        {
+            s.Templates["OpenVoice"] = TemplateConfigDefaults.OpenVoice(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("Whisper"))
+        {
+            s.Templates["Whisper"] = TemplateConfigDefaults.Whisper(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("CoquiTTS"))
+        {
+            s.Templates["CoquiTTS"] = TemplateConfigDefaults.CoquiTts(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("Bark"))
+        {
+            s.Templates["Bark"] = TemplateConfigDefaults.Bark(projectRoot);
         }
     }
 

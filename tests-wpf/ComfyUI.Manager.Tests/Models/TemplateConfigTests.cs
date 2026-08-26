@@ -162,7 +162,9 @@ public class TemplateConfigTests
     [Fact]
     public void CanDelete_CustomGitHub_True()
     {
-        var cfg = new TemplateConfig { Kind = "Forge", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        // v1.0.0.x: Forge 现在是 built-in(本地 shipped),不能用作 custom 例子;
+        // 改用 "MyVoiceTts" 之类非 built-in kind 测 custom GitHub delete 路径。
+        var cfg = new TemplateConfig { Kind = "MyVoiceTts", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
         Assert.True(cfg.CanDelete);
     }
 
@@ -171,5 +173,65 @@ public class TemplateConfigTests
     {
         var cfg = new TemplateConfig { Kind = "" };
         Assert.True(cfg.CanDelete);
+    }
+
+    // --- v1.0.0.x: 6 new built-in kinds (G13 delete 保护) ---
+
+    [Fact]
+    public void CanDelete_BuiltInForge_False()
+    {
+        var cfg = new TemplateConfig { Kind = "Forge", SourceKind = TemplateSourceKind.Local };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInSwarmUI_False()
+    {
+        var cfg = new TemplateConfig { Kind = "SwarmUI", SourceKind = TemplateSourceKind.Local };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInOpenVoice_False()
+    {
+        var cfg = new TemplateConfig { Kind = "OpenVoice", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInWhisper_False()
+    {
+        var cfg = new TemplateConfig { Kind = "Whisper", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInCoquiTTS_False()
+    {
+        var cfg = new TemplateConfig { Kind = "CoquiTTS", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInBark_False()
+    {
+        var cfg = new TemplateConfig { Kind = "Bark", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    // --- v1.0.0.x: Forge/SwarmUI 加 built-in repo URL,可走 UpdateAsync ---
+
+    [Fact]
+    public void CanUpdateSource_BuiltInForge_True()
+    {
+        var cfg = new TemplateConfig { Kind = "Forge", SourceKind = TemplateSourceKind.Local };
+        Assert.True(cfg.CanUpdateSource);
+    }
+
+    [Fact]
+    public void CanUpdateSource_BuiltInSwarmUI_True()
+    {
+        var cfg = new TemplateConfig { Kind = "SwarmUI", SourceKind = TemplateSourceKind.Local };
+        Assert.True(cfg.CanUpdateSource);
     }
 }

@@ -11,13 +11,63 @@ public class SettingsDefaultsTemplateSeedTests
         Path.Combine(Path.GetTempPath(), "cmgr-templates-test");
 
     [Fact]
-    public void Apply_EmptySettings_SeedsComfyUIAndA1111Templates()
+    public void Apply_EmptySettings_SeedsAllEightBuiltInTemplates()
     {
+        // v1.0.0.x: 加 6 个 built-in(Forge/SwarmUI 是 shipped 但漏注册 → #497 修复;
+        // OpenVoice/Whisper/CoquiTTS/Bark 是 GitHub-cloned AI 语音 defaults)。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
         Assert.True(s.Templates.ContainsKey("A1111"));
+        Assert.True(s.Templates.ContainsKey("Forge"));
+        Assert.True(s.Templates.ContainsKey("SwarmUI"));
+        Assert.True(s.Templates.ContainsKey("OpenVoice"));
+        Assert.True(s.Templates.ContainsKey("Whisper"));
+        Assert.True(s.Templates.ContainsKey("CoquiTTS"));
+        Assert.True(s.Templates.ContainsKey("Bark"));
+    }
+
+    [Fact]
+    public void Apply_EmptySettings_GitHubVoiceTemplates_HaveRepoUrlsAndSourceKind()
+    {
+        var s = new Settings();
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        var ov = s.Templates["OpenVoice"];
+        Assert.Equal(TemplateSourceKind.GitHub, ov.SourceKind);
+        Assert.Equal("https://github.com/myshell-ai/OpenVoice.git", ov.GitHubRepoUrl);
+        Assert.Equal("api.py", ov.EntryScript);
+
+        var wh = s.Templates["Whisper"];
+        Assert.Equal(TemplateSourceKind.GitHub, wh.SourceKind);
+        Assert.Equal("https://github.com/openai/whisper.git", wh.GitHubRepoUrl);
+
+        var co = s.Templates["CoquiTTS"];
+        Assert.Equal(TemplateSourceKind.GitHub, co.SourceKind);
+        Assert.Equal("https://github.com/coqui-ai/TTS.git", co.GitHubRepoUrl);
+
+        var bk = s.Templates["Bark"];
+        Assert.Equal(TemplateSourceKind.GitHub, bk.SourceKind);
+        Assert.Equal("https://github.com/suno-ai/bark.git", bk.GitHubRepoUrl);
+    }
+
+    [Fact]
+    public void Apply_EmptySettings_LocalImageTemplates_AreLocalSourceKind()
+    {
+        // v1.0.0.x: Forge/SwarmUI 是本地 shipped,SourceKind = Local,无 GitHubRepoUrl。
+        var s = new Settings();
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        var fg = s.Templates["Forge"];
+        Assert.Equal(TemplateSourceKind.Local, fg.SourceKind);
+        Assert.Equal("", fg.GitHubRepoUrl);
+        Assert.Equal("webui.py", fg.EntryScript);
+        Assert.Equal("--port {port} --api", fg.EntryArgs);
+
+        var sw = s.Templates["SwarmUI"];
+        Assert.Equal(TemplateSourceKind.Local, sw.SourceKind);
+        Assert.Equal("Launch-windows.bat", sw.EntryScript);
     }
 
     [Fact]
