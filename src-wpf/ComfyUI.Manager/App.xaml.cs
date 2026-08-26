@@ -253,13 +253,9 @@ public partial class App : Application
             // 权限/盘满/路径非法 → 静默,运行时再 CreateDirectory 兜底
         }
 
-        // M5.2-T6: bulk update 在 WPF 端直接跑 git pull,git exe 优先用
-        // Embeded/git-portable/cmd/git.exe(portable),找不到则回落到 PATH。
-        // v1.0.0:目录重构 bin/ → Embeded/(portable 工具放 Embeded/ 下)。
-        // settings.GitExe 优先,settings 是空则走默认。
-        var gitExe = !string.IsNullOrWhiteSpace(settings.GitExe)
-            ? settings.GitExe
-            : ResolveGitExe(projectRoot);
+        // v1.0.0.x: git exe 解析用统一入口 ResolveGitExe(projectRoot, settingsGitExe) ——
+        // 处理 settings.GitExe 为绝对路径(原样)、相对路径(拼 projectRoot)、空(探测 bin/git-portable → PATH)。
+        var gitExe = ResolveGitExe(projectRoot, settings.GitExe);
         // 共享同一份 HttpProxyConfig,SettingsViewModel 改它会立即影响下一次 git 调用 / HTTP 拉取。
         var gitProxy = HttpProxyConfig.From(settings);
         var gitRunner = new GitRunner(gitExe, gitProxy);
@@ -607,11 +603,20 @@ public partial class App : Application
         return null;
     }
 
-    private static string ResolveGitExe(string projectRoot)
+    private static string ResolveGitExe(string projectRoot, string? settingsGitExe = null)
     {
-        // v1.0.0.x: 优先查 projectRoot/bin/git-portable/cmd/git.exe(shipped portable git)。
-        // Embeded/ 是 v1.0.0 规划中的目录重构,提前留 fallback — 哪天真迁移了直接改一处。
-        // 都没有 → 走 PATH "git"(用户环境装过 git-for-windows 也行)。
+        // v1.0.0.x: 优先用 settings.GitExe(可空,可绝对/相对)。
+        // 绝对 → 原样返回(用户主动配的别处)。
+        // 相对 → 与 projectRoot 拼(SettingsDefaults.Apply 写的就是 "bin/git-portable/cmd/git.exe")。
+        // 空 → 自动探测:bin/git-portable → Embeded/git-portable → PATH "git"。
+        if (!string.IsNullOrWhiteSpace(settingsGitExe))
+        {
+            if (Path.IsPathRooted(settingsGitExe)) return settingsGitExe;
+            var resolved = Path.GetFullPath(Path.Combine(projectRoot, settingsGitExe));
+            if (File.Exists(resolved)) return resolved;
+            // 相对路径但文件不存在 → 仍返回解析值让上层报错,不要静默 fallback 到 PATH(可能跑偏)
+            return resolved;
+        }
         var portableBin = Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe");
         if (File.Exists(portableBin)) return portableBin;
         var portableEmbeded = Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe");

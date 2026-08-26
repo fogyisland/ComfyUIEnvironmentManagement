@@ -104,6 +104,15 @@ public static class SettingsDefaults
             }
         }
 
+        // v1.0.0.x: shipped portable git 存在 + GitExe 空 → seed 相对路径 "bin/git-portable/cmd/git.exe"。
+        // 跟 python 解释器同款处理:相对路径存储 + 运行时 ResolveGitExe(projectRoot, settings.GitExe)
+        // 拼绝对。App.xaml.cs 已经支持绝对/相对/空 三态。不覆盖用户已填的(避免把手动配的绝对路径冲掉)。
+        if (string.IsNullOrWhiteSpace(s.GitExe)
+            && File.Exists(Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe")))
+        {
+            s.GitExe = Path.Combine("bin", "git-portable", "cmd", "git.exe");
+        }
+
         // v1.0.0 目录结构重构:老 settings.json 里写过的旧子目录名(全小写 / kebab-case)
         // 一次性迁到 PascalCase,避免 service 在 projectRoot/envs/ 和 projectRoot/Envs/ 两边分裂。
         // Resolve 之前的 MigrateOldSubdirName 必须走在前面,否则后续 MigrateOnly 会跳过相对路径。

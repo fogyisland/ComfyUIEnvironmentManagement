@@ -900,7 +900,9 @@
             </DockPanel>
 
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                <TextBlock Text="git.exe 路径(留空走 PATH 默认)" VerticalAlignment="Center"/>
+                <TextBlock Text="git.exe 路径" VerticalAlignment="Center"/>
+                <TextBlock Text="(默认 bin/git-portable/cmd/git.exe,留空自动探测 shipped portable)" Margin="6,0,0,0"
+                           VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
                 <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource WarningBrush}"
@@ -920,12 +922,10 @@
                 <TextBlock Text="驱动 Git 拉取 + HTTP catalog 拉取。重启后生效(handler 在 OnStartup 一次性构造)。" Margin="8,0,0,0"
                            VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
             </StackPanel>
-            <!-- v0.6.22++:全局代理三态 — 关闭 / 继承系统 / 自定义(URL/Port)。 -->
+            <!-- v1.0.0.x:代理简化为 2 选 — 继承系统 / 自定义(URL/Port)。
+                 Off 已移除:用户希望默认走代理(系统或自定)。HttpProxyMode.Off 枚举保留
+                 用于读取老 settings.json(向后兼容),但不再暴露 UI。 -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <RadioButton Content="关闭" GroupName="HttpProxyMode"
-                             IsChecked="{Binding HttpProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=Off, Mode=TwoWay}"
-                             VerticalAlignment="Center" Margin="0,0,16,0"
-                             ToolTip="不走代理(handler.Proxy=null, UseProxy=false, 也不走 WinHTTP 默认系统代理)。" />
                 <RadioButton Content="继承系统" GroupName="HttpProxyMode"
                              IsChecked="{Binding HttpProxyMode, Converter={StaticResource EnumEqualsConverter}, ConverterParameter=InheritSystem, Mode=TwoWay}"
                              VerticalAlignment="Center" Margin="0,0,16,0"
