@@ -1709,6 +1709,12 @@ public class EnvironmentListViewModel : ViewModelBase
     {
         if (env is null || string.IsNullOrWhiteSpace(env.VenvPath)) return;
         var venvPath = env.VenvPath.TrimEnd('\\', '/');
+        // v1.0.0.x: 用户反馈"启动按钮应该进 env 根目录,不是 venv 目录"。
+        // 之前 WorkingDirectory = venvPath → cmd 落地 cwd 是 env/venv/,activate.bat
+        // 改 VIRTUAL_ENV/PROMPT 但不动 cwd,prompt 路径长成 (venv) D:\...\env\venv 难看。
+        // 改为 envRoot(env 根 = venvPath 的父目录):activate 完 prompt 显示 env 根路径,
+        // 用户从 (venv) D:\...\env 起手敲命令,符合「在 env 工作」的直觉。
+        var envRoot = Path.GetDirectoryName(venvPath) ?? venvPath;
         var activateBat = Path.Combine(venvPath, "Scripts", "activate.bat");
 
         // 测试 seam — 测试断言 activate.bat 路径正确(避免回归 cd-only)
@@ -1729,15 +1735,16 @@ public class EnvironmentListViewModel : ViewModelBase
             {
                 // cmd /k ""<activate.bat>"" — activate.bat 改当前 cmd session 的
                 // VIRTUAL_ENV/PROMPT/PATH,激活完 cmd 仍留着可继续敲命令。
-                // WorkingDirectory 落地 prompt 路径 = venv 根,不需要再 cd。
-                psi.WorkingDirectory = venvPath;
+                // WorkingDirectory 落地 prompt 路径 = env 根,activate 显示 (venv) 前缀。
+                psi.WorkingDirectory = envRoot;
                 psi.Arguments = $"/k \"\"{activateBat}\"\"";
                 System.Diagnostics.Process.Start(psi);
                 _logger?.Info("env-venv-open", $"env='{env.Name}' venv='{venvPath}' activate.bat called");
             }
             else
             {
-                // activate.bat 不存在(venv 未创建/被破坏)→ 降级 cd-only,不报错
+                // activate.bat 不存在(venv 未创建/被破坏)→ 降级 cd-only 到 env 根,不报错
+                psi.WorkingDirectory = envRoot;
                 psi.Arguments = $"/k \"cd /d \\\"{venvPath}\\\"\"";
                 System.Diagnostics.Process.Start(psi);
                 _logger?.Warn("env-venv-open", $"activate.bat missing at {activateBat}, fallback to cd-only");
