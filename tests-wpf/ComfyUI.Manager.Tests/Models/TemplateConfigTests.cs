@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
@@ -233,5 +234,91 @@ public class TemplateConfigTests
     {
         var cfg = new TemplateConfig { Kind = "SwarmUI", SourceKind = TemplateSourceKind.Local };
         Assert.True(cfg.CanUpdateSource);
+    }
+
+    // --- v1.0.0.x: 本地目录状态 badge (TemplateManagementView "本地目录为空") ---
+
+    [Fact]
+    public void LocalDirExists_AbsolutePathExists_True()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-test-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var cfg = new TemplateConfig { LocalSourceDir = dir };
+            Assert.True(cfg.LocalDirExists(null));
+            Assert.True(cfg.LocalDirExists(""));   // 空 anchor → AppContext.BaseDirectory fallback
+            Assert.True(cfg.LocalDirExists(@"D:\some\nonexistent\anchor"));  // absolute path 不看 anchor
+        }
+        finally { try { Directory.Delete(dir); } catch { } }
+    }
+
+    [Fact]
+    public void LocalDirExists_AbsolutePathMissing_False()
+    {
+        var cfg = new TemplateConfig { LocalSourceDir = @"D:\definitely\not\a\real\dir-" + Path.GetRandomFileName() };
+        Assert.False(cfg.LocalDirExists(null));
+        Assert.False(cfg.LocalDirExists(@"D:\some\nonexistent\anchor"));
+    }
+
+    [Fact]
+    public void LocalDirExists_RelativePath_WithAnchorThatExists_True()
+    {
+        var dirName = "tmplcfg-rel-" + Path.GetRandomFileName();
+        var anchor = Path.Combine(Path.GetTempPath(), "tmplcfg-anchor-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(anchor);
+        // 在 anchor 下创建子目录,LocalSourceDir 用子目录名 → resolve = anchor/dirName
+        var subDir = Path.Combine(anchor, dirName);
+        Directory.CreateDirectory(subDir);
+        try
+        {
+            var cfg = new TemplateConfig { LocalSourceDir = dirName };
+            Assert.True(cfg.LocalDirExists(anchor));
+        }
+        finally { try { Directory.Delete(anchor, recursive: true); } catch { } }
+    }
+
+    [Fact]
+    public void LocalDirExists_RelativePath_WithMissingAnchor_False()
+    {
+        var cfg = new TemplateConfig { LocalSourceDir = "OpenVoice" };
+        Assert.False(cfg.LocalDirExists(@"D:\this\anchor\does\not\exist-" + Path.GetRandomFileName()));
+    }
+
+    [Fact]
+    public void LocalDirBadge_ExistsDirectory_ReturnsEmpty_HintStringMatches()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-badge-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var cfg = new TemplateConfig { LocalSourceDir = dir };
+            Assert.Equal("", cfg.LocalDirBadge(null));
+            Assert.Equal("本地目录为空", TemplateConfig.LocalDirBadgeHint);
+        }
+        finally { try { Directory.Delete(dir); } catch { } }
+    }
+
+    [Fact]
+    public void LocalDirBadge_MissingDirectory_ReturnsHint()
+    {
+        var cfg = new TemplateConfig { LocalSourceDir = @"D:\no\such\dir-" + Path.GetRandomFileName() };
+        Assert.Equal(TemplateConfig.LocalDirBadgeHint, cfg.LocalDirBadge(null));
+    }
+
+    [Fact]
+    public void LocalDirMissing_NotSerialized()
+    {
+        // 运行时状态 — JsonIgnore
+        var cfg = new TemplateConfig
+        {
+            LocalSourceDir = "ComfyUI",
+            LocalDirMissing = true,
+        };
+        var json = JsonSerializer.Serialize(cfg, JsonOptions.Default);
+        Assert.DoesNotContain("local_dir_missing", json);
+        var restored = JsonSerializer.Deserialize<TemplateConfig>(json, JsonOptions.Default);
+        Assert.NotNull(restored);
+        Assert.False(restored!.LocalDirMissing);   // 反序列化回默认 false
     }
 }

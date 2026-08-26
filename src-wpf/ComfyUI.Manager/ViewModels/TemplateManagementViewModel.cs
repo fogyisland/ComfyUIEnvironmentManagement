@@ -94,7 +94,14 @@ public class TemplateManagementViewModel : ViewModelBase
         _updater = updater;
 
         foreach (var kvp in _settings.Templates)
+        {
+            // v1.0.0.x:本地目录状态 badge — 用 Settings.SystemTemplateLibraryDir 作 anchor
+            // (内置模板 LocalSourceDir 是相对路径,需要 anchor 解析为绝对)。空 anchor
+            // 时 TemplatePathResolver 自动 fallback 到 AppContext.BaseDirectory,跟
+            // git clone target 一致(不变量 — clone 写到哪,badge 就检查哪)。
+            kvp.Value.LocalDirMissing = !kvp.Value.LocalDirExists(_settings.SystemTemplateLibraryDir);
             Templates.Add(kvp.Value);
+        }
 
         // v1.0.0.x: Console 行追加 → 通知 IsConsoleVisible 重算(log 数 0→>0 时变 true)。
         ConsoleLog.CollectionChanged += (_, e) =>
@@ -136,6 +143,7 @@ public class TemplateManagementViewModel : ViewModelBase
             var c = vm.WorkingConfig;
             _logger?.Info("template-mgmt",
                 $"添加模板已应用: kind='{c.Kind}' name='{c.Name}' sourceKind={c.SourceKind} repoUrl='{c.GitHubRepoUrl}' localDir='{c.LocalSourceDir}'");
+            c.LocalDirMissing = !c.LocalDirExists(_settings.SystemTemplateLibraryDir);
             Templates.Add(c);
             _settings.Templates[c.Kind] = c;
         }
@@ -158,6 +166,7 @@ public class TemplateManagementViewModel : ViewModelBase
             var c = vm.WorkingConfig;
             _logger?.Info("template-mgmt",
                 $"编辑模板已应用: kind='{c.Kind}' name='{c.Name}' sourceKind={c.SourceKind} repoUrl='{c.GitHubRepoUrl}' localDir='{c.LocalSourceDir}'");
+            c.LocalDirMissing = !c.LocalDirExists(_settings.SystemTemplateLibraryDir);
             _settings.Templates[c.Kind] = c;
             var idx = Templates.IndexOf(t);
             if (idx >= 0) Templates[idx] = c;

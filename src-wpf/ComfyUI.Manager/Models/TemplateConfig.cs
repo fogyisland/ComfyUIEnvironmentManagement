@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json.Serialization;
+using ComfyUI.Manager.Services;
 
 namespace ComfyUI.Manager.Models;
 
@@ -93,4 +95,42 @@ public class TemplateConfig
             or "OpenVoice" or "Whisper" or "CoquiTTS" or "Bark" => false,
         _ => true,
     };
+
+    /// <summary>
+    /// v1.0.0.x:本地源码目录是否存在(走 <see cref="TemplatePathResolver.Resolve"/> 把
+    /// <c>LocalSourceDir</c> 解析为绝对路径,再 <see cref="Directory.Exists"/> 检查)。
+    /// 由 TemplateManagementViewModel 传 <see cref="ComfyUI.Manager.Infrastructure.Settings.SystemTemplateLibraryDir"/>
+    /// 作 anchor(template 列表 vs 磁盘检查,内置模板路径 anchor 改内置后由 SettingsDefaults
+    /// seed)。
+    /// 不带 <c>[JsonIgnore]</c> — 实例方法不是 property,JsonSerializer 自然忽略。
+    /// </summary>
+    public bool LocalDirExists(string? systemTemplateLibraryDir)
+    {
+        var resolved = TemplatePathResolver.Resolve(LocalSourceDir, systemTemplateLibraryDir);
+        if (string.IsNullOrWhiteSpace(resolved)) return false;
+        return Directory.Exists(resolved);
+    }
+
+    /// <summary>
+    /// v1.0.0.x:模板管理卡片用本地状态 badge。<see cref="LocalDirBadgeHint"/>
+    /// 没本地目录时显示,提醒用户「在模板管理页点 下载与更新 把模板源码 clone 到本地」。
+    /// </summary>
+    public const string LocalDirBadgeHint = "本地目录为空";
+
+    /// <summary>
+    /// 返回本地目录状态文字 — 用于 TemplateManagementView 卡片显示。
+    /// 目录存在 → ""(不显示 badge,卡片自身有 SourceKindBadge 等);
+    /// 目录不存在 → <see cref="LocalDirBadgeHint"/>(红色 badge 提醒用户 clone)。
+    /// </summary>
+    public string LocalDirBadge(string? systemTemplateLibraryDir)
+        => LocalDirExists(systemTemplateLibraryDir) ? "" : LocalDirBadgeHint;
+
+    /// <summary>
+    /// v1.0.0.x:本地目录缺失标记 — 由 <see cref="ComfyUI.Manager.ViewModels.TemplateManagementViewModel"/>
+    /// 在 Add/Edit/构造时根据 <c>Settings.SystemTemplateLibraryDir</c> 计算并写入。
+    /// View 用 <c>BoolToVisibility</c> 转换控制 <see cref="LocalDirBadgeHint"/> 红色
+    /// badge 的可见性。<c>[JsonIgnore]</c> — 运行时状态,不进 settings.json。
+    /// </summary>
+    [JsonIgnore]
+    public bool LocalDirMissing { get; set; }
 }
