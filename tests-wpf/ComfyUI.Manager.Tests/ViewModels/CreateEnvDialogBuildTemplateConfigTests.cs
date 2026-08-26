@@ -47,19 +47,20 @@ public class CreateEnvDialogBuildTemplateConfigTests
     }
 
     [Fact]
-    public void BuildTemplateConfig_RelativeLocalSourceDir_JoinsWithProjectRoot()
+    public void BuildTemplateConfig_RelativeLocalSourceDir_PassesThroughUnchanged()
     {
-        // v1.0.0 T7 R1:ApplyTemplate and SelectedTemplateKind auto-fill store the
-        // raw LocalSourceDir ("Templates/ComfyUI"). BuildTemplateConfig must
-        // resolve relative paths against projectRoot so EnvCreatorService.CreateAsync
-        // does not throw TEMPLATE_SOURCE_NOT_FOUND.
+        // v1.0.0.x bug fix:BuildTemplateConfig 不预先 resolve 路径 — 锚点跟 Service 端
+        // TemplatePathResolver.Resolve(localSourceDir, _settings.SystemTemplateLibraryDir)
+        // 不一致会埋坑(用户配 SystemTemplateLibraryDir = D:\…\ENVTemplate 时,相对路径
+        // "ComfyUI" 应解析为 ENVTemplate\ComfyUI,但 Dialog 拼成 projectRoot\ComfyUI
+        // → Service Directory.Exists false → TEMPLATE_SOURCE_NOT_FOUND)。
+        // Dialog 这里原样传 raw LocalSourceDir,Service 端按 SystemTemplateLibraryDir
+        // 锚定 resolve 才是权威。
         var (vm, _) = BuildVm();
         vm.SelectedTemplateKind = "ComfyUI";
-        // ApplyTemplate may have cleared TemplateSource if the directory does not
-        // exist on disk in the test env — override with the raw relative value.
         vm.TemplateSource = "Templates/ComfyUI";
         var cfg = vm.BuildTemplateConfig();
-        Assert.Equal(Path.Combine("C:/fake-root", "Templates/ComfyUI"), cfg.LocalSourceDir);
+        Assert.Equal("Templates/ComfyUI", cfg.LocalSourceDir);
     }
 
     [Fact]

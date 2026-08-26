@@ -285,13 +285,14 @@ public class CreateEnvDialogViewModel : ViewModelBase
         {
             Kind = SelectedTemplateKind,
             Name = template.Name,
-            // v1.0.0 T7 R1:ApplyTemplate and SelectedTemplateKind auto-fill store the raw
-            // LocalSourceDir (project-relative, e.g. "ComfyUITemplate"). EnvCreatorService
-            // expects an absolute path (Directory.Exists + CopyDirectory), so join against
-            // _projectRoot when the value is relative. Absolute paths pass through unchanged.
-            LocalSourceDir = Path.IsPathRooted(TemplateSource)
-                ? TemplateSource
-                : Path.Combine(_projectRoot, TemplateSource),
+            // v1.0.0.x: BuildTemplateConfig 不预先 resolve 路径 — 锚点跟 Service 端
+            // TemplatePathResolver.Resolve(localSourceDir, _settings.SystemTemplateLibraryDir)
+            // 不一致会埋坑。Service 是权威:TemplateConfigDefaults 里 LocalSourceDir 存的是
+            // 相对路径("ComfyUI"/"A1111"),Service 端按 SystemTemplateLibraryDir (用户配的
+            // 系统模板库目录,例如 D:\ToolDevelop\ComfyUI\ENVTemplate) 解析。Dialog 这里
+            // 原样传 TemplateSource(用户编辑过的文本),绝对路径也照样 service 端 IsPathRooted
+            // 返回原值,行为不变。
+            LocalSourceDir = TemplateSource,
             EntryScript = template.EntryScript,
             EntryArgs = template.EntryArgs,
             ModelsSubdir = template.ModelsSubdir,
