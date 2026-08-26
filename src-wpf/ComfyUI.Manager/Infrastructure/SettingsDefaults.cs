@@ -394,6 +394,14 @@ public static class SettingsDefaults
     /// "&lt;Kind&gt;",让 <see cref="TemplatePathResolver.Resolve"/> 跟
     /// <see cref="Settings.SystemTemplateLibraryDir"/> 拼出来是
     /// &lt;system_template_library_dir&gt;/&lt;Kind&gt;,不再多一层 envTemplates/。
+    ///
+    /// v1.0.0.x #572: 还处理「绝对路径 = \&lt;任意\&gt;\&lt;Kind&gt;」→ 改成相对 "&lt;Kind&gt;"。
+    /// 老 settings.json 时代(<c>template_comfyui_dir</c> 字段)写死了项目根下的绝对路径(如
+    /// <c>D:\ToolDevelop\ComfyUI\ComfyUI</c>),#569 后所有内置模板统一应落在
+    /// <c>ENVTemplate/&lt;Kind&gt;</c> 下。把绝对路径末段 == Kind 的旧值归一为相对 Kind,
+    /// 让 <see cref="TemplatePathResolver.Resolve"/> 重新锚定到
+    /// <see cref="Settings.SystemTemplateLibraryDir"/> 拼出正确路径。
+    ///
     /// 只动 8 个 built-in,custom templates(用户自定义 LocalSourceDir)一律不动。
     /// </summary>
     private static void NormalizeBuiltInTemplatePaths(Settings s)
@@ -401,10 +409,26 @@ public static class SettingsDefaults
         foreach (var kind in BuiltInKinds)
         {
             if (!s.Templates.TryGetValue(kind, out var cfg)) continue;
+            if (string.IsNullOrWhiteSpace(cfg.LocalSourceDir)) continue;
+
+            // 规则 1: envTemplates\<Kind> → <Kind>(bug #509)
             var prefixed = System.IO.Path.Combine("envTemplates", kind);
             if (string.Equals(cfg.LocalSourceDir, prefixed, System.StringComparison.OrdinalIgnoreCase))
             {
                 cfg.LocalSourceDir = kind;
+                continue;
+            }
+
+            // 规则 2: 绝对路径末段 == <Kind> → 改成相对 <Kind>(bug #572)
+            // 末段匹配说明路径其实就是 <任意>/<Kind>,不再硬编码到老的项目根 ComfyUI/。
+            if (System.IO.Path.IsPathRooted(cfg.LocalSourceDir))
+            {
+                var leaf = System.IO.Path.GetFileName(cfg.LocalSourceDir.TrimEnd(
+                    System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+                if (string.Equals(leaf, kind, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    cfg.LocalSourceDir = kind;
+                }
             }
         }
     }

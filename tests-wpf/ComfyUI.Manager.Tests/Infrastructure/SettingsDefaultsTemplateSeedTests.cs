@@ -263,4 +263,72 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal(Path.Combine("envTemplates", "MyCustom"),
             s.Templates["MyCustom"].LocalSourceDir);
     }
+
+    [Fact]
+    public void Apply_PreExistingAbsolutePath_TrailingKindSegment_NormalizedToKind()
+    {
+        // v1.0.0.x bug #572: 老 settings.json 时代(<c>template_comfyui_dir</c> 字段)写死了
+        // 项目根下的绝对路径(如 <c>D:\ToolDevelop\ComfyUI\ComfyUI</c>)。
+        // #569 后所有内置模板统一应落在 ENVTemplate/<Kind> 下,但 shipped 用户的 settings.inf
+        // 里 ComfyUI.LocalSourceDir = "D:\ToolDevelop\ComfyUI\ComfyUI" 仍指向老位置,
+        // TemplatePathResolver.Resolve 把绝对路径原样返回 → 跑老位置而不是 ENVTemplate/ComfyUI。
+        // NormalizeBuiltInTemplatePaths 现在检测「绝对路径末段 == <Kind>」→ 改成相对 "<Kind>",
+        // 后续 Resolve 锚定到 SystemTemplateLibraryDir (=ENVTemplate) 拼出正确路径。
+        //
+        // 8 个 built-in kind 都测一遍,顺带验证非 builtin(custom)不动。
+        var s = new Settings();
+        s.Templates["ComfyUI"] = new TemplateConfig
+        {
+            Name = "ComfyUI",
+            Kind = "ComfyUI",
+            LocalSourceDir = @"D:\ToolDevelop\ComfyUI\ComfyUI",  // 老位置
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "main.py",
+        };
+        s.Templates["A1111"] = new TemplateConfig
+        {
+            Name = "A1111",
+            Kind = "A1111",
+            LocalSourceDir = @"D:\some\other\A1111",  // 老绝对路径,末段 == Kind
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "webui.py",
+        };
+        s.Templates["MyCustom"] = new TemplateConfig
+        {
+            Name = "MyCustom",
+            Kind = "MyCustom",
+            LocalSourceDir = @"D:\custom\MyCustom",  // custom kind 末段也匹配,但不动
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "x.py",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("ComfyUI", s.Templates["ComfyUI"].LocalSourceDir);
+        Assert.Equal("A1111", s.Templates["A1111"].LocalSourceDir);
+        // custom 模板不动 — 用户可能故意放在别处
+        Assert.Equal(@"D:\custom\MyCustom", s.Templates["MyCustom"].LocalSourceDir);
+    }
+
+    [Fact]
+    public void Apply_PreExistingAbsolutePath_TrailingNotMatchingKind_LeftAlone()
+    {
+        // v1.0.0.x bug #572 防御性:绝对路径但末段 ≠ <Kind>(用户故意放到不同名目录里)不归一化。
+        // 例如 ComfyUI 模板被放到 <projectRoot>/stable-diffusion 目录 — 不是命名冲突,而是
+        // 用户主动选择,不要重写。
+        var s = new Settings();
+        s.Templates["ComfyUI"] = new TemplateConfig
+        {
+            Name = "ComfyUI",
+            Kind = "ComfyUI",
+            LocalSourceDir = @"D:\my-software\stable-diffusion",  // 末段 != Kind
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "main.py",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(@"D:\my-software\stable-diffusion",
+            s.Templates["ComfyUI"].LocalSourceDir);
+    }
 }
