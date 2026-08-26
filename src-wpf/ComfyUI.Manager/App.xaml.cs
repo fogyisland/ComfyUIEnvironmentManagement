@@ -479,6 +479,10 @@ public partial class App : Application
         _mainVm.SetLocalModelOverridesFactory(() => new LocalModelOverridesRepository(dbFactory));
         // v1.0.0.x: CivitAI 详情缓存 repo — 同模式,持久化到 SQLite civitai_card_cache。
         _mainVm.SetCivitaiCacheRepoFactory(() => new CivitaiCardCacheRepository(dbFactory));
+        // v1.0.0.x: scan 结果 per-file cache repo — 同模式,持久化到 SQLite local_model_files。
+        // view 打开 → LoadFromDb() 立即读 DB 出卡(用户原话「后续不需要直接读」);
+        // 手动刷新 → ReloadAsync 走 mtime-based 增量 diff,新/改文件重 hash + 入库。
+        _mainVm.SetLocalModelFilesRepoFactory(() => new LocalModelFilesRepository(dbFactory));
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

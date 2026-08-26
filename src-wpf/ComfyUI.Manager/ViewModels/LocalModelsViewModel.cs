@@ -32,6 +32,11 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     // v1.0.0.x: 用户手动 CivitAI 查询结果缓存 — 持久化到 SQLite civitai_card_cache。
     // nullable 兼容(测试 ctor 不传 repo → 「查询 CivitAI」命令 disable)。
     private readonly CivitaiCardCacheRepository? _civitaiCacheRepo;
+    // v1.0.0.x: scan 结果 per-file cache — 持久化到 SQLite local_model_files。
+    // view 打开 → LoadFromDbAsync 读 DB 出卡(瞬间),不扫文件系统;
+    // 手动刷新 → ReloadAsync 走 mtime-based 增量 diff,新/改文件重 hash + 写库,删文件删行。
+    // nullable 兼容(测试 ctor 不传 → LoadFromDbAsync 退化为空 placeholder,ReloadAsync 走旧全量扫)。
+    private readonly LocalModelFilesRepository? _localModelFilesRepo;
     private readonly HashSet<string> _lookupsInFlight = new();
     // v1.0.0.x: Toolbar「🔎 CivitAI 查询」选中目标。点 card → SelectedCard = card;
     // toolbar 按钮 IsEnabled 跟 SelectedCard 走;Source != "Local" / 选 null 时 disable。
@@ -126,7 +131,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         CivitaiHashCache? hashCache = null,
         CivitaiMatcherOrchestrator? orchestrator = null,
         LocalModelOverridesRepository? overridesRepo = null,
-        CivitaiCardCacheRepository? civitaiCacheRepo = null)
+        CivitaiCardCacheRepository? civitaiCacheRepo = null,
+        LocalModelFilesRepository? localModelFilesRepo = null)
     {
         _settings = settings;
         _scanner = scanner;
@@ -138,6 +144,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         _overridesRepo = overridesRepo;
         // v1.0.0.x: CivitAI 缓存 repo(可为 null — 测试场景 / 老 DI 路径)。
         _civitaiCacheRepo = civitaiCacheRepo;
+        // v1.0.0.x: scan 结果 per-file cache repo(可为 null — 测试场景)。
+        _localModelFilesRepo = localModelFilesRepo;
         // v1.0.0 Console panel:内部 sink 接收 scanner progress 行,推 ConsoleLog。
         // ctor 在 UI 线程跑 → Progress 捕获 UI SyncContext → Report 自动 marshal 回 UI 线程。
         _consoleSink = new Progress<string>(line =>
@@ -326,6 +334,13 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
             // scanner 返回的 final 列表是权威结果(streaming 可能有 race 覆盖错) — 用它覆盖 _streamedRaw。
             _streamedRaw.Clear();
             foreach (var m in final) _streamedRaw.Add(m);
+
+            // v1.0.0.x: scan 完成后入库 + 增量 diff → 立即清掉用户视角的"加载中"占位 + 卡片先出。
+            // DB 写是阻塞的(I/O),放在 RebuildCardsAndChips 之前是为了让 UI 先看到卡(hash+match
+            // 已跑完),DB write 期间用户在交互(因为有卡可看了)。下载大型模型目录时,DB write 可能
+            // 几秒;放后台 + 错误吞日志更稳,但用户看不见进度易困惑;同步写 + 占位符描述 progress 行。
+            PersistScanResultsToDb(final);
+
             RebuildCardsAndChips();
 
             EmptyMessage = _allCards.Count == 0 ? "暂无已下载模型" : null;
@@ -338,6 +353,94 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
         PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
         _reloadCommand.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>v1.0.0.x: 把 scanner 跑完的 final 列表 diff + 写 SQLite local_model_files。
+    /// _localModelFilesRepo 为 null(测试场景)→ no-op,行为跟旧 ReloadAsync 一致。
+    /// diff 规则:
+    ///   (a) DB 没 path,scan 有 → 新文件 → Upsert(file_mtime 用磁盘 mtime,hash/match 用 scanner 结果)
+    ///   (b) DB 有 path,scan 没 → 文件被删 / 移走 → DeleteNotInPaths 统一清
+    ///   (c) DB 有 path,scan 有,但 mtime 变 → 文件被改 → Upsert(re-hash + re-match)
+    ///   (d) DB 有 path,scan 有,mtime 一致 → skip(用户原话:「再次刷新也是增量读取」)
+    ///
+    /// 错误吞到 logger — 单行写失败不应阻塞整次 reload(用户视角看卡正常出 + Console 一行 warning)。</summary>
+    private void PersistScanResultsToDb(IReadOnlyList<DownloadedModel> final)
+    {
+        if (_localModelFilesRepo is null) return;
+
+        try
+        {
+            // 取 DB 已有 path → mtime
+            var dbMtimes = _localModelFilesRepo.LoadAllMtimes();
+            var currentPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var m in final)
+            {
+                if (string.IsNullOrEmpty(m.FullPath)) continue;
+                currentPaths.Add(m.FullPath);
+
+                // 拿磁盘 mtime — File.GetLastWriteTimeUtc 失败(文件 race 删了)→ 当 deleted,不 Upsert。
+                string mtimeIso;
+                try
+                {
+                    var mt = System.IO.File.GetLastWriteTimeUtc(m.FullPath);
+                    mtimeIso = mt.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                // diff:DB 没此 path 或 mtime 变 → 写一行;否则 skip
+                if (dbMtimes.TryGetValue(m.FullPath, out var existingMtime)
+                    && string.Equals(existingMtime, mtimeIso, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                _localModelFilesRepo.Upsert(m, mtimeIso);
+            }
+
+            // 删 DB 里 path 不在当前 scan 的行(磁盘已删/移走)— 一次 NOT IN 批量,效率高。
+            var deleted = _localModelFilesRepo.DeleteNotInPaths(currentPaths);
+            if (deleted > 0)
+            {
+                _logger?.Info("local-models", $"增量 diff:清理 {deleted} 个磁盘已不存在的文件缓存");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("local-models", $"scan 结果入库失败: {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>v1.0.0.x: view 打开时立即从 SQLite 读 scan 缓存 → 出卡。
+    /// 不触发 scanner — 文件系统 enumeration + hash 计算是大目录下的瓶颈,用户每次切到
+    /// sidebar 都跑一遍不可接受。本方法走 LoadAll() 反序列化 + GroupToCards +
+    /// UserQuery cache hydrate,跟 ReloadAsync 走 scanner 的结果 shape 一致。
+    ///
+    /// 返回 bool:DB 有数据 = true(view 立即显示卡);DB 空 = false(留 placeholder 给用户点刷新)。
+    /// 不阻塞 UI 太久 — 反序列化 10000 行 DownloadedModel 在 SQLite 上 ~50ms,够用。
+    /// _localModelFilesRepo 为 null(测试场景)→ 返回 false,view 维持 placeholder。</summary>
+    public bool LoadFromDb()
+    {
+        if (_localModelFilesRepo is null) return false;
+        try
+        {
+            var raw = _localModelFilesRepo.LoadAll();
+            if (raw.Count == 0) return false;
+            _streamedRaw.Clear();
+            foreach (var m in raw) _streamedRaw.Add(m);
+            RebuildCardsAndChips();
+            EmptyMessage = _allCards.Count == 0 ? "暂无已下载模型" : null;
+            PropertyChanged?.Invoke(this, new(nameof(EmptyMessage)));
+            PropertyChanged?.Invoke(this, new(nameof(IsEmpty)));
+            return _allCards.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("local-models", $"LoadFromDb failed: {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
     }
 
     /// <summary>v1.0.0 T-D5:scanner stream callback — Phase 1 一次性收到所有 raw entries,

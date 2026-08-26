@@ -744,6 +744,12 @@ public class MainViewModel : ViewModelBase
     internal void SetCivitaiCacheRepoFactory(Func<CivitaiCardCacheRepository> factory)
         => _civitaiCacheRepoFactory = factory;
 
+    // v1.0.0.x: 本地模型 scan 结果 per-file cache repo factory — LocalModelsViewModel 读 DB
+    // 出卡走这条线,不再每次 view 打开都 full scan。
+    internal Func<LocalModelFilesRepository>? _localModelFilesRepoFactory;
+    internal void SetLocalModelFilesRepoFactory(Func<LocalModelFilesRepository> factory)
+        => _localModelFilesRepoFactory = factory;
+
     private void ShowLocalModels()
     {
         CurrentSection = MainSection.LocalModels;
@@ -782,13 +788,20 @@ public class MainViewModel : ViewModelBase
                 _localModelOverridesFactory?.Invoke(),
                 // v1.0.0.x: CivitAI 详情缓存 repo — 持久化到 SQLite civitai_card_cache。
                 // null → 「🔎 CivitAI 查询」走内存 only,关窗即丢(测试路径)。
-                _civitaiCacheRepoFactory?.Invoke());
+                _civitaiCacheRepoFactory?.Invoke(),
+                // v1.0.0.x: scan 结果 per-file cache repo — view 打开立即读 DB 出卡,
+                // 不再每次切 sidebar 都重跑 scanner。
+                _localModelFilesRepoFactory?.Invoke());
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);
         }
         // v1.0.0.x:删 fire-and-forget `_ = _localModelsViewModel.ReloadAsync()` — 默认不刷。
         // 用户手动点 toolbar 「🔄 刷新」按钮 → _reloadCommand → ReloadAsync → 后台 Task.Run。
+        // v1.0.0.x: 首次构造 VM 后,顺手 LoadFromDb — DB 有数据 → 立即填充卡片(无 loading 圈);
+        // DB 空 → 维持 placeholder,等用户手动刷新。后续切回 sidebar(isFirstVisit=false)走
+        // 已 cache 的 _localModelsViewModel,数据仍在(不再触发任何 IO)。
+        _localModelsViewModel.LoadFromDb();
         CurrentView = _localModelsView;
     }
 

@@ -169,7 +169,35 @@ public sealed class SqliteConnectionFactory
                 source_id TEXT PRIMARY KEY,
                 detail_json TEXT NOT NULL,
                 fetched_at TEXT NOT NULL
-            );";
+            );
+            -- v1.0.0.x:本地模型 scan 结果 per-file cache。Primary key = FullPath
+            -- (每个磁盘文件 1 行;SourceId groups 多 version/file 进同一 card)。
+            -- 用途:第一次手动 ReloadAsync 跑 full scan + 入库;后续 view 打开直接读此表
+            -- 不再扫文件系统(用户原话「一次刷新就入库,后续不需要直接读」)。
+            -- 手动刷新走 mtime-based diff:新增 / mtime 变 → 重新 hash + match;未变 → skip。
+            -- matched_detail_json / hash / match_source 跟 civitai_card_cache 不同 ——
+            -- 这里存 scanner 自动 hash-match 阶段产物(可能为空,因为匹配有概率失败或未跑);
+            -- civitai_card_cache 专存用户主动查询结果(UserQuery 优先级最高)。
+            -- file_mtime 是 diff key(scanner 用 ISO 8601 UTC,跟 scanned_at 同样格式)。
+            CREATE TABLE IF NOT EXISTS local_model_files (
+                file_path TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                source_version_id TEXT NOT NULL,
+                subfolder_name TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                source TEXT NOT NULL,
+                hash TEXT,
+                match_source TEXT,
+                matched_detail_json TEXT,
+                preview_image_path TEXT,
+                downloaded_at TEXT NOT NULL,
+                file_mtime TEXT NOT NULL,
+                scanned_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_local_model_files_source_id
+                ON local_model_files(source_id);";
         cmd.ExecuteNonQuery();
 
         // 增量升级:旧 db 没有 base_python_path / python_version 列 → ALTER TABLE ADD COLUMN。
