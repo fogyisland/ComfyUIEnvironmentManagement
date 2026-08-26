@@ -204,7 +204,11 @@ public sealed class ComfyUIManagerInstallerTests : IDisposable
         var comfyuiSource = Path.Combine(_tempRoot, "ComfyUI");
         var env = SeedEnv("env-a", _tempRoot, Path.Combine(_tempRoot, "venv"), comfyuiSource: comfyuiSource);
         env.PythonExecutable = py;
-        var sut = new ComfyUIManagerInstaller(new RequirementsFileInstaller(), gitExe: git);
+        // v1.0.0.x #571: 真 git clone (无 --depth=1,full history) 在国内/慢网络偶尔超 2 min 默认
+        // 超时,触发 OperationCanceledException → 假"用户取消"。20 min 给测试留余量;
+        // 生产维持默认(实际 install 走 .git bare cache + checkout,不走全 clone,2 min 充裕)。
+        var sut = new ComfyUIManagerInstaller(
+            new RequirementsFileInstaller(), gitExe: git, gitCloneTimeout: TimeSpan.FromMinutes(20));
 
         var result = await sut.InstallAsync(env, new Progress<string>(line => { }), CancellationToken.None);
 

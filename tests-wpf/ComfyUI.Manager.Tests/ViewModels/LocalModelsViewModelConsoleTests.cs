@@ -19,14 +19,41 @@ namespace ComfyUI.Manager.Tests.ViewModels;
 /// ③ 用户点 ✕ 调 ClearConsoleLog 后 IsConsoleVisible = false,即使 IsBusy 也藏;
 /// 下次 Reload 重置 _userHiddenConsole 自动重新打开。
 /// </summary>
-public sealed class LocalModelsViewModelConsoleTests
+public sealed class LocalModelsViewModelConsoleTests : IDisposable
 {
+    private readonly SynchronizationContext? _originalCtx;
+
+    public LocalModelsViewModelConsoleTests()
+    {
+        // v1.0.0.x #571 flaky fix:xUnit runner 线程无 SyncContext →
+        // Progress<T> ctor 捕获 null → Report 走 ThreadPool 异步执行。
+        // Scan 完成后 await vm.ReloadAsync 返回时,_consoleSink / ctxProgress 包装的
+        // Progress<T> 回调可能仍在 ThreadPool 队列里未跑,断言 vm.ConsoleLog.Count /
+        // outerReceived.Count 时偶发为 0(并发跑其他 test class 抢占 threadpool 时 100% 出现)。
+        // 装个 inline SyncContext:Post 同步执行回调,VM ctor / ReloadAsync 里所有
+        // Progress<string>.ctor 捕获它 → Report 后回调 inline,断言时一定到齐。
+        _originalCtx = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new InlineSyncContext());
+    }
+
+    public void Dispose()
+    {
+        SynchronizationContext.SetSynchronizationContext(_originalCtx);
+    }
+
+    /// <summary>Post 同步执行 — 等同于 InlineDispatcher。VM 内部 Progress<T> 捕获它之后
+    /// Report 立刻触发 ConsoleLog.Add 等回调,移除 threadpool 调度延迟。</summary>
+    private sealed class InlineSyncContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) => d(state);
+        public override void Send(SendOrPostCallback d, object? state) => d(state);
+    }
+
     private static Settings SettingsWith(string modelsDir) => new() { DefaultModelsDirectory = modelsDir };
 
-    /// <summary>Synchronous IProgress&lt;T&gt; wrapper — <c>Progress&lt;T&gt;</c> 在构造时捕获
-    /// <c>SynchronizationContext</c>,没有 UI sync context 时走 ThreadPool 异步执行,
-    /// test 在断言时还没处理完。VM 的 _consoleSink 在 UI 线程构造走 UI sync context 所以同步;
-    /// 测试代码在 xUnit runner 线程,需要纯同步包装器保证断言时 line 全部已收齐。</summary>
+    /// <summary>Synchronous IProgress&lt;T&gt; wrapper — 调用方传入的 outer progress 走它,
+    /// 保证 outer.Report 同步 add 到 outerReceived(跟 _consoleSink 是否走 SyncContext 无关,
+    /// 这条链路是单 hop 的 IProgress.Report,没 Progress&lt;T&gt; 包装)。</summary>
     private sealed class SyncProgress<T> : IProgress<T>
     {
         private readonly Action<T> _action;

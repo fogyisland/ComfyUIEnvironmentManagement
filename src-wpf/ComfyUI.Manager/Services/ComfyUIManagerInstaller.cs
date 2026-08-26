@@ -28,21 +28,33 @@ public class ComfyUIManagerInstaller
 {
     public const string DefaultRepoUrl = "https://github.com/ltdrdata/ComfyUI-Manager";
     public const string DirName = "ComfyUI-Manager";
-    private static readonly TimeSpan GitCloneTimeout = TimeSpan.FromMinutes(2);
+    /// <summary>
+    /// 默认 git clone 超时 = 2 分钟。生产环境多数情况下 30s 内 clone 完成,
+    /// 慢网络(国内 / 代理)偶尔 1 分钟出头,2 分钟留余量。
+    ///
+    /// v1.0.0.x #571:测试场景(<c>InstallAsync_RealGit_ClonesRepo</c>)在 CI / 慢网络
+    /// 容易超 2 min,触发 <see cref="System.OperationCanceledException"/>
+    /// → InstallAsync 翻译成"用户取消" → 假 fail。
+    /// ctor 接受可空 <c>gitCloneTimeout</c> 让测试注入更长超时(生产不传维持默认)。
+    /// </summary>
+    private static readonly TimeSpan DefaultGitCloneTimeout = TimeSpan.FromMinutes(2);
 
     private readonly RequirementsFileInstaller _reqFileInstaller;
     private readonly GitRunner _git;
     private readonly AppLogger? _logger;
+    private readonly TimeSpan _gitCloneTimeout;
 
     public ComfyUIManagerInstaller(
         RequirementsFileInstaller reqFileInstaller,
         string gitExe = "git",
         HttpProxyConfig? proxy = null,
-        AppLogger? logger = null)
+        AppLogger? logger = null,
+        TimeSpan? gitCloneTimeout = null)
     {
         _reqFileInstaller = reqFileInstaller ?? throw new ArgumentNullException(nameof(reqFileInstaller));
         _git = new GitRunner(gitExe, proxy);
         _logger = logger;
+        _gitCloneTimeout = gitCloneTimeout ?? DefaultGitCloneTimeout;
     }
 
     /// <summary>
@@ -94,7 +106,7 @@ public class ComfyUIManagerInstaller
             cloneResult = await _git.RunAsync(
                 Path.GetDirectoryName(targetDir)!,
                 new[] { "clone", "--", DefaultRepoUrl, DirName },
-                GitCloneTimeout, ct);
+                _gitCloneTimeout, ct);
         }
         catch (OperationCanceledException)
         {

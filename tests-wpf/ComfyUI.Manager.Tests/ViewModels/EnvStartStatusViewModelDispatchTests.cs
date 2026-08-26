@@ -160,17 +160,23 @@ public sealed class EnvStartStatusViewModelDispatchTests : IDisposable
         // 会让 LogLines 在后台线程被改 — 测试环境无 WPF dispatcher 不会抛,
         // 但 WPF 生产环境会抛 ItemsControl source inconsistent。
         // 反例保留供对照,印证 Progress<T> 是必要修复。
+        //
+        // v1.0.0.x #571 flaky fix:原版 ThreadPool.QueueUserWorkItem + ManualResetEventSlim
+        // 1 秒 timeout 在 ThreadPool 饱和时(并发跑其他 test class)超时,
+        // 断言时 background thread 还没跑完,LogLines 为空。
+        // 改 sync + Task.Run + GetAwaiter().GetResult — 关键:
+        // ① 改 sync 方法不让 xUnit 调 await 测试方法(那样会捕获 ctor 装的
+        //   TestSyncContext,test method 的 continuation 永远不 pump → 死锁);
+        // ② Task.Run 替代 QueueUserWorkItem,ThreadPool 饱和也能拿到线程;
+        // ③ GetAwaiter().GetResult 隐含等待,避免 timeout-based race。
         var uiThreadId = Thread.CurrentThread.ManagedThreadId;
         var status = new EnvStartStatusViewModel();
         var bgAddThreadId = -1;
-        var done = new ManualResetEventSlim(false);
-        ThreadPool.QueueUserWorkItem(_ =>
+        Task.Run(() =>
         {
             bgAddThreadId = Thread.CurrentThread.ManagedThreadId;
             status.Report("hello");
-            done.Set();
-        });
-        done.Wait(TimeSpan.FromSeconds(1));
+        }).GetAwaiter().GetResult();
         Assert.Single(status.LogLines);
         Assert.Equal("hello", status.LogLines[0]);
         Assert.NotEqual(uiThreadId, bgAddThreadId);
