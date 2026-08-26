@@ -50,7 +50,12 @@ public class ModelSymlinker
         ArgumentNullException.ThrowIfNull(projectRoot);
         var subdir = env.TemplateConfigSnapshot?.ModelsSubdir;
         if (string.IsNullOrEmpty(subdir)) subdir = "models";
-        return Path.Combine(projectRoot, "envs", env.Name, subdir.Replace('/', Path.DirectorySeparatorChar));
+        // v1.0.0.x: envRoot 用 env.RootPath(绝对),跟 ProcessLauncher.BuildStartCommand 同修,
+        // 避免 dev build projectRoot = bin/Debug 时拼出错的 envs\<name>。
+        var envRoot = !string.IsNullOrWhiteSpace(env.RootPath)
+            ? env.RootPath
+            : Path.Combine(projectRoot, "envs", env.Name);
+        return Path.Combine(envRoot, subdir.Replace('/', Path.DirectorySeparatorChar));
     }
 
     /// <summary>v1.0.0 multi-template T6 (G8):per-kind env models dir.

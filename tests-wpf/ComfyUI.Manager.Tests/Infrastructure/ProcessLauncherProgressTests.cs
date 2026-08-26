@@ -74,13 +74,17 @@ public sealed class ProcessLauncherProgressTests : IDisposable
         throw new InvalidOperationException("找不到 dotnet/cmd 绝对路径");
     }
 
-    private Environment SeedEnv(int port, string? pythonExe = null, string? mainPy = null)
+    private Environment SeedEnv(int port, string? pythonExe = null, string? mainPy = null, string? envRootPath = null)
     {
+        // v1.0.0.x: BuildStartCommand 现在用 env.RootPath 派生 envRoot(env-create 时
+        // EnvCreatorService 存的绝对路径)。测试要 mirror 真实 env — RootPath 必须等
+        // 于 main.py 的目录。envRootPath 显式传,不传就 fallback 到 main.py 目录。
+        var rootPath = envRootPath ?? Path.GetDirectoryName(mainPy) ?? _projectRoot;
         var env = new Environment
         {
             Id = $"env-{Guid.NewGuid():N}",
             Name = "test-env",
-            RootPath = _projectRoot,
+            RootPath = rootPath,
             VenvPath = Path.Combine(_projectRoot, "venv"),
             PythonExecutable = pythonExe ?? ResolveTrivialBinary(),
             CustomNodesPath = Path.Combine(_projectRoot, "nodes"),

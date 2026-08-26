@@ -819,7 +819,16 @@ public sealed class ProcessLauncher : IDisposable
             ?? throw new InvalidOperationException(
                 $"模板 '{env.TemplateKind}' 不存在,可能在 Settings 中已被删除");
 
-        var envRoot = Path.Combine(projectRoot, "envs", env.Name);
+        // v1.0.0.x: envRoot 直接用 env.RootPath(env-create 时 EnvCreatorService 存的
+        // 绝对路径 = <EnvsDir>/<name>,dev/release 一致)。之前
+        // `Path.Combine(projectRoot, "envs", env.Name)` 在 dev build 里 projectRoot
+        // = bin/Debug/net8.0-windows 拼出 bin 内的假 envs\faceswap 找不到 main.py
+        // → 启动报「入口脚本不存在」(用户 2026-08-26 反馈)。
+        // settings.EnvsDir 可能绝对/相对但解析路径仍依赖 projectRoot 锚点,
+        // 用 env.RootPath 一行简化,且是 EnvDirectoryScanner 写入的真实位置。
+        var envRoot = !string.IsNullOrWhiteSpace(env.RootPath)
+            ? env.RootPath
+            : Path.Combine(projectRoot, string.IsNullOrEmpty(settings.EnvsDir) ? "envs" : settings.EnvsDir, env.Name);
         // v0.6.7.1: env.PythonExecutable 优先 — 允许用户/测试覆写 python 路径(老行为)。
         // 空/不存在 → 回退到标准 venv layout <envRoot>/venv/Scripts/python.exe。
         var venvPython = !string.IsNullOrWhiteSpace(env.PythonExecutable) && File.Exists(env.PythonExecutable)

@@ -48,4 +48,23 @@ public class ModelSymlinkerTemplateKindTests
         var dir = ModelSymlinker.GetEnvModelsDir(env, projectRoot: @"D:\fake");
         Assert.Equal(@"D:\fake\envs\e3\models", dir);
     }
+
+    /// <summary>
+    /// v1.0.0.x: dev build 启动按钮路径 bug 回归 — GetEnvModelsDir 同样有硬编码
+    /// <c>Path.Combine(projectRoot, "envs", env.Name, ...)</c>。修法跟 BuildStartCommand 同:
+    /// env.RootPath 优先,projectRoot + "envs" 兜底。
+    /// </summary>
+    [Fact]
+    public void GetEnvModelsDir_RootPathSet_UsesAbsoluteRootPathIgnoringProjectRoot()
+    {
+        var env = new Environment
+        {
+            Id = "e-dev", Name = "faceswap",
+            TemplateKind = "ComfyUI",
+            RootPath = @"D:\real-env",
+            TemplateConfigSnapshot = new TemplateConfig { ModelsSubdir = "models" },
+        };
+        var dir = ModelSymlinker.GetEnvModelsDir(env, projectRoot: @"D:\fake-bin");
+        Assert.Equal(@"D:\real-env\models", dir);
+    }
 }

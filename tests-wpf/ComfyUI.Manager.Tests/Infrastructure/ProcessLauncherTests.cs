@@ -114,7 +114,9 @@ time.sleep(60)
         {
             Id = "env-stop-timeout",
             Name = "stop-timeout",
-            RootPath = tempRoot,
+            // v1.0.0.x: RootPath = envDir(绝对路径),跟 EnvCreatorService 真实 env 一致。
+            // BuildStartCommand 现在用 env.RootPath 派生 envRoot,不是 projectRoot + "envs"。
+            RootPath = envDir,
             ComfyuiLayout = "isolated",
             PythonExecutable = python,
             Port = port,

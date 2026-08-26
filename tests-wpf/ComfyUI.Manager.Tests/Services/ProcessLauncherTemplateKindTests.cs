@@ -23,10 +23,12 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
     /// <summary>
     /// v1.0.0.x: BuildStartCommand 现在校验入口脚本存在性(Spec §9),所以测试要 pre-create
     /// 假 entry script 文件，否则新逻辑会先抛 FileNotFound 跳过原生 test 断言。
+    /// v1.0.0.x: BuildStartCommand 用 env.RootPath 派生 envRoot(env-create 时存的绝对路径,
+    /// dev/release 一致),不再从 projectRoot + "envs" 拼 — 测试要 mirror 真实场景。
     /// </summary>
-    private void CreateFakeEntryFile(string envName, string entryScript)
+    private void CreateFakeEntryFile(string envName, string entryScript, string? absoluteRootPath = null)
     {
-        var envRoot = Path.Combine(_projectRoot, "envs", envName);
+        var envRoot = absoluteRootPath ?? Path.Combine(_projectRoot, "envs", envName);
         Directory.CreateDirectory(envRoot);
         File.WriteAllText(Path.Combine(envRoot, entryScript), "# fake");
     }
@@ -159,5 +161,114 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
             () => ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot));
         Assert.Contains("入口脚本不存在", ex.Message);
         Assert.Contains("main.py", ex.Message);
+    }
+
+    [Fact]
+    public void BuildStartCommand_EnvsDirEmpty_FallsBackToEnvsSubdir()
+    {
+        // Settings.EnvsDir 默认 = ""(未配置),BuildStartCommand fallback 必须把它当
+        // "用默认子目录 envs",否则 entry script 路径会缺 envs 段(snapshot 没有时)。
+        // 锁住 `string.IsNullOrEmpty` 兜底 — `?? "envs"` 那种写法只抓 null 不抓 ""。
+        var env = new Environment
+        {
+            Id = "e6", Name = "e6", Status = "stopped",
+            TemplateKind = "ComfyUI",
+            Port = 9005,
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "ComfyUI",
+                EntryScript = "main.py",
+                EntryArgs = "--port {port}",
+            },
+        };
+        var settings = new Settings { EnvsDir = "" };  // 空串 = 未配置,跟默认一致
+        CreateFakeEntryFile("e6", "main.py");          // 放在 <projectRoot>/envs/e6/main.py
+
+        var (exe, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
+
+        // entry script 必须落在 <projectRoot>/envs/e6/main.py,而不是 <projectRoot>/e6/main.py
+        Assert.Equal(Path.Combine(_projectRoot, "envs", "e6", "main.py"), args.File);
+        Assert.Equal(Path.Combine(_projectRoot, "envs", "e6", "venv", "Scripts", "python.exe"), exe);
+    }
+
+    /// <summary>
+    /// v1.0.0.x: dev build 启动按钮路径 bug 回归 — 用户 2026-08-26 反馈「点击环境启动
+    /// 还是指向了错误的路径」。原因 <see cref="ProcessLauncher.BuildStartCommand"/> 硬编码
+    /// <c>Path.Combine(projectRoot, "envs", env.Name)</c>,但 dev build projectRoot 来自
+    /// <c>Environment.ProcessPath</c> = bin/Debug/net8.0-windows,不是真正的项目根。
+    /// 修复:envRoot 改用 <see cref="Environment.RootPath"/>(env-create 时 EnvCreatorService
+    /// 存的绝对路径,跟 settings.EnvsDir 解析结果一致)。本测试断言 RootPath 存在时,
+    /// 拼装走 RootPath,不再受 projectRoot 影响。
+    /// </summary>
+    [Fact]
+    public void BuildStartCommand_RootPathSet_UsesAbsoluteRootPathIgnoringProjectRoot()
+    {
+        // dev build 场景:projectRoot = bin dir(≠ 真实项目根),env.RootPath = env 真实绝对路径。
+        var fakeProjectRoot = Path.Combine(Path.GetTempPath(), "fake-bin-" + System.Guid.NewGuid().ToString("N")[..8]);
+        var realEnvRoot = Path.Combine(Path.GetTempPath(), "real-env-" + System.Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            Directory.CreateDirectory(realEnvRoot);
+            File.WriteAllText(Path.Combine(realEnvRoot, "main.py"), "# fake");
+
+            var env = new Environment
+            {
+                Id = "e-dev", Name = "faceswap", Status = "stopped",
+                TemplateKind = "ComfyUI",
+                Port = 9100,
+                RootPath = realEnvRoot,  // 绝对(env-create 时 EnvCreatorService 存的)
+                TemplateConfigSnapshot = new TemplateConfig
+                {
+                    Kind = "ComfyUI",
+                    EntryScript = "main.py",
+                    EntryArgs = "--port {port}",
+                },
+            };
+            var settings = new Settings();
+
+            var (exe, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: fakeProjectRoot);
+
+            // 关键断言:entry file 必须落在 realEnvRoot(从 env.RootPath 派生),
+            // 不在 fakeProjectRoot/envs/faceswap/ 里。
+            Assert.Equal(Path.Combine(realEnvRoot, "main.py"), args.File);
+            Assert.NotEqual(Path.Combine(fakeProjectRoot, "envs", "faceswap", "main.py"), args.File);
+            // venv python 也用 envRoot 派生。
+            Assert.Equal(Path.Combine(realEnvRoot, "venv", "Scripts", "python.exe"), exe);
+        }
+        finally
+        {
+            try { Directory.Delete(realEnvRoot, recursive: true); } catch { }
+            try { Directory.Delete(fakeProjectRoot, recursive: true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 兜底 — env.RootPath 为空(legacy env 行)时,BuildStartCommand 应该 fallback
+    /// 到 <c>Path.Combine(projectRoot, settings.EnvsDir ?? "envs", env.Name)</c> 旧行为,
+    /// 不要抛 NRE。
+    /// </summary>
+    [Fact]
+    public void BuildStartCommand_RootPathEmpty_FallsBackToProjectRoot()
+    {
+        CreateFakeEntryFile("e-fallback", "main.py");
+
+        var env = new Environment
+        {
+            Id = "e-fallback", Name = "e-fallback", Status = "stopped",
+            TemplateKind = "ComfyUI",
+            Port = 9101,
+            RootPath = null,  // legacy env row
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "ComfyUI",
+                EntryScript = "main.py",
+                EntryArgs = "--port {port}",
+            },
+        };
+        var settings = new Settings();  // EnvsDir = null
+
+        var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
+
+        Assert.Equal(Path.Combine(_projectRoot, "envs", "e-fallback", "main.py"), args.File);
     }
 }
