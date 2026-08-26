@@ -487,11 +487,10 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         => string.Equals(_settings.PipMirror, "custom", System.StringComparison.OrdinalIgnoreCase);
 
     // —— 路径 ——
-    public string TemplatePythonDir
-    {
-        get => _settings.TemplatePythonDir;
-        set { _settings.TemplatePythonDir = value; MarkDirty(nameof(TemplatePythonDir)); RaisePropertyChanged(); }
-    }
+    // v1.0.0.x: TemplatePythonDir / DefaultPythonVersion 两个 legacy 字段的 VM 属性已删除 —
+    // UI 不再暴露(模板 Python 目录被「系统模板库目录」取代,默认 Python 版本被「Python
+    // 解释器」多解释器区段取代)。Settings.cs 字段保留用于老 settings.json 加载时的
+    // Python 解释器 一次性迁移。
     // v1.0.0.x: 系统模板库目录 — 用户配置的共享模板根目录
     public string SystemTemplateLibraryDir
     {
@@ -502,11 +501,6 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     {
         get => _settings.EnvsDir;
         set { _settings.EnvsDir = value; MarkDirty(nameof(EnvsDir)); RaisePropertyChanged(); }
-    }
-    public string DefaultPythonVersion
-    {
-        get => _settings.DefaultPythonVersion;
-        set { _settings.DefaultPythonVersion = value ?? ""; MarkDirty(nameof(DefaultPythonVersion)); RaisePropertyChanged(); }
     }
     public string GlobalNodesDir
     {
@@ -1188,10 +1182,8 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(CacheTtlMinutes));
         RaisePropertyChanged(nameof(ComfyUiStartupTimeoutSeconds));
         RaisePropertyChanged(nameof(CompatApiBaseUrl));
-        RaisePropertyChanged(nameof(TemplatePythonDir));
         RaisePropertyChanged(nameof(SystemTemplateLibraryDir));
         RaisePropertyChanged(nameof(EnvsDir));
-        RaisePropertyChanged(nameof(DefaultPythonVersion));
         RaisePropertyChanged(nameof(GlobalNodesDir));
         RaisePropertyChanged(nameof(LocalNodeDirectory));
         RaisePropertyChanged(nameof(DefaultModelsDirectory));

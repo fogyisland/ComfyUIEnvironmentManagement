@@ -116,14 +116,8 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void BrowseSystemTemplateLibraryDir(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SettingsViewModel vm)
-        {
-            var picked = vm.PickFolder();
-            if (picked is not null) vm.SystemTemplateLibraryDir = picked;
-        }
-    }
+    // v1.0.0.x: 系统模板库目录(Settings.SystemTemplateLibraryDir)改内置,Settings 页
+// 不再暴露 UI,这里 BrowseSystemTemplateLibraryDir 也删除(handler 不再被 XAML 调用)。
 
     private void BrowseWorkflowsDir(object sender, RoutedEventArgs e)
     {
