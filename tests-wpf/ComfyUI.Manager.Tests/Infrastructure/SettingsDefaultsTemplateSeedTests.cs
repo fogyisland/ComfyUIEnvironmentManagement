@@ -150,9 +150,11 @@ public class SettingsDefaultsTemplateSeedTests
         SettingsDefaults.Apply(s, ProjectRoot, rawJson: null);
 
         // Templates["ComfyUI"] 由 SeedBuiltInTemplatesIfMissing 填默认,
-        // LocalSourceDir 指向相对路径 envTemplates/ComfyUI(v1.0.0.x)。
+        // LocalSourceDir 指向 "<Kind>"(v1.0.0.x bug #509 修正:之前是
+        // "envTemplates/ComfyUI" 多一层嵌套,跟 SystemTemplateLibraryDir 拼起来是
+        // <system_template_library_dir>/envTemplates/ComfyUI 不正确)。
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
-        Assert.Equal(Path.Combine("envTemplates", "ComfyUI"),
+        Assert.Equal("ComfyUI",
             s.Templates["ComfyUI"].LocalSourceDir);
     }
 
@@ -186,9 +188,10 @@ public class SettingsDefaultsTemplateSeedTests
 
         SettingsDefaults.Apply(s, ProjectRoot, oldJson);
 
-        // seed 默认 ComfyUI entry(LocalSourceDir 指向 <projectRoot>/envTemplates/ComfyUI,v1.0.0.x 改动)
+        // seed 默认 ComfyUI entry(LocalSourceDir 指向 "<Kind>" — v1.0.0.x bug #509 修正,
+        // 之前是 "envTemplates/ComfyUI" 多一层嵌套)
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
-        Assert.Equal(Path.Combine("envTemplates", "ComfyUI"),
+        Assert.Equal("ComfyUI",
             s.Templates["ComfyUI"].LocalSourceDir);
     }
 
@@ -203,5 +206,61 @@ public class SettingsDefaultsTemplateSeedTests
 
         Assert.Null(ex);
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
+    }
+
+    // --- v1.0.0.x bug #509: LocalSourceDir 嵌套 envTemplates/ 前缀 ---
+
+    [Fact]
+    public void Apply_EmptySettings_AllEightBuiltInTemplates_HaveLocalSourceDirWithoutEnvTemplatesPrefix()
+    {
+        // v1.0.0.x bug #509: 旧 default 的 LocalSourceDir = "envTemplates\<Kind>",
+        // 跟 Settings.SystemTemplateLibraryDir (= 用户配的 ENVTemplate/) 一拼 →
+        // <system_template_library_dir>/envTemplates/<Kind> 多一层嵌套。修法:
+        // default 直接写 "<Kind>",新装用户走这条路。
+        var s = new Settings();
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("ComfyUI", s.Templates["ComfyUI"].LocalSourceDir);
+        Assert.Equal("A1111", s.Templates["A1111"].LocalSourceDir);
+        Assert.Equal("Forge", s.Templates["Forge"].LocalSourceDir);
+        Assert.Equal("SwarmUI", s.Templates["SwarmUI"].LocalSourceDir);
+        Assert.Equal("OpenVoice", s.Templates["OpenVoice"].LocalSourceDir);
+        Assert.Equal("Whisper", s.Templates["Whisper"].LocalSourceDir);
+        Assert.Equal("CoquiTTS", s.Templates["CoquiTTS"].LocalSourceDir);
+        Assert.Equal("Bark", s.Templates["Bark"].LocalSourceDir);
+    }
+
+    [Fact]
+    public void Apply_PreExistingEnvTemplatesPrefix_NormalizedToKind()
+    {
+        // v1.0.0.x bug #509: 已 shipped 用户的 settings.inf 里 4 个 GitHub AI voice
+        // (OpenVoice/Whisper/CoquiTTS/Bark) 已经被种了 "envTemplates\<Kind>" →
+        // Apply 时通过 NormalizeBuiltInTemplatePaths 替换成 "<Kind>"。
+        // Custom templates(用户手填的 LocalSourceDir)一律不动。
+        var s = new Settings();
+        s.Templates["OpenVoice"] = new TemplateConfig
+        {
+            Name = "OpenVoice",
+            Kind = "OpenVoice",
+            LocalSourceDir = Path.Combine("envTemplates", "OpenVoice"),
+            SourceKind = TemplateSourceKind.GitHub,
+            GitHubRepoUrl = "https://github.com/myshell-ai/OpenVoice.git",
+            EntryScript = "api.py",
+        };
+        s.Templates["MyCustom"] = new TemplateConfig
+        {
+            Name = "MyCustom",
+            Kind = "MyCustom",
+            LocalSourceDir = Path.Combine("envTemplates", "MyCustom"),
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "main.py",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal("OpenVoice", s.Templates["OpenVoice"].LocalSourceDir);
+        // custom kind 不被 normalize,保持原值
+        Assert.Equal(Path.Combine("envTemplates", "MyCustom"),
+            s.Templates["MyCustom"].LocalSourceDir);
     }
 }

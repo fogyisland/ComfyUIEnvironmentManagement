@@ -12,15 +12,19 @@ namespace ComfyUI.Manager.Services;
 /// </summary>
 public static class TemplateConfigDefaults
 {
-    // v1.0.0.x: 目录名 "Templates" → "envTemplates"(用户 2026-08-24 反馈)。
-    // 用相对路径 "envTemplates/<kind>" 让 settings 可移植(任意 cwd 启动都能 resolve),
-    // 不依赖 projectRoot 绝对路径。ProcessLauncher / EnvCreator 走 Directory.Exists
-    // 检查,Path.GetFullPath 转绝对路径做实际 git clone。
+    // v1.0.0.x: LocalSourceDir 是相对路径,<see cref="TemplatePathResolver.Resolve"/>
+    // 锚定到 Settings.SystemTemplateLibraryDir(= 用户配的 ENVTemplate 之类模板根)。
+    // 所以 default 直接写 "<Kind>"(<system_template_library_dir>/ComfyUI),**不**加
+    // "envTemplates/" 前缀 — 加了会被 resolve 成 <system_template_library_dir>/envTemplates/ComfyUI
+    // 多一层(用户 2026-08-26 反馈 git clone 创建了 nested envTemplate/envtemplate/ 子目录)。
+    // 4 个 image templates (ComfyUI/A1111/Forge/SwarmUI) 老 settings 里就是这个形式
+    // (LocalSourceDir = "<Kind>"),4 个 GitHub AI voice (OpenVoice/Whisper/CoquiTTS/Bark)
+    // 是新建,统一对齐。
     public static TemplateConfig ComfyUi(string projectRoot) => new()
     {
         Name = "ComfyUI",
         Kind = "ComfyUI",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "ComfyUI"),
+        LocalSourceDir = "ComfyUI",
         EntryScript = "main.py",
         EntryArgs = "--port {port} --listen 0.0.0.0",
         ModelsSubdir = "models",
@@ -32,7 +36,7 @@ public static class TemplateConfigDefaults
     {
         Name = "A1111",
         Kind = "A1111",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "A1111"),
+        LocalSourceDir = "A1111",
         EntryScript = "webui.py",
         EntryArgs = "--port {port}",
         ModelsSubdir = "models/Stable-diffusion",
@@ -49,7 +53,7 @@ public static class TemplateConfigDefaults
     {
         Name = "Forge",
         Kind = "Forge",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "Forge"),
+        LocalSourceDir = "Forge",
         EntryScript = "webui.py",
         EntryArgs = "--port {port} --api",
         ModelsSubdir = "models/Stable-diffusion",
@@ -67,7 +71,7 @@ public static class TemplateConfigDefaults
     {
         Name = "SwarmUI",
         Kind = "SwarmUI",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "SwarmUI"),
+        LocalSourceDir = "SwarmUI",
         EntryScript = "Launch-windows.bat",
         EntryArgs = "",
         ModelsSubdir = "Models",
@@ -77,14 +81,14 @@ public static class TemplateConfigDefaults
 
     /// <summary>
     /// v1.0.0.x: AI 语音 — OpenVoice (myshell-ai/OpenVoice)。voice cloning TTS。
-    /// GitHub clone source,本地路径 envTemplates/OpenVoice。Python 入口 api.py
-    /// (FastAPI server);空环境由 EnvCreator 装 venv + pip install -e .。
+    /// GitHub clone source。Python 入口 api.py (FastAPI server);空环境由
+    /// EnvCreator 装 venv + pip install -e .。
     /// </summary>
     public static TemplateConfig OpenVoice(string projectRoot) => new()
     {
         Name = "OpenVoice",
         Kind = "OpenVoice",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "OpenVoice"),
+        LocalSourceDir = "OpenVoice",
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/myshell-ai/OpenVoice.git",
         EntryScript = "api.py",
@@ -96,15 +100,15 @@ public static class TemplateConfigDefaults
 
     /// <summary>
     /// v1.0.0.x: AI 语音 — Whisper (openai/whisper)。OpenAI 官方 speech-to-text。
-    /// GitHub clone source,本地路径 envTemplates/Whisper。Whisper 是 CLI 工具,
-    /// entry 用 whisper Python module(执行 whisper transcribe <args>)。
+    /// GitHub clone source。Whisper 是 CLI 工具,entry 用 whisper Python module
+    /// (执行 whisper transcribe <args>)。
     /// 注意:Whisper 不是常驻 web server,port 参数无意义但保留 {port} 兼容模板结构。
     /// </summary>
     public static TemplateConfig Whisper(string projectRoot) => new()
     {
         Name = "Whisper",
         Kind = "Whisper",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "Whisper"),
+        LocalSourceDir = "Whisper",
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/openai/whisper.git",
         EntryScript = "whisper",
@@ -116,14 +120,14 @@ public static class TemplateConfigDefaults
 
     /// <summary>
     /// v1.0.0.x: AI 语音 — Coqui TTS (coqui-ai/TTS)。多语言 TTS 库。
-    /// GitHub clone source,本地路径 envTemplates/CoquiTTS。Entry 用 tts-server
-    /// (HTTP server,coqui-ai 提供的内置服务模式)便于 UI 远程调用。
+    /// GitHub clone source。Entry 用 tts-server(HTTP server,coqui-ai 提供的
+    /// 内置服务模式)便于 UI 远程调用。
     /// </summary>
     public static TemplateConfig CoquiTts(string projectRoot) => new()
     {
         Name = "CoquiTTS",
         Kind = "CoquiTTS",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "CoquiTTS"),
+        LocalSourceDir = "CoquiTTS",
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/coqui-ai/TTS.git",
         EntryScript = "tts-server",
@@ -134,15 +138,15 @@ public static class TemplateConfigDefaults
     };
 
     /// <summary>
-    /// v1.0.0.x: AI 语音 — Bark (suno-ai/bark)。生成式语音 / 音效模型。
-    /// GitHub clone source,本地路径 envTemplates/Bark。Bark 是 CLI 工具(无 HTTP server),
+    /// v1.0.0.x: Bark (suno-ai/bark)。生成式语音 / 音效模型。
+    /// GitHub clone source。Bark 是 CLI 工具(无 HTTP server),
     /// entry 用 bark 模块(等同 python -m bark)。
     /// </summary>
     public static TemplateConfig Bark(string projectRoot) => new()
     {
         Name = "Bark",
         Kind = "Bark",
-        LocalSourceDir = System.IO.Path.Combine("envTemplates", "Bark"),
+        LocalSourceDir = "Bark",
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/suno-ai/bark.git",
         EntryScript = "bark",

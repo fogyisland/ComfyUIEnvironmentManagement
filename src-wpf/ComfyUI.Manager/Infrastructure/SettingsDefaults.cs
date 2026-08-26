@@ -205,6 +205,13 @@ public static class SettingsDefaults
         // rawJson 可为 null(无 JSON 可用,纯 in-memory settings) → 不迁移。
         TryMigrateOldTemplateComfyuiDir(s, rawJson);
         SeedBuiltInTemplatesIfMissing(s, projectRoot);
+        // v1.0.0.x bug #509:之前 default 的 LocalSourceDir = "envTemplates\<Kind>",
+        // 跟 Settings.SystemTemplateLibraryDir (用户配的 ENVTemplate/) 一拼 →
+        // <system_template_library_dir>/envTemplates/<Kind> 多一层嵌套目录。
+        // 新 default 已统一成 "<Kind>",但已 shipped 用户 settings.inf 里 4 个 GitHub
+        // AI voice 已经被种了 "envTemplates\<Kind>" → 在 seed 之后 normalize 一次,
+        // 替换为 "<Kind>"。Custom template 不动。
+        NormalizeBuiltInTemplatePaths(s);
 
         // v1.0.0 Phase 1:dev build 解锁所有 hidden feature flag — 用户原话
         // "开发阶段没有限制,所以在开发就不要限制了模型市场和工作流库了,
@@ -319,6 +326,33 @@ public static class SettingsDefaults
         if (!s.Templates.ContainsKey("Bark"))
         {
             s.Templates["Bark"] = TemplateConfigDefaults.Bark(projectRoot);
+        }
+    }
+
+    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 8 个 built-in 同步。
+    private static readonly string[] BuiltInKinds =
+    {
+        "ComfyUI", "A1111", "Forge", "SwarmUI",
+        "OpenVoice", "Whisper", "CoquiTTS", "Bark",
+    };
+
+    /// <summary>
+    /// v1.0.0.x bug #509:把 "envTemplates\&lt;Kind&gt;" 旧 default 残留改成
+    /// "&lt;Kind&gt;",让 <see cref="TemplatePathResolver.Resolve"/> 跟
+    /// <see cref="Settings.SystemTemplateLibraryDir"/> 拼出来是
+    /// &lt;system_template_library_dir&gt;/&lt;Kind&gt;,不再多一层 envTemplates/。
+    /// 只动 8 个 built-in,custom templates(用户自定义 LocalSourceDir)一律不动。
+    /// </summary>
+    private static void NormalizeBuiltInTemplatePaths(Settings s)
+    {
+        foreach (var kind in BuiltInKinds)
+        {
+            if (!s.Templates.TryGetValue(kind, out var cfg)) continue;
+            var prefixed = System.IO.Path.Combine("envTemplates", kind);
+            if (string.Equals(cfg.LocalSourceDir, prefixed, System.StringComparison.OrdinalIgnoreCase))
+            {
+                cfg.LocalSourceDir = kind;
+            }
         }
     }
 

@@ -24,6 +24,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     // 可空:既有 12+ 测试 callers 不传 themeService 也能跑(Apply no-op)。
     // 生产路径 App.xaml.cs:217 通过 MainViewModel 间接构造,总是传非 null 实例。
     private readonly IThemeService? _themeService;
+    // v1.0.0.x: 用户改 Settings.EnvsDir 保存后,App.xaml.cs 注入的 callback 触发
+    // EnvDirectoryScanner.ScanAsync(envsDir)。可空:测试 callers 不传也能跑。
+    private readonly Func<string, Task>? _onEnvsDirSaved;
     private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
@@ -75,12 +78,17 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         HttpProxyConfig proxy,
         IPythonInterpreterValidator validator,
         Settings? sharedSettings = null,
-        IThemeService? themeService = null)
+        IThemeService? themeService = null,
+        // v1.0.0.x: 用户改 Settings.EnvsDir 保存后,触发 EnvDirectoryScanner 扫新目录。
+        // callback 接收 EnvsDir 相对路径,resolve 到绝对路径由 App.xaml.cs 处理
+        // (SettingsViewModel 不需要知道 projectRoot)。
+        Func<string, Task>? onEnvsDirSaved = null)
     {
         _repo = repo;
         _proxy = proxy;
         _validator = validator;
         _themeService = themeService;
+        _onEnvsDirSaved = onEnvsDirSaved;
         // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
         // 没有注入时(单元测试)才从 disk 加载。T12:走 LoadWithRawJson 拿到磁盘 raw JSON,
         // 以便 Apply 触发老 template_comfyui_dir 字段迁移。生产 App.xaml.cs 也用同一路径。
@@ -306,7 +314,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             IsAddDownloadSourceOpen = false;
         });
         SaveCommand = new RelayCommand(
-            _ => { _repo.Save(_settings); ClearDirty(); },
+            async _ =>
+            {
+                var envsDirJustChanged = Dirty[nameof(EnvsDir)];
+                var envsDirValue = _settings.EnvsDir;
+                _repo.Save(_settings);
+                ClearDirty();
+                // v1.0.0.x: EnvsDir 改了 → 触发 EnvDirectoryScanner 扫新目录 auto-import
+                // env。可空 callback,没注入就直接跳过(测试路径)。
+                if (envsDirJustChanged && _onEnvsDirSaved is not null)
+                {
+                    try { await _onEnvsDirSaved(envsDirValue ?? ""); }
+                    catch { /* scan 失败不阻塞 save 反馈 */ }
+                }
+            },
             _ => HasUnsavedChanges);
         // v0.6.12 hotfix:BrowseLogDirectory 按钮绑的命令。initialPath = 当前 LogDirectory,
         // 让用户从已有位置浏览,而不是每次从系统默认(可能是桌面)。

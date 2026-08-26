@@ -230,6 +230,18 @@ public sealed class EnvCreatorService
         Directory.CreateDirectory(env.CustomNodesPath!);
         envRepo.Upsert(env);
 
+        // v1.0.0.x:写 per-env marker 隐藏文件 .cmgr-env.json,让 EnvDirectoryScanner
+        // 在用户切换 Settings.EnvsDir 后能 auto-import 这个 env。失败静默 — env-create
+        // 主流程不因 marker IO 错误而失败(G5)。
+        EnvMarkerService.Write(env.RootPath, new EnvMarker
+        {
+            EnvId = env.Id,
+            Name = env.Name,
+            Kind = env.TemplateKind,
+            TemplateSnapshot = env.TemplateConfigSnapshot,
+            CreatedAt = DateTime.UtcNow.ToString("o"),
+        });
+
         // 9. v1.0.0 T4 G9:仅 ComfyUI kind 跑 CommonNodeInstaller。
         // 非 ComfyUI(A1111 / 自定义 / etc)无 ComfyUI Manager / 常用节点概念,跳过。
         if (_commonNodeInstaller is not null

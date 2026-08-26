@@ -34,6 +34,15 @@ public sealed class SettingsViewModelDirtyTests : IDisposable
         HttpProxyConfig.Disabled,
         new FakeValidator(isValid: true));
 
+    private SettingsViewModel NewVmWithCallback(Func<string, Task> onEnvsDirSaved) =>
+        new SettingsViewModel(
+            new SettingsRepository(_path),
+            HttpProxyConfig.Disabled,
+            new FakeValidator(isValid: true),
+            sharedSettings: null,
+            themeService: null,
+            onEnvsDirSaved: onEnvsDirSaved);
+
     [Fact]
     public void MarkDirty_SingleProperty_SetsDirtyAndHasUnsavedChanges()
     {
@@ -190,5 +199,52 @@ public sealed class SettingsViewModelDirtyTests : IDisposable
         }
         public event EventHandler<ThemeMode>? ThemeChanging;
         public event EventHandler<ThemeMode>? Applied;
+    }
+
+    // --- v1.0.0.x:onEnvsDirSaved callback 触发验证 ---
+    // SaveCommand 内部用 async lambda,但 RelayCommand.Execute 是 sync(包装成 async void)。
+    // 测试用 TaskCompletionSource 等 callback 真正被调起 — 不依赖 TaskCompletionSource 默认是瞬时完成的。
+
+    [Fact]
+    public void SaveCommand_EnvsDirDirty_InvokesOnEnvsDirSavedCallback()
+    {
+        var tcs = new TaskCompletionSource<string?>();
+        var vm = NewVmWithCallback(rel => { tcs.SetResult(rel); return Task.CompletedTask; });
+        vm.EnvsDir = "NewEnvs";
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.True(tcs.Task.Wait(TimeSpan.FromSeconds(2)),
+            "SaveCommand 触发 2s 内未调 onEnvsDirSaved");
+        Assert.Equal("NewEnvs", tcs.Task.Result);
+    }
+
+    [Fact]
+    public void SaveCommand_OtherFieldDirty_DoesNotInvokeOnEnvsDirSavedCallback()
+    {
+        var callCount = 0;
+        var tcs = new TaskCompletionSource();
+        var vm = NewVmWithCallback(_ => { Interlocked.Increment(ref callCount); tcs.SetResult(); return Task.CompletedTask; });
+        vm.DefaultModelsDirectory = @"D:\foo"; // 改别的字段
+
+        vm.SaveCommand.Execute(null);
+
+        // 等 200ms — 如果 callback 被错误触发会触发 TCS
+        Thread.Sleep(200);
+        Assert.Equal(0, callCount);
+        Assert.False(tcs.Task.IsCompleted);
+    }
+
+    [Fact]
+    public void SaveCommand_NoCallback_DoesNotThrow()
+    {
+        // NewVm() 默认 callback = null — Save 不应抛
+        var vm = NewVm();
+        vm.EnvsDir = "SomeNewDir";
+
+        var ex = Record.Exception(() => vm.SaveCommand.Execute(null));
+
+        Assert.Null(ex);
+        Assert.False(vm.HasUnsavedChanges);
     }
 }

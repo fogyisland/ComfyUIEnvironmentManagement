@@ -337,7 +337,9 @@ public class MainViewModel : ViewModelBase
     // v1.0.0 T11: removed UpdateTemplateCommand — 工具菜单 → 模板更新 入口删除,
     // 改到 TemplateManagementView 的每张模板卡 "更新源码" 按钮。
     public RelayCommand ShowAboutCommand { get; }
-    public RelayCommand ShowDonateQrCommand { get; }   // v0.6.5.21 hotfix:菜单直接打开赞助二维码独立窗口
+    public RelayCommand ShowCoursesCommand { get; }       // v1.0.0:顶级 dropdown "ComfyUI 课程" → ComfyUICoursesWindow
+    public RelayCommand ShowComfyUIGroupCommand { get; }   // v1.0.0:顶级 dropdown "ComfyUI 群组" → ComfyUIGroupQrWindow
+    public RelayCommand ShowDonateQrCommand { get; }       // v0.6.5.21 hotfix:菜单直接打开赞助二维码独立窗口
     // v0.6.9 T7:Spotlight 全局搜索。MainWindow.xaml.cs 在 OnLoaded 把 Ctrl+K 绑到
     // OpenSpotlightCommand(等 DataContext 就绪)。CloseSpotlightCommand 给 Esc 键用。
     public RelayCommand OpenSpotlightCommand { get; }
@@ -348,6 +350,8 @@ public class MainViewModel : ViewModelBase
     internal Func<string, UiPreferences, bool>? SaveUiPreferencesDialogOverride { get; set; }
     internal Func<string, bool>? LoadUiPreferencesDialogOverride { get; set; }
     internal Action? ShowDonateQrOverride { get; set; }       // v0.6.5.21 hotfix test seam
+    internal Action? ShowCoursesOverride { get; set; }        // v1.0.0 test seam
+    internal Action? ShowComfyUIGroupOverride { get; set; }   // v1.0.0 test seam
     // v1.0.0 T11: removed ConfirmDangerousOverride — 工具菜单 → 模板更新 删除,
     // TemplateManagementView 每张卡的 "更新源码" 按钮自己 confirm。
     // v0.6.7.3 T5 test seams
@@ -499,6 +503,8 @@ public class MainViewModel : ViewModelBase
             if (owner is null) return;
             AboutDialog.Show(owner, _projectRoot);
         });
+        ShowCoursesCommand = new RelayCommand(_ => ShowCourses());
+        ShowComfyUIGroupCommand = new RelayCommand(_ => ShowComfyUIGroup());
         ShowDonateQrCommand = new RelayCommand(_ => ShowDonateQr());
         // v0.6.9 T7:Ctrl+K 打开 Spotlight popup。MainWindow.xaml.cs 在 OnLoaded 后注入 KeyBinding。
         OpenSpotlightCommand = new RelayCommand(_ => OpenSpotlight());
@@ -725,10 +731,16 @@ public class MainViewModel : ViewModelBase
     // 失败由 VM 内部 try/catch cover 并设 EmptyMessage。MainViewModel 没持
     // _modelScanner 字段(跟 ShowModels 在方法内 new ModelFilesystemScanner 一致),
     // 单例化无收益 — 每次扫都是一次性 IO。
+    internal Func<ModelFilesystemScanner>? LocalModelsScannerFactoryOverride { get; set; }   // v1.0.0:ShowLocalModels 不再每次重 reload → 测试要用 counting scanner 验证"无自动 reload"
+
     private void ShowLocalModels()
     {
         CurrentSection = MainSection.LocalModels;
-        if (_localModelsViewModel is null)
+        // 用户反馈 "每次点到本地模型都会刷新,这其实不对; 刷新应该是后台刷新"。
+        // 缓存已构造的 VM:用户切走再切回 tab 零 IO,直接显示已缓存的 AllCards;
+        // 首次进 tab 才 fire-and-forget 跑首次 ReloadAsync(scanner 扫磁盘 + 4 matchers 跑)。
+        bool isFirstVisit = _localModelsViewModel is null;
+        if (isFirstVisit)
         {
             // v1.0.0 T11:构造 CivitAiLookupService 透传给 LocalModelsViewModel。
             // 用 _httpBuilder (App.xaml.cs 注入) 复用 per-source proxy + ApiToken +
@@ -740,9 +752,12 @@ public class MainViewModel : ViewModelBase
             // 到 instance 字段(_civitaiHashCache / _civitaiMatcherOrchestrator),这里一起透传。
             // 若 lookup service 注入失败(_httpBuilder is null),cache + orchestrator 也保持 null。
             var lookupService = TryCreateCivitAiLookupService();
+            var scanner = LocalModelsScannerFactoryOverride is not null
+                ? LocalModelsScannerFactoryOverride()
+                : new ModelFilesystemScanner(_logger);
             _localModelsViewModel = new LocalModelsViewModel(
                 _settings,
-                new ModelFilesystemScanner(_logger),
+                scanner,
                 _logger,
                 lookupService,
                 _civitaiHashCache,
@@ -751,12 +766,19 @@ public class MainViewModel : ViewModelBase
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);
         }
-        // 用户反馈 "本地模型一直出在加载中,其实应该首先加载完了,再刷新这样比较好":
-        // 每次进入 sidebar 都 fire-and-forget 触发一次 ReloadAsync — 已有卡片时(后续访问)
-        // 走 background refresh,VM.ShowLoadingOverlay=false 不挡 card grid,toolbar 显示
-        // "刷新中…"指示;首次访问时(VM 刚 new,AllCards 空)走 ShowLoadingOverlay=true 显示
-        // loading 短暂出现直到 scan 完成。这样语义 = "现有数据 → 后台刷新",匹配 user 期望。
-        _ = _localModelsViewModel.ReloadAsync();
+        // 用户反馈 "每次点到本地模型都会刷新,这其实不对; 刷新应该是后台刷新":
+        // - 首次进入(VM 刚 new)→ fire-and-forget 触发首次 ReloadAsync(scanner 扫磁盘 +
+        //   matcher 跑 hash/safetensors/companion/filename)。fire-and-forget 不阻塞 UI —
+        //   toolbar 显示 "刷新中…" 细指示,VM.IsRefreshingInBackground=true。
+        // - 后续进入(VM 已 cache)→ 不触发,直接用 _localModelsViewModel.AllCards 已缓存的
+        //   数据;用户切走再切回 tab 零延迟无 IO。新数据(用户下载了新模型放进目录)需
+        //   通过 toolbar "🔄 刷新" 按钮显式触发 ReloadCommand,或后续接入"下载完成 → vm
+        //   通知 reload" 钩子。设计 trade-off:用户多点击一次刷新换来不反复扫盘;
+        //   VM 内部 IsBusy 守卫保留防用户反复点刷新按钮并发 scan。
+        if (isFirstVisit)
+        {
+            _ = _localModelsViewModel.ReloadAsync();
+        }
         CurrentView = _localModelsView;
     }
 
@@ -846,7 +868,17 @@ public class MainViewModel : ViewModelBase
         if (_settingsViewModel is null)
         {
             _settingsViewModel = new SettingsViewModel(
-                _settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings, _themeService);
+                _settingsRepo, _gitProxy, new PythonInterpreterValidator(), _settings, _themeService,
+                // v1.0.0.x:用户改 Settings.EnvsDir 后,scan 新目录 auto-import marker-based envs。
+                // EnvsDir 是相对路径,跟 EnvCreatorService 一致锚到 _projectRoot。
+                onEnvsDirSaved: async envsDirRel =>
+                {
+                    var envsDirAbs = string.IsNullOrWhiteSpace(envsDirRel)
+                        ? ""
+                    : Path.Combine(_projectRoot, envsDirRel);
+                    if (_envRepo is null) return;
+                    _ = await new EnvDirectoryScanner(_envRepo).ScanAsync(envsDirAbs);
+                });
             CurrentView = SettingsViewFactory is null
                 ? new SettingsView { DataContext = _settingsViewModel }
                 : SettingsViewFactory(_settingsViewModel) as SettingsView;
@@ -1009,6 +1041,22 @@ public class MainViewModel : ViewModelBase
         DonateQrWindow.Show(owner, _projectRoot);  // 非模态独立窗口
     }
 
+    private void ShowCourses()
+    {
+        if (ShowCoursesOverride is not null) { ShowCoursesOverride(); return; }
+        var owner = Application.Current?.MainWindow;
+        if (owner is null) return;
+        ComfyUICoursesWindow.Show(owner);  // v1.0.0:顶级 dropdown "ComfyUI 课程" 独立窗口
+    }
+
+    private void ShowComfyUIGroup()
+    {
+        if (ShowComfyUIGroupOverride is not null) { ShowComfyUIGroupOverride(); return; }
+        var owner = Application.Current?.MainWindow;
+        if (owner is null) return;
+        ComfyUIGroupQrWindow.Show(owner, _projectRoot);  // v1.0.0:顶级 dropdown "ComfyUI 群组" 独立窗口
+    }
+
     private void SaveUiPreferences(UiPreferencesService svc)
     {
         // 收集当前 prefs(Window 尺寸 / LastSelectedEnvId 在 MainWindow code-behind 维护 —
@@ -1092,6 +1140,10 @@ public class MainViewModel : ViewModelBase
 
     /// <summary>测试用:获取当前缓存的 Spotlight VM(若有)。</summary>
     internal SpotlightSearchViewModel? CurrentSpotlightViewModel => _spotlightVm;
+
+    /// <summary>测试用:获取当前缓存的 LocalModels VM(若有)— ShowLocalModels 懒构造后赋值;
+    /// 验证只有首次构造时 fire ReloadAsync,后续 click 不重 reload。</summary>
+    internal LocalModelsViewModel? CurrentLocalModelsViewModel => _localModelsViewModel;
 
     /// <summary>测试用:获取当前缓存的 Catalog VM(若有)。</summary>
     internal CatalogViewModel? CurrentCatalogViewModel => _catalogViewModel;

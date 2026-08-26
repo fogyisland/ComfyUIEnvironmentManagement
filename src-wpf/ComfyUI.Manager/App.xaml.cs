@@ -228,6 +228,21 @@ public partial class App : Application
         SettingsDefaults.Apply(settings, projectRoot, rawJson);
         settingsRepo.Save(settings);
 
+        // v1.0.0.x:启动时扫 EnvsDir — 用户上次改了 EnvsDir 之后,新目录里的
+        // env 子目录(带 .cmgr-env.json marker)自动 upsert 到 SQLite。先于
+        // MainViewModel 构造,让 MVM 第一次 Load() 看到最新 env 列表。
+        // Settings.EnvsDir 是相对路径,跟 EnvCreatorService 一样锚到 projectRoot。
+        var envsDirFull = string.IsNullOrWhiteSpace(settings.EnvsDir)
+            ? null
+            : Path.Combine(projectRoot, settings.EnvsDir);
+        var scannerReport = new EnvDirectoryScanner(envRepo).ScanAsync(envsDirFull ?? "")
+            .GetAwaiter().GetResult();
+        if (scannerReport.Inserted > 0 || scannerReport.Updated > 0 || scannerReport.Errors.Count > 0)
+        {
+            logger.Info("app-startup",
+                $"EnvDirectoryScanner: inserted={scannerReport.Inserted} updated={scannerReport.Updated} skipped={scannerReport.Skipped} errors={scannerReport.Errors.Count}");
+        }
+
         // v0.6.5.9: 首次启动预创建本地节点目录,失败静默(用户运行期 DownloadAsync 还会再兜底 CreateDirectory)。
         try
         {
