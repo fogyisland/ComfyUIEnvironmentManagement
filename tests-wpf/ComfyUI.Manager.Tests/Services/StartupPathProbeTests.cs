@@ -155,21 +155,37 @@ public class StartupPathProbeTests
     }
 
     [Fact]
-    public void Detect_TemplateLocalSourceDir_Missing_Flagged()
+    public void Detect_TemplateLocalSourceDir_UserCustomizedMissing_Flagged()
     {
-        // ENVTemplate 整盘搬走场景:8 个 built-in 都找不到
+        // v1.0.0.x hotfix (2026-08-27):用户主动改 LocalSourceDir 配错 → 仍报。
+        // 默认 seed (== kind 名) 的 missing 不报,见下一个 test。
         var root = MakeTempDir();
         var s = NewBareSettings();
-        s.SystemTemplateLibraryDir = "ENVTemplate";  // 相对路径
+        s.SystemTemplateLibraryDir = "ENVTemplate";
         SeedBuiltInTemplates(s);  // seed 8 个内置模板
 
-        // 不创建 ENVTemplate/{Kind} 任何目录
+        // 把 ComfyUI 的 LocalSourceDir 改成用户自定义(非默认 seed)且不存在的路径
+        s.Templates["ComfyUI"].LocalSourceDir = "D:\\NonExistent\\Path\\ForComfyUI";
 
         var result = StartupPathProbe.Detect(s, root);
-        // 至少应报 ComfyUI 一条
         Assert.Contains(result, i => i.Label == "Template:ComfyUI.LocalSourceDir");
         var comfyItem = result.Single(i => i.Label == "Template:ComfyUI.LocalSourceDir");
         Assert.Equal(Path.Combine(root, "ComfyUI"), comfyItem.RecommendedValue);
+    }
+
+    [Fact]
+    public void Detect_BuiltinTemplate_DefaultSeedMissing_NotFlagged()
+    {
+        // v1.0.0.x hotfix (2026-08-27):8 个 built-in 模板 LocalSourceDir 是默认 seed
+        // (== kind 名),目录不存在 = 用户压根没下载,不是路径错位。不该 flag。
+        var root = MakeTempDir();
+        var s = NewBareSettings();
+        s.SystemTemplateLibraryDir = "ENVTemplate";
+        SeedBuiltInTemplates(s);  // 8 个全 seed,但一个 ENVTemplate/{Kind}/ 都没创建
+
+        var result = StartupPathProbe.Detect(s, root);
+        // 8 个全不该 flag
+        Assert.DoesNotContain(result, i => i.Label.StartsWith("Template:"));
     }
 
     [Fact]

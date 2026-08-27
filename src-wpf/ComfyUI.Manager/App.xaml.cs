@@ -58,6 +58,26 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // v1.0.0.x hotfix (2026-08-27):全局异常 hook 写 startup_errors.log —
+        // WPF 默认 DispatcherUnhandledException handler swallow 异常并 Shutdown(),
+        // 后续 MainWindow 构造 LoadComponent 抛"Application 正在关闭" 掩盖真正 root cause。
+        // 把两类 unhandled exception 都写日志,排查 production 启动 crash。
+        var startupLogPath = Path.Combine(
+            AppContext.BaseDirectory, "startup_errors.log");
+        DispatcherUnhandledException += (s, args) =>
+        {
+            var ex = args.Exception;
+            var msg = $"[DispatcherUnhandled {DateTime.Now:O}] {ex}\n";
+            try { File.AppendAllText(startupLogPath, msg); } catch { }
+            System.Diagnostics.Debug.WriteLine(msg);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+        {
+            var ex = args.ExceptionObject as Exception;
+            var msg = $"[Unhandled {DateTime.Now:O}] {ex}\n";
+            try { File.AppendAllText(startupLogPath, msg); } catch { }
+        };
+
         // v1.0.0:语言文件在 languages/<culture>/<resources>.dll(顶层目录结构重构后),
         // 不再跟 MSBuild 默认 layout 一样放在 <exeDir>/<culture>/。注册一个
         // AssemblyResolve 钩子把 satellite resource assembly 重定向到 languages/ 下。
@@ -224,8 +244,16 @@ public partial class App : Application
         // MainViewModel.Load() 让 UI 看到 clean slate(否则会先显示 running
         // 几秒后才变 stopped 闪烁)。Launcher 已构造所以可调 StopEnvAsync。
         // 顺序:EnvStartupReconciler 先标 stale → 本服务再停活着的(分工不重叠)。
-        new EnvStartupStopper(envRepo, _launcher, logger).StopRunningOnStartupAsync()
-            .GetAwaiter().GetResult();
+        try
+        {
+            var stopper = new EnvStartupStopper(envRepo, _launcher, logger);
+            stopper.StopRunningOnStartupAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // v1.0.0.x:失败只 warn 不阻断(用户运行期还能手动停 env)。
+            logger?.Warn("app-startup", $"EnvStartupStopper 失败,继续启动: {ex.Message}");
+        }
 
         // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
         // 1) 空字段 → 默认子目录名(相对)
@@ -240,39 +268,63 @@ public partial class App : Application
         // 之前(避免错位 env 列表被 scan 时找不到 .cmgr-env.json 报一堆错),逐项标可疑。
         // 有可疑项 → splash 让位 → 弹 dialog;用户决定后写回 settings。
         // 用户取消 → settings 不动(用户明确知情,继续启动)。
-        var probeItems = StartupPathProbe.Detect(settings, projectRoot);
-        if (probeItems.Count > 0)
+        //
+        // v1.0.0.x hotfix (2026-08-27):probe + dialog 包 try-catch — 任何异常(Dialog XAML
+        // resource 解析失败 / ShowDialog 内部 Shutdown)都会被 DispatcherUnhandledException
+        // 捕获 → Application.Shutdown() → 后续 new MainWindow() LoadComponent 抛 "Application
+        // 正在关闭" 整个进程崩。probe 本来就是 best-effort,失败要 swallow,不能阻塞主流程。
+        //
+        // v1.0.0.x hotfix (2026-08-27):ShowDialog 前 force `Application.Current.MainWindow = dlg` —
+        // 此时 MainWindow.Show() 还没调,Application.Current.MainWindow 还是 Splash。Splash
+        // 的 3s fade timer 在 modal ShowDialog 期间触发 close → ShutdownMode=OnMainWindowClose
+        // → Application.Shutdown() → 后续 new MainWindow() LoadComponent 抛"Application 正在关闭"
+        // 整个进程崩。把 dlg 临时设成 MainWindow 让 Splash fade close 不影响 app 生命周期
+        // (等同 v0.6.9.1 让位机制,line 547 还会显式指 MainWindow=main)。
+        try
         {
-            logger.Warn("app-startup",
-                $"路径错位检测发现 {probeItems.Count} 个可疑路径,弹窗让用户确认");
-            if (_splash != null) { _splash.Topmost = false; }
-            _splashVm?.StartFadeOut();
-
-            var dlgVm = new PathMigrationConfirmViewModel(probeItems);
-            var dlg = new PathMigrationConfirmDialog(dlgVm);
-            dlg.ShowDialog();
-
-            if (dlgVm.Decisions is { } decisions)
+            var probeItems = StartupPathProbe.Detect(settings, projectRoot);
+            if (probeItems.Count > 0)
             {
-                var appliedCount = 0;
-                foreach (var d in decisions)
+                logger.Warn("app-startup",
+                    $"路径错位检测发现 {probeItems.Count} 个可疑路径,弹窗让用户确认");
+                if (_splash != null) { _splash.Topmost = false; }
+                _splashVm?.StartFadeOut();
+
+                var dlgVm = new PathMigrationConfirmViewModel(probeItems);
+                var dlg = new PathMigrationConfirmDialog(dlgVm);
+                Application.Current.MainWindow = dlg;
+                dlg.ShowDialog();
+
+                if (dlgVm.Decisions is { } decisions)
                 {
-                    if (!d.Apply) continue;
-                    if (ApplyPathDecision(settings, d.Label, d.RecommendedValue))
-                        appliedCount++;
+                    var appliedCount = 0;
+                    foreach (var d in decisions)
+                    {
+                        if (!d.Apply) continue;
+                        if (ApplyPathDecision(settings, d.Label, d.RecommendedValue))
+                            appliedCount++;
+                    }
+                    if (appliedCount > 0)
+                    {
+                        settingsRepo.Save(settings);
+                        logger.Info("app-startup",
+                            $"路径错位确认:应用 {appliedCount}/{decisions.Count} 项更新");
+                    }
                 }
-                if (appliedCount > 0)
+                else
                 {
-                    settingsRepo.Save(settings);
-                    logger.Info("app-startup",
-                        $"路径错位确认:应用 {appliedCount}/{decisions.Count} 项更新");
+                    logger.Info("app-startup", "路径错位确认:用户取消,settings 不动");
                 }
-            }
-            else
-            {
-                logger.Info("app-startup", "路径错位确认:用户取消,settings 不动");
             }
         }
+        catch (Exception ex)
+        {
+            // probe / dialog 任何异常 → log + 跳过,继续主流程启动
+            logger?.Error("app-startup", "路径错位检测流程异常,跳过", ex);
+            Debug.WriteLine($"[StartupPathProbe] failed: {ex}");
+        }
+
+        // v1.0.0.x:启动时扫 EnvsDir
 
         // v1.0.0.x:启动时扫 EnvsDir — 用户上次改了 EnvsDir 之后,新目录里的
         // env 子目录(带 .cmgr-env.json marker)自动 upsert 到 SQLite。先于
@@ -477,6 +529,7 @@ public partial class App : Application
         var modelSymlinker = new ModelSymlinker(
             settings, modelScanner, new JunctionLinker(), logger: logger);
 
+        // v1.0.0.x: 用户覆盖本地路径 repo factory
         _mainVm = new MainViewModel(
             dbFactory, _launcher, bulkOrchestrator, nodeOps, envCreator, envDeleter, settingsRepo, gitProxy,
             settings, catalogFetcher, catalogRefreshService, catalogCacheStore, githubVersionService,
@@ -527,6 +580,10 @@ public partial class App : Application
             // v1.0.0.x #589:env → localnodes 反向 sync service — 传给 SettingsViewModel 的
             // SyncNodesFromEnvCommand(把 ComfyUI-Manager 装的节点一次性 copy 回本地源)。
             localNodeSyncService: localNodeSyncService);
+
+        // v1.0.0.x: 用户覆盖本地路径 repo factory
+
+        // v1.0.0.x: 用户覆盖本地路径 repo factory
 
         // v1.0.0.x: 用户覆盖本地路径 repo factory — MainViewModel 在 ShowLocalModels 懒构造
         // LocalModelsViewModel 时调 factory 拿 repo(透传给 LocalModelsViewModel 的 _overridesRepo)。

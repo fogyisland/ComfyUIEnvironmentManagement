@@ -25,13 +25,14 @@ namespace ComfyUI.Manager.Services;
 /// 的 9 个 subdir 常量对齐。
 ///
 /// 自定义范围:
-/// - 8 个主路径字段:TemplatePythonDir / SystemTemplateLibraryDir / EnvsDir /
+/// - 9 个主路径字段:TemplatePythonDir / SystemTemplateLibraryDir / EnvsDir /
 ///   GlobalNodesDir / LocalNodeDirectory / LocalNodesDirectory /
-///   DefaultModelsDirectory / WorkflowsDirectory
-/// - 1 个 LogDirectory(走 subdir "Logs")
+///   DefaultModelsDirectory / WorkflowsDirectory / LogDirectory
 /// - 8 个 built-in TemplateConfig.LocalSourceDir(ComfyUI / A1111 / Forge /
 ///   SwarmUI / OpenVoice / Whisper / CoquiTTS / Bark)—— 通过
-///   <see cref="TemplatePathResolver.Resolve"/> 拼出绝对路径再判 exists
+///   <see cref="TemplatePathResolver.Resolve"/> 拼出绝对路径再判 exists。
+///   **但** LocalSourceDir 仍是默认 seed 值(== kind 名,如 "Whisper")且目录不存在
+///   时 → 跳过:用户压根没下载这个模板是正常状态,不是路径错位。
 ///
 /// 不扫:GitExe / PythonInterpreter.Path / ExtraPath.Path / URL / token / enum。
 /// GitExe 已 seed 在 bin/git-portable/cmd/git.exe 下;PythonInterpreter.Path
@@ -95,8 +96,21 @@ public static class StartupPathProbe
             var raw = cfg.LocalSourceDir;
             if (string.IsNullOrWhiteSpace(raw)) continue;
 
-            var resolved = TemplatePathResolver.Resolve(raw, systemLibraryAbs);
+            // v1.0.0.x hotfix (2026-08-27):built-in template 的 LocalSourceDir 在
+            // TemplateConfigDefaults 里默认 seed 为 kind 名(如 "Whisper" / "Bark")。
+            // resolve 到 ENVTemplate/<Kind> 后,如果目录不存在,**这是用户压根没下载
+            // 这个模板的正常状态**,不是路径错位 — 用户主动下载才会创建目录。flag
+            // 它们会让 startup 每次都弹 "3 个模板路径可疑" 误导用户。
+            //
+            // 但 raw != kind 的情况(用户主动改成别的相对 / 绝对路径)→ 仍按原规则
+            // 检测:resolve 后不存在 = 用户配错了,提示迁移。
+            if (string.Equals(raw, kind.Kind, StringComparison.OrdinalIgnoreCase))
+            {
+                var defaultResolved = TemplatePathResolver.Resolve(raw, systemLibraryAbs);
+                if (!Directory.Exists(defaultResolved)) continue;
+            }
 
+            var resolved = TemplatePathResolver.Resolve(raw, systemLibraryAbs);
             if (Directory.Exists(resolved)) continue;
 
             items.Add(new PathMigrationItem(
