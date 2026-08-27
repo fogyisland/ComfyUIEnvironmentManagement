@@ -19,6 +19,15 @@ public partial class ModelMarketplaceView : UserControl
         InitializeComponent();
     }
 
+    /// <summary>v1.0.0.x #590:ConsolePanel ✕ → 转发到 VM.HideConsoleCommand(跟旧行为一致)。</summary>
+    private void OnConsoleCloseRequested(object? sender, System.EventArgs e)
+    {
+        if (DataContext is ModelMarketplaceViewModel vm && vm.HideConsoleCommand.CanExecute(null))
+        {
+            vm.HideConsoleCommand.Execute(null);
+        }
+    }
+
     private void OnSourceRadioClicked(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton rb) return;

@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using System.Windows.Controls;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.ViewModels;
@@ -10,9 +9,7 @@ public sealed partial class LocalModelsView : UserControl
     public LocalModelsView()
     {
         InitializeComponent();
-        DataContextChanged += OnDataContextChanged;
-        Loaded += (_, _) => HookConsoleLog();
-        Unloaded += OnUnloaded;
+        DataContextChanged += (_, e) => _vm = e.NewValue as LocalModelsViewModel;
     }
 
     /// <summary>
@@ -28,50 +25,16 @@ public sealed partial class LocalModelsView : UserControl
         }
     }
 
-    // ===== v1.0.0 Console panel:auto-scroll + ✕ 关闭 =====
+    // ===== v1.0.0.x #590:Console 面板抽取到 Controls/ConsolePanel.xaml =====
+    // auto-scroll + hook/unhook 都在 UserControl 内部,View 只剩 close handler。
 
     private LocalModelsViewModel? _vm;
-    private NotifyCollectionChangedEventHandler? _consoleHandler;
 
-    private void OnDataContextChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)
-    {
-        // 切换 VM 时解绑旧 VM 的 ConsoleLog.CollectionChanged,避免内存泄漏 +
-        // 旧 VM 残留事件触发旧 ScrollViewer 滚。
-        UnhookConsoleLog();
-        _vm = e.NewValue as LocalModelsViewModel;
-        HookConsoleLog();
-    }
-
-    private void HookConsoleLog()
-    {
-        if (_vm is null || _consoleHandler is not null) return;
-        _consoleHandler = (_, _) =>
-        {
-            // ConsoleScrollViewer 在 Loaded 后才存在,守卫一下。
-            if (ConsoleScrollViewer is null) return;
-            ConsoleScrollViewer.ScrollToEnd();
-        };
-        _vm.ConsoleLog.CollectionChanged += _consoleHandler;
-    }
-
-    private void UnhookConsoleLog()
-    {
-        if (_vm is null || _consoleHandler is null) return;
-        _vm.ConsoleLog.CollectionChanged -= _consoleHandler;
-        _consoleHandler = null;
-    }
-
-    private void OnUnloaded(object sender, System.Windows.RoutedEventArgs e)
-    {
-        UnhookConsoleLog();
-    }
-
-    /// <summary>v1.0.0 Console panel:✕ 关闭按钮 — 清空日志 + 设 _userHiddenConsole 让 panel 收起。
+    /// <summary>Console ✕ → 清空日志 + 设 _userHiddenConsole 让 panel 收起。
     /// 下次 Reload 会复位 _userHiddenConsole → panel 自动重新打开。</summary>
-    private void OnConsoleCloseClicked(object sender, System.Windows.RoutedEventArgs e)
+    private void OnConsoleCloseRequested(object? sender, System.EventArgs e)
     {
-        if (_vm is null) return;
-        _vm.ClearConsoleLog();
+        _vm?.ClearConsoleLog();
     }
 
     // ===== v1.0.0.x: 用户覆盖本地路径 — 复制 + 编辑 =====
@@ -88,12 +51,6 @@ public sealed partial class LocalModelsView : UserControl
         try
         {
             System.Windows.Clipboard.SetText(path);
-            _vm?.GetType();  // suppress unused warning
-            // 简单 console log 一行 — 用户知道复制成功
-            if (_vm is not null)
-            {
-                _vm.GetType();
-            }
         }
         catch
         {

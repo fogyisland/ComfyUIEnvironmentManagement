@@ -35,4 +35,11 @@
     <SolidColorBrush x:Key="StatusBarBackgroundBrush" Color="#EEEAF3" />
     <SolidColorBrush x:Key="StatusBarForegroundBrush" Color="{StaticResource OnSurfaceColor}" />
     <SolidColorBrush x:Key="OutlineBrush" Color="{StaticResource SecondaryColor}" />
+
+    <!-- v1.0.0.x #590:Console 面板 terminal 配色 — Dark/Light 都用同一深色,
+         仿 cmd/PowerShell 终端风格(浅主题也固定深色底)。 -->
+    <SolidColorBrush x:Key="ConsoleBackgroundBrush" Color="#1E1E1E" />
+    <SolidColorBrush x:Key="ConsoleHeaderBrush" Color="#2D2D2D" />
+    <SolidColorBrush x:Key="ConsoleForegroundBrush" Color="#E6E1E5" />
+    <SolidColorBrush x:Key="ConsoleAccentBrush" Color="#569CD6" />
 </ResourceDictionary>

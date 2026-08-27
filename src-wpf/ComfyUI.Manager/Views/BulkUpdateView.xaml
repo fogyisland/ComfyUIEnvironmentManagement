@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
-             xmlns:model="clr-namespace:ComfyUI.Manager.Models">
+             xmlns:model="clr-namespace:ComfyUI.Manager.Models"
+             xmlns:controls="clr-namespace:ComfyUI.Manager.Controls">
     <!--
     v0.6.18.2 inline 批量更新 — 扁平 checklist。
     镜像 EnvironmentListView 的三层 DockPanel 布局(Top 工具栏 + Bottom 状态面板 +
@@ -154,7 +155,8 @@
             </StackPanel>
         </Border>
 
-        <!-- 底部:summary inline 面板 + ErrorMessage + v0.6.18.4 Console 面板 -->
+        <!-- 底部:summary inline 面板 + ErrorMessage + v1.0.0.x #590 Console 面板(抽到 Controls/ConsolePanel.xaml,
+             terminal 风格深灰底浅字,✕ raise ConsoleCloseRequested → code-behind 调 VM.ClearConsoleLog)。 -->
         <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,12">
             <Border Padding="12"
                     Background="{DynamicResource SurfaceBrush}"
@@ -183,47 +185,11 @@
                  (SurfaceBrush/OutlineBrush/Border/CornerRadius 6 + Consolas monospace)。
                  IsBusy=true 自动可见,run 完保留日志直到用户点 ✕ 关闭。
                  Auto-scroll:新行追加时 ScrollToEnd 让用户总看最新输出。 -->
-            <Border Margin="0,8,0,0" Padding="0"
-                    Background="{DynamicResource SurfaceBrush}"
-                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
-                    CornerRadius="6"
-                    Visibility="{Binding IsConsoleVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <DockPanel Grid.Row="0" Margin="12,8,8,4">
-                        <Button DockPanel.Dock="Right" Content="✕"
-                                Style="{StaticResource GearIconButtonStyle}"
-                                Foreground="{DynamicResource OnSurfaceBrush}"
-                                Click="OnConsoleCloseClicked"
-                                ToolTip="关闭 Console(下次 Start 时自动重新打开)" />
-                        <TextBlock VerticalAlignment="Center" FontWeight="Bold" FontSize="13"
-                                   Foreground="{DynamicResource OnSurfaceBrush}">
-                            <Run Text="Console" />
-                            <Run Text="  " />
-                            <Run Text="{Binding ConsoleLog.Count, Mode=OneWay}" FontSize="11"
-                                 Foreground="{DynamicResource OutlineBrush}" />
-                            <Run Text=" 行" FontSize="11" Foreground="{DynamicResource OutlineBrush}" />
-                        </TextBlock>
-                    </DockPanel>
-                    <ScrollViewer x:Name="ConsoleScrollViewer" Grid.Row="1"
-                                  Height="160" Margin="8,0,8,8"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding ConsoleLog}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
-                                               TextWrapping="NoWrap"
-                                               Foreground="{DynamicResource OnSurfaceBrush}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
+            <controls:ConsolePanel Margin="0,8,0,0"
+                                         Lines="{Binding ConsoleLog}"
+                                         Title="Console"
+                                         ConsoleCloseRequested="OnConsoleCloseRequested"
+                                         Visibility="{Binding IsConsoleVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
         </StackPanel>
 
         <!-- 中间:3 列(env 卡片 / items / progress),镜像 EnvironmentListView Grid + Border 风格 -->

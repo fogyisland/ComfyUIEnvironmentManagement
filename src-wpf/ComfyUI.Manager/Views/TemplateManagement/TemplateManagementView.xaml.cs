@@ -30,9 +30,9 @@ public partial class TemplateManagementView : UserControl
         dlg.ShowDialog();
     }
 
-    // v1.0.0.x: Console 面板 ✕ 按钮 — 调 VM.ClearConsoleLog() 清空内容
-    // 并设 _userHiddenConsole=true,下次新 run 复位 false 时面板自动重新出现。
-    private void OnConsoleCloseClicked(object sender, RoutedEventArgs e)
+    // v1.0.0.x #590:Console ✕ → 调 VM.ClearConsoleLog() 清空内容 + 设 _userHiddenConsole=true,
+    // 下次新 run 复位 false 时面板自动重新出现。Auto-scroll + hook/unhook 都搬进 ConsolePanel 内部。
+    private void OnConsoleCloseRequested(object? sender, System.EventArgs e)
     {
         if (DataContext is TemplateManagementViewModel vm)
         {
