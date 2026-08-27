@@ -41,19 +41,24 @@ public class SettingsDefaultsTests
     [Fact]
     public void Apply_UserConfiguredPaths_EmptyStaysEmpty()
     {
-        // EnvsDir / GlobalNodesDir 默认保持空(用户主动管理,服务层在使用时报错)
+        // v1.0.0.x #592:EnvsDir 默认 seed 绝对路径(用户原话"本地节点的路径默认获取
+        // 当前项目的绝对路径,然后再加上相对路径,这样比较好" + "例如环境默认是
+        // 当前目录+envs")。GlobalNodesDir 保持空(不属于本地资源路径,服务层在使用时
+        // 报错)。
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("", s.EnvsDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\Envs", s.EnvsDir);
         Assert.Equal("", s.GlobalNodesDir);
     }
 
     [Fact]
     public void Apply_DoesNotOverwriteRelativeExistingValues()
     {
-        // 用户已经填了相对路径 → 不动
+        // v1.0.0.x #592:EnvsDir 现在走 ResolveAsAbsolute — 相对路径转绝对。
+        // GlobalNodesDir 仍是 MigrateOnly(template-style 路径,空才保持空;非空保持原值)。
+        // TemplatePythonDir 仍是 Resolve(template-style,空 seed "Python";非空保持)。
         var s = new Settings
         {
             TemplatePythonDir = "E:\\my-python",
@@ -64,7 +69,7 @@ public class SettingsDefaultsTests
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal("E:\\my-python", s.TemplatePythonDir);
-        Assert.Equal("my-envs", s.EnvsDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\my-envs", s.EnvsDir);
         Assert.Equal("shared-nodes", s.GlobalNodesDir);
         // v1.0.0.x:空 ComfyUI template entry 被 seed 默认 LocalSourceDir = 相对路径 "ComfyUI"
 // (bug #509 修复后去掉 "envTemplates/" 前缀)
@@ -72,9 +77,11 @@ public class SettingsDefaultsTests
     }
 
     [Fact]
-    public void Apply_MigratesAbsolutePathUnderProjectRoot_ToRelative()
+    public void Apply_MigratesAbsolutePathUnderProjectRoot_PreservedAsAbsolute()
     {
-        // 兼容旧 settings.json:绝对路径若落在 projectRoot 下,转相对(剥掉前缀)
+        // v1.0.0.x #592:EnvsDir 走 ResolveAsAbsolute — 绝对路径保留不动(包括 projectRoot 下)。
+        // 用户原话"每次启动执行都会扫描当前项目目录"——每次启动 Apply 重算 projectRoot,
+        // 老 settings.json 里写的 projectRoot 下绝对路径不需要再剥前缀转相对,直接保留。
         var s = new Settings
         {
             EnvsDir = @"D:\ToolDevelop\ComfyUI\bin\Debug\net8.0-windows\envs",
@@ -82,7 +89,7 @@ public class SettingsDefaultsTests
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal(@"bin\Debug\net8.0-windows\envs", s.EnvsDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\bin\Debug\net8.0-windows\envs", s.EnvsDir);
     }
 
     [Fact]
@@ -108,25 +115,29 @@ public class SettingsDefaultsTests
     [Fact]
     public void Apply_KeepsRelativePathUntouched()
     {
-        // 设置页填了相对路径,Apply 不重新格式化或加 ../ 前缀
-        // v1.0.0:子目录统一 PascalCase,旧值 "envs" 会被 MigrateOldSubdirName 迁到 "Envs"
+        // v1.0.0.x #592:EnvsDir 现在是 ResolveAsAbsolute — 相对路径转绝对。
+        // TemplatePythonDir 仍是 Resolve(template-style,空 seed "Python";相对路径转交
+        // MigrateOnly 保留原值,不走 MigrateOnly 的 projectRoot 剥前缀,因为它在
+        // projectRoot 外("..\external-python"))。
         var s = new Settings
         {
-            EnvsDir = "my-envs",  // 用户自定义子目录名 → 不在迁移表里,保持不变
+            EnvsDir = "my-envs",  // 用户自定义子目录名 → 转绝对 = projectRoot + "my-envs"
             TemplatePythonDir = "..\\external-python",
         };
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("my-envs", s.EnvsDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\my-envs", s.EnvsDir);
         Assert.Equal("..\\external-python", s.TemplatePythonDir);
     }
 
     [Fact]
     public void Apply_MigratesLegacySubdirNames_ToPascalCase()
     {
-        // v1.0.0:老 settings.json 里写过的旧子目录名(全小写 / kebab-case)
-        // 一次性迁到 PascalCase。其它用户自定义子目录名不受影响。
+        // v1.0.0.x #592:EnvsDir / LocalNodeDirectory 现在走 ResolveAsAbsolute —
+        // MigrateOldSubdirName 迁到 PascalCase 后再转绝对。
+        // GlobalNodesDir / WorkflowsDirectory / DefaultModelsDirectory 仍是 Resolve
+        // (template-style,空 seed 子目录名)。
         var s = new Settings
         {
             TemplatePythonDir = "python",
@@ -140,9 +151,9 @@ public class SettingsDefaultsTests
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal("Python", s.TemplatePythonDir);
-        Assert.Equal("Envs", s.EnvsDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\Envs", s.EnvsDir);
         Assert.Equal("Nodes", s.GlobalNodesDir);
-        Assert.Equal("LocalNodes", s.LocalNodeDirectory);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\LocalNodes", s.LocalNodeDirectory);
         Assert.Equal("Workflow", s.WorkflowsDirectory);
         Assert.Equal("Models", s.DefaultModelsDirectory);
     }
@@ -571,5 +582,74 @@ public class SettingsDefaultsTests
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal(@"E:\external\env-templates", s.SystemTemplateLibraryDir);
+    }
+
+    // —— v1.0.0.x #592:EnvsDir / LocalNodeDirectory / LocalNodesDirectory 走
+    // ResolveAsAbsolute — 空 seed 绝对,相对转绝对,绝对保留。
+
+    [Fact]
+    public void Apply_LocalNodesDirectory_Empty_DefaultsToAbsolutePath()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        // 用户原话"本地节点的路径默认获取当前项目的绝对路径,然后再加上相对路径,
+        // 这样比较好" + "例如环境默认是 当前目录+envs"。
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\localnodes", s.LocalNodesDirectory);
+    }
+
+    [Fact]
+    public void Apply_LocalNodesDirectory_RelativePath_ConvertsToAbsolutePath()
+    {
+        var s = new Settings { LocalNodesDirectory = "shared-localnodes" };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\shared-localnodes", s.LocalNodesDirectory);
+    }
+
+    [Fact]
+    public void Apply_LocalNodesDirectory_AbsolutePathInsideProjectRoot_PreservedAsAbsolute()
+    {
+        // 跟 Resolve / MigrateOnly 不同 — ResolveAsAbsolute 对所有绝对路径都保留,
+        // 不做"projectRoot 下 → 转相对"剥前缀(用户原意:每次启动重新算 projectRoot)。
+        var s = new Settings { LocalNodesDirectory = @"D:\ToolDevelop\ComfyUI\shared-localnodes" };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\shared-localnodes", s.LocalNodesDirectory);
+    }
+
+    [Fact]
+    public void Apply_LocalNodeDirectory_Empty_DefaultsToAbsolutePath()
+    {
+        var s = new Settings();
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\LocalNodes", s.LocalNodeDirectory);
+    }
+
+    [Fact]
+    public void Apply_LocalNodesDirectory_AbsolutePathOutsideProjectRoot_KeptAsIs()
+    {
+        var s = new Settings { LocalNodesDirectory = @"E:\external\local-nodes" };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(@"E:\external\local-nodes", s.LocalNodesDirectory);
+    }
+
+    [Fact]
+    public void Apply_LocalNodesDirectory_LegacyKebabCase_MigratedAndMadeAbsolute()
+    {
+        // v1.0.0.x #577 早期 seed 写的是 "localnodes"(全小写)— MigrateOldSubdirName
+        // 早返回("localnodes" 不在迁表里),然后 ResolveAsAbsolute 转绝对。
+        var s = new Settings { LocalNodesDirectory = "localnodes" };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\localnodes", s.LocalNodesDirectory);
     }
 }

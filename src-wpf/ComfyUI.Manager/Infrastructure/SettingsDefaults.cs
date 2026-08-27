@@ -158,12 +158,18 @@ public static class SettingsDefaults
         // 在 projectRoot 下 → 转相对(剥前缀),外面 → 保留(用户故意选的别处)。
         s.SystemTemplateLibraryDir = MigrateOldSubdirName(s.SystemTemplateLibraryDir, "envtemplate", SystemTemplateLibrarySubdir);
         s.SystemTemplateLibraryDir = Resolve(s.SystemTemplateLibraryDir, SystemTemplateLibrarySubdir, projectRoot);
-        s.EnvsDir = MigrateOnly(s.EnvsDir, projectRoot);
         s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
-        s.LocalNodeDirectory = Resolve(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
-        s.LocalNodesDirectory = Resolve(s.LocalNodesDirectory, LocalNodesBulkSubdir, projectRoot);
         s.WorkflowsDirectory = Resolve(s.WorkflowsDirectory, WorkflowsSubdir, projectRoot);
         s.DefaultModelsDirectory = Resolve(s.DefaultModelsDirectory, ModelsSubdir, projectRoot);
+        // v1.0.0.x #592:本地资源路径默认绝对 — 用户原话"本地节点的路径默认获取当前
+        // 项目的绝对路径,然后再加上相对路径,这样比较好" + "每次启动执行都会扫描
+        // 当前项目目录"。三个字段(EnvsDir / LocalNodeDirectory / LocalNodesDirectory)
+        // 空 → seed projectRoot + subdir 的绝对路径;相对 → 转绝对 = projectRoot + current;
+        // 绝对 → 保留(用户故意选的别处)。每次启动 Apply 都重算 projectRoot,跨机器
+        // 自动跟随。template paths(Python / ENVTemplate / Workflow / Models)不动仍存相对。
+        s.EnvsDir = ResolveAsAbsolute(s.EnvsDir, EnvsSubdir, projectRoot);
+        s.LocalNodeDirectory = ResolveAsAbsolute(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
+        s.LocalNodesDirectory = ResolveAsAbsolute(s.LocalNodesDirectory, LocalNodesBulkSubdir, projectRoot);
 
         // 节点源:空列表 → 装默认 "comfyui manager";空 active → 回落到列表第一条
         if (s.QuerySources is null || s.QuerySources.Count == 0)
@@ -516,6 +522,34 @@ public static class SettingsDefaults
     {
         if (string.IsNullOrWhiteSpace(current)) return current;
         return string.Equals(current, oldName, StringComparison.OrdinalIgnoreCase) ? newName : current;
+    }
+
+    /// <summary>
+    /// v1.0.0.x #592:本地资源路径 — 空 → seed 当前 projectRoot + subdir 的绝对路径;
+    /// 相对 → 转绝对 = projectRoot + current;绝对 → 保留(用户故意选的别处)。
+    ///
+    /// <para>
+    /// 跟 <see cref="Resolve"/> 的区别:<see cref="Resolve"/> 适合 template paths
+    /// (随包走,跨机器友好),seed 相对子目录名;<see cref="ResolveAsAbsolute"/> 适合
+    /// 本地资源路径(env / 本地节点),seed 绝对路径让 UI 一眼看到完整路径,跨机器靠
+    /// 每次启动 Apply 重算 projectRoot + 重新拼接来跟随。
+    /// </para>
+    /// </summary>
+    private static string ResolveAsAbsolute(string current, string defaultSubdir, string projectRoot)
+    {
+        if (string.IsNullOrWhiteSpace(current))
+        {
+            // 空 → seed 当前项目根下的绝对路径。Path.Combine 规范化分隔符,Path.GetFullPath
+            // 也保证绝对,避免 UI 显示用户机器的 ..\ 之类相对形式。
+            return Path.GetFullPath(Path.Combine(projectRoot, defaultSubdir));
+        }
+        if (!Path.IsPathRooted(current))
+        {
+            // 相对 → 转绝对 = projectRoot + 当前相对子目录(用户之前手填的相对路径升级到绝对)
+            return Path.GetFullPath(Path.Combine(projectRoot, current));
+        }
+        // 绝对 → 保留(用户故意选的别处,不污染)
+        return current;
     }
 
     /// <summary>

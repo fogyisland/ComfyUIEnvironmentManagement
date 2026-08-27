@@ -12,14 +12,15 @@ public class SettingsDefaultsLocalNodeDirectoryTests
     // 跟 TemplatePythonDir / TemplateComfyuiDir 同语义(包自带资源类,落到程序根下)。
     // v1.0.0:目录重构,默认子目录名 PascalCase → "LocalNodes"(旧名 "local-nodes" 自动迁移)。
     // 旧 settings.json 没这字段 → JSON 反序列化用字段默认值 "" → Apply 兜底填 "LocalNodes"。
-    // MigrateOnly 逻辑对绝对路径在 projectRoot 下时转相对,跟其它 path 字段保持一致。
+    // v1.0.0.x #592:LocalNodeDirectory 现在走 ResolveAsAbsolute — 空/相对 → 转绝对,
+    // 绝对路径保留不动(包括 projectRoot 下)。
 
     [Fact]
-    public void Settings_LocalNodeDirectory_DefaultsToRelativeSubdir()
+    public void Settings_LocalNodeDirectory_DefaultsToAbsoluteSubdir()
     {
         var s = new Settings();
         SettingsDefaults.Apply(s, projectRoot: @"C:\fake\root");
-        Assert.Equal("LocalNodes", s.LocalNodeDirectory);
+        Assert.Equal(@"C:\fake\root\LocalNodes", s.LocalNodeDirectory);
     }
 
     [Fact]
@@ -32,11 +33,12 @@ public class SettingsDefaultsLocalNodeDirectoryTests
     }
 
     [Fact]
-    public void Settings_LocalNodeDirectory_AbsolutePathUnderProjectRoot_MigratesToRelative()
+    public void Settings_LocalNodeDirectory_AbsolutePathUnderProjectRoot_PreservedAsAbsolute()
     {
+        // v1.0.0.x #592:绝对路径(包括 projectRoot 下)→ 保留不动。
         var s = new Settings { LocalNodeDirectory = @"C:\fake\root\LocalNodes" };
         SettingsDefaults.Apply(s, projectRoot: @"C:\fake\root");
-        Assert.Equal("LocalNodes", s.LocalNodeDirectory);
+        Assert.Equal(@"C:\fake\root\LocalNodes", s.LocalNodeDirectory);
     }
 
     [Fact]
@@ -48,11 +50,12 @@ public class SettingsDefaultsLocalNodeDirectoryTests
     }
 
     [Fact]
-    public void Settings_LocalNodeDirectory_LegacyLowercase_MigratesToPascalCase()
+    public void Settings_LocalNodeDirectory_LegacyLowercase_MigratedToAbsolute()
     {
-        // v1.0.0:老 settings.json 写的 "local-nodes"(kebab-case)→ "LocalNodes"
+        // v1.0.0.x #592:老 "local-nodes" → MigrateOldSubdirName 改 "LocalNodes" →
+        // ResolveAsAbsolute 转绝对 = projectRoot + "LocalNodes"。
         var s = new Settings { LocalNodeDirectory = "local-nodes" };
         SettingsDefaults.Apply(s, projectRoot: @"C:\fake\root");
-        Assert.Equal("LocalNodes", s.LocalNodeDirectory);
+        Assert.Equal(@"C:\fake\root\LocalNodes", s.LocalNodeDirectory);
     }
 }
