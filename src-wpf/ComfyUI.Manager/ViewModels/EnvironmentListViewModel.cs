@@ -162,6 +162,10 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand RefreshCommand { get; }
     public RelayCommand StartCommand { get; }
     public RelayCommand StopCommand { get; }
+    // v1.0.0.x #577:env 行 col 0 启停合按钮 — 调哪个看 env.Status;text 同样由
+    // env.StartStopButtonText 决定(Load 末尾重算)。保留 StartCommand/StopCommand
+    // 不删(其它入口 — 工具栏 / 状态面板快捷 — 还在用)。
+    public RelayCommand StartStopCommand { get; }
     public RelayCommand ShowLogCommand { get; }
     public RelayCommand CreateCommand { get; }
     public RelayCommand BaseEnvCommand { get; }
@@ -349,7 +353,7 @@ public class EnvironmentListViewModel : ViewModelBase
         // v1.0.0.x #577:本地常用节点批量 installer。同 ComfyUIManagerInstaller 兜底
         // 模式 — 测试 ctor 不传也能构造(_settings 在 line 320 已 set,RequirementsFileInstaller
         // 跟 ComfyUIManagerInstaller 共用一个 fallback 实例够用)。
-        _localNodeBulkInstaller = localNodeBulkInstaller ?? new LocalNodeBulkInstaller(_settings, new RequirementsFileInstaller(), _logger);
+        _localNodeBulkInstaller = localNodeBulkInstaller ?? new LocalNodeBulkInstaller(_settings ?? new Settings(), new RequirementsFileInstaller(), _logger);
         // v0.6.11+ SDD D1:AppLogger — 自动重启诊断日志(nullable ctor param)。
         _logger = logger;
         // v0.6.14 picker redesign:catalog + node + version repo(默认 null,测试 ctor
@@ -386,6 +390,34 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (env?.Status != "running") return false;
                 if (IsEnvBusy(env)) return false;
                 return true;
+            });
+        // v1.0.0.x #577:env 行启停合按钮 — 调 Start 或 Stop 根据 env.Status。
+        // CanExecute 镜像 StartCommand 的(stopped 才 enable)+ StopCommand 的(running 才 enable),
+        // busy 时禁用。mid-state(starting/stopping/restarting/...)在 Load 末尾把
+        // StartStopButtonText 保留,StartStopButtonEnabled 设 false,但 RelayCommand.CanExecute
+        // 也兜底 disable。
+        StartStopCommand = new RelayCommand(
+            async p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return;
+                if (env.Status == "running") await StopEnvAsync(env);
+                else if (env.Status == "stopped") await StartEnvAsync(env);
+                // mid-state 不响应,等下次 Load 改 Status 后再判
+            },
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (IsEnvBusy(env)) return false;
+                if (env.Status == "stopped")
+                {
+                    // 跟 StartCommand 一致:BED 未装 / 装中 → 禁用
+                    if (env.BedStatus is null or "installing") return false;
+                    return true;
+                }
+                if (env.Status == "running") return true;
+                return false;  // starting / stopping / restarting → 禁用
             });
         ShowLogCommand = new RelayCommand(
             p => ShowLog(p as Environment ?? Selected),
@@ -1879,6 +1911,8 @@ public class EnvironmentListViewModel : ViewModelBase
     {
         StartCommand.RaiseCanExecuteChanged();
         StopCommand.RaiseCanExecuteChanged();
+        // v1.0.0.x #577:启停合按钮也要 refresh。
+        StartStopCommand.RaiseCanExecuteChanged();
         ShowLogCommand.RaiseCanExecuteChanged();
         DeleteCommand.RaiseCanExecuteChanged();
         InstallNodeCommand.RaiseCanExecuteChanged();

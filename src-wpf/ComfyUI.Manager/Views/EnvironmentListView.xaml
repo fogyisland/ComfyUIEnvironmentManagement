@@ -188,6 +188,43 @@
                 </StackPanel>
             </Border>
 
+            <!-- v1.0.0.x #577:本地常用安装 inline 状态面板 — 镜像 ComfyUI Manager 同款
+            SurfaceBrush/OutlineBrush/Border pattern,✕ 按钮走 OnLocalNodeInstallStatusCloseClicked。
+            与单阶段 manager/status 不同:批量 + 多阶段(copy→pip 逐包),所以从不 auto-hide,
+            成功失败都等用户手动关 — 用户需要看 "X/Y 个节点已装,失败:..." 的总结。 -->
+            <Border Margin="0,6,0,0" Padding="12"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="{Binding LocalNodeInstallStatus.IsVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                <StackPanel DataContext="{Binding LocalNodeInstallStatus}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="✕"
+                                Click="OnLocalNodeInstallStatusCloseClicked"
+                                Style="{StaticResource GearIconButtonStyle}"
+                                Foreground="{DynamicResource OnSurfaceBrush}" />
+                        <TextBlock Text="本地常用节点安装状态" FontWeight="Bold" FontSize="14"
+                                   Foreground="{DynamicResource OnSurfaceBrush}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding StatusText}" FontSize="14" Margin="0,4"
+                               Foreground="{DynamicResource OnSurfaceBrush}" TextWrapping="Wrap" />
+                    <ScrollViewer Height="180" Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding LogLines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                                               Foreground="{DynamicResource OutlineBrush}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <TextBlock Text="{Binding Error}" Foreground="{DynamicResource ErrorBrush}"
+                               Margin="0,4,0,0" FontWeight="Bold" TextWrapping="Wrap"
+                               Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                </StackPanel>
+            </Border>
+
             <!-- v0.6.22.x 删:模板更新状态面板(env-list 移除 — 模板更新操作改到 工具菜单,
                  状态面板移到 MainWindow 全局展示,跟 per-env 无关)。 -->
 
@@ -436,26 +473,19 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <!-- Row 0: 装卸链路 -->
-                                    <Button Grid.Row="0" Grid.Column="0" Content="启动" Margin="2" MinWidth="0"
+                                    <!-- v1.0.0.x #577:启停合按钮 — text = env.StartStopButtonText (Load 末尾重算,
+                                         Status==running → "停止",否则 "启动"),Command = StartStopCommand 根据
+                                         Status 调 StartEnvAsync / StopEnvAsync。mid-state(starting/stopping)按钮禁用。 -->
+                                    <Button Grid.Row="0" Grid.Column="0" Content="{Binding StartStopButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.StartCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="{Binding DataContext.StartTooltip,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}" />
-                                    <Button Grid.Row="0" Grid.Column="1" Content="停止" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.StopCommand,
+                                            IsEnabled="{Binding StartStopButtonEnabled}"
+                                            Command="{Binding DataContext.StartStopCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <!-- v1.0.0.x: 按钮顺序 = 启动 | 停止 | 安装基础环境 | 装依赖 | ComfyUI Manager。
-                                         基础环境(picker dialog 装 PyTorch+CUDA)是装依赖(pip install -r requirements)
-                                         的前置条件 — 必须先有 Python+CUDA runtime 才能跑 pip 装 torch 等带 CUDA 的依赖。
-                                         所以「安装基础环境」放「装依赖」前面(用户原话)。 -->
                                     <!-- v0.6.11+ T1:BED toggle — 已装显"卸载基础环境",未装显"安装基础环境",
                                          busy 时按钮灰 + label 变"安装基础环境中..."/"卸载基础环境中..."。
                                          复用 BaseEnvUninstallStatus inline 面板;BED picker dialog 走 OpenBaseEnvProgressAsync。 -->
-                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="0" Grid.Column="1" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleBaseEnvCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -464,19 +494,29 @@
                                     <!-- v0.6.11+ T1:Requirements toggle — 已装显"卸依赖",未装显"装依赖",
                                          busy 时按钮灰 + label 变"装依赖中..."/"卸依赖中..."。
                                          复用现有 RequirementsStatus inline 面板显示进度。 -->
-                                    <Button Grid.Row="0" Grid.Column="3" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleRequirementsCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
-                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — 同 col 0-3 pattern,共用 5 列 Grid。 -->
-                                    <Button Grid.Row="0" Grid.Column="4" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
+                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — git clone 网络源 + 装 requirements.txt;
+                                         跟「安装本地常用」并列,语义不同(后者走 Settings.LocalNodesDirectory 本地预装包)。 -->
+                                    <Button Grid.Row="0" Grid.Column="3" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleComfyUiManagerCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
                                             ToolTip="git clone ltdrdata/ComfyUI-Manager 到 custom_nodes 并装 requirements.txt;已装则 rm -rf 整个目录" />
+                                    <!-- v1.0.0.x #577:本地常用节点(末位) — 批量 copy Settings.LocalNodesDirectory
+                                         下子目录到 env/custom_nodes/,逐个 pip install -r requirements.txt(过滤 torch 行);
+                                         失败 skip 下一个。LocalNodeInstallStatus inline 面板显示进度 + 总结。 -->
+                                    <Button Grid.Row="0" Grid.Column="4" Content="{Binding LocalNodesButtonText}" Margin="2" MinWidth="0"
+                                            Style="{StaticResource MaterialButton}"
+                                            Command="{Binding DataContext.InstallLocalNodesCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="批量装 Settings.LocalNodesDirectory 下的本地节点包(逐个 copy + pip install -r)。已装会重装(rm -rf 同名目录后重新 copy)。失败一个 skip 到下一个。" />
                                     <!-- Row 1: 调试/删除链路 -->
                                     <Button Grid.Row="1" Grid.Column="0" Content="查看日志" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"

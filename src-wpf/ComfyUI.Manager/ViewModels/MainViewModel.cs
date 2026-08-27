@@ -68,6 +68,8 @@ public class MainViewModel : ViewModelBase
     // ToggleComfyUiManagerCommand。App.xaml.cs 总是传非 null;null = 测试 ctor 不传走
     // EnvironmentListViewModel 内部 default ComfyUIManagerInstaller(new RequirementsFileInstaller())。
     private readonly ComfyUIManagerInstaller? _comfyUiManagerInstaller;
+    // v1.0.0.x #577:本地常用节点批量 installer — 传给 EnvListVM 的 InstallLocalNodesCommand。
+    private readonly LocalNodeBulkInstaller? _localNodeBulkInstaller;
     // v0.6.5.22: 卸载 service — 跟 BaseEnvInstaller / RequirementsInstaller 同生命周期。
     // 传 EnvListVM 给行内"卸载基础环境" / "卸载依赖"按钮 + per-env mutex 用。
     // 字段类型可空:测试可不传(EnvListVM 自己有 null-fallback ?? new);
@@ -414,7 +416,11 @@ public class MainViewModel : ViewModelBase
         // v0.6.22+:per-source HttpClient builder — 传给 ModelSourceFactory 让每个 source
         // 拿自己的 HttpClient(per-source proxy toggle 才生效)。可空保留旧测试 ctor 兼容
         // (null 时 ShowModels 退回到包 _http 的简单 lambda,共享 singleton,无 per-source proxy)。
-        Func<HttpProxyConfig?, HttpClient>? httpBuilder = null)
+        Func<HttpProxyConfig?, HttpClient>? httpBuilder = null,
+        // v1.0.0.x #577:本地常用节点批量 installer — 传给 EnvironmentListViewModel 的
+        // InstallLocalNodesCommand(显示 inline 状态面板)。复用 reqFileInstaller + logger。
+        // 可空让测试 ctor 不传(EnvListVM fallback 自己 new 一份)。
+        LocalNodeBulkInstaller? localNodeBulkInstaller = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -448,6 +454,8 @@ public class MainViewModel : ViewModelBase
         // v0.6.11+ T4:ComfyUI Manager toggle 安装器 — 传给 EnvListVM 的
         // ToggleComfyUiManagerCommand(显示 inline 状态面板)。可空让测试 ctor 不传。
         _comfyUiManagerInstaller = comfyUiManagerInstaller;
+        // v1.0.0.x #577:本地常用节点批量 installer — 传给 EnvListVM InstallLocalNodesCommand。
+        _localNodeBulkInstaller = localNodeBulkInstaller;
         // v0.6.11+ SDD D1:AppLogger — RestartEnvAsync 的 env-not-found / EnvListVM-未构造
         // 诊断日志。nullable ctor(测试 ctor 不传走 _logger?.Warn 安全路径);生产 DI 在
         // App.xaml.cs 注入(已有 var logger = new AppLogger(projectRoot);)。
@@ -562,7 +570,8 @@ public class MainViewModel : ViewModelBase
                 nodeRepo: nodeRepo,                       // v0.6.14 picker
                 versionRepo: versionRepo,                 // v0.6.14 T4 per-row version dropdown
                 workflowSymlinker: _workflowSymlinker,   // v0.6.19 T10: env-start 后异步 sync workflows
-                modelSymlinker: _modelSymlinker);     // v0.6.20 T9: env-start 后异步 sync models
+                modelSymlinker: _modelSymlinker,     // v0.6.20 T9: env-start 后异步 sync models
+                localNodeBulkInstaller: _localNodeBulkInstaller);  // v1.0.0.x #577
             // v0.6.22.x:removed templateUpdater arg — 模板更新改到 MainViewModel 上
             // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
             // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget

@@ -31,6 +31,18 @@ public partial class EnvironmentListView : UserControl
     }
 
     /// <summary>
+    /// v1.0.0.x #577:本地常用节点安装状态面板 ✕ 按钮 — 镜像 ComfyUI Manager 同模式,
+    /// 但批量 + 多阶段所以从不 auto-hide,完成 / 失败都等用户手动关(要看总结)。
+    /// </summary>
+    private void OnLocalNodeInstallStatusCloseClicked(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is ViewModels.EnvironmentListViewModel vm)
+        {
+            vm.LocalNodeInstallStatus?.Hide();
+        }
+    }
+
+    /// <summary>
     /// v0.6.15.8 T6:节点管理 inline 面板 ✕ 按钮 — 走 CloseNodeManagementCommand
     /// 清空 EnvListVM.NodeManagement(VM 留在 _nodeMgmtCache 里保留状态)。
     /// v0.6.15.9:OnUpgradeNodesCloseClicked 删除 — 升级迁入节点管理面板行内,
