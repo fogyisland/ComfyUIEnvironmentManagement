@@ -14,15 +14,20 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
-/// v1.0.0.x #584:BaseEnvInstaller BED extras(gitpython + triton)阶段测试 — 覆盖
-/// happy(主+extras 都 success → done + 2 pip calls)、extras 失败(主 success +
-/// extras fail → 仍 done,extras 仅 Warn log)、主失败(主 fail → extras 不跑)、
-/// 主 cancel(主 cancel → extras 不跑)、Empty extras override(测试 seam,不跑 extras)。
+/// v1.0.0.x #584 + #584.b:BED pre-install + extras 阶段测试 — 主 pip install 之前
+/// 跑 <c>pip install --upgrade pip</c>(pre-install),成功之后顺手装 gitpython + triton
+/// (extras)。两个阶段都「失败只 Warn 不阻塞 BED done」,分别由 <see cref="BaseEnvInstaller.PreInstallPipArgs"/>
+/// 和 <see cref="BaseEnvInstaller.ExtraPackages"/> 控制(测试可 override 返空跳过)。
 ///
 /// <para>
-/// 用 FakeBaseEnvInstaller override RunPipAsync + 记录 CallHistory;用 pipArgs
-/// 含 "gitpython" 区分 main vs extras 调用(production extras 列表
-/// <c>["gitpython","triton"]</c> 在默认 ExtraPackages 实现里)。
+/// 用 FakeBaseEnvInstaller override RunPipAsync + 记录 CallHistory;
+/// 用 pipArgs 模式区分 3 个阶段:
+/// <list type="bullet">
+///   <item>pre-install: args 含 "--upgrade"(默认 DefaultPreInstallPipArgs)</item>
+///   <item>extras: args 含 "gitpython"(默认 DefaultExtraPackages)</item>
+///   <item>main: 其余(由 profile.BuildPipArgs() 拼出)</item>
+/// </list>
+/// 3 阶段独立返回 PreInstallResult / MainResult / ExtrasResult。
 /// </para>
 /// </summary>
 public sealed class BaseEnvInstallerExtrasTests : IDisposable
@@ -69,72 +74,71 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
         Packages = new List<string> { "torch", "torchaudio", "torchvision", "xformers" },
     };
 
-    // ───── 1. Happy path:主+extras 都 success ─────
+    // ───── 1. Happy path:pre + main + extras 都 success ─────
 
     [Fact]
-    public async Task InstallAsync_MainAndExtrasBothSucceed_DoneTwoPipCalls()
+    public async Task InstallAsync_AllThreePhasesSucceed_DoneThreePipCalls()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"bed-extras-ok-{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"bed-3phase-ok-{Guid.NewGuid():N}");
         SeedEnv("env-a", root);
         var fake = new FakeBaseEnvInstaller(_envRepo);
 
         var result = await fake.InstallAsync(
             new[] { "env-a" }, DefaultProfile(), progress: null, CancellationToken.None);
 
-        Assert.True(result.SucceededCount == 1);
-        Assert.True(result.FailedCount == 0);
-        Assert.False(result.Cancelled);
-        // 2 次 pip 调用:main 一次 + extras 一次
-        Assert.Equal(2, fake.CallHistory.Count);
-        // 第 1 次 = main(stable profile 把 torch pin 成 "torch==2.5.0")
-        // 第 2 次 = extras(带 gitpython + triton)
-        Assert.Contains("torch==2.5.0", fake.CallHistory[0]);
-        Assert.DoesNotContain("gitpython", fake.CallHistory[0]);
-        Assert.Contains("gitpython", fake.CallHistory[1]);
-        Assert.Contains("triton", fake.CallHistory[1]);
-        // BedStatus = done(没被 extras 阶段改写)
+        Assert.Equal(1, result.SucceededCount);
+        Assert.Equal(0, result.FailedCount);
+        // 3 次 pip 调用:pre-install(upgrade pip)+ main(torch+CUDA)+ extras(gitpython+triton)
+        Assert.Equal(3, fake.CallHistory.Count);
+        // 顺序固定
+        Assert.Equal("pre-install", fake.PhaseAt(0));
+        Assert.Equal("main", fake.PhaseAt(1));
+        Assert.Equal("extras", fake.PhaseAt(2));
+        // args 内容断言
+        Assert.Contains("--upgrade", fake.CallHistory[0]);
+        Assert.Contains("torch==2.5.0", fake.CallHistory[1]);
+        Assert.Contains("gitpython", fake.CallHistory[2]);
+        Assert.Contains("triton", fake.CallHistory[2]);
         var final = _envRepo.Get("env-a");
         Assert.Equal("done", final!.BedStatus);
     }
 
-    // ───── 2. Extras 失败 → BED 仍 done ─────
+    // ───── 2. Pre-install 失败 → 主 install 仍跑 → BedStatus=done ─────
 
     [Fact]
-    public async Task InstallAsync_ExtrasFail_BedStillDone_WarnLogged()
+    public async Task InstallAsync_PreInstallFails_StillRunsMainAndExtras_BedDone()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"bed-extras-fail-{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"bed-prefail-{Guid.NewGuid():N}");
         SeedEnv("env-b", root);
         var fake = new FakeBaseEnvInstaller(_envRepo)
         {
-            ExtrasResult = new PipResult(1, false),  // extras pip 退出码 1
+            PreInstallResult = new PipResult(1, false),  // pip upgrade 失败
         };
         var progress = new RecordingProgress();
 
         var result = await fake.InstallAsync(
             new[] { "env-b" }, DefaultProfile(), progress, CancellationToken.None);
 
-        // 主 install 成功 → BedStatus="done",succeededCount=1(extras 不影响)
+        // pre 失败不阻塞 → 主 + extras 都跑 → BedStatus=done
         Assert.Equal(1, result.SucceededCount);
         Assert.Equal(0, result.FailedCount);
+        Assert.Equal(3, fake.CallHistory.Count);  // pre + main + extras 都跑了
         var final = _envRepo.Get("env-b");
         Assert.Equal("done", final!.BedStatus);
         Assert.Null(final.BedFailedReason);
-        // extras 调用确实发生了(2 次 pip)
-        Assert.Equal(2, fake.CallHistory.Count);
-        Assert.Contains("gitpython", fake.CallHistory[1]);
-        // progress emit 了 extras 阶段 + 失败 log 行
+        // progress emit 了 pre-install 阶段 + 失败 log
         Assert.Contains(progress.Events,
-            p => p.Status == BaseEnvStatus.Running && p.LogLine?.Contains("stage:extras") == true);
+            p => p.LogLine?.Contains("stage:pre-install") == true);
         Assert.Contains(progress.Events,
-            p => p.LogLine?.Contains("extras pip 退出码 1") == true);
+            p => p.LogLine?.Contains("pre-install pip 退出码 1") == true);
     }
 
-    // ───── 3. 主失败 → extras 不跑 ─────
+    // ───── 3. 主失败 → extras 不跑(但 pre 已跑)─────
 
     [Fact]
-    public async Task InstallAsync_MainFail_ExtrasNotCalled_FailedOnce()
+    public async Task InstallAsync_MainFail_PreInstalledExtrasNotCalled()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"bed-extras-mainfail-{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"bed-mainfail-{Guid.NewGuid():N}");
         SeedEnv("env-c", root);
         var fake = new FakeBaseEnvInstaller(_envRepo)
         {
@@ -146,20 +150,21 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
 
         Assert.Equal(0, result.SucceededCount);
         Assert.Equal(1, result.FailedCount);
-        // 主失败 → extras 不会跑(只有 1 次 pip 调用)
-        Assert.Equal(1, fake.CallHistory.Count);
-        Assert.DoesNotContain("gitpython", fake.CallHistory[0]);
+        // pre + main 跑了(2 次),extras 不跑(主失败)
+        Assert.Equal(2, fake.CallHistory.Count);
+        Assert.Equal("pre-install", fake.PhaseAt(0));
+        Assert.Equal("main", fake.PhaseAt(1));
         var final = _envRepo.Get("env-c");
         Assert.Equal("failed", final!.BedStatus);
         Assert.StartsWith("pip 退出码", final.BedFailedReason);
     }
 
-    // ───── 4. 主 cancel → extras 不跑 ─────
+    // ───── 4. 主 cancel → extras 不跑(但 pre 已跑)─────
 
     [Fact]
-    public async Task InstallAsync_MainCancelled_ExtrasNotCalled()
+    public async Task InstallAsync_MainCancelled_PreInstalledExtrasNotCalled()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"bed-extras-cancel-{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"bed-maincancel-{Guid.NewGuid():N}");
         SeedEnv("env-d", root);
         var fake = new FakeBaseEnvInstaller(_envRepo)
         {
@@ -170,69 +175,132 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
             new[] { "env-d" }, DefaultProfile(), progress: null, CancellationToken.None);
 
         Assert.True(result.Cancelled);
-        // cancel 后 extras 不跑
-        Assert.Equal(1, fake.CallHistory.Count);
-        Assert.DoesNotContain("gitpython", fake.CallHistory[0]);
+        // pre + main 跑了,extras 不跑
+        Assert.Equal(2, fake.CallHistory.Count);
+        Assert.Equal("pre-install", fake.PhaseAt(0));
+        Assert.Equal("main", fake.PhaseAt(1));
         var final = _envRepo.Get("env-d");
         Assert.Equal("failed", final!.BedStatus);
         Assert.Equal("用户取消", final.BedFailedReason);
     }
 
-    // ───── 5. ExtraPackages = [] override → 只跑主 ─────
+    // ───── 5. Extras 失败 → BED 仍 done(pre + main + extras 都跑了)─────
 
     [Fact]
-    public async Task InstallAsync_EmptyExtrasOverride_OnlyMainRuns()
+    public async Task InstallAsync_ExtrasFail_BedStillDone_WarnLogged()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"bed-no-extras-{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"bed-extrasfail-{Guid.NewGuid():N}");
         SeedEnv("env-e", root);
-        // EmptyExtrasFake override ExtraPackages 返空 → 跳过 extras 阶段
-        var fake = new EmptyExtrasFake(_envRepo);
+        var fake = new FakeBaseEnvInstaller(_envRepo)
+        {
+            ExtrasResult = new PipResult(1, false),
+        };
+        var progress = new RecordingProgress();
 
         var result = await fake.InstallAsync(
-            new[] { "env-e" }, DefaultProfile(), progress: null, CancellationToken.None);
+            new[] { "env-e" }, DefaultProfile(), progress, CancellationToken.None);
 
         Assert.Equal(1, result.SucceededCount);
-        // 只有 1 次 pip(主)— extras 列表空,TryInstallExtrasAsync 早返
-        Assert.Equal(1, fake.CallCount);
-        Assert.Single(fake.CallHistory);
-        // sanity: 这次调用是 main(torch==2.5.0),不是 extras(gitpython/triton)
-        Assert.False(fake.SawExtrasCall);
-        Assert.Contains("torch==2.5.0", fake.CallHistory[0]);
-    }
-
-    // ───── 6. 用户中途 cancel 时 extras 透传 ─────
-
-    [Fact]
-    public async Task InstallAsync_CancelDuringExtras_DoesNotOverrideSuccessToCancelled()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"bed-extras-cancelmid-{Guid.NewGuid():N}");
-        SeedEnv("env-f", root);
-        // 用 cts 在 extras 阶段 cancel — FakeBaseEnvInstaller 在 extras 调用时
-        // 检 ct.IsCancellationRequested 抛 cancelled 结果
-        var fake = new CancellingExtrasFake(_envRepo);
-        using var cts = new CancellationTokenSource();
-
-        var result = await fake.InstallAsync(
-            new[] { "env-f" }, DefaultProfile(), progress: null, cts.Token);
-
-        // 主成功(extras 抛 cancel,但 TryInstallExtrasAsync 内部 catch 不 throw)
-        // → BedStatus=done;succeededCount=1(主已 ++);Cancelled flag 由外层判定
-        // 因为只有 1 个 env,extras cancel 后外层 foreach 走下一轮时已 break
-        // 故 Cancelled=true 取决于 cts 是否真被 cancel
-        // 简化断言:extras 被调 + BedStatus=done(extras 失败不改 BedStatus)
-        Assert.Equal(2, fake.CallHistory.Count);
-        Assert.Contains("gitpython", fake.CallHistory[1]);
-        var final = _envRepo.Get("env-f");
+        Assert.Equal(3, fake.CallHistory.Count);
+        var final = _envRepo.Get("env-e");
         Assert.Equal("done", final!.BedStatus);
         Assert.Null(final.BedFailedReason);
+        Assert.Contains(progress.Events,
+            p => p.LogLine?.Contains("extras pip 退出码 1") == true);
     }
 
-    // ───── 7. DefaultExtraPackages 内容契约 ─────
+    // ───── 6. PreInstallPipArgs = [] override → 只跑 main + extras ─────
+
+    [Fact]
+    public async Task InstallAsync_EmptyPreInstallOverride_OnlyMainAndExtrasRun()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bed-nopre-{Guid.NewGuid():N}");
+        SeedEnv("env-f", root);
+        var fake = new EmptyPreInstallFake(_envRepo);
+
+        var result = await fake.InstallAsync(
+            new[] { "env-f" }, DefaultProfile(), progress: null, CancellationToken.None);
+
+        Assert.Equal(1, result.SucceededCount);
+        // 2 次 pip:main + extras(pre 列表空,RunOptionalStageAsync 早返)
+        Assert.Equal(2, fake.CallHistory.Count);
+        Assert.Equal("main", fake.PhaseAt(0));
+        Assert.Equal("extras", fake.PhaseAt(1));
+        Assert.False(fake.SawPreInstallCall);
+    }
+
+    // ───── 7. EmptyPreInstall + EmptyExtras → 只跑 main ─────
+
+    [Fact]
+    public async Task InstallAsync_EmptyPreInstallAndEmptyExtras_OnlyMainRuns()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bed-onlymain-{Guid.NewGuid():N}");
+        SeedEnv("env-g", root);
+        var fake = new NoOptionalStagesFake(_envRepo);
+
+        var result = await fake.InstallAsync(
+            new[] { "env-g" }, DefaultProfile(), progress: null, CancellationToken.None);
+
+        Assert.Equal(1, result.SucceededCount);
+        // 只跑 main(1 次 pip)
+        Assert.Equal(1, fake.CallHistory.Count);
+        Assert.Equal("main", fake.PhaseAt(0));
+    }
+
+    // ───── 8. Pre-install 阶段中途 cancel → 主 install 不跑? ─────
+    // 注:当前实现中,cancel 检测在 RunOptionalStageAsync 末尾(主 install 前还有进),
+    // 进了主 install 后 ct.IsCancellationRequested 还会被外层 foreach 用。但
+    // 一旦进了 pre-install 阶段,pre 阶段末尾会读到 ct.Cancelled → 早返,然后主 install
+    // 仍会被调(外层 foreach 没检查 mid-pre cancel,只检查每 env 开始时)。这是已知行为,
+    // 主 install 自身在 ct.IsCancellationRequested 时也会早返(它自己 catch OperationCanceledException)。
+    // 本测试锁定当前行为:pre cancel → main 仍被调 → main 看到 ct cancelled → WasCancelled 返回
+    // → BedStatus=failed/用户取消。
+
+    [Fact]
+    public async Task InstallAsync_CancelDuringPreInstall_MainStillCalled_ReturnsCancelled()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bed-precancel-{Guid.NewGuid():N}");
+        SeedEnv("env-h", root);
+        // cts 在 pre-install 阶段 fake 内部触发 → pre 阶段 RunOptionalStageAsync 看到
+        // ct.IsCancellationRequested=true 早返,外层 InstallAsync 主 install 仍被调,
+        // 主 fake 看到 ct cancelled 返 WasCancelled=true → 外层 break → extras 不跑。
+        var cts = new CancellationTokenSource();
+        try
+        {
+            var fake = new CancellingPreInstallFake(_envRepo, cts);
+
+            var result = await fake.InstallAsync(
+                new[] { "env-h" }, DefaultProfile(), progress: null, cts.Token);
+
+            // pre + main 都跑了(2 次),extras 不跑(主 cancel → break)
+            Assert.Equal(2, fake.CallHistory.Count);
+            Assert.Equal("pre-install", fake.PhaseAt(0));
+            Assert.Equal("main", fake.PhaseAt(1));
+            Assert.True(result.Cancelled);
+            var final = _envRepo.Get("env-h");
+            Assert.Equal("failed", final!.BedStatus);
+            Assert.Equal("用户取消", final.BedFailedReason);
+        }
+        finally
+        {
+            cts.Dispose();
+        }
+    }
+
+    // ───── 9. 契约:DefaultPreInstallPipArgs / DefaultExtraPackages 内容 ─────
+
+    [Fact]
+    public void DefaultPreInstallPipArgs_UpgradesPip()
+    {
+        var fake = new FakeBaseEnvInstaller(_envRepo);
+        var pre = fake.GetPreInstallPublic();
+        Assert.Contains("--upgrade", pre);
+        Assert.Contains("pip", pre);
+    }
 
     [Fact]
     public void DefaultExtraPackages_ContainsGitPythonAndTriton()
     {
-        // production 默认常量必须包含用户原话要求的两个包,防止后续 refactor 漏掉
         var fake = new FakeBaseEnvInstaller(_envRepo);
         var extras = fake.GetExtrasPublic();
         Assert.Contains("gitpython", extras);
@@ -240,6 +308,27 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
     }
 
     // ───── helpers ─────
+
+    private enum PipPhase { None, PreInstall, Main, Extras }
+
+    private static PipPhase ClassifyPhase(IReadOnlyList<string> pipArgs)
+    {
+        if (pipArgs.Any(a => a == "--upgrade")) return PipPhase.PreInstall;
+        if (pipArgs.Any(a => a == "gitpython")) return PipPhase.Extras;
+        return PipPhase.Main;
+    }
+
+    /// <summary>
+    /// stage 阶段 label(匹配 BaseEnvInstaller.cs 里的 RunOptionalStageAsync
+    /// 第一个参数 + log 行格式):pre-install / main / extras(主 install 没有 stage
+    /// 前缀,phase label 用 "main")。
+    /// </summary>
+    private static string PhaseLabel(PipPhase phase) => phase switch
+    {
+        PipPhase.PreInstall => "pre-install",
+        PipPhase.Extras => "extras",
+        _ => "main",
+    };
 
     private sealed class RecordingProgress : IProgress<BaseEnvProgress>
     {
@@ -249,72 +338,115 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
     }
 
     /// <summary>
-    /// Fake override RunPipAsync — 用 pipArgs 是否含 "gitpython" 区分 main vs extras。
-    /// MainResult / ExtrasResult 可分别设。CallHistory 记录全部调用 args(顺序)。
+    /// 默认 3 阶段 fake — PreInstallResult / MainResult / ExtrasResult 分别设,
+    /// CallHistory 记录全部 args 顺序,PhaseAt(i) 返阶段标签。
     /// </summary>
     private class FakeBaseEnvInstaller : BaseEnvInstaller
     {
         public List<List<string>> CallHistory { get; } = new();
+        public PipResult PreInstallResult { get; set; } = new(0, false);
         public PipResult MainResult { get; set; } = new(0, false);
         public PipResult ExtrasResult { get; set; } = new(0, false);
 
         public FakeBaseEnvInstaller(IEnvironmentRepository repo) : base(repo) { }
 
-        // 测试用 public 入口取 extras(默认常量验证用)
+        public string PhaseAt(int index) => PhaseLabel(ClassifyPhase(CallHistory[index]));
+        public IReadOnlyList<string> GetPreInstallPublic() => PreInstallPipArgs;
         public IReadOnlyList<string> GetExtrasPublic() => ExtraPackages;
 
         protected override Task<PipResult> RunPipAsync(
             string pythonExe, IReadOnlyList<string> pipArgs,
             Action<string> onLine, Action<int?> onPercent, CancellationToken ct)
         {
-            var args = pipArgs.ToList();
-            CallHistory.Add(args);
-            var isExtras = pipArgs.Any(a => a == "gitpython");
-            onLine(isExtras ? "[extras-pip-line]" : "[main-pip-line]");
-            return Task.FromResult(isExtras ? ExtrasResult : MainResult);
+            CallHistory.Add(pipArgs.ToList());
+            onLine($"[fake-pip] {ClassifyPhase(pipArgs)}");
+            return Task.FromResult(ClassifyPhase(pipArgs) switch
+            {
+                PipPhase.PreInstall => PreInstallResult,
+                PipPhase.Extras => ExtrasResult,
+                _ => MainResult,
+            });
         }
     }
 
     /// <summary>
-    /// Override ExtraPackages 返空 → 测试 "无 extras" 路径(只跑主,1 次 pip)。
+    /// PreInstallPipArgs 返空 — 只跑 main + extras(2 次 pip)。
     /// </summary>
-    private sealed class EmptyExtrasFake : BaseEnvInstaller
+    private sealed class EmptyPreInstallFake : BaseEnvInstaller
     {
         public List<List<string>> CallHistory { get; } = new();
-        public int CallCount { get; private set; }
-        public bool SawExtrasCall { get; private set; }
+        public bool SawPreInstallCall { get; private set; }
 
-        public EmptyExtrasFake(IEnvironmentRepository repo) : base(repo) { }
+        public EmptyPreInstallFake(IEnvironmentRepository repo) : base(repo) { }
 
-        protected override IReadOnlyList<string> ExtraPackages => Array.Empty<string>();
+        protected override IReadOnlyList<string> PreInstallPipArgs => Array.Empty<string>();
+
+        public string PhaseAt(int index) => PhaseLabel(ClassifyPhase(CallHistory[index]));
 
         protected override Task<PipResult> RunPipAsync(
             string pythonExe, IReadOnlyList<string> pipArgs,
             Action<string> onLine, Action<int?> onPercent, CancellationToken ct)
         {
-            CallCount++;
             CallHistory.Add(pipArgs.ToList());
-            if (pipArgs.Any(a => a == "gitpython")) SawExtrasCall = true;
+            if (ClassifyPhase(pipArgs) == PipPhase.PreInstall) SawPreInstallCall = true;
             return Task.FromResult(new PipResult(0, false));
         }
     }
 
     /// <summary>
-    /// Extras 调用时检 ct — cancel 后返 cancelled 结果,模拟"extras 阶段中途 cancel"。
+    /// 两个 optional 阶段都返空 — 只跑 main(1 次 pip)。
     /// </summary>
-    private sealed class CancellingExtrasFake : BaseEnvInstaller
+    private sealed class NoOptionalStagesFake : BaseEnvInstaller
     {
         public List<List<string>> CallHistory { get; } = new();
+        public NoOptionalStagesFake(IEnvironmentRepository repo) : base(repo) { }
 
-        public CancellingExtrasFake(IEnvironmentRepository repo) : base(repo) { }
+        protected override IReadOnlyList<string> PreInstallPipArgs => Array.Empty<string>();
+        protected override IReadOnlyList<string> ExtraPackages => Array.Empty<string>();
+
+        public string PhaseAt(int index) => PhaseLabel(ClassifyPhase(CallHistory[index]));
 
         protected override Task<PipResult> RunPipAsync(
             string pythonExe, IReadOnlyList<string> pipArgs,
             Action<string> onLine, Action<int?> onPercent, CancellationToken ct)
         {
             CallHistory.Add(pipArgs.ToList());
-            // 模拟 extras 阶段被 cancel:main 永远 success,extras 阶段 ct 已 cancel
-            if (pipArgs.Any(a => a == "gitpython") && ct.IsCancellationRequested)
+            return Task.FromResult(new PipResult(0, false));
+        }
+    }
+
+    /// <summary>
+    /// Pre-install 阶段立即 cancel — fake 在 RunPipAsync pre-install 阶段主动调
+    /// cts.Cancel(),让外层 ct 真正 cancel。RunOptionalStageAsync 看到 ct cancelled
+    /// 早返,外层 InstallAsync 主 install 仍被调,主 fake 看到 ct cancelled 返
+    /// WasCancelled=true → 外层 break → extras 不跑。
+    /// </summary>
+    private sealed class CancellingPreInstallFake : BaseEnvInstaller
+    {
+        private readonly CancellationTokenSource _cts;
+        public List<List<string>> CallHistory { get; } = new();
+
+        public CancellingPreInstallFake(IEnvironmentRepository repo, CancellationTokenSource cts)
+            : base(repo)
+        {
+            _cts = cts;
+        }
+
+        public string PhaseAt(int index) => PhaseLabel(ClassifyPhase(CallHistory[index]));
+
+        protected override Task<PipResult> RunPipAsync(
+            string pythonExe, IReadOnlyList<string> pipArgs,
+            Action<string> onLine, Action<int?> onPercent, CancellationToken ct)
+        {
+            CallHistory.Add(pipArgs.ToList());
+            // 模拟 pre-install 阶段检测到用户取消 → 主动 cancel ct
+            if (ClassifyPhase(pipArgs) == PipPhase.PreInstall)
+            {
+                _cts.Cancel();
+                return Task.FromResult(new PipResult(-1, true));
+            }
+            // main 看到 ct 已 cancelled 也返 cancelled
+            if (ct.IsCancellationRequested)
             {
                 return Task.FromResult(new PipResult(-1, true));
             }

@@ -41,6 +41,14 @@ public class BaseEnvInstaller
     // extras 失败只 Warn log 不影响 BED done 终态 — 它们是「顺便」不是「必须」。
     private static readonly string[] DefaultExtraPackages = new[] { "gitpython", "triton" };
 
+    // BED pre-install:主 pip install 之前跑 `pip install --upgrade pip`,把 venv
+    // 里的 pip 升级到最新版。后续装 torch / extras 时 pip 已是最新版,避免每次
+    // 都报 "WARNING: You are using pip version X, however version Y is available"
+    // 一堆 warning 用户反馈「每次一堆警告」。失败只 Warn log 不阻塞 — 老 pip
+    // 也能装包,只是会持续报 warning,用户继续点重装也会自动升级。
+    private static readonly string[] DefaultPreInstallPipArgs =
+        new[] { "install", "--upgrade", "pip" };
+
     private readonly IEnvironmentRepository _envRepo;
     private readonly AppLogger? _logger;
 
@@ -144,6 +152,13 @@ public class BaseEnvInstaller
             // — pip 输出才是;这里补一行让用户看 per-env log 立刻知道在装哪个 profile。
             _logger?.WriteOperation(env.Name,
                 $"[bed-install] start profile={profile.Id} cuda={profile.CudaVersion} torch={profile.TorchVersion}");
+
+            // v1.0.0.x #584 续:BED pre-install 阶段 — 主 pip install 之前先升级 pip
+            // 到最新版,后续装 torch / extras 时不再报 "pip 版本过低" 警告。
+            // 失败只 log 不改 BedStatus,主 install 仍继续。
+            await TryPreInstallAsync(
+                envId, env.Name, pythonExe,
+                completed, total, progress, ct);
 
             progress?.Report(new BaseEnvProgress(
                 BaseEnvStatus.Running, completed, total,
@@ -277,6 +292,14 @@ public class BaseEnvInstaller
     }
 
     /// <summary>
+    /// Override-able pre-install 阶段 — 在主 pip install 之前跑,默认 =
+    /// <c>["install", "--upgrade", "pip"]</c>(升级 venv pip 到最新版)。
+    /// 测试可 override 返空跳过,生产路径让 pip 保持新版,避免每次装包都报
+    /// "pip 版本过低" 一堆警告。失败只 Warn log 不阻塞主 install。
+    /// </summary>
+    protected virtual IReadOnlyList<string> PreInstallPipArgs => DefaultPreInstallPipArgs;
+
+    /// <summary>
     /// Override-able extras 列表 — 测试可 override 返空跳过,生产默认 = ["gitpython", "triton"]。
     /// 在 BED 主 pip install 成功后顺手装,避免 ComfyUI 启动时 manager / ComfyUI
     /// 现场 pip install 这些常用小包。
@@ -284,33 +307,28 @@ public class BaseEnvInstaller
     protected virtual IReadOnlyList<string> ExtraPackages => DefaultExtraPackages;
 
     /// <summary>
-    /// BED extras 阶段:主 pip install 成功后顺手装 <see cref="ExtraPackages"/>。
-    /// 设计:
-    /// - 只在主 install ExitCode==0 时被调(主失败 / cancel 不会进 extras)
-    /// - extras pip 失败只 Warn log,不修改 BedStatus / succeeded / failed(外层
-    ///   InstallAsync 已经把 succeeded++ + Succeeded progress emit 过了)。ComfyUI
-    ///   启动时 manager 还会再装一次,所以用户不会感知到 extras 失败。
-    /// - 用户中途 cancel → extras 透传 cancellation 给外层(ct 已经被 cancel,外层
-    ///   下一轮 foreach 会自己 break)。不主动 throw。
-    /// - emit "stage:extras packages=gitpython,triton" log 行让 per-env log 里能看
-    ///   到「进入了 extras 阶段」,跟主阶段 "stage:install ..." 一致。
+    /// BED optional pip 阶段通用 helper — pre-install(主 install 之前)和 extras
+    /// (主 install 之后)走完全一致的错误处理。设计:
+    /// - args 空 → 早返(允许测试 seam 关掉)
+    /// - emit "stage:{stageName} args=..." log 行(per-env log 一致格式)
+    /// - pip 失败只 Warn log,不修改 BedStatus / succeeded / failed
+    /// - 用户中途 cancel → 透传 cancellation 给外层,不主动 throw
+    /// - 异常兜底 → Warn log 不 throw
     /// </summary>
-    private async Task TryInstallExtrasAsync(
+    private async Task RunOptionalStageAsync(
+        string stageName,
+        IReadOnlyList<string> pipArgs,
         string envId, string envName, string pythonExe,
         int completed, int total,
         IProgress<BaseEnvProgress>? progress, CancellationToken ct)
     {
-        var extras = ExtraPackages;
-        if (extras.Count == 0) return;
+        if (pipArgs.Count == 0) return;
 
-        var extrasArgs = new List<string> { "install" };
-        extrasArgs.AddRange(extras);
-        var pkgList = string.Join(",", extras);
-        var stageLine = $"stage:extras packages={pkgList}";
+        var argCsv = string.Join(",", pipArgs);
+        var stageLine = $"stage:{stageName} args={argCsv}";
+        var opTag = $"bed-install-{stageName}";
 
-        _logger?.WriteOperation(envName,
-            $"[bed-install] extras start packages={pkgList}");
-
+        _logger?.WriteOperation(envName, $"[bed-install] {stageName} start args={argCsv}");
         progress?.Report(new BaseEnvProgress(
             BaseEnvStatus.Running, completed, total,
             envId, envName, 0, stageLine, null));
@@ -318,7 +336,7 @@ public class BaseEnvInstaller
         try
         {
             var result = await RunPipAsync(
-                pythonExe, extrasArgs,
+                pythonExe, pipArgs,
                 line => progress?.Report(new BaseEnvProgress(
                     BaseEnvStatus.Running, completed, total,
                     envId, envName, null, line, null)),
@@ -329,20 +347,18 @@ public class BaseEnvInstaller
 
             if (ct.IsCancellationRequested)
             {
-                // 用户 cancel — 让外层 InstallAsync 的下一轮 foreach 自己 break,
-                // 这里不 throw(避免覆盖已成功的 BedStatus)。
+                // 用户 cancel — 让外层 InstallAsync 下一轮 foreach 自己 break,
+                // 不 throw(避免覆盖已成功的 BedStatus)。
                 return;
             }
             if (result.ExitCode == 0)
             {
-                _logger?.Info("bed-install-extras",
-                    $"env='{envName}' extras ok packages={pkgList}");
+                _logger?.Info(opTag, $"env='{envName}' ok args={argCsv}");
             }
             else
             {
-                var reason = $"extras pip 退出码 {result.ExitCode}";
-                _logger?.Warn("bed-install-extras",
-                    $"env='{envName}' {reason}; packages={pkgList}");
+                var reason = $"{stageName} pip 退出码 {result.ExitCode}";
+                _logger?.Warn(opTag, $"env='{envName}' {reason}; args={argCsv}");
                 progress?.Report(new BaseEnvProgress(
                     BaseEnvStatus.Running, completed, total,
                     envId, envName, null, reason, null));
@@ -354,9 +370,41 @@ public class BaseEnvInstaller
         }
         catch (Exception ex)
         {
-            _logger?.Warn("bed-install-extras",
-                $"env='{envName}' extras 异常: {ex.Message}");
+            _logger?.Warn(opTag, $"env='{envName}' {stageName} 异常: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// BED extras 阶段薄壳 — 拼 "install" + <see cref="ExtraPackages"/> 然后走
+    /// <see cref="RunOptionalStageAsync"/>。只在主 install ExitCode==0 时被调
+    /// (主失败 / cancel 不会进 extras)。
+    /// </summary>
+    private Task TryInstallExtrasAsync(
+        string envId, string envName, string pythonExe,
+        int completed, int total,
+        IProgress<BaseEnvProgress>? progress, CancellationToken ct)
+    {
+        var extras = ExtraPackages;
+        if (extras.Count == 0) return Task.CompletedTask;
+        var args = new List<string> { "install" };
+        args.AddRange(extras);
+        return RunOptionalStageAsync(
+            "extras", args, envId, envName, pythonExe,
+            completed, total, progress, ct);
+    }
+
+    /// <summary>
+    /// BED pre-install 阶段薄壳 — 主 install 之前先升级 pip,避免后续装包都报
+    /// "pip 版本过低" 警告。失败只 Warn 不阻塞主 install。
+    /// </summary>
+    private Task TryPreInstallAsync(
+        string envId, string envName, string pythonExe,
+        int completed, int total,
+        IProgress<BaseEnvProgress>? progress, CancellationToken ct)
+    {
+        return RunOptionalStageAsync(
+            "pre-install", PreInstallPipArgs, envId, envName, pythonExe,
+            completed, total, progress, ct);
     }
 
     /// <summary>
