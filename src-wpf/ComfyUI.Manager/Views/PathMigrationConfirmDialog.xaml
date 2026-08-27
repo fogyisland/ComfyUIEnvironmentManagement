@@ -1,0 +1,120 @@
+<Window x:Class="ComfyUI.Manager.Views.PathMigrationConfirmDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+        Title="路径错位确认" Height="500" Width="760"
+        Background="{StaticResource BackgroundBrush}"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize"
+        ShowInTaskbar="True"
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
+    <!--
+    v1.0.0.x #594:启动期路径错位确认弹窗。展示 StartupPathProbe 检测到的可疑路径,
+    让用户逐项勾选是否更新到当前 projectRoot + 默认 subdir。
+    WindowStartupLocation=CenterScreen(此窗口在主窗口上屏前就弹,不能 CenterOwner)。
+    Owner 不设(Splash 还在,Application.Current.MainWindow 也是 Splash,会冲突)。
+    -->
+    <Window.Resources>
+        <!-- 复用 BulkUpdateView 的 CardListBoxStyle / CardListBoxItemStyle -->
+        <Style x:Key="CardListBoxStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style x:Key="CardListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <DataTemplate x:Key="PathMigrationItemCardTemplate"
+                      DataType="{x:Type vm:PathMigrationItemViewModel}">
+            <Border Padding="10,8"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <CheckBox Grid.Column="0" IsChecked="{Binding Selected}"
+                              VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource OnSurfaceBrush}">
+                            <Run Text="{Binding Label, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock FontSize="11"
+                                   Foreground="{DynamicResource OnSurfaceVariantBrush}"
+                                   TextWrapping="Wrap" Margin="0,2,0,0">
+                            <Run Text="当前:" />
+                            <Run Text="{Binding CurrentValue, Mode=OneWay}" FontFamily="Consolas, Cascadia Mono, monospace" />
+                        </TextBlock>
+                        <TextBlock FontSize="11"
+                                   Foreground="{DynamicResource OnSurfaceVariantBrush}"
+                                   TextWrapping="Wrap" Margin="0,2,0,0">
+                            <Run Text="推荐:" />
+                            <Run Text="{Binding RecommendedValue, Mode=OneWay}" FontFamily="Consolas, Cascadia Mono, monospace"
+                                 FontWeight="SemiBold" />
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="程序文件夹被移动?" FontSize="16" FontWeight="Bold"
+                       Foreground="{DynamicResource OnSurfaceBrush}" Margin="0,0,0,8" />
+            <TextBlock Text="{Binding HeaderText}" FontSize="13"
+                       Foreground="{DynamicResource OnSurfaceVariantBrush}"
+                       TextWrapping="Wrap" Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" FontSize="12"
+                       Foreground="{DynamicResource OnSurfaceVariantBrush}">
+                <Run Text="以下路径在当前 projectRoot 下不存在,可能是程序文件夹被移动/重命名后未更新。" />
+                <Run Text="勾选" FontWeight="SemiBold" />
+                <Run Text="= 应用推荐的新路径,取消勾选 = 保留原值。" />
+            </TextBlock>
+        </StackPanel>
+
+        <ListBox Grid.Row="1"
+                 ItemsSource="{Binding Items}"
+                 ItemTemplate="{StaticResource PathMigrationItemCardTemplate}"
+                 ItemContainerStyle="{StaticResource CardListBoxItemStyle}"
+                 Style="{StaticResource CardListBoxStyle}"
+                 Margin="0,12,0,12" />
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,8">
+            <Button Content="全选" Command="{Binding ApplyAllCommand}"
+                    Style="{StaticResource MaterialButton}" Width="64" />
+            <Button Content="全不选" Command="{Binding KeepAllCommand}"
+                    Style="{StaticResource MaterialButton}" Margin="6,0,0,0" Width="80" />
+            <Button Content="反选" Command="{Binding ToggleAllCommand}"
+                    Style="{StaticResource MaterialButton}" Margin="6,0,0,0" Width="64" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="取消" Command="{Binding CancelCommand}"
+                    Style="{StaticResource MaterialButton}" Width="80" />
+            <Button Content="应用选定" Command="{Binding ConfirmCommand}"
+                    Style="{StaticResource MaterialButton}" Margin="8,0,0,0" Width="100" />
+        </StackPanel>
+    </Grid>
+</Window>

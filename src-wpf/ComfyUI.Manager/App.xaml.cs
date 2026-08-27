@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.ViewModels;
@@ -95,7 +96,7 @@ public partial class App : Application
         // 修法:从 exe 所在目录向上 walk 找真项目根(marker = src-wpf/ 子目录),只在上方有
         // src-wpf/ 时才走 walk-up 路径;否则(release publish)fallback 回到原行为 —
         // publish 出来的 .exe 旁边没有 src-wpf/,直接以 exe dir 作 root 是 release 的预期。
-        var projectRoot = ResolveDevProjectRoot(Environment.ProcessPath);
+        var projectRoot = ResolveDevProjectRoot(System.Environment.ProcessPath);
 
         // M5.2: WPF 完全独立 —— 不启动任何 Python control service。
         // 直连 SQLite + 直 Process.Start ComfyUI + 直调 git。
@@ -233,6 +234,45 @@ public partial class App : Application
         // 3) 用户故意选的别处绝对路径 → 保留
         SettingsDefaults.Apply(settings, projectRoot, rawJson);
         settingsRepo.Save(settings);
+
+        // v1.0.0.x #594:启动期路径错位检测 — 用户程序文件夹被移动后,settings 里持久化的
+        // 绝对路径可能指向不存在的目录。Apply 之后(避免误报过渡态)、EnvDirectoryScanner
+        // 之前(避免错位 env 列表被 scan 时找不到 .cmgr-env.json 报一堆错),逐项标可疑。
+        // 有可疑项 → splash 让位 → 弹 dialog;用户决定后写回 settings。
+        // 用户取消 → settings 不动(用户明确知情,继续启动)。
+        var probeItems = StartupPathProbe.Detect(settings, projectRoot);
+        if (probeItems.Count > 0)
+        {
+            logger.Warn("app-startup",
+                $"路径错位检测发现 {probeItems.Count} 个可疑路径,弹窗让用户确认");
+            if (_splash != null) { _splash.Topmost = false; }
+            _splashVm?.StartFadeOut();
+
+            var dlgVm = new PathMigrationConfirmViewModel(probeItems);
+            var dlg = new PathMigrationConfirmDialog(dlgVm);
+            dlg.ShowDialog();
+
+            if (dlgVm.Decisions is { } decisions)
+            {
+                var appliedCount = 0;
+                foreach (var d in decisions)
+                {
+                    if (!d.Apply) continue;
+                    if (ApplyPathDecision(settings, d.Label, d.RecommendedValue))
+                        appliedCount++;
+                }
+                if (appliedCount > 0)
+                {
+                    settingsRepo.Save(settings);
+                    logger.Info("app-startup",
+                        $"路径错位确认:应用 {appliedCount}/{decisions.Count} 项更新");
+                }
+            }
+            else
+            {
+                logger.Info("app-startup", "路径错位确认:用户取消,settings 不动");
+            }
+        }
 
         // v1.0.0.x:启动时扫 EnvsDir — 用户上次改了 EnvsDir 之后,新目录里的
         // env 子目录(带 .cmgr-env.json marker)自动 upsert 到 SQLite。先于
@@ -680,6 +720,49 @@ public partial class App : Application
         var portableEmbeded = Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe");
         if (File.Exists(portableEmbeded)) return portableEmbeded;
         return "git"; // fallback to PATH
+    }
+
+    /// <summary>
+    /// v1.0.0.x #594:把 dialog 决定应用到 settings — 9 个主路径字段 + 8 个 built-in
+    /// TemplateConfig.LocalSourceDir。Label 跟 <see cref="StartupPathProbe"/> 输出一致。
+    /// 返回 true 表示成功改了字段。
+    /// </summary>
+    private static bool ApplyPathDecision(Settings settings, string label, string newValue)
+    {
+        switch (label)
+        {
+            case "TemplatePythonDir":
+                settings.TemplatePythonDir = newValue; return true;
+            case "SystemTemplateLibraryDir":
+                settings.SystemTemplateLibraryDir = newValue; return true;
+            case "EnvsDir":
+                settings.EnvsDir = newValue; return true;
+            case "GlobalNodesDir":
+                settings.GlobalNodesDir = newValue; return true;
+            case "LocalNodeDirectory":
+                settings.LocalNodeDirectory = newValue; return true;
+            case "LocalNodesDirectory":
+                settings.LocalNodesDirectory = newValue; return true;
+            case "DefaultModelsDirectory":
+                settings.DefaultModelsDirectory = newValue; return true;
+            case "WorkflowsDirectory":
+                settings.WorkflowsDirectory = newValue; return true;
+            case "LogDirectory":
+                settings.LogDirectory = newValue; return true;
+            default:
+                // Template:<Kind>.LocalSourceDir
+                if (label.StartsWith("Template:") && label.EndsWith(".LocalSourceDir"))
+                {
+                    var kind = label.Substring("Template:".Length,
+                        label.Length - "Template:".Length - ".LocalSourceDir".Length);
+                    if (settings.Templates.TryGetValue(kind, out var cfg) && cfg is not null)
+                    {
+                        cfg.LocalSourceDir = newValue;
+                        return true;
+                    }
+                }
+                return false;
+        }
     }
 
     /// <summary>
