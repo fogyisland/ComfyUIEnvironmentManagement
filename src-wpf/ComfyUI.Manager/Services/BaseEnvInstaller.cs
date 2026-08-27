@@ -34,6 +34,13 @@ public class BaseEnvInstaller
         (?<p3>\d+) %",
         RegexOptions.Compiled);
 
+    // BED extras:主 pip install(torch+CUDA)成功后顺手装这些「ComfyUI 启动时常现场
+    // 装」的小包 — gitpython(ComfyUI-Manager 依赖)和 triton(ComfyUI nightly/CUDA 12.x
+    // 依赖)。在 BED 阶段预装可以避免每次 env 启动时 manager / ComfyUI 再花几秒到几十秒
+    // 现场 pip install,「启动的时候安装需要很多时间」用户反馈。
+    // extras 失败只 Warn log 不影响 BED done 终态 — 它们是「顺便」不是「必须」。
+    private static readonly string[] DefaultExtraPackages = new[] { "gitpython", "triton" };
+
     private readonly IEnvironmentRepository _envRepo;
     private readonly AppLogger? _logger;
 
@@ -174,6 +181,12 @@ public class BaseEnvInstaller
                     progress?.Report(new BaseEnvProgress(
                         BaseEnvStatus.Succeeded, completed + 1, total,
                         envId, env.Name, 100, null, null));
+                    // BED extras:主 install 成功后顺手装 gitpython + triton(见
+                    // TryInstallExtrasAsync 顶部注释)。Extras 失败只 Warn log,不
+                    // 改 BedStatus — ComfyUI 启动时 manager 还会再装一次,只是慢一点。
+                    await TryInstallExtrasAsync(
+                        envId, env.Name, pythonExe,
+                        completed + 1, total, progress, ct);
                 }
                 else
                 {
@@ -261,6 +274,89 @@ public class BaseEnvInstaller
             : $"env='{envName}' {status} — {reason}";
         if (status == "succeeded") _logger.Info("bed-install", msg);
         else _logger.Error("bed-install", msg);
+    }
+
+    /// <summary>
+    /// Override-able extras 列表 — 测试可 override 返空跳过,生产默认 = ["gitpython", "triton"]。
+    /// 在 BED 主 pip install 成功后顺手装,避免 ComfyUI 启动时 manager / ComfyUI
+    /// 现场 pip install 这些常用小包。
+    /// </summary>
+    protected virtual IReadOnlyList<string> ExtraPackages => DefaultExtraPackages;
+
+    /// <summary>
+    /// BED extras 阶段:主 pip install 成功后顺手装 <see cref="ExtraPackages"/>。
+    /// 设计:
+    /// - 只在主 install ExitCode==0 时被调(主失败 / cancel 不会进 extras)
+    /// - extras pip 失败只 Warn log,不修改 BedStatus / succeeded / failed(外层
+    ///   InstallAsync 已经把 succeeded++ + Succeeded progress emit 过了)。ComfyUI
+    ///   启动时 manager 还会再装一次,所以用户不会感知到 extras 失败。
+    /// - 用户中途 cancel → extras 透传 cancellation 给外层(ct 已经被 cancel,外层
+    ///   下一轮 foreach 会自己 break)。不主动 throw。
+    /// - emit "stage:extras packages=gitpython,triton" log 行让 per-env log 里能看
+    ///   到「进入了 extras 阶段」,跟主阶段 "stage:install ..." 一致。
+    /// </summary>
+    private async Task TryInstallExtrasAsync(
+        string envId, string envName, string pythonExe,
+        int completed, int total,
+        IProgress<BaseEnvProgress>? progress, CancellationToken ct)
+    {
+        var extras = ExtraPackages;
+        if (extras.Count == 0) return;
+
+        var extrasArgs = new List<string> { "install" };
+        extrasArgs.AddRange(extras);
+        var pkgList = string.Join(",", extras);
+        var stageLine = $"stage:extras packages={pkgList}";
+
+        _logger?.WriteOperation(envName,
+            $"[bed-install] extras start packages={pkgList}");
+
+        progress?.Report(new BaseEnvProgress(
+            BaseEnvStatus.Running, completed, total,
+            envId, envName, 0, stageLine, null));
+
+        try
+        {
+            var result = await RunPipAsync(
+                pythonExe, extrasArgs,
+                line => progress?.Report(new BaseEnvProgress(
+                    BaseEnvStatus.Running, completed, total,
+                    envId, envName, null, line, null)),
+                pct => progress?.Report(new BaseEnvProgress(
+                    BaseEnvStatus.Running, completed, total,
+                    envId, envName, pct, null, null)),
+                ct);
+
+            if (ct.IsCancellationRequested)
+            {
+                // 用户 cancel — 让外层 InstallAsync 的下一轮 foreach 自己 break,
+                // 这里不 throw(避免覆盖已成功的 BedStatus)。
+                return;
+            }
+            if (result.ExitCode == 0)
+            {
+                _logger?.Info("bed-install-extras",
+                    $"env='{envName}' extras ok packages={pkgList}");
+            }
+            else
+            {
+                var reason = $"extras pip 退出码 {result.ExitCode}";
+                _logger?.Warn("bed-install-extras",
+                    $"env='{envName}' {reason}; packages={pkgList}");
+                progress?.Report(new BaseEnvProgress(
+                    BaseEnvStatus.Running, completed, total,
+                    envId, envName, null, reason, null));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 同上,让外层 cancel 路径处理
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("bed-install-extras",
+                $"env='{envName}' extras 异常: {ex.Message}");
+        }
     }
 
     /// <summary>
