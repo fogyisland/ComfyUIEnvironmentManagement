@@ -27,6 +27,10 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     // v1.0.0.x: 用户改 Settings.EnvsDir 保存后,App.xaml.cs 注入的 callback 触发
     // EnvDirectoryScanner.ScanAsync(envsDir)。可空:测试 callers 不传也能跑。
     private readonly Func<string, Task>? _onEnvsDirSaved;
+    // v1.0.0.x #589:env → localnodes 反向 sync — 把 ComfyUI-Manager 装的节点补到本地源。
+    // 可空:测试 callers 不传也能跑。
+    private readonly IEnvironmentRepository? _envRepo;
+    private readonly LocalNodeSyncService? _syncService;
     private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
@@ -82,13 +86,19 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         // v1.0.0.x: 用户改 Settings.EnvsDir 保存后,触发 EnvDirectoryScanner 扫新目录。
         // callback 接收 EnvsDir 相对路径,resolve 到绝对路径由 App.xaml.cs 处理
         // (SettingsViewModel 不需要知道 projectRoot)。
-        Func<string, Task>? onEnvsDirSaved = null)
+        Func<string, Task>? onEnvsDirSaved = null,
+        // v1.0.0.x #589:env → localnodes 反向 sync 入口依赖 — App.xaml.cs 注入共享实例;
+        // 测试 callers 不传也能跑(命令 CanExecute 返 false,按钮 disabled)。
+        IEnvironmentRepository? envRepo = null,
+        LocalNodeSyncService? syncService = null)
     {
         _repo = repo;
         _proxy = proxy;
         _validator = validator;
         _themeService = themeService;
         _onEnvsDirSaved = onEnvsDirSaved;
+        _envRepo = envRepo;
+        _syncService = syncService;
         // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
         // 没有注入时(单元测试)才从 disk 加载。T12:走 LoadWithRawJson 拿到磁盘 raw JSON,
         // 以便 Apply 触发老 template_comfyui_dir 字段迁移。生产 App.xaml.cs 也用同一路径。
@@ -350,6 +360,13 @@ public class SettingsViewModel : ViewModelBase, IDisposable
                 ClearDirty();
             },
             _ => HasUnsavedChanges);
+        // v1.0.0.x #589:env → localnodes 反向 sync 命令。把所有 env 的 custom_nodes/
+        // 一次性 copy 到 LocalNodesDirectory,让 LocalNodeBulkInstaller 下次重装能恢复
+        // (含 requirements.txt)。CanExecute 依赖 _envRepo + _syncService 都注入 +
+        // LocalNodesDirectory 路径有效;否则 disabled。
+        SyncNodesFromEnvCommand = new RelayCommand(
+            async _ => await SyncNodesFromEnvAsync().ConfigureAwait(false),
+            _ => _envRepo is not null && _syncService is not null && !IsSyncInProgress);
         RaiseAllPropertiesChanged();
     }
 
@@ -1233,6 +1250,114 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(PipMirrorCustomUrl));
         RaisePropertyChanged(nameof(IsCustomPipMirrorSelected));
         RaisePropertyChanged(nameof(CommonNodes));
+        RaisePropertyChanged(nameof(SyncStatusText));
+        RaisePropertyChanged(nameof(IsSyncInProgress));
+    }
+
+    // ============ v1.0.0.x #589 节点 sync(env → localnodes) ============
+
+    /// <summary>
+    /// v1.0.0.x #589:同步按钮命令 — 把所有 env 的 <c>custom_nodes/</c> 反向 copy 到
+    /// <see cref="LocalNodesDirectory"/>,让 <c>LocalNodeBulkInstaller</c> 下次重装能恢复
+    /// 这些节点(连同 requirements.txt,弥补 cv2 / triton 等 Manager 装但 BED 没装的依赖)。
+    /// </summary>
+    public RelayCommand SyncNodesFromEnvCommand { get; }
+
+    private string _syncStatusText = "";
+    /// <summary>
+    /// 同步状态文本 — 给 UI TextBlock 显示进度。空字符串 = 未启动 / 已清空。
+    /// </summary>
+    public string SyncStatusText
+    {
+        get => _syncStatusText;
+        private set
+        {
+            if (_syncStatusText == value) return;
+            _syncStatusText = value;
+            RaisePropertyChanged(nameof(SyncStatusText));
+        }
+    }
+
+    private bool _isSyncInProgress;
+    /// <summary>
+    /// sync 进行中 — 期间禁用按钮(防双击)+ status 显示「同步中...」。
+    /// </summary>
+    public bool IsSyncInProgress
+    {
+        get => _isSyncInProgress;
+        private set
+        {
+            if (_isSyncInProgress == value) return;
+            _isSyncInProgress = value;
+            RaisePropertyChanged(nameof(IsSyncInProgress));
+            SyncNodesFromEnvCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>
+    /// 跑所有 env 的 sync。可空依赖没注入 → no-op 提示用户。聚合每个 env 的结果写到
+    /// <see cref="SyncStatusText"/>。
+    /// </summary>
+    private async Task SyncNodesFromEnvAsync()
+    {
+        if (_envRepo is null || _syncService is null)
+        {
+            SyncStatusText = "依赖未注入(只在生产路径可用)";
+            return;
+        }
+
+        IsSyncInProgress = true;
+        // G6:WPF IProgress<T> 在原 SynchronizationContext 上 Report — 用 Progress<string>
+        // 包 lambda,所有回调走 UI thread,改 SyncStatusText 不会触发 "itemscontrol 与
+        // 项源不一致"。(参见 feedback_wpf_observablecollection_progress)
+        // 声明类型用 IProgress<string> 而不是 Progress<string> 是因为 .NET Progress<T>.Report
+        // 是 IProgress<T>.Report 的显式接口实现,只有 interface 类型上能直接调。
+        IProgress<string> progress = new Progress<string>(line => SyncStatusText = line);
+        try
+        {
+            SyncStatusText = "读取 env 列表...";
+            // v0.6.5.8 ListAll 是 sync I/O,SQLite 走内存 + 进程内 file lock,几 ms 内返。
+            // 不用 await,保留 UI sync context 给下面 SyncAsync 的 Progress<T> Report 用。
+            var envs = _envRepo.ListAll();
+            if (envs.Count == 0)
+            {
+                SyncStatusText = "没有 env,无需同步";
+                return;
+            }
+
+            var totalAdded = 0;
+            var totalUpdated = 0;
+            var totalFailed = 0;
+            var envFailures = new List<string>();
+
+            foreach (var env in envs)
+            {
+                progress.Report($"[{envs.IndexOf(env) + 1}/{envs.Count}] 同步 {env.Name} ...");
+                var result = await _syncService.SyncAsync(env, progress, CancellationToken.None)
+                    .ConfigureAwait(false);
+                totalAdded += result.Added.Count;
+                totalUpdated += result.Updated.Count;
+                totalFailed += result.FailReasons.Count;
+                if (!result.Success && !string.IsNullOrEmpty(result.Reason))
+                {
+                    envFailures.Add($"{env.Name}:{result.Reason}");
+                }
+            }
+
+            var summary = $"完成 ✓ 新增 {totalAdded} / 更新 {totalUpdated}"
+                          + (totalFailed > 0 ? $" / 失败 {totalFailed}" : "");
+            SyncStatusText = envFailures.Count > 0
+                ? $"{summary};失败 env:{string.Join("; ", envFailures)}"
+                : summary;
+        }
+        catch (Exception ex)
+        {
+            SyncStatusText = $"同步异常:{ex.Message}";
+        }
+        finally
+        {
+            IsSyncInProgress = false;
+        }
     }
 
     // ============ v0.6.9 T7 Spotlight 集成 ============

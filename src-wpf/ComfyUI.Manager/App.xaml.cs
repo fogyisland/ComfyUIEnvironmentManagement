@@ -321,6 +321,9 @@ public partial class App : Application
         // 子目录到 env/custom_nodes/ + pip install -r requirements.txt(过滤 torch 行)。不走网络,
         // 完全本地。复用 reqFileInstaller 跑 pip。
         var localNodeBulkInstaller = new LocalNodeBulkInstaller(settings, reqFileInstaller, logger);
+        // v1.0.0.x #589:env → localnodes/ 反向 sync — 把 ComfyUI-Manager 装的节点补到
+        // 本地源目录,保证 LocalNodeBulkInstaller 下次重装能恢复这些节点(连同 requirements)。
+        var localNodeSyncService = new LocalNodeSyncService(settings, logger);
         // v1.0.0 T11: 通用 template source updater — per-repo-URL, 给
         // TemplateManagementViewModel(ShowTemplateManagement)的每张模板卡
         // "更新源码" 按钮使用。构造时传 gitExe + gitProxy + logger(不是 gitRunner),
@@ -480,7 +483,10 @@ public partial class App : Application
             templateSourceUpdater: templateSourceUpdater,
             // v1.0.0.x #577:本地常用节点批量 installer — 传给 EnvironmentListViewModel
             // InstallLocalNodesCommand(显示 inline 状态面板)。复用 reqFileInstaller + logger。
-            localNodeBulkInstaller: localNodeBulkInstaller);
+            localNodeBulkInstaller: localNodeBulkInstaller,
+            // v1.0.0.x #589:env → localnodes 反向 sync service — 传给 SettingsViewModel 的
+            // SyncNodesFromEnvCommand(把 ComfyUI-Manager 装的节点一次性 copy 回本地源)。
+            localNodeSyncService: localNodeSyncService);
 
         // v1.0.0.x: 用户覆盖本地路径 repo factory — MainViewModel 在 ShowLocalModels 懒构造
         // LocalModelsViewModel 时调 factory 拿 repo(透传给 LocalModelsViewModel 的 _overridesRepo)。

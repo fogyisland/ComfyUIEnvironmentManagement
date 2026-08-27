@@ -501,6 +501,21 @@
                 <TextBox Text="{Binding LocalNodesDirectory, UpdateSourceTrigger=PropertyChanged}"
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
+            <!-- v1.0.0.x #589:env → localnodes 反向 sync 按钮 — 把所有 env 的 custom_nodes/
+                 copy 回上方目录,LocalNodeBulkInstaller 下次重装能恢复(连同 requirements.txt)。
+                 IsBusy=true 时禁用防双击,状态由 SyncStatusText TextBlock 显示。 -->
+            <DockPanel Margin="0,8,0,0">
+                <Button DockPanel.Dock="Right" Content="从 env 同步节点 →"
+                        Command="{Binding SyncNodesFromEnvCommand}"
+                        IsEnabled="{Binding SyncNodesFromEnvCommand.CanExecute, Mode=OneWay}"
+                        Background="{DynamicResource PrimaryBrush}"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0"
+                        ToolTip="扫描所有 env 的 custom_nodes/,copy 到上方「本地常用节点目录」。运行期 status 见右侧文本。" />
+                <TextBlock Text="{Binding SyncStatusText}"
+                           VerticalAlignment="Center" Margin="8,0,0,0"
+                           Foreground="{DynamicResource MaterialOnSurfaceBrush}"
+                           TextTrimming="CharacterEllipsis" />
+            </DockPanel>
 
             <!-- ============ v0.6.19:工作流市场 ============ -->
             <TextBlock x:Name="SectionWorkflows" Text="工作流市场" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
