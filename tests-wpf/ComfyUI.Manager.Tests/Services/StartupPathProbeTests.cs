@@ -78,16 +78,47 @@ public class StartupPathProbeTests
     [Fact]
     public void Detect_RelativePathMissing_Flagged()
     {
+        // v1.0.0.x hotfix (2026-08-27):相对路径 raw != subdir 常量时仍 flag(用户主动改了路径)。
+        // raw == subdir 默认 seed 时 skip,见下一个 test。
+        var root = MakeTempDir();
+        // root/MyEnvs 不存在
+
+        var s = NewBareSettings();
+        s.EnvsDir = "MyEnvs";  // 用户自定义相对路径,非默认 seed "Envs"
+
+        var result = StartupPathProbe.Detect(s, root);
+        var item = Assert.Single(result, i => i.Label == "EnvsDir");
+        Assert.Equal(Path.Combine(root, "MyEnvs"), item.CurrentValue);
+        Assert.Equal(Path.Combine(root, "Envs"), item.RecommendedValue);
+    }
+
+    [Fact]
+    public void Detect_RelativePathDefaultSeedMissing_NotFlagged()
+    {
+        // v1.0.0.x hotfix (2026-08-27):raw 是默认 seed (== subdir 常量) 且目录不存在
+        // → skip。用户压根没启用该功能(没下 workflow / 没建 env / 没装依赖) 的正常状态,
+        // 不是路径错位。CurrentValue 和 RecommendedValue 此时完全一致,弹窗让用户疑惑。
         var root = MakeTempDir();
         // root/Envs 不存在
 
         var s = NewBareSettings();
-        s.EnvsDir = "Envs";  // 相对路径,不 Exists
+        s.EnvsDir = "Envs";  // 默认 seed,不存在
 
         var result = StartupPathProbe.Detect(s, root);
-        var item = Assert.Single(result, i => i.Label == "EnvsDir");
-        Assert.Equal(Path.Combine(root, "Envs"), item.CurrentValue);
-        Assert.Equal(Path.Combine(root, "Envs"), item.RecommendedValue);  // 推荐值相同
+        Assert.DoesNotContain(result, i => i.Label == "EnvsDir");
+    }
+
+    [Fact]
+    public void Detect_WorkflowsDirectoryDefaultSeedMissing_NotFlagged()
+    {
+        // 用户原话 2026-08-27:"当前提示workflowsdirectory 目录被移动,其实没有被移动啊"
+        // "当前路径和推荐路径完全一模一样" — 这是 false positive。
+        var root = MakeTempDir();
+        var s = NewBareSettings();
+        s.WorkflowsDirectory = "Workflow";  // 默认 seed
+
+        var result = StartupPathProbe.Detect(s, root);
+        Assert.DoesNotContain(result, i => i.Label == "WorkflowsDirectory");
     }
 
     [Fact]
@@ -206,10 +237,11 @@ public class StartupPathProbeTests
     [Fact]
     public void Detect_LogDirectory_MissingRelative_Flagged()
     {
+        // v1.0.0.x hotfix (2026-08-27):用户自定义相对路径(非默认 seed)才 flag。
         var root = MakeTempDir();
-        // root/Logs 不创建
+        // root/MyLogs 不创建
         var s = NewBareSettings();
-        s.LogDirectory = "Logs";
+        s.LogDirectory = "MyLogs";  // 非默认 seed
 
         var result = StartupPathProbe.Detect(s, root);
         var item = Assert.Single(result, i => i.Label == "LogDirectory");
@@ -219,11 +251,12 @@ public class StartupPathProbeTests
     [Fact]
     public void Detect_MultipleIssues_AllFlagged()
     {
+        // v1.0.0.x hotfix (2026-08-27):用用户自定义路径(非默认 seed),避免 default-seed skip 规则误判。
         var root = MakeTempDir();
         var s = NewBareSettings();
-        s.EnvsDir = "Envs";
-        s.DefaultModelsDirectory = "Models";
-        s.WorkflowsDirectory = "Workflow";
+        s.EnvsDir = "MyEnvs";
+        s.DefaultModelsDirectory = "MyModels";
+        s.WorkflowsDirectory = "MyWorkflow";
 
         var result = StartupPathProbe.Detect(s, root);
         Assert.Contains(result, i => i.Label == "EnvsDir");

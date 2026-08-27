@@ -147,6 +147,19 @@ public static class StartupPathProbe
         var exists = isDirectory ? Directory.Exists(resolved) : File.Exists(resolved);
         if (exists) return;
 
+        // v1.0.0.x hotfix (2026-08-27):raw 仍是 SettingsDefaults 的默认 seed 值
+        // (== subdir 常量,如 "Workflow" / "Python" / "Envs")且目录不存在 →
+        // skip。这是用户压根没启用该功能(没下 workflow / 没建 env / 没装依赖)
+        // 的正常状态,不是路径错位。CurrentValue 和 RecommendedValue 此时完全
+        // 一致(都 = projectRoot/subdir),弹窗反而让用户疑惑"为啥要确认?没动啊"。
+        //
+        // 但 raw != subdir 的情况(用户主动改成别的相对 / 绝对路径)→ 仍按原
+        // 规则检测:resolve 后不存在 = 用户配错了,提示迁移。
+        if (!Path.IsPathRooted(raw) && string.Equals(raw, subdir, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         items.Add(new PathMigrationItem(
             Label: label,
             CurrentValue: resolved,
