@@ -118,4 +118,69 @@ public class EnvPortProbeTests
             EnvPortProbe.CommandLineLookup = prev;
         }
     }
+
+    [Fact]
+    public void IsEnvProcessOwned_PortablePythonCommandLineContainsEnvRoot_ReturnsTrue()
+    {
+        // v1.0.0.x: 规则 2 — EXE 是 shipped-portable-python + CommandLine 引用 envRootPath。
+        var prevExe = EnvPortProbe.ExePathLookup;
+        var prevCmd = EnvPortProbe.CommandLineLookup;
+        try
+        {
+            EnvPortProbe.ExePathLookup = _ => @"D:\ToolDevelop\ComfyUI\python\python.exe";
+            EnvPortProbe.CommandLineLookup = _ =>
+                $@"""D:\ToolDevelop\ComfyUI\python\python.exe"" D:\ToolDevelop\ComfyUI\Envs\faceswap\main.py --port 7000";
+
+            var envRoot = @"D:\ToolDevelop\ComfyUI\Envs\faceswap";
+            Assert.True(EnvPortProbe.IsEnvProcessOwned(Environment.ProcessId, envRoot));
+        }
+        finally
+        {
+            EnvPortProbe.ExePathLookup = prevExe;
+            EnvPortProbe.CommandLineLookup = prevCmd;
+        }
+    }
+
+    [Fact]
+    public void IsEnvProcessOwned_PortablePythonCommandLineDoesNotContainEnvRoot_ReturnsFalse()
+    {
+        // v1.0.0.x: 规则 2 — shipped-portable 但 CommandLine 引用其他 envRoot → 不算本 env 拥有。
+        var prevExe = EnvPortProbe.ExePathLookup;
+        var prevCmd = EnvPortProbe.CommandLineLookup;
+        try
+        {
+            EnvPortProbe.ExePathLookup = _ => @"D:\ToolDevelop\ComfyUI\python\python.exe";
+            EnvPortProbe.CommandLineLookup = _ =>
+                $@"""D:\ToolDevelop\ComfyUI\python\python.exe"" D:\OtherProject\main.py --port 7000";
+
+            var envRoot = @"D:\ToolDevelop\ComfyUI\Envs\faceswap";
+            Assert.False(EnvPortProbe.IsEnvProcessOwned(Environment.ProcessId, envRoot));
+        }
+        finally
+        {
+            EnvPortProbe.ExePathLookup = prevExe;
+            EnvPortProbe.CommandLineLookup = prevCmd;
+        }
+    }
+
+    [Fact]
+    public void IsEnvProcessOwned_PortablePythonCommandLineLookupReturnsNull_FailsSafe()
+    {
+        // v1.0.0.x: 规则 2 fail-safe — WMI 返 null → 整个判定返 false,绝不上抛。
+        var prevExe = EnvPortProbe.ExePathLookup;
+        var prevCmd = EnvPortProbe.CommandLineLookup;
+        try
+        {
+            EnvPortProbe.ExePathLookup = _ => @"D:\ToolDevelop\ComfyUI\python\python.exe";
+            EnvPortProbe.CommandLineLookup = _ => null;  // WMI 失败
+
+            var envRoot = @"D:\ToolDevelop\ComfyUI\Envs\faceswap";
+            Assert.False(EnvPortProbe.IsEnvProcessOwned(Environment.ProcessId, envRoot));
+        }
+        finally
+        {
+            EnvPortProbe.ExePathLookup = prevExe;
+            EnvPortProbe.CommandLineLookup = prevCmd;
+        }
+    }
 }

@@ -84,8 +84,11 @@ public static class EnvPortProbe
     }
 
     /// <summary>
-    /// pid 进程的 EXE 目录是否在 <paramref name="envRootPath"/> 下?Windows NTFS 大小写不敏感。
-    /// 进程不存在 / 权限不足 / MainModule 抛 Win32Exception / 路径 null → false。
+    /// pid 进程是否属于 <paramref name="envRootPath"/> env?Windows NTFS 大小写不敏感。
+    /// 判定规则(v1.0.0.x 双维度):
+    /// 1. EXE 目录在 <paramref name="envRootPath"/> 下(7/8 built-in templates 覆盖)
+    /// 2. EXE 是 shipped-portable-python(&lt;root&gt;/python/python.exe)**AND** CommandLine 引用 envRootPath
+    /// 进程不存在 / 权限不足 / MainModule 抛 Win32Exception / WMI 失败 / 路径 null → false。
     /// 任意失败都返 false,绝不上抛(启动期 cleanup 路径必须 fail-safe)。
     /// </summary>
     /// <remarks>
@@ -96,20 +99,86 @@ public static class EnvPortProbe
     public static bool IsEnvProcessOwned(int pid, string envRootPath)
     {
         if (pid <= 0 || string.IsNullOrEmpty(envRootPath)) return false;
+
+        string? exePath;
         try
         {
-            using var proc = Process.GetProcessById(pid);
-            // MainModule 在某些 process 上(已退出 / 32-bit on 64-bit / system)会抛 Win32Exception。
-            var exePath = proc.MainModule?.FileName;
-            if (string.IsNullOrEmpty(exePath)) return false;
-            var procDir = Path.GetDirectoryName(exePath);
-            if (string.IsNullOrEmpty(procDir)) return false;
-            return PathStartsWith(procDir, envRootPath);
+            exePath = (ExePathLookup is null)
+                ? GetExePathByPid(pid)  // 默认实现,封装 MainModule
+                : ExePathLookup(pid);
         }
         catch
         {
             return false;
         }
+
+        if (string.IsNullOrEmpty(exePath)) return false;
+        var procDir = Path.GetDirectoryName(exePath);
+        if (string.IsNullOrEmpty(procDir)) return false;
+
+        // 规则 1:现有 — procDir 在 envRootPath 下
+        if (PathStartsWith(procDir, envRootPath)) return true;
+
+        // 规则 2 (v1.0.0.x):EXE 是 shipped-portable-python + CommandLine 引用 envRootPath
+        if (IsShippedPortablePython(exePath))
+        {
+            var cmdLine = GetProcessCommandLine(pid);
+            if (!string.IsNullOrEmpty(cmdLine) && ContainsPath(cmdLine, envRootPath))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 默认 EXE 路径查找 — Process.GetProcessById + MainModule。
+    /// 失败(进程不存在 / 权限 / Win32Exception)→ null,绝不上抛。
+    /// </summary>
+    private static string? GetExePathByPid(int pid)
+    {
+        try
+        {
+            using var proc = Process.GetProcessById(pid);
+            // MainModule 在某些 process 上(已退出 / 32-bit on 64-bit / system)会抛 Win32Exception。
+            return proc.MainModule?.FileName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// shipped-portable-python 路径判定:EXE 路径末段 = python.exe 且父目录名 = "python"。
+    /// 不依赖 projectRoot 反推(避免绝对路径硬编码),兼容 Windows + WSL。
+    /// </summary>
+    private static bool IsShippedPortablePython(string exePath)
+    {
+        if (string.IsNullOrEmpty(exePath)) return false;
+        var fileName = Path.GetFileName(exePath);
+        if (!string.Equals(fileName, "python.exe", StringComparison.OrdinalIgnoreCase)) return false;
+        // 父目录必须是 "python"(兼容 Windows + WSL)
+        var parentDir = Path.GetFileName(Path.GetDirectoryName(exePath)?.TrimEnd(
+            Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        return string.Equals(parentDir, "python", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 在 text 中查找路径(Windows 大小写不敏感 + 接受 path 后跟 \ / " ' 空白 或 text 结尾)。
+    /// 避免 "D:\Envs\env1extra" 误匹配 envRoot="D:\Envs\env1"。
+    /// </summary>
+    internal static bool ContainsPath(string text, string path)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(path)) return false;
+        var idx = text.IndexOf(path, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return false;
+        // boundary check:path 后必须是 \ / " ' 空白 或 text 结尾
+        var after = idx + path.Length;
+        if (after >= text.Length) return true;
+        char next = text[after];
+        return next == Path.DirectorySeparatorChar
+            || next == Path.AltDirectorySeparatorChar
+            || next == '"' || next == '\'' || char.IsWhiteSpace(next);
     }
 
     /// <summary>
@@ -134,6 +203,12 @@ public static class EnvPortProbe
             return false;
         }
     }
+
+    /// <summary>
+    /// v1.0.0.x: 测试 seam — pid → EXE 路径。null → 走 <see cref="GetExePathByPid"/> 默认实现
+    /// (Process.GetProcessById + MainModule)。Reaper 在 ownerCheck 循环外临时设置,循环结束还原。
+    /// </summary>
+    internal static Func<int, string?>? ExePathLookup { get; set; }
 
     /// <summary>
     /// v1.0.0.x: 测试 seam — 替换 WMI lookup 让单测不依赖真 WMI。
