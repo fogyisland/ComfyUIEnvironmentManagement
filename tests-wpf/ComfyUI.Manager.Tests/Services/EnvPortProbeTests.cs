@@ -73,4 +73,49 @@ public class EnvPortProbeTests
         var unrelatedRoot = @"C:\DefinitelyNotTheTestHost\Sub";
         Assert.False(EnvPortProbe.IsEnvProcessOwned(Environment.ProcessId, unrelatedRoot));
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void GetProcessCommandLine_InvalidPid_ReturnsNull(int pid)
+    {
+        Assert.Null(EnvPortProbe.GetProcessCommandLine(pid));
+    }
+
+    [Fact]
+    public void GetProcessCommandLine_NonexistentPid_ReturnsNull()
+    {
+        // 极不可能存在的 pid(高位 + 已知 dead 区间)
+        Assert.Null(EnvPortProbe.GetProcessCommandLine(999_999_999));
+    }
+
+    [Fact]
+    public void CommandLineLookup_CanBeOverridden_ReturnsInjectedValue()
+    {
+        var prev = EnvPortProbe.CommandLineLookup;
+        try
+        {
+            EnvPortProbe.CommandLineLookup = _ => "fake cmdline";
+            Assert.Equal("fake cmdline", EnvPortProbe.GetProcessCommandLine(1));
+        }
+        finally
+        {
+            EnvPortProbe.CommandLineLookup = prev;
+        }
+    }
+
+    [Fact]
+    public void GetProcessCommandLine_LookupThrows_ReturnsNull()
+    {
+        var prev = EnvPortProbe.CommandLineLookup;
+        try
+        {
+            EnvPortProbe.CommandLineLookup = _ => throw new InvalidOperationException("WMI down");
+            Assert.Null(EnvPortProbe.GetProcessCommandLine(1));
+        }
+        finally
+        {
+            EnvPortProbe.CommandLineLookup = prev;
+        }
+    }
 }

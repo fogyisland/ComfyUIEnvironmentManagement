@@ -17,6 +17,9 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <!-- v1.0.0.x: Win32_Process.CommandLine via WMI(System.Management 是 .NET 8 独立包,
+         不在 BCL 里 — brief 原以为 BCL 内,但实际 net5+ 都已分离为 nuget。包很小 ~110KB)。 -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">

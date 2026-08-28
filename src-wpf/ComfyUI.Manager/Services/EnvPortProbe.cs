@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Management;   // System.Management 8.0.0 nuget (net5+ 已分离出 BCL,见 csproj)
 using System.Runtime.InteropServices;
 
 namespace ComfyUI.Manager.Services;
@@ -132,6 +133,44 @@ public static class EnvPortProbe
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// v1.0.0.x: 测试 seam — 替换 WMI lookup 让单测不依赖真 WMI。
+    /// 默认指向 <see cref="DefaultGetProcessCommandLine"/>(static field init 时绑定,防递归)。
+    /// </summary>
+    internal static Func<int, string?> CommandLineLookup { get; set; } = DefaultGetProcessCommandLine;
+
+    /// <summary>
+    /// v1.0.0.x: 跨进程读 CommandLine — WMI Win32_Process.CommandLine。
+    /// 失败(进程不存在 / 权限 / WMI down / 任何异常)→ null,绝不上抛。
+    /// 启动期 Reaper 路径必须 fail-safe(line 21-22 fail-safe 原则)。
+    /// </summary>
+    public static string? GetProcessCommandLine(int pid)
+    {
+        if (pid <= 0) return null;
+        var lookup = CommandLineLookup;
+        try
+        {
+            return lookup(pid);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? DefaultGetProcessCommandLine(int pid)
+    {
+        using var searcher = new ManagementObjectSearcher(
+            $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {pid}");
+        using var results = searcher.Get();
+        foreach (ManagementObject obj in results)
+        {
+            var cmd = obj["CommandLine"]?.ToString();
+            if (!string.IsNullOrEmpty(cmd)) return cmd;
+        }
+        return null;
     }
 
     #region Win32 P/Invoke(port→pid only)
