@@ -139,9 +139,15 @@ public class A1111PreFlightInstaller
         }
         // requirements_versions.txt 都是预编译 wheel,不需要 --no-build-isolation
         // (这是 InstallZipAsync 用的,因为 CLIP / open_clip 是源码 sdist 带 setup.py)。
+        // 加 --no-deps:不让 pip 自动卸载 BED 装的 torch 装旧版本(requirements_versions.txt
+        // 里的 pytorch_lightning==1.9.4 要 torch<2.0,pip resolve 会把 torch 2.13+cu126
+        // 卸了装 torch 2.12.1 —丢失 BED profile 锁的 CUDA wheel)。镜像 launch.py
+        // 装 xformers 的策略:run_pip(f"install -U -I --no-deps {xformers_package}").
+        // 用户后续若发现某些包启动缺 deps,这是 sdweb requirements 跟 torch 2.13 的
+        // 固有不兼容,需等 sdweb 升级 requirements_versions.txt。
         var reqResult = await RunPipAsync(
             pythonExe,
-            new[] { "install", "-r", filteredReqPath, "--disable-pip-version-check" },
+            new[] { "install", "-r", filteredReqPath, "--disable-pip-version-check", "--no-deps" },
             line => logProgress?.Report(line),
             ct);
         // 成功失败都清理 filtered 文件(避免下次 install 看到 stale 文件)
