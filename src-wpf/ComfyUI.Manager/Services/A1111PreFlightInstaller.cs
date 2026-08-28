@@ -88,9 +88,16 @@ public class A1111PreFlightInstaller
             A1111PreFlightConstants.Zips[1], pythonExe, logProgress, ct);
         if (!IsPipOk(ocResult)) return FailFrom(ocResult, "open_clip");
 
-        // 3. requirements_versions.txt — 过滤 torch 行,跟 ComfyUI RequirementsInstaller 一致:
-        //    BED 阶段已经按 profile 锁版本装好 torch,装依赖不能让它被覆盖。
-        //    复用 RequirementsFileInstaller.FilterTorchLines 同一 regex(避免定义第二份)。
+        // 3. requirements_versions.txt — 只过滤裸 torch 行(launch.py 单独装
+        //    torchvision / torchaudio / xformers 等,不在这个文件里;sdweb
+        //    requirements_versions.txt 实际只有 1 行裸 torch)。不复用共享
+        //    RequirementsFileInstaller.FilterTorchLines — 那个 regex 过滤 5 个
+        //    标准 torch 系列(torch / torchvision / torchaudio / torchtext /
+        //    torchdata),被 ComfyUI/Manager/LocalNodeBulkInstaller 共用,改它会
+        //    影响其他 caller。这里用 inline 简化版,只匹配行首 "torch" 后跟
+        //    空白 / 行尾 / 比较运算符(裸名 / 带版本),不匹配 torchvision /
+        //    torchaudio / pytorch_lightning / torchdiffeq / torchsde /
+        //    open-clip-torch 等(名字含 torch 子串但不是 torch 包)。
         var reqPath = Path.Combine(env.RootPath, "requirements_versions.txt");
         if (!File.Exists(reqPath))
         {
@@ -117,7 +124,7 @@ public class A1111PreFlightInstaller
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
-        var filteredLines = RequirementsFileInstaller.FilterTorchLines(rawLines);
+        var filteredLines = FilterBareTorchLines(rawLines);
         try
         {
             await File.WriteAllLinesAsync(filteredReqPath, filteredLines, ct);
@@ -388,6 +395,43 @@ public class A1111PreFlightInstaller
     /// PipResult.Ok 等价物(launch_utils.py idempotent 检查语义:exit=0 且未取消)。
     /// </summary>
     private static bool IsPipOk(PipResult p) => p.ExitCode == 0 && !p.WasCancelled;
+
+    /// <summary>
+    /// Inline 简化版 torch 过滤:只匹配行首的裸 <c>torch</c>(后跟空白 / 行尾 /
+    /// 比较运算符),不匹配 <c>torchvision</c> / <c>torchaudio</c> /
+    /// <c>torchtext</c> / <c>torchdata</c>(launch.py 单独装,不在此文件),
+    /// 也不匹配 <c>pytorch_lightning</c> / <c>torchdiffeq</c> / <c>torchsde</c> /
+    /// <c>open-clip-torch</c>(名字含 torch 子串但不是 torch 包,应正常装)。
+    ///
+    /// 故意不复用 <see cref="RequirementsFileInstaller.FilterTorchLines"/> —
+    /// 那个 regex 匹配 5 个标准 torch 系列,被 ComfyUI / Manager / LocalNode
+    /// 装依赖共用,改它会扩散到其它 caller。这里只在 A1111 pre-flight 用,
+    /// 只过滤 BED profile 锁版本的那 1 个包(裸 torch)。
+    /// </summary>
+    internal static bool IsBareTorchLine(string rawLine)
+    {
+        if (string.IsNullOrWhiteSpace(rawLine)) return false;
+        var s = rawLine.TrimStart();
+        // 行首(去 leading whitespace 后)以 "torch" 开头,后面必须是空白 / 行尾 / 比较运算符
+        // —— 排除 "torchvision" / "torchaudio" / "pytorch_lightning" / "torchdiffeq" 等
+        if (!s.StartsWith("torch", StringComparison.OrdinalIgnoreCase)) return false;
+        if (s.Length == 5) return true;                       // 行尾
+        var next = s[5];
+        return char.IsWhiteSpace(next)                        // "torch ..."
+            || next == '=' || next == '<' || next == '>'      // "torch==2.1.2"
+            || next == '!' || next == '~' || next == ';';     // "torch!=2.1" 等
+    }
+
+    internal static List<string> FilterBareTorchLines(IEnumerable<string> rawLines)
+    {
+        var result = new List<string>();
+        foreach (var raw in rawLines)
+        {
+            if (IsBareTorchLine(raw)) continue;
+            result.Add(raw ?? "");
+        }
+        return result;
+    }
 
     /// <summary>
     /// 单 repo clone 结果。<see cref="Ok"/> 表示:

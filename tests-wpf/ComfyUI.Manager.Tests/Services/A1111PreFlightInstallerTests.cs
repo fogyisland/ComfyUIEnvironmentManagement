@@ -50,7 +50,11 @@ public class A1111PreFlightInstallerTests : IDisposable
             TemplateKind = "A1111",
         };
         Directory.CreateDirectory(env.RootPath);
-        // requirements_versions.txt 镜像真实 sdweb 内容(含裸 torch 行)
+        // requirements_versions.txt 镜像真实 sdweb 内容。**只过滤裸 torch 行**
+        // (v1.0.0.x 用户确认 — launch.py 单独装 torchvision / torchaudio /
+        // xformers,不在此文件;这里只防 BED profile 锁的 torch 被覆盖)。
+        // 同名含 torch 子串但不是 torch 包(torchdiffeq / torchsde /
+        // pytorch_lightning / open-clip-torch)都保留。
         File.WriteAllLines(Path.Combine(env.RootPath, "requirements_versions.txt"),
             new[]
             {
@@ -58,13 +62,16 @@ public class A1111PreFlightInstallerTests : IDisposable
                 "GitPython==3.1.32",
                 "Pillow==9.5.0",
                 "torch",                       // 裸名(要被过滤)
-                "torchvision==0.16.2",         // 带版本(要被过滤)
+                "  torch  ",                   // leading/trailing whitespace(要被过滤)
+                "torch==2.1.2",                // 带版本(要被过滤 — 显式版本覆盖 BED)
+                "torchvision==0.16.2",         // NOT 过滤(launch.py 单独装,不在此文件)
+                "torchaudio==0.13.0",          // NOT 过滤(launch.py 按需装)
+                "torchdiffeq==0.2.3",          // NOT 过滤(含 torch 子串但不是 torch 包)
+                "torchsde==0.2.6",             // NOT 过滤(同)
+                "pytorch_lightning==1.9.4",    // NOT 过滤
+                "open-clip-torch==2.20.0",     // NOT 过滤
                 "gradio==3.41.2",
-                "# torch is special",          // 注释 + torch(要被过滤)
-                "  torchaudio",                // leading whitespace(要被过滤)
                 "numpy==1.26.2",
-                "pytorch_lightning==1.9.4",    // 不带 torch 裸名(保留)
-                "open-clip-torch==2.20.0",     // 含 torch 子串但不是 torch 包(保留)
             });
         // pre-create repositories/<repoName>/.git/ 让 git clone 步骤 skip
         // (集成测 test 不依赖网络 — CapturingInstaller 也只 mock pip,不 mock git)
@@ -153,10 +160,11 @@ public class A1111PreFlightInstallerTests : IDisposable
     }
 
     [Fact]
-    public async Task InstallAsync_FiltersTorchLines_BeforePipInstallR()
+    public async Task InstallAsync_FiltersOnlyBareTorchLines_BeforePipInstallR()
     {
-        // 关键:step 3 跑 pip install -r 前,filtered 文件必须不含 torch 系列行
-        // (跟 ComfyUI RequirementsInstaller 同 regex — 复用 FilterTorchLines)。
+        // 关键:step 3 跑 pip install -r 前,filtered 文件**只**过滤裸 torch 行
+        // (用户确认 — 不动 torchvision / torchaudio 等其它 torch 系列,因为
+        // 它们不在 requirements_versions.txt 里,launch.py 自己装)。
         var env = SeedEnv();
         var installer = new CapturingInstaller();
 
@@ -165,21 +173,42 @@ public class A1111PreFlightInstallerTests : IDisposable
         Assert.True(result.Success, $"pre-flight fail: {result.Reason}");
         Assert.NotNull(installer.LastFilteredContent);
         Assert.NotEmpty(installer.LastFilteredContent!);
-        // 每行不能匹配 torch regex(实际:行首非 torch 系列,允许 open-clip-torch / pytorch_lightning)
+        // 裸 torch 形式被过滤(行首 "torch" 后跟空白 / 行尾 / 比较运算符)
         Assert.DoesNotContain(installer.LastFilteredContent!, line =>
-            line.TrimStart().StartsWith("torch ", StringComparison.OrdinalIgnoreCase) ||
-            line.TrimStart().StartsWith("torch==", StringComparison.OrdinalIgnoreCase) ||
-            line.TrimStart().StartsWith("torchvision", StringComparison.OrdinalIgnoreCase) ||
-            line.TrimStart().StartsWith("torchaudio", StringComparison.OrdinalIgnoreCase) ||
-            line.TrimStart().StartsWith("torchtext", StringComparison.OrdinalIgnoreCase) ||
-            line.TrimStart().StartsWith("torchdata", StringComparison.OrdinalIgnoreCase));
-        // 关键保留行:torch 系列外的依赖 + 含 torch 子串但不是 torch 包的(open-clip-torch / pytorch_lightning)
-        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("numpy"));
+            A1111PreFlightInstaller.IsBareTorchLine(line));
+        // 保留的 torch 系列(launch.py 单独装,不在此过滤范围)
+        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchvision"));
+        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchaudio"));
+        // 含 torch 子串但不是 torch 包的也都保留
+        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchdiffeq"));
+        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchsde"));
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("pytorch_lightning"));
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("open-clip-torch"));
+        // 普通行也保留
+        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("numpy"));
+        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("gradio"));
         // filtered 文件在 pip 调用后被清理(成功失败都清)
         Assert.False(File.Exists(installer.LastFilteredFile),
             $"filtered 文件未被清理:{installer.LastFilteredFile}");
+    }
+
+    [Theory]
+    [InlineData("torch", true)]                      // 裸名
+    [InlineData("torch ", true)]                     // 裸名 + 空格
+    [InlineData("  torch", true)]                    // leading whitespace
+    [InlineData("torch==2.1.2", true)]               // 带版本
+    [InlineData("torch!=1.0", true)]                 // 不等
+    [InlineData("torch>=2.0,<3.0", true)]            // 范围
+    [InlineData("torchvision==0.16.2", false)]      // NOT 过滤
+    [InlineData("torchaudio", false)]                // NOT 过滤
+    [InlineData("pytorch_lightning==1.9.4", false)]  // 含 torch 子串但不是 torch
+    [InlineData("torchdiffeq==0.2.3", false)]        // 同
+    [InlineData("torchsde==0.2.6", false)]           // 同
+    [InlineData("open-clip-torch==2.20.0", false)]   // 同
+    [InlineData("", false)]                          // 空
+    public void IsBareTorchLine_MatchesOnlyBareTorch(string line, bool expected)
+    {
+        Assert.Equal(expected, A1111PreFlightInstaller.IsBareTorchLine(line));
     }
 
     [Fact]
