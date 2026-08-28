@@ -62,16 +62,17 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
     }
 
     [Fact]
-    public void BuildStartCommand_A1111_UsesWebuiPy()
+    public void BuildStartCommand_Forge_UsesWebuiPy()
     {
+        // v1.0.0.x: A1111 已下线,Forge 用 webui.py 作 entry script,沿用相同 entry path。
         var env = new Environment
         {
             Id = "e2", Name = "e2", Status = "stopped",
-            TemplateKind = "A1111",
+            TemplateKind = "Forge",
             Port = 9001,
             TemplateConfigSnapshot = new TemplateConfig
             {
-                Kind = "A1111",
+                Kind = "Forge",
                 EntryScript = "webui.py",
                 EntryArgs = "--port {port}",
                 UserExtraArgs = "--xformers",
@@ -114,18 +115,20 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
     [Fact]
     public void BuildStartCommand_MissingSnapshot_FallsBackToSettingsTemplates()
     {
+        // v1.0.0.x: 用 Forge 替代 A1111 测 fallback —— 都是 shipped local 内置,
+        // missing snapshot 时回落到 Settings.Templates["Forge"].EntryScript (webui.py)。
         // backward compat: old env rows may not have snapshot — fallback to current Settings.Templates
         var env = new Environment
         {
             Id = "e4", Name = "e4", Status = "stopped",
-            TemplateKind = "A1111",
+            TemplateKind = "Forge",
             Port = 9003,
             TemplateConfigSnapshot = null,
         };
         var settings = new Settings();
-        settings.Templates["A1111"] = new TemplateConfig
+        settings.Templates["Forge"] = new TemplateConfig
         {
-            Kind = "A1111",
+            Kind = "Forge",
             EntryScript = "webui.py",
             EntryArgs = "--port {port}",
         };

@@ -32,9 +32,9 @@ public class CreateEnvDialogBuildTemplateConfigTests
                 Kind = "ComfyUI", LocalSourceDir = "Templates/ComfyUI",
                 EntryScript = "main.py", EntryArgs = "--port {port}", ModelsSubdir = "models",
             };
-            settings.Templates["A1111"] = new TemplateConfig
+            settings.Templates["Forge"] = new TemplateConfig
             {
-                Kind = "A1111", LocalSourceDir = "Templates/A1111",
+                Kind = "Forge", LocalSourceDir = "Templates/Forge",
                 EntryScript = "webui.py", EntryArgs = "--port {port}", ModelsSubdir = "models/Stable-diffusion",
             };
         }
@@ -84,9 +84,9 @@ public class CreateEnvDialogBuildTemplateConfigTests
         // The Kind on the produced TemplateConfig must reflect the user's selection,
         // not always default to ComfyUI.
         var (vm, _) = BuildVm();
-        vm.SelectedTemplateKind = "A1111";
-        vm.TemplateSource = "Templates/A1111";
+        vm.SelectedTemplateKind = "Forge";
+        vm.TemplateSource = "Templates/Forge";
         var cfg = vm.BuildTemplateConfig();
-        Assert.Equal("A1111", cfg.Kind);
+        Assert.Equal("Forge", cfg.Kind);
     }
 }

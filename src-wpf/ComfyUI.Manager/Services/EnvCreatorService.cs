@@ -48,7 +48,7 @@ public sealed class EnvCreatorService
     private readonly Models.Settings _settings;
     private readonly string _projectRoot;
     /// <summary>
-    /// v1.0.0.x:A1111 / ComfyUI env-create step 6.5 — 升级 venv 内 pip 到最新版。
+    /// v1.0.0.x:ComfyUI / Forge env-create step 6.5 — 升级 venv 内 pip 到最新版。
     /// 默认 = <see cref="RunPipUpgradeAsync"/>(跑 <c>python -m pip install --upgrade pip</c>)。
     /// 测试可注入 fake(记录调用 + 模拟成功/失败),避免真实网络。
     /// 签名 = (venvPython 绝对路径, CancellationToken) → Task。
@@ -168,7 +168,7 @@ public sealed class EnvCreatorService
 
         // 5.5 链接默认 Models 目录(v0.6.11+ T2 合并:Shared 字段删除,只此一条)。
         // v1.0.0 T4:对所有 kind 都生效(不是仅 ComfyUI),让用户配置 default models
-        // 后 A1111 / 其它 kind 也能共享 models。
+        // 后 Forge / 其它 kind 也能共享 models。
         if (!string.IsNullOrWhiteSpace(_settings.DefaultModelsDirectory))
         {
             var modelsDirFull = Path.GetFullPath(_settings.DefaultModelsDirectory);
@@ -206,7 +206,7 @@ public sealed class EnvCreatorService
             throw new CreateEnvException("VENV_CREATE_FAILED", ex.Message);
         }
 
-        // 6.5 升级 venv 内的 pip(对应 A1111 webui.bat line 44-47:
+        // 6.5 升级 venv 内的 pip(对应 Forge webui.bat line 44-47:
         //   %VENV_DIR%\Scripts\Python.exe -m pip install --upgrade pip)。
         // 跟 BaseEnvInstaller.DefaultPreInstallPipArgs 同语义 — 老 pip 装包会持续
         // 报 "WARNING: pip version X is available" 一堆警告;env-create 阶段预升
@@ -344,7 +344,7 @@ public sealed class EnvCreatorService
     /// <summary>
     /// v1.0.0.x:env-create step 6.5 默认实现 — 跑
     /// <c>&lt;venvPython&gt; -m pip install --upgrade pip</c> 升级 venv 内的 pip 到最新版。
-    /// 对应 A1111 webui.bat line 44-47(<c>upgrade_pip</c> 段)。
+    /// 对应 Forge webui.bat line 44-47(<c>upgrade_pip</c> 段)。
     ///
     /// 抛异常的语义:
     /// - <see cref="OperationCanceledException"/> → 上抛(用户取消时 step 6.5 catch 走取消分支,

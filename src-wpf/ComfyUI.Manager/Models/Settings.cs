@@ -50,7 +50,7 @@ public class Settings
     // 空 = 不启用(沿用 v1.0.0 默认行为)。非空 = 作为系统模板的统一存放根。
     [JsonPropertyName("system_template_library_dir")] public string SystemTemplateLibraryDir { get; set; } = "";
     // v1.0.0.x: 内置模板 seed 开关 — true 时 SettingsDefaults.SeedBuiltInTemplatesIfMissing 不再自动
-    // 填充 ComfyUI/A1111 内置模板,允许 templates 块为空。设为 false 或删除字段恢复默认 seed 行为。
+    // 填充 ComfyUI/Forge/SwarmUI/OpenVoice/Whisper/CoquiTTS/Bark 内置模板,允许 templates 块为空。设为 false 或删除字段恢复默认 seed 行为。
     // 内部逃生口,不暴露在 Settings UI(GUI 不需要这个一次性操作)。
     [JsonPropertyName("disable_built_in_templates_seed")] public bool DisableBuiltInTemplatesSeed { get; set; } = false;
     // v1.0.0 multi-template (T12):老 template_comfyui_dir JSON 字段已移除,

@@ -38,9 +38,9 @@ public class CreateEnvDialogTemplateKindTests
                 Kind = "ComfyUI", LocalSourceDir = "ComfyUI",
                 EntryScript = "main.py", EntryArgs = "--port {port}", ModelsSubdir = "models",
             };
-            settings.Templates["A1111"] = new TemplateConfig
+            settings.Templates["Forge"] = new TemplateConfig
             {
-                Kind = "A1111", LocalSourceDir = "A1111",
+                Kind = "Forge", LocalSourceDir = "Forge",
                 EntryScript = "webui.py", EntryArgs = "--port {port}", ModelsSubdir = "models/Stable-diffusion",
             };
         }
@@ -64,7 +64,7 @@ public class CreateEnvDialogTemplateKindTests
         var (vm, _) = BuildVm();
         var kinds = vm.TemplateOptions.Select(t => t.Kind).ToList();
         Assert.Contains("ComfyUI", kinds);
-        Assert.Contains("A1111", kinds);
+        Assert.Contains("Forge", kinds);
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public class CreateEnvDialogTemplateKindTests
     {
         // When user picks a kind, the TemplateSource auto-fills from that template
         var (vm, _) = BuildVm();
-        vm.SelectedTemplateKind = "A1111";
-        Assert.Equal("A1111", vm.TemplateSource);
+        vm.SelectedTemplateKind = "Forge";
+        Assert.Equal("Forge", vm.TemplateSource);
     }
 
     [Fact]

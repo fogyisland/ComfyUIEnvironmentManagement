@@ -230,6 +230,27 @@ public sealed class SqliteConnectionFactory
             idx.ExecuteNonQuery();
         }
 
+        // v1.0.0.x: A1111 模板已下线 — Stability-AI/stablediffusion 仓库已从 github 移除,
+        // A1111 pre-flight + sdweb 启动都 fail paths.py:34。启动期删所有 template_kind='A1111'
+        // 的 env 行(同步删 scanned_nodes FK + 清空 A1111 entries 的 Settings.Templates
+        // 由 SettingsDefaults 那边处理 — 老 settings.inf 里的 A1111 entry 留原样,用户
+        // 在 Settings 面板手动 remove)。FK 行为:scanned_nodes.env_id ON DELETE CASCADE?
+        // 这里显式两步:先删 scanned_nodes(env_id IN a1111 envs),再删 environments ——
+        // 避免依赖 FK cascade 行为变化。安全幂等(没 A1111 行时不报错)。
+        using (var cleanup = conn.CreateCommand())
+        {
+            cleanup.CommandText = @"
+                DELETE FROM scanned_nodes
+                WHERE env_id IN (SELECT id FROM environments WHERE template_kind = 'A1111')";
+            cleanup.ExecuteNonQuery();
+        }
+        using (var cleanup = conn.CreateCommand())
+        {
+            cleanup.CommandText =
+                "DELETE FROM environments WHERE template_kind = 'A1111'";
+            cleanup.ExecuteNonQuery();
+        }
+
         // v0.6.15.3 hotfix: scanned_nodes.env_id 上有 FK 到 environments.id(老 migration 加的,
         // 当前 source 的 CREATE TABLE 没体现 → 新 DB 没 FK,老 DB 有)。DownloadAsync 写
         // EnvId="" 作 local-download sentinel,但 environments 表若没 id="" 行 → FK 失败,

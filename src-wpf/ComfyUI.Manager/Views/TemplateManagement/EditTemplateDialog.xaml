@@ -8,8 +8,9 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
     <!-- Spec §5/§9 G12: ComboBox.IsEditable 绑 VM 的 IsKindEditable —
-         Add 模式始终可编辑;Edit built-in 模板(ComfyUI/A1111)时禁止改 Kind,
-         防止用户改坏 ComfyUI env 的 entry-script/launcher logic。 -->
+         Add 模式始终可编辑;Edit built-in 模板(ComfyUI)时禁止改 Kind,
+         防止用户改坏 ComfyUI env 的 entry-script/launcher logic。
+         v1.0.0.x: A1111 模板已下线,Kind 选项只剩 ComfyUI。 -->
 
     <Window.Resources>
         <Style TargetType="TextBlock" x:Key="LabelStyle">
@@ -33,12 +34,11 @@
                                Foreground="{DynamicResource OutlineBrush}"
                                VerticalAlignment="Center" Margin="8,8,0,0"
                                FontStyle="Italic"/>
-                    <TextBlock Text="Kind (内置 ComfyUI / A1111 只读)" Style="{StaticResource LabelStyle}"/>
+                    <TextBlock Text="Kind (内置 ComfyUI 只读)" Style="{StaticResource LabelStyle}"/>
                 </DockPanel>
                 <ComboBox IsEditable="{Binding IsKindEditable}"
                           Text="{Binding Kind, UpdateSourceTrigger=PropertyChanged}">
                     <ComboBoxItem Content="ComfyUI"/>
-                    <ComboBoxItem Content="A1111"/>
                 </ComboBox>
 
                 <TextBlock Text="模板来源类型" Style="{StaticResource LabelStyle}"/>

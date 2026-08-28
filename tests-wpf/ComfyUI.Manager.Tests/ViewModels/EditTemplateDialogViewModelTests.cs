@@ -35,11 +35,11 @@ public class EditTemplateDialogViewModelTests
         var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Edit };
         var existing = new TemplateConfig
         {
-            Name = "A1111", Kind = "A1111", LocalSourceDir = "Templates/A1111",
+            Name = "Forge", Kind = "Forge", LocalSourceDir = "Templates/Forge",
             EntryScript = "webui.py", EntryArgs = "--port {port}", ModelsSubdir = "models/Stable-diffusion",
         };
         vm.LoadFrom(existing);
-        Assert.Equal("A1111", vm.WorkingConfig.Name);
+        Assert.Equal("Forge", vm.WorkingConfig.Name);
         Assert.Equal("webui.py", vm.WorkingConfig.EntryScript);
         Assert.Equal("models/Stable-diffusion", vm.WorkingConfig.ModelsSubdir);
     }
@@ -332,7 +332,7 @@ public class EditTemplateDialogViewModelTests
         var vm = new EditTemplateDialogViewModel(s, null) { Mode = EditTemplateDialogMode.Edit };
         var existing = new TemplateConfig
         {
-            Name = "A1111", Kind = "A1111",
+            Name = "Forge", Kind = "Forge",
             Meta = new Dictionary<string, string> { ["author"] = "AUTOMATIC1111" },
         };
         vm.LoadFrom(existing);

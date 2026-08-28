@@ -69,8 +69,9 @@ public class TemplateConfig
     /// Human-readable badge for the template kind. v1.0.0+: used by TemplateManagementView
     /// card to display "[GitHub]". Not serialized — derived from SourceKind.
     /// v1.0.0.x #630: "[本地]" → "[内置]" ——
-    /// 4 个图像模板(ComfyUI / A1111 / Forge / SwarmUI)是 shipped 本地 checkout,
+    /// 3 个图像模板(ComfyUI / Forge / SwarmUI)是 shipped 本地 checkout,
     /// "内置源码"比"本地"更精确,避免跟"用户自定义 local" 概念冲突。
+    /// v1.0.0.x: A1111 模板已下线,从 4 → 3。
     /// v1.0.0.x 用户改回 "[GitHub]" 统一 ——
     /// "模板管理的内容就不需要写内置,就写成 github",所有 8 个 built-in 模板在
     /// 模板管理卡片统一显示 "[GitHub]",用户不再看到 "[内置]"(此前 #630 改成
@@ -85,28 +86,28 @@ public class TemplateConfig
     /// Whether this template's source can be updated via
     /// <see cref="ComfyUI.Manager.Services.TemplateSourceUpdater.UpdateAsync"/>.
     /// GitHub templates always can (URL is in config). Local templates only if built-in
-    /// (ComfyUI / A1111 / Forge / SwarmUI — they have a default repo URL). Custom Local
+    /// (ComfyUI / Forge / SwarmUI — they have a default repo URL). Custom Local
     /// templates have no remote.
+    /// v1.0.0.x: A1111 从 built-in 白名单移除(模板已下线),剩 3 个图像模板。
     /// v1.0.0+: used by TemplateManagementView "更新源码" button Visibility binding.
     /// </summary>
     [JsonIgnore]
     public bool CanUpdateSource => SourceKind == TemplateSourceKind.GitHub
         || Kind == "ComfyUI"
-        || Kind == "A1111"
         || Kind == "Forge"
         || Kind == "SwarmUI";
 
     /// <summary>
     /// Whether the user can delete this template from the management UI. Built-in
     /// templates are protected (G13) — they always exist as canonical templates.
-    /// v1.0.0.x: extended to 8 built-in kinds (ComfyUI + A1111 + Forge + SwarmUI +
-    /// OpenVoice + Whisper + CoquiTTS + Bark).Hides the grayed-out Delete button on
-    /// built-in cards.
+    /// v1.0.0.x: extended to 7 built-in kinds (ComfyUI + Forge + SwarmUI +
+    /// OpenVoice + Whisper + CoquiTTS + Bark;A1111 已下线不再 protect)。
+    /// Hides the grayed-out Delete button on built-in cards.
     /// </summary>
     [JsonIgnore]
     public bool CanDelete => Kind switch
     {
-        "ComfyUI" or "A1111" or "Forge" or "SwarmUI"
+        "ComfyUI" or "Forge" or "SwarmUI"
             or "OpenVoice" or "Whisper" or "CoquiTTS" or "Bark" => false,
         _ => true,
     };

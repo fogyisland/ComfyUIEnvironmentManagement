@@ -229,8 +229,9 @@ public sealed class EnvCreatorServiceTests : IDisposable
     [Fact]
     public async Task CreateAsync_UpgradesVenvPip_AfterVenvCreate()
     {
-        // v1.0.0.x: env-create step 6.5 — 升级 venv 内 pip 到最新版(对应 A1111
-        // webui.bat upgrade_pip 段 + BaseEnvInstaller.DefaultPreInstallPipArgs 同语义)。
+        // v1.0.0.x: env-create step 6.5 — 升级 venv 内 pip 到最新版(对应 Forge
+        // webui.bat upgrade_pip 段 + BaseEnvInstaller.DefaultPreInstallPipArgs 同语义;
+        // v1.0.0.x 起 A1111 模板已下线,语义源只引 Forge)。
         // 用 fake Func 替换真实 pip upgrade,记录被调用的 venvPython 路径。
         var pipCalls = new List<string>();
         var service = new EnvCreatorService(

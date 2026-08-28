@@ -53,7 +53,7 @@ public class Environment
 
     /// <summary>
     /// v1.0.0 multi-template T3:此 env 创建时使用的 template kind(对应
-    /// <see cref="Settings.Templates"/> 的 key,例如 "ComfyUI" / "A1111")。
+    /// <see cref="Settings.Templates"/> 的 key,例如 "ComfyUI" / "Forge")。
     /// 持久化到 SQLite <c>environments.template_kind</c> 列;老行 backfill 到 "ComfyUI"。
     /// </summary>
     [JsonPropertyName("template_kind")]
@@ -83,9 +83,10 @@ public class Environment
     public string ComfyUiManagerButtonText { get; set; } = "安装 ComfyUI Manager";
 
     /// <summary>
-    /// v1.0.0.x:A1111 / Forge / SwarmUI env 行不显示「安装 ComfyUI Manager」按钮 —
+    /// v1.0.0.x:Forge / SwarmUI env 行不显示「安装 ComfyUI Manager」按钮 —
     /// ComfyUI-Manager 是 ComfyUI 专属 custom_nodes extension,SD Web 用 extensions 体系,
-    /// 没有 ComfyUI-Manager 概念。「装依赖」按钮保留(sdweb 也有非 torch 依赖要装)。
+    /// 没有 ComfyUI-Manager 概念。A1111 模板已下线,不再引用。
+    /// 「装依赖」按钮保留(Forge 也有非 torch 依赖要装)。
     /// </summary>
     [JsonIgnore]
     public bool ComfyUiManagerButtonVisible => TemplateKind == "ComfyUI";
@@ -105,20 +106,21 @@ public class Environment
     public string LocalNodesButtonText { get; set; } = "安装本地常用";
 
     /// <summary>
-    /// v1.0.0.x:A1111 / Forge / SwarmUI env 行不显示「安装本地常用」按钮 ——
+    /// v1.0.0.x:Forge / SwarmUI env 行不显示「安装本地常用」按钮 ——
     /// 「本地常用」是用户预下载的 ComfyUI custom_nodes 包(逐个 copy 到 env/custom_nodes/),
-    /// A1111 / Forge 用 extensions/ 体系,SwarmUI 用自己的 Modules 目录,跟 ComfyUI
-    /// custom_nodes 不兼容。镜像 <see cref="ComfyUiManagerButtonVisible"/> 同模式。
+    /// Forge 用 extensions/ 体系,SwarmUI 用自己的 Modules 目录,跟 ComfyUI
+    /// custom_nodes 不兼容。A1111 模板已下线,不再引用。
+    /// 镜像 <see cref="ComfyUiManagerButtonVisible"/> 同模式。
     /// </summary>
     [JsonIgnore]
     public bool LocalNodesButtonVisible => TemplateKind == "ComfyUI";
 
     /// <summary>
-    /// v1.0.0.x:A1111 / Forge / SwarmUI env 行不显示「节点管理」按钮 ——
+    /// v1.0.0.x:Forge / SwarmUI env 行不显示「节点管理」按钮 ——
     /// 节点管理打开的是 <c>NodeManagementView</c>(节点扫描 / 安装 / 升级 / 卸载),
-    /// 底层操作的是 env 的 custom_nodes/ 目录 + ScannedNode DB。A1111 / Forge 用
+    /// 底层操作的是 env 的 custom_nodes/ 目录 + ScannedNode DB。Forge 用
     /// extensions/ 体系,SwarmUI 用 Modules 目录,跟 ComfyUI custom_nodes 不兼容,
-    /// 节点管理无意义。镜像 <see cref="LocalNodesButtonVisible"/> 同模式。
+    /// 节点管理无意义。A1111 模板已下线,不再引用。镜像 <see cref="LocalNodesButtonVisible"/> 同模式。
     /// 注:<see cref="ViewModels.EnvironmentListViewModel.OpenNodeManagementCommand"/>
     /// 不挡 TemplateKind(只在 VM 隐藏 — 通过 XAML Visibility),保留 command 供其他
     /// 入口(若有)用,行为跟 LocalNodesButtonVisible 完全对称。

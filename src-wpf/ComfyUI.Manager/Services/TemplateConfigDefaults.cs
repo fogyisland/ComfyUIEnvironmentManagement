@@ -17,9 +17,11 @@ public static class TemplateConfigDefaults
     // 所以 default 直接写 "<Kind>"(<system_template_library_dir>/ComfyUI),**不**加
     // "envTemplates/" 前缀 — 加了会被 resolve 成 <system_template_library_dir>/envTemplates/ComfyUI
     // 多一层(用户 2026-08-26 反馈 git clone 创建了 nested envTemplate/envtemplate/ 子目录)。
-    // 4 个 image templates (ComfyUI/A1111/Forge/SwarmUI) 老 settings 里就是这个形式
+    // 3 个 image templates (ComfyUI/Forge/SwarmUI) 老 settings 里就是这个形式
     // (LocalSourceDir = "<Kind>"),4 个 GitHub AI voice (OpenVoice/Whisper/CoquiTTS/Bark)
-    // 是新建,统一对齐。
+    // 是新建,统一对齐。v1.0.0.x: A1111 模板已下线(Stability-AI/stablediffusion
+    // 仓库已从 github 移除,A1111 pre-flight + sdweb 启动都 fail paths.py:34),
+    // 不再 seed,Forge 替代 SD 角色。
     public static TemplateConfig ComfyUi(string projectRoot) => new()
     {
         Name = "ComfyUI",
@@ -39,25 +41,6 @@ public static class TemplateConfigDefaults
             ["description"] = "ComfyUI:节点式 Stable Diffusion 工作流引擎",
             ["author"] = "comfyanonymous",
             ["repo"] = "https://github.com/comfyanonymous/ComfyUI",
-        },
-    };
-
-    public static TemplateConfig A1111(string projectRoot) => new()
-    {
-        Name = "A1111",
-        Kind = "A1111",
-        LocalSourceDir = "A1111",
-        EntryScript = "webui.py",
-        EntryArgs = "--port {port}",
-        ModelsSubdir = "models/Stable-diffusion",
-        ExtraJunctionTargets = new(),
-        UserExtraArgs = "",
-        Meta = new()
-        {
-            ["category"] = "图像生成",
-            ["description"] = "AUTOMATIC1111 Stable Diffusion WebUI",
-            ["author"] = "AUTOMATIC1111",
-            ["repo"] = "https://github.com/AUTOMATIC1111/stable-diffusion-webui",
         },
     };
 

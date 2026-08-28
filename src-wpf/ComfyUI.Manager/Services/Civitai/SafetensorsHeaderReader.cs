@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace ComfyUI.Manager.Services.Civitai;
 
 /// <summary>v1.0.0 T13:Parse the first ~64KB of a .safetensors file to extract the
-/// model name from the JSON header. Looks for <c>ss_sd_model_name</c> (A1111 convention)
+/// model name from the JSON header. Looks for <c>ss_sd_model_name</c> (A1111/Forge convention)
 /// or <c>modelspec.title</c> (modelspec convention). Returns false on any parse error.</summary>
 public static class SafetensorsHeaderReader
 {

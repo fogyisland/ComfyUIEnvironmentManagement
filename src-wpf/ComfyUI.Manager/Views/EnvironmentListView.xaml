@@ -468,7 +468,7 @@
                                             ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
                                     <!-- v0.6.11+ T4:ComfyUI Manager toggle — git clone 网络源 + 装 requirements.txt;
                                          跟「安装本地常用」并列,语义不同(后者走 Settings.LocalNodesDirectory 本地预装包)。
-                                         v1.0.0.x:A1111 / Forge / SwarmUI 不显示(ComfyUI-Manager 是 ComfyUI 专属)。
+                                         v1.0.0.x:Forge / SwarmUI 不显示(ComfyUI-Manager 是 ComfyUI 专属)。
                                          Cell 内嵌 Grid:ComfyUI 显示 button,其他模板显示 placeholder border(Visibility
                                          互斥)— 让 Row 0 在所有模板都填满 5 列视觉密度,跟 Row 1 平衡。 -->
                                     <Grid Grid.Row="0" Grid.Column="3" Margin="2">
@@ -485,8 +485,8 @@
                                     <!-- v1.0.0.x #577:本地常用节点(末位) — 批量 copy Settings.LocalNodesDirectory
                                          下子目录到 env/custom_nodes/,逐个 pip install -r requirements.txt(过滤 torch 行);
                                          失败 skip 下一个。LocalNodeInstallStatus inline 面板显示进度 + 总结。
-                                         v1.0.0.x:A1111 / Forge / SwarmUI 不显示(本地常用是 ComfyUI custom_nodes
-                                         专用,A1111 extensions / SwarmUI Modules 不兼容)。镜像 ComfyUiManagerButtonVisible。
+                                         v1.0.0.x:Forge / SwarmUI 不显示(本地常用是 ComfyUI custom_nodes
+                                         专用,Forge extensions / SwarmUI Modules 不兼容)。镜像 ComfyUiManagerButtonVisible。
                                          同 Col 3 placeholder pattern:Row 0 视觉密度平衡。 -->
                                     <Grid Grid.Row="0" Grid.Column="4" Margin="2">
                                         <Button Content="{Binding LocalNodesButtonText}" MinWidth="0"
@@ -513,9 +513,9 @@
                                             ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
                                     <!-- v0.6.15.8 T6 + v0.6.15.9:节点管理(原"安装节点"改名)。
                                          升级节点 删除独立按钮 — 升级迁入节点管理面板行内(过时才显示)。
-                                         v1.0.0.x:节点管理只对 ComfyUI kind 有意义(A1111 / Forge 用
+                                         v1.0.0.x:节点管理只对 ComfyUI kind 有意义(Forge 用
                                          extensions/,SwarmUI 用 Modules 目录,节点扫描装卸无意义)。
-                                         A1111 / Forge / SwarmUI 不显示按钮 — 用 placeholder 占位
+                                         Forge / SwarmUI 不显示按钮 — 用 placeholder 占位
                                          保持 Row 1 5 列视觉密度。镜像 Col 3 / Col 4 placeholder
                                          pattern(ComfyUiManagerButtonVisible + LocalNodesButtonVisible)。 -->
                                     <Grid Grid.Row="1" Grid.Column="2" Margin="2">

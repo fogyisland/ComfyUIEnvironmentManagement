@@ -50,15 +50,19 @@ public class EnvironmentRepositoryTemplateKindTests
     [Fact]
     public void Upsert_ThenListAll_PreservesTemplateKindAndSnapshot()
     {
+        // v1.0.0.x: A1111 模板已下线,但 TemplateKind 字段仍是 TEXT,允许任意 kind 值。
+        // 这里用 "Forge" 作 fixture —— A1111 的"近亲"kind,跟 ComfyUI 一样是
+        // shipped local built-in,但走不同的 pre-flight 路径(RequirementsInstaller
+        // dispatch),用来测 EnvRepository 持久化层面对任意非 ComfyUI kind 的 round-trip。
         using var db = new TestDb();
         var repo = new EnvironmentRepository(db.Factory);
         var snapshot = new TemplateConfig
         {
-            Name = "A1111",
-            Kind = "A1111",
-            LocalSourceDir = "Templates/A1111",
+            Name = "Forge",
+            Kind = "Forge",
+            LocalSourceDir = "Templates/Forge",
             EntryScript = "webui.py",
-            EntryArgs = "--port {port}",
+            EntryArgs = "--port {port} --api",
             ModelsSubdir = "models/Stable-diffusion",
         };
         var env = new Environment
@@ -71,7 +75,7 @@ public class EnvironmentRepositoryTemplateKindTests
             BasePythonPath = "/usr/bin/python",
             PythonVersion = "3.10",
             Port = 9001,
-            TemplateKind = "A1111",
+            TemplateKind = "Forge",
             TemplateConfigSnapshot = snapshot,
         };
         repo.Upsert(env);
@@ -79,7 +83,7 @@ public class EnvironmentRepositoryTemplateKindTests
         var loaded = repo.ListAll();
         var found = loaded.Find(e => e.Id == "new-env");
         Assert.NotNull(found);
-        Assert.Equal("A1111", found!.TemplateKind);
+        Assert.Equal("Forge", found!.TemplateKind);
         Assert.Equal("webui.py", found.TemplateConfigSnapshot!.EntryScript);
         Assert.Equal("models/Stable-diffusion", found.TemplateConfigSnapshot.ModelsSubdir);
     }

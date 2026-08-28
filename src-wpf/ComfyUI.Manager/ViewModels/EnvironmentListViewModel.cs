@@ -778,7 +778,7 @@ public class EnvironmentListViewModel : ViewModelBase
                     try
                     {
                         // v1.0.0 T6 (G8): pass env so symlinker reads TemplateConfigSnapshot.ModelsSubdir;
-                        // A1111 envs get models/Stable-diffusion instead of plain models/.
+                        // Forge envs get models/Stable-diffusion instead of plain models/.
                         await modelSymlinker.SyncToEnvAsync(env).ConfigureAwait(false);
                     }
                     catch (Exception ex)

@@ -15,7 +15,9 @@ namespace ComfyUI.Manager.ViewModels;
 
 /// <summary>
 /// v1.0.0 multi-template: sidebar page VM. Lists + adds + edits + deletes templates.
-/// Built-in ComfyUI + A1111 are protected from delete (G13).
+/// Built-in 7 个内置模板 are protected from delete (G13):
+    /// ComfyUI / Forge / SwarmUI / OpenVoice / Whisper / CoquiTTS / Bark。
+    /// v1.0.0.x: A1111 模板已下线,不再 seed。
 /// </summary>
 public class TemplateManagementViewModel : ViewModelBase
 {
@@ -130,7 +132,7 @@ public class TemplateManagementViewModel : ViewModelBase
             p => p is TemplateConfig);
     }
 
-    public bool IsBuiltIn(string kind) => kind == "ComfyUI" || kind == "A1111";
+    public bool IsBuiltIn(string kind) => kind == "ComfyUI";
 
     private void AddTemplate()
     {
@@ -201,7 +203,7 @@ public class TemplateManagementViewModel : ViewModelBase
 
         // Resolve URL based on SourceKind:
         //   GitHub templates use their configured repo URL.
-        //   Local templates use GetDefaultRepoUrl only for built-in ComfyUI/A1111;
+        //   Local templates use GetDefaultRepoUrl only for built-in ComfyUI/Forge/SwarmUI;
         //   custom Local templates have no remote and are skipped silently.
         var url = t.SourceKind == TemplateSourceKind.GitHub
             ? t.GitHubRepoUrl
@@ -287,9 +289,9 @@ public class TemplateManagementViewModel : ViewModelBase
     private static string GetDefaultRepoUrl(string kind) => kind switch
     {
         "ComfyUI" => "https://github.com/comfyanonymous/ComfyUI.git",
-        "A1111" => "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git",
-        // v1.0.0.x: Forge/SwarmUI 也是 shipped local(ENVTemplate/)+ 用户常想更新
-        // 源码到上游。GitHub 模板走自己的 GitHubRepoUrl,这里只填 local 内置。
+        // v1.0.0.x: A1111 模板已下线,这里不再返回 AUTOMATIC1111 repo URL —
+        // Stability-AI/stablediffusion 仓库已从 github 移除,即便本地有 A1111 env
+        // 也无法 git clone 上游源码。Forge 用 huggingface_guess 替代 SD core,继续维护。
         "Forge" => "https://github.com/lllyasviel/stable-diffusion-webui-forge.git",
         "SwarmUI" => "https://github.com/mcmonkeyprojects/StableSwarmUI.git",
         _ => "",

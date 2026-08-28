@@ -148,20 +148,21 @@ public class EditTemplateDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Spec §5 + §9 G12: 编辑现有 built-in 模板(ComfyUI/A1111)时 Kind 不可改 —
+    /// Spec §5 + §9 G12: 编辑现有 built-in 模板(ComfyUI)时 Kind 不可改 —
     /// 通过 <see cref="EditTemplateDialog.xaml"/> ComboBox <c>IsEditable</c> 绑定禁用编辑。
     /// Add 模式始终可编辑(用户输入新 Kind);Edit 模式只在原 Kind 不是 built-in
     /// 时才可编辑。
+    /// v1.0.0.x: A1111 模板已下线,IsBuiltInKind 收缩到只有 ComfyUI 一项。
     /// </summary>
     public bool IsKindEditable =>
         Mode == EditTemplateDialogMode.Add
         || !(Mode == EditTemplateDialogMode.Edit && IsBuiltInKind(_originalKind));
 
     private static bool IsBuiltInKind(string kind) =>
-        kind == "ComfyUI" || kind == "A1111";
+        kind == "ComfyUI";
 
     /// <summary>
-    /// Spec §9 友好的 built-in 提示文本(内置即"ComfyUI"/"A1111"时给红字提示,
+    /// Spec §9 友好的 built-in 提示文本(内置即"ComfyUI"时给红字提示,
     /// 否则显示空 — 别在标签上再加 text)。
     /// </summary>
     public string KindReadOnlyHint =>

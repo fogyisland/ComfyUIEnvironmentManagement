@@ -144,32 +144,33 @@ public class EnvCreatorServiceMultiTemplateTests : IDisposable
     }
 
     [Fact]
-    public void CreateAsync_A1111Env_SnapshotIncludesWebuiPy()
+    public void CreateAsync_ForgeEnv_SnapshotIncludesWebuiPy()
     {
-        // G5: A1111 snapshot uses webui.py entry
-        File.WriteAllText(Path.Combine(_srcDir, "webui.py"), "print('a1111')");
+        // v1.0.0.x: A1111 已下线,Forge 沿用 webui.py 作 entry script + Stable-diffusion
+        // models 子目录,跟 A1111 行为同。验证 env-create 能正确落 snapshot。
+        File.WriteAllText(Path.Combine(_srcDir, "webui.py"), "print('forge')");
         var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot);
         var template = new TemplateConfig
         {
-            Kind = "A1111",
+            Kind = "Forge",
             LocalSourceDir = _srcDir,
             EntryScript = "webui.py",
-            EntryArgs = "--port {port}",
+            EntryArgs = "--port {port} --api",
             ModelsSubdir = "models/Stable-diffusion",
         };
 
         var env = svc.CreateAsync(
-            name: "a1111Env",
+            name: "forgeEnv",
             templateConfig: template,
             pythonExe: PythonExe,
             port: 9001,
             notes: "",
             ct: default).GetAwaiter().GetResult();
 
-        Assert.Equal("A1111", env.TemplateKind);
+        Assert.Equal("Forge", env.TemplateKind);
         Assert.Equal("webui.py", env.TemplateConfigSnapshot!.EntryScript);
         Assert.Equal("models/Stable-diffusion", env.TemplateConfigSnapshot.ModelsSubdir);
-        Assert.True(File.Exists(Path.Combine(_workRoot, "envs", "a1111Env", "webui.py")));
+        Assert.True(File.Exists(Path.Combine(_workRoot, "envs", "forgeEnv", "webui.py")));
     }
 
     [Fact]

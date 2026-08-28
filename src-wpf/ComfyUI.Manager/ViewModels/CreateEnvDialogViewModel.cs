@@ -34,7 +34,8 @@ public class CreateEnvDialogViewModel : ViewModelBase
         _recentBasePythonPath = recentBasePythonPath;
         _onResult = onResult;
         _envRepo = envRepo;
-        // v1.0.0 T7:模板 kind 选项从 Settings.Templates 来 — T2 seed ComfyUI + A1111。
+        // v1.0.0 T7:模板 kind 选项从 Settings.Templates 来 — T2 seed ComfyUI + Forge + SwarmUI
+        // + 4 个语音模板(共 7 个);v1.0.0.x:A1111 模板已下线,不再 seed。
         // 顺序无所谓,UI 用 SelectedTemplateKind 匹配 SelectedItem。
         // v1.0.0.x:LocalSourceDir 不存在的 template 不出现在下拉列表 — 用户在
         // ComboBox 里只看到已 clone / 已下载的可用模板;未下载的去 TemplateManagement
@@ -251,7 +252,7 @@ public class CreateEnvDialogViewModel : ViewModelBase
             // v1.0.0.x: BuildTemplateConfig 不预先 resolve 路径 — 锚点跟 Service 端
             // TemplatePathResolver.Resolve(localSourceDir, _settings.SystemTemplateLibraryDir)
             // 不一致会埋坑。Service 是权威:TemplateConfigDefaults 里 LocalSourceDir 存的是
-            // 相对路径("ComfyUI"/"A1111"),Service 端按 SystemTemplateLibraryDir (用户配的
+            // 相对路径("ComfyUI"/"Forge"),Service 端按 SystemTemplateLibraryDir (用户配的
             // 系统模板库目录,例如 D:\ToolDevelop\ComfyUI\ENVTemplate) 解析。Dialog 这里
             // 原样传 TemplateSource(用户编辑过的文本),绝对路径也照样 service 端 IsPathRooted
             // 返回原值,行为不变。

@@ -22,13 +22,14 @@ public class ModelSymlinkerTemplateKindTests
     }
 
     [Fact]
-    public void GetEnvModelsDir_A1111_ReturnsStableDiffusionSubdir()
+    public void GetEnvModelsDir_Forge_ReturnsStableDiffusionSubdir()
     {
-        // G8: A1111 ModelsSubdir is "models/Stable-diffusion"
+        // v1.0.0.x: A1111 已下线,Forge 沿用 ModelsSubdir = "models/Stable-diffusion"
+        // (webui.py 的 stable diffusion 模型目录约定)。
         var env = new Environment
         {
             Id = "e2", Name = "e2",
-            TemplateKind = "A1111",
+            TemplateKind = "Forge",
             TemplateConfigSnapshot = new TemplateConfig { ModelsSubdir = "models/Stable-diffusion" },
         };
         var dir = ModelSymlinker.GetEnvModelsDir(env, projectRoot: @"D:\fake");

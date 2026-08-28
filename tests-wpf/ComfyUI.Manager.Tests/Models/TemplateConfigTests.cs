@@ -152,10 +152,13 @@ public class TemplateConfigTests
     }
 
     [Fact]
-    public void CanDelete_BuiltInA1111_False()
+    public void CanDelete_A1111Kind_NowTrue_TemplateDeprecated()
     {
+        // v1.0.0.x: A1111 模板已下线 — Stability-AI/stablediffusion 仓库已从 github 移除。
+        // A1111 不再是 built-in,不再受 G13 delete 保护;用户可以在 Settings 面板手动
+        // 删除残留的 A1111 entries(DB 启动期也会自动清掉 template_kind='A1111' 行)。
         var cfg = new TemplateConfig { Kind = "A1111" };
-        Assert.False(cfg.CanDelete);
+        Assert.True(cfg.CanDelete);
     }
 
     [Fact]
@@ -287,7 +290,8 @@ public class TemplateConfigTests
     public void LocalDirExists_DirectoryWithGitSubdir_True()
     {
         // 标准 git clone 产物 → .git 子目录就足以判定就位(即使其它文件还没完全 clone,
-        // 因为 .git 是 clone 第一步产物)。这是 shipped ComfyUI/A1111 等路径的典型形态。
+        // 因为 .git 是 clone 第一步产物)。这是 shipped ComfyUI/Forge/SwarmUI 等路径的典型形态。
+        // v1.0.0.x: A1111 模板已下线,不再列入典型形态。
         var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-git-" + Path.GetRandomFileName());
         Directory.CreateDirectory(dir);
         Directory.CreateDirectory(Path.Combine(dir, ".git"));

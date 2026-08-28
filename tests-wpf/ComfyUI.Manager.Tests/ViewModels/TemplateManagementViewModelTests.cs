@@ -19,7 +19,7 @@ public class TemplateManagementViewModelTests
         Templates = new Dictionary<string, TemplateConfig>
         {
             ["ComfyUI"] = new TemplateConfig { Name = "ComfyUI", Kind = "ComfyUI", LocalSourceDir = "Templates/ComfyUI", EntryScript = "main.py", EntryArgs = "--port {port}", ModelsSubdir = "models" },
-            ["A1111"] = new TemplateConfig { Name = "A1111", Kind = "A1111", LocalSourceDir = "Templates/A1111", EntryScript = "webui.py", EntryArgs = "--port {port}", ModelsSubdir = "models/Stable-diffusion" },
+            // v1.0.0.x: A1111 不再 seed — Stability-AI/stablediffusion 仓库已从 github 移除。
             ["MySwarm"] = new TemplateConfig { Name = "MySwarm", Kind = "MySwarm", LocalSourceDir = "D:/swarmui", EntryScript = "launch.sh", EntryArgs = "--listen", ModelsSubdir = "models" },
         },
     };
@@ -29,9 +29,8 @@ public class TemplateManagementViewModelTests
     {
         var s = SeedSettings();
         var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: null);
-        Assert.Equal(3, vm.Templates.Count);
+        Assert.Equal(2, vm.Templates.Count);
         Assert.Contains(vm.Templates, t => t.Kind == "ComfyUI");
-        Assert.Contains(vm.Templates, t => t.Kind == "A1111");
         Assert.Contains(vm.Templates, t => t.Kind == "MySwarm");
     }
 
@@ -42,29 +41,31 @@ public class TemplateManagementViewModelTests
         var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: null);
         var custom = vm.Templates.First(t => t.Kind == "MySwarm");
         vm.DeleteCommand.Execute(custom);
-        Assert.Equal(2, vm.Templates.Count);
+        Assert.Equal(1, vm.Templates.Count);
         Assert.False(s.Templates.ContainsKey("MySwarm"));
     }
 
     [Fact]
     public void DeleteCommand_BuiltInTemplate_Blocked()
     {
-        // G13: built-in ComfyUI/A1111 cannot be deleted
+        // G13: built-in ComfyUI cannot be deleted (v1.0.0.x:A1111 不再是 built-in)
         var s = SeedSettings();
         var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: null);
         var comfy = vm.Templates.First(t => t.Kind == "ComfyUI");
         vm.DeleteCommand.Execute(comfy);
-        Assert.Equal(3, vm.Templates.Count);
+        Assert.Equal(2, vm.Templates.Count);
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
     }
 
     [Fact]
-    public void IsBuiltIn_ComfyUIAndA1111_True_OtherFalse()
+    public void IsBuiltIn_OnlyComfyUI_True_OtherFalse()
     {
+        // v1.0.0.x: IsBuiltIn 收缩到只判 "ComfyUI" 一项 — A1111 已下线,其它 user-defined
+        // template 仍由 TemplateConfig.CanDelete 用 hardcoded kind 白名单保护。
         var s = SeedSettings();
         var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: null);
         Assert.True(vm.IsBuiltIn("ComfyUI"));
-        Assert.True(vm.IsBuiltIn("A1111"));
+        Assert.False(vm.IsBuiltIn("A1111"));  // legacy — user might have残留 settings
         Assert.False(vm.IsBuiltIn("MySwarm"));
     }
 

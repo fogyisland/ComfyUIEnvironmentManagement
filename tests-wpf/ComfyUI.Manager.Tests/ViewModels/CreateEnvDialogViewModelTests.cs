@@ -197,7 +197,7 @@ public class CreateEnvDialogViewModelTests
     public void Constructor_FallsBackToFirstAvailable_WhenDefaultKindFilteredOut()
     {
         // v1.0.0.x:默认 SelectedTemplateKind="ComfyUI" 若 LocalDir 缺失,回退到
-        // TemplateOptions 第一项(本例中唯一可用的 A1111)。
+        // TemplateOptions 第一项(本例中唯一可用的 Forge)。
         var (root, py, _) = CreateTemplateTree("3.10");
         var (interpreters, activeName) = ActiveAt(py);
         try
@@ -205,23 +205,23 @@ public class CreateEnvDialogViewModelTests
             var settings = MakeSettings("3.10", "python", interpreters, activeName);
             // 强制 ComfyUI 不在 SystemTemplateLibraryDir 下 → 过滤掉
             settings.SystemTemplateLibraryDir = Path.Combine(Path.GetTempPath(), "no-such-anchor-" + Guid.NewGuid().ToString("N")[..8]);
-            // 新加 A1111 + 让它的 LocalSourceDir 在 Settings.SystemTemplateLibraryDir 下存在
+            // 新加 Forge + 让它的 LocalSourceDir 在 Settings.SystemTemplateLibraryDir 下存在
             var anchor = settings.SystemTemplateLibraryDir;
-            var a1111Dir = Path.Combine(anchor, "Templates", "A1111");
-            Directory.CreateDirectory(a1111Dir);
-            Directory.CreateDirectory(Path.Combine(a1111Dir, ".git"));
-            settings.Templates["A1111"] = new TemplateConfig
+            var forgeDir = Path.Combine(anchor, "Templates", "Forge");
+            Directory.CreateDirectory(forgeDir);
+            Directory.CreateDirectory(Path.Combine(forgeDir, ".git"));
+            settings.Templates["Forge"] = new TemplateConfig
             {
-                Kind = "A1111", LocalSourceDir = "Templates/A1111",
+                Kind = "Forge", LocalSourceDir = "Templates/Forge",
                 EntryScript = "webui.py", EntryArgs = "--port {port}",
                 ModelsSubdir = "models/Stable-diffusion",
             };
             var vm = new CreateEnvDialogViewModel(null!, settings, root);
-            // A1111 应是唯一 TemplateOptions + SelectedTemplateKind 应回退到 "A1111"
+            // Forge 应是唯一 TemplateOptions + SelectedTemplateKind 应回退到 "Forge"
             Assert.Single(vm.TemplateOptions);
-            Assert.Equal("A1111", vm.TemplateOptions[0].Kind);
-            Assert.Equal("A1111", vm.SelectedTemplateKind);
-            Assert.Equal("Templates/A1111", vm.TemplateSource);
+            Assert.Equal("Forge", vm.TemplateOptions[0].Kind);
+            Assert.Equal("Forge", vm.SelectedTemplateKind);
+            Assert.Equal("Templates/Forge", vm.TemplateSource);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -323,14 +323,14 @@ public class CreateEnvDialogViewModelTests
         try
         {
             var settings = MakeSettings("3.10", "python", interpreters, activeName);
-            settings.Templates["A1111"] = new TemplateConfig
+            settings.Templates["Forge"] = new TemplateConfig
             {
-                Kind = "A1111", LocalSourceDir = "Templates/A1111",
+                Kind = "Forge", LocalSourceDir = "Templates/Forge",
                 EntryScript = "webui.py", EntryArgs = "--port {port}", ModelsSubdir = "models/Stable-diffusion",
             };
             var vm = new CreateEnvDialogViewModel(null!, settings, root);
             vm.PythonExe = "C:\\user-overridden";
-            vm.SelectedTemplateKind = "A1111";   // 切 template
+            vm.SelectedTemplateKind = "Forge";   // 切 template
             Assert.Equal("C:\\user-overridden", vm.PythonExe);  // 不应被覆盖
         }
         finally { Directory.Delete(root, recursive: true); }

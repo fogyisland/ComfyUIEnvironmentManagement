@@ -11,15 +11,16 @@ public class SettingsDefaultsTemplateSeedTests
         Path.Combine(Path.GetTempPath(), "cmgr-templates-test");
 
     [Fact]
-    public void Apply_EmptySettings_SeedsAllEightBuiltInTemplates()
+    public void Apply_EmptySettings_SeedsAllSevenBuiltInTemplates()
     {
         // v1.0.0.x: 加 6 个 built-in(Forge/SwarmUI 是 shipped 但漏注册 → #497 修复;
         // OpenVoice/Whisper/CoquiTTS/Bark 是 GitHub-cloned AI 语音 defaults)。
+        // v1.0.0.x:A1111 模板已下线,不再 seed(Stability-AI 仓库已从 github 移除)。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
-        Assert.True(s.Templates.ContainsKey("A1111"));
+        Assert.False(s.Templates.ContainsKey("A1111"));
         Assert.True(s.Templates.ContainsKey("Forge"));
         Assert.True(s.Templates.ContainsKey("SwarmUI"));
         Assert.True(s.Templates.ContainsKey("OpenVoice"));
@@ -86,18 +87,16 @@ public class SettingsDefaultsTemplateSeedTests
     }
 
     [Fact]
-    public void Apply_EmptySettings_A1111TemplateHasCorrectDefaults()
+    public void Apply_EmptySettings_A1111NotSeeded_TemplateDeprecated()
     {
-        // G5: A1111 defaults
+        // v1.0.0.x: A1111 模板已下线 — Stability-AI/stablediffusion 仓库已从 github 移除。
+        // A1111 不再出现在 SettingsDefaults 的 seed 默认列表,即便用户 settings.inf 是
+        // 空文件 Apply 后也不会有 A1111 entry。老 settings 里残留的 A1111 entry 由
+        // 用户在 Settings 面板手动 remove。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        var a = s.Templates["A1111"];
-        Assert.Equal("A1111", a.Name);
-        Assert.Equal("A1111", a.Kind);
-        Assert.Equal("webui.py", a.EntryScript);
-        Assert.Equal("--port {port}", a.EntryArgs);
-        Assert.Equal("models/Stable-diffusion", a.ModelsSubdir);
+        Assert.False(s.Templates.ContainsKey("A1111"));
     }
 
     [Fact]
@@ -221,7 +220,6 @@ public class SettingsDefaultsTemplateSeedTests
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal("ComfyUI", s.Templates["ComfyUI"].LocalSourceDir);
-        Assert.Equal("A1111", s.Templates["A1111"].LocalSourceDir);
         Assert.Equal("Forge", s.Templates["Forge"].LocalSourceDir);
         Assert.Equal("SwarmUI", s.Templates["SwarmUI"].LocalSourceDir);
         Assert.Equal("OpenVoice", s.Templates["OpenVoice"].LocalSourceDir);
@@ -285,14 +283,7 @@ public class SettingsDefaultsTemplateSeedTests
             SourceKind = TemplateSourceKind.Local,
             EntryScript = "main.py",
         };
-        s.Templates["A1111"] = new TemplateConfig
-        {
-            Name = "A1111",
-            Kind = "A1111",
-            LocalSourceDir = @"D:\some\other\A1111",  // 老绝对路径,末段 == Kind
-            SourceKind = TemplateSourceKind.Local,
-            EntryScript = "webui.py",
-        };
+        // v1.0.0.x: A1111 不再是 built-in,不再进 NormalizeBuiltInTemplatePaths 测试夹具。
         s.Templates["MyCustom"] = new TemplateConfig
         {
             Name = "MyCustom",
@@ -305,7 +296,6 @@ public class SettingsDefaultsTemplateSeedTests
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal("ComfyUI", s.Templates["ComfyUI"].LocalSourceDir);
-        Assert.Equal("A1111", s.Templates["A1111"].LocalSourceDir);
         // custom 模板不动 — 用户可能故意放在别处
         Assert.Equal(@"D:\custom\MyCustom", s.Templates["MyCustom"].LocalSourceDir);
     }

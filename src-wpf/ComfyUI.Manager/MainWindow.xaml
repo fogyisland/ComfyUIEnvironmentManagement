@@ -129,7 +129,7 @@
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=LocalModels, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v1.0.0 T8 (G11):模板管理页 — sidebar 9th entry. 显示 Settings.Templates
-                     列表,内置 ComfyUI / A1111 编辑只读 + 自定义模板可增删改 + 源码更新(T11)。
+                     列表,内置 ComfyUI 编辑只读 + 自定义模板可增删改 + 源码更新(T11)。
                      真实启用页面,不含 IsEnabled=False 或占位 ToolTip。 -->
                 <RadioButton x:Name="TemplatesButton" Content="模板管理" GroupName="SidebarNav"
                              Command="{Binding ShowTemplateManagementCommand}"

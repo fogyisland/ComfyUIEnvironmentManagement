@@ -20,7 +20,7 @@ namespace ComfyUI.Manager.Services;
 /// - v0.6.22.x: path-based, target = &lt;projectRoot&gt;/ComfyUITemplate/ master
 ///   template (only affects next env creation).
 /// - v1.0.0 T11 (G10): per-repo-URL. Takes <c>repoUrl</c> as a parameter so it
-///   can update any template (ComfyUI, A1111, custom). Hardcoded URL removed.
+///   can update any template (ComfyUI, Forge, custom). Hardcoded URL removed.
 ///
 /// Confirms:
 /// - Caller MUST gate with confirm dialog before invoking — this service will
