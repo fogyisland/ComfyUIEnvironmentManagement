@@ -47,19 +47,28 @@ public sealed class EnvCreatorService
     private readonly JunctionLinker _linker;
     private readonly Models.Settings _settings;
     private readonly string _projectRoot;
+    /// <summary>
+    /// v1.0.0.x:A1111 / ComfyUI env-create step 6.5 — 升级 venv 内 pip 到最新版。
+    /// 默认 = <see cref="RunPipUpgradeAsync"/>(跑 <c>python -m pip install --upgrade pip</c>)。
+    /// 测试可注入 fake(记录调用 + 模拟成功/失败),避免真实网络。
+    /// 签名 = (venvPython 绝对路径, CancellationToken) → Task。
+    /// </summary>
+    private readonly Func<string, CancellationToken, Task>? _pipUpgradeAsync;
 
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
         JunctionLinker linker,
         Models.Settings settings,
-        string projectRoot)
+        string projectRoot,
+        Func<string, CancellationToken, Task>? pipUpgradeAsync = null)
     {
         _dbFactory = dbFactory;
         _venvCreator = venvCreator;
         _linker = linker;
         _settings = settings;
         _projectRoot = projectRoot;
+        _pipUpgradeAsync = pipUpgradeAsync;
     }
 
     public sealed class CreateEnvException : Exception
@@ -197,6 +206,37 @@ public sealed class EnvCreatorService
             throw new CreateEnvException("VENV_CREATE_FAILED", ex.Message);
         }
 
+        // 6.5 升级 venv 内的 pip(对应 A1111 webui.bat line 44-47:
+        //   %VENV_DIR%\Scripts\Python.exe -m pip install --upgrade pip)。
+        // 跟 BaseEnvInstaller.DefaultPreInstallPipArgs 同语义 — 老 pip 装包会持续
+        // 报 "WARNING: pip version X is available" 一堆警告;env-create 阶段预升
+        // pip,后续装 torch / 节点 / extras 都用新 pip 静默跑。
+        // 失败只 Warn log 不阻塞 — bat 行为也如此(`Warning: Failed to upgrade PIP
+        // version` 后继续 activate_venv)。venv 创建已成功 + 老 pip 仍能装包。
+        var venvPython = Path.Combine(venvPath, "Scripts", "python.exe");
+        progress?.Report(new CreateStepReport("升级 venv 内 pip",
+            $"{venvPython} -m pip install --upgrade pip"));
+        try
+        {
+            var upgrade = _pipUpgradeAsync ?? RunPipUpgradeAsync;
+            await upgrade(venvPython, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消 → 上抛,caller 自己处理(env-create 整体取消)
+            try { Directory.Delete(rootPath, recursive: true); } catch { }
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 警告但不失败 env-create(同 BaseEnvInstaller pre-install 行为)
+            // 这里只 Console.WriteLine(没有 _logger 注入)— service 类不持 logger。
+            // 失败信息通过 progress 报告给 UI,Console 输出给开发期调试。
+            Console.WriteLine($"[env-create] venv pip upgrade 失败(继续): {ex.Message}");
+            progress?.Report(new CreateStepReport("升级 venv 内 pip [warn: 失败]",
+                ex.Message));
+        }
+
         // 7. 构造 Environment 写库
         // v1.0.0 T4 G2:TemplateConfigSnapshot 用 JSON round-trip 克隆,后续 settings
         // 编辑不会 mutate 已存在的 env snapshot(测试 `CreateAsync_SnapshotIsFrozen_*`)。
@@ -298,6 +338,67 @@ public sealed class EnvCreatorService
         catch
         {
             return "<unknown>";
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x:env-create step 6.5 默认实现 — 跑
+    /// <c>&lt;venvPython&gt; -m pip install --upgrade pip</c> 升级 venv 内的 pip 到最新版。
+    /// 对应 A1111 webui.bat line 44-47(<c>upgrade_pip</c> 段)。
+    ///
+    /// 抛异常的语义:
+    /// - <see cref="OperationCanceledException"/> → 上抛(用户取消时 step 6.5 catch 走取消分支,
+    ///   回滚 env 根目录,整体 env-create 失败)
+    /// - 其他异常(进程启动失败 / 非 0 exit code / IO 异常)→ 上抛,step 6.5 catch 走 warn
+    ///   分支(只 Console + progress 报告,env-create 继续)
+    /// </summary>
+    internal static async Task RunPipUpgradeAsync(string venvPython, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(venvPython))
+            throw new ArgumentException("venvPython 不能为空", nameof(venvPython));
+
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = venvPython,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("-m");
+        psi.ArgumentList.Add("pip");
+        psi.ArgumentList.Add("install");
+        psi.ArgumentList.Add("--upgrade");
+        psi.ArgumentList.Add("pip");
+
+        using var p = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("pip upgrade 进程启动失败(Process.Start 返回 null)");
+
+        // stdout + stderr 并发读,免 pipe buffer 撑爆;读到的行直接丢(用户通过 ConsolePanel 看 venv 内 pip 输出,
+        // 此步骤是 env-create 内部动作,不需要把每行 pip 噪音往 UI 推 — 进度面板只需"升级 venv 内 pip"这一行)。
+        var stdoutDone = new TaskCompletionSource<bool>();
+        var stderrDone = new TaskCompletionSource<bool>();
+        _ = Task.Run(async () =>
+        {
+            try { while (await p.StandardOutput.ReadLineAsync().ConfigureAwait(false) is not null) { } }
+            catch { }
+            finally { stdoutDone.TrySetResult(true); }
+        });
+        _ = Task.Run(async () =>
+        {
+            try { while (await p.StandardError.ReadLineAsync().ConfigureAwait(false) is not null) { } }
+            catch { }
+            finally { stderrDone.TrySetResult(true); }
+        });
+
+        await p.WaitForExitAsync(ct).ConfigureAwait(false);
+        // 等 reader thread 退出,免 pipe 没消费完就 Dispose 进程句柄
+        await Task.WhenAll(stdoutDone.Task, stderrDone.Task).ConfigureAwait(false);
+
+        if (p.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"venv pip upgrade exit={p.ExitCode}(venv 仍可用,只是 pip 没升级)");
         }
     }
 }

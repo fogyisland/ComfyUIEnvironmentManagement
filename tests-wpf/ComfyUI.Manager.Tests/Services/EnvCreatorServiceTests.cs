@@ -225,4 +225,80 @@ public sealed class EnvCreatorServiceTests : IDisposable
         Assert.NotNull(env);
         Assert.Empty(hookCalls);  // 关键断言:env-create 不再调 git clone lambda
     }
+
+    [Fact]
+    public async Task CreateAsync_UpgradesVenvPip_AfterVenvCreate()
+    {
+        // v1.0.0.x: env-create step 6.5 — 升级 venv 内 pip 到最新版(对应 A1111
+        // webui.bat upgrade_pip 段 + BaseEnvInstaller.DefaultPreInstallPipArgs 同语义)。
+        // 用 fake Func 替换真实 pip upgrade,记录被调用的 venvPython 路径。
+        var pipCalls = new List<string>();
+        var service = new EnvCreatorService(
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            pipUpgradeAsync: (venvPython, _) =>
+            {
+                pipCalls.Add(venvPython);
+                return Task.CompletedTask;
+            });
+
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+        var env = await service.CreateAsync(
+            "pipup", MakeComfyUITemplate(), basePy,
+            port: null);
+
+        // pip upgrade 被调一次,venvPython = <envRoot>/venv/Scripts/python.exe
+        Assert.Single(pipCalls);
+        var expected = Path.Combine(env.RootPath, "venv", "Scripts", "python.exe");
+        Assert.Equal(expected, pipCalls[0]);
+        // env 仍创建成功 — pip upgrade 是 step 6.5,step 7 写 DB 照常跑
+        Assert.Equal("pipup", env.Name);
+        Assert.NotNull(_repo.Get(env.Id));
+    }
+
+    [Fact]
+    public async Task CreateAsync_PipUpgradeFailure_DoesNotFailCreate()
+    {
+        // v1.0.0.x: pip upgrade 失败 = 警告不阻塞(同 bat 行为)。
+        // 即使 fake pip upgrade 抛异常,env-create 整体仍成功,DB 行仍写入。
+        var service = new EnvCreatorService(
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            pipUpgradeAsync: (venvPython, _) =>
+                throw new InvalidOperationException("simulated pip failure"));
+
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+        var env = await service.CreateAsync(
+            "pipfail", MakeComfyUITemplate(), basePy,
+            port: null);
+
+        Assert.Equal("pipfail", env.Name);
+        Assert.NotNull(_repo.Get(env.Id));
+    }
+
+    [Fact]
+    public async Task CreateAsync_PipUpgradeCancellation_RollsBackEnvRoot()
+    {
+        // v1.0.0.x: 用户取消(env-create 整体取消)— step 6.5 走取消分支,
+        // 回滚 env 根目录 + 不写 DB(同 step 6 venv 创建失败的回滚语义)。
+        var service = new EnvCreatorService(
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            pipUpgradeAsync: (venvPython, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            });
+
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var ex = await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.CreateAsync(
+                "pipcancel", MakeComfyUITemplate(), basePy,
+                port: null,
+                ct: cts.Token));
+
+        Assert.True(cts.IsCancellationRequested);
+        // DB 不应写入(env 名字 pipcancel 不在表里)
+        Assert.DoesNotContain(_repo.ListAll(), e => e.Name == "pipcancel");
+    }
 }

@@ -20,7 +20,7 @@ public class CreateEnvDialogViewModelTests
         // 不再读 TemplateComfyuiDir。helper seed 一个默认 ComfyUI entry。
         // v1.0.0.x: 设 SystemTemplateLibraryDir = temp anchor,创建 anchor/ComfyUITemplate/.git
         // 模拟 "已 clone 模板" — 否则 CreateEnvDialog 在 ApplyTemplate() 检测本地目录
-        // 为空 → IsSelectedTemplateLocalEmpty=true → CanConfirm=false,所有 positive 测试都 fail。
+        // 为空 → TemplateOptions 过滤掉该 template → CanConfirm=false,所有 positive 测试都 fail。
         var anchor = Path.Combine(Path.GetTempPath(), "T-anchor-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(anchor);
         var s = new Settings
@@ -119,8 +119,11 @@ public class CreateEnvDialogViewModelTests
     }
 
     [Fact]
-    public void Constructor_LeavesTemplateSourceBlank_WhenComfyuiTemplateMissing()
+    public void Constructor_FiltersComfyuiTemplate_WhenLocalDirMissing()
     {
+        // v1.0.0.x:ComfyUI 模板本地为空时,从 TemplateOptions 过滤掉(不进 ComboBox),
+        // 而不是显示"目标环境模板本地为空"警告。TemplateSource 仍显示 LocalSourceDir 文本
+        // (Settings.Templates["ComfyUI"] 还在),只是选项里没 ComfyUI 这一项 + CanConfirm=false。
         var root = Path.Combine(Path.GetTempPath(), "autofill-test-" + Path.GetRandomFileName());
         var py = Path.Combine(root, "python", "3.10", "python.exe");
         Directory.CreateDirectory(Path.GetDirectoryName(py)!);
@@ -128,20 +131,97 @@ public class CreateEnvDialogViewModelTests
         var (interpreters, activeName) = ActiveAt(py);
         try
         {
-            // v1.0.0.x: MakeSettings 现在 seed 了 SystemTemplateLibraryDir + ComfyUI 目录(模拟已 clone)。
-            // 测「本地为空」分支需要覆盖 MakeSettings 的 seed:重设 SystemTemplateLibraryDir 到
-            // 不存在的 anchor + 清 ComfyUI 目录。
             var settings = MakeSettings("3.10", "python", interpreters, activeName);
-            // 注意:MakeSettings 在 random anchor 已建好目录,这里强行设到「不存在」的 anchor 让 LocalDirExists=false
+            // 强制 SystemTemplateLibraryDir 到不存在的 anchor → LocalDirExists=false
             settings.SystemTemplateLibraryDir = Path.Combine(Path.GetTempPath(), "no-such-anchor-" + Guid.NewGuid().ToString("N")[..8]);
             var vm = new CreateEnvDialogViewModel(null!, settings, root);
             Assert.Equal(py, vm.PythonExe);
-            // v1.0.0.x:TemplateSource 现在始终填 LocalSourceDir(让用户看到「待 clone」目录名),
-            // 即便本地为空 — 不再 blank。警告文案继续显示「目标环境模板本地为空...」。
+            // v1.0.0.x:TemplateSource 仍填 LocalSourceDir(让用户看到「待 clone」目录名)
             Assert.Equal("ComfyUITemplate", vm.TemplateSource);
-            Assert.NotNull(vm.TemplateWarningMessage);
-            // v1.0.0.x: 警告文案不再包含 "ComfyUI" 字面(模板本地为空 = 通用文案,不点名)。
-            Assert.Contains("目标环境模板本地为空", vm.TemplateWarningMessage);
+            // v1.0.0.x:TemplateOptions 应被过滤,ComfyUI 不出现在下拉列表
+            Assert.DoesNotContain(vm.TemplateOptions, t => t.Kind == "ComfyUI");
+            Assert.Empty(vm.TemplateOptions);
+            // v1.0.0.x:不再追加"目标环境模板本地为空"警告文案(选项已过滤,警告是冗余信息)
+            Assert.Null(vm.TemplateWarningMessage);
+            // CanConfirm=false:TemplateOptions 空 + 选中的 ComfyUI 不在 options 里
+            Assert.False(vm.CanConfirm);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Constructor_HidesTemplateKind_WhenLocalDirMissing_AmongMultiple()
+    {
+        // v1.0.0.x:TemplateOptions = Settings.Templates 中 LocalDirExists=true 的子集。
+        // ComfyUI 本地存在 + Forge 本地缺失 → TemplateOptions 只含 ComfyUI。
+        var (root, py, _) = CreateTemplateTree("3.10");
+        var (interpreters, activeName) = ActiveAt(py);
+        try
+        {
+            var settings = MakeSettings("3.10", "python", interpreters, activeName);
+            settings.Templates["Forge"] = new TemplateConfig
+            {
+                Kind = "Forge", LocalSourceDir = "Templates/Forge",
+                EntryScript = "webui.py", EntryArgs = "--port {port}",
+                ModelsSubdir = "models/Stable-diffusion",
+            };
+            // Forge 在 SystemTemplateLibraryDir 下没目录 → LocalDirExists=false
+            var vm = new CreateEnvDialogViewModel(null!, settings, root);
+            Assert.Single(vm.TemplateOptions);
+            Assert.Equal("ComfyUI", vm.TemplateOptions[0].Kind);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void CanConfirm_False_WhenTemplateOptionsEmpty()
+    {
+        // v1.0.0.x:所有 template 都被过滤掉 → TemplateOptions 空 → CanConfirm=false
+        // (用户必须先在 TemplateManagement 下载模板才能建 env)
+        var (root, py, _) = CreateTemplateTree("3.10");
+        var (interpreters, activeName) = ActiveAt(py);
+        try
+        {
+            var settings = MakeSettings("3.10", "python", interpreters, activeName);
+            settings.SystemTemplateLibraryDir = Path.Combine(Path.GetTempPath(), "no-such-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+            var vm = new CreateEnvDialogViewModel(null!, settings, root);
+            vm.Name = "x";
+            // TemplateOptions 空 + PythonExe 已就绪 + TemplateSource 已有(即便选项过滤,TemplateSource 文本还在)
+            Assert.Empty(vm.TemplateOptions);
+            Assert.False(vm.CanConfirm);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Constructor_FallsBackToFirstAvailable_WhenDefaultKindFilteredOut()
+    {
+        // v1.0.0.x:默认 SelectedTemplateKind="ComfyUI" 若 LocalDir 缺失,回退到
+        // TemplateOptions 第一项(本例中唯一可用的 A1111)。
+        var (root, py, _) = CreateTemplateTree("3.10");
+        var (interpreters, activeName) = ActiveAt(py);
+        try
+        {
+            var settings = MakeSettings("3.10", "python", interpreters, activeName);
+            // 强制 ComfyUI 不在 SystemTemplateLibraryDir 下 → 过滤掉
+            settings.SystemTemplateLibraryDir = Path.Combine(Path.GetTempPath(), "no-such-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+            // 新加 A1111 + 让它的 LocalSourceDir 在 Settings.SystemTemplateLibraryDir 下存在
+            var anchor = settings.SystemTemplateLibraryDir;
+            var a1111Dir = Path.Combine(anchor, "Templates", "A1111");
+            Directory.CreateDirectory(a1111Dir);
+            Directory.CreateDirectory(Path.Combine(a1111Dir, ".git"));
+            settings.Templates["A1111"] = new TemplateConfig
+            {
+                Kind = "A1111", LocalSourceDir = "Templates/A1111",
+                EntryScript = "webui.py", EntryArgs = "--port {port}",
+                ModelsSubdir = "models/Stable-diffusion",
+            };
+            var vm = new CreateEnvDialogViewModel(null!, settings, root);
+            // A1111 应是唯一 TemplateOptions + SelectedTemplateKind 应回退到 "A1111"
+            Assert.Single(vm.TemplateOptions);
+            Assert.Equal("A1111", vm.TemplateOptions[0].Kind);
+            Assert.Equal("A1111", vm.SelectedTemplateKind);
+            Assert.Equal("Templates/A1111", vm.TemplateSource);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -162,8 +242,8 @@ public class CreateEnvDialogViewModelTests
             Assert.Equal("ComfyUITemplate", vm.TemplateSource);
             Assert.NotNull(vm.TemplateWarningMessage);
             Assert.Contains("请在设置页添加 Python 解释器", vm.TemplateWarningMessage);
-            // v1.0.0.x: "目标环境模板本地为空" 警告追加在 Python 警告之后;不再依赖 "ComfyUI" 字面。
-            Assert.Contains("目标环境模板本地为空", vm.TemplateWarningMessage);
+            // v1.0.0.x: 旧的 "目标环境模板本地为空" 警告已废弃 — template 被过滤,不再追加该文案。
+            Assert.DoesNotContain("目标环境模板本地为空", vm.TemplateWarningMessage);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
