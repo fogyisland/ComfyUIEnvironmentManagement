@@ -168,4 +168,11 @@ public class Environment
     /// </summary>
     [JsonIgnore]
     public int TotalNodeCount { get; set; }
+
+    /// <summary>
+    /// v1.0.0.x:派生布尔 — <c>FailedNodeCount > 0</c>。env 行 ! 按钮 color/tip 的 single-trigger
+    /// 数据源(避免 5 个 Value DataTrigger 枚举 1..5,且 > 5 时也会正确显示红色)。
+    /// </summary>
+    [JsonIgnore]
+    public bool HasFailedNodes => FailedNodeCount > 0;
 }

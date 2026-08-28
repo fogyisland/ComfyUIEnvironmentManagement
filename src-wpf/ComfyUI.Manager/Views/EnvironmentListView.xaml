@@ -336,6 +336,48 @@
                                                 </Style>
                                             </Button.Style>
                                         </Button>
+                                        <!-- v1.0.0.x:! 按钮 — 在 Port 7000 标签左边(⌨ 之后,Port 之前)。
+                                             点击弹 NodeStartupStatusDialog 列出当前 env 所有节点 +
+                                             加载失败标记。**仅 env 启动完成后才显示**:
+                                             ProcessLauncher 启动 5s grace 后 NodeStartupErrorDetector
+                                             才扫描 stdout/stderr 写 load_error,Status="running"
+                                             之前的 env 没有数据可看 — Grid 整层折叠免占位。
+                                             颜色语义:FailedNodeCount==0 → 绿色 SuccessBrush(全部加载成功);
+                                             FailedNodeCount>0 → 红色 ErrorBrush(有节点未启动)。ToolTip
+                                             跟着切换:"全部加载成功" / "有节点未启动"。
+                                             风格跟 ⌨ 一致 GearIconButtonStyle(小图标 24×24),
+                                             字面内容 "!";不显示数字 badge(避免视觉噪音)。 -->
+                                        <Grid MinWidth="24" MinHeight="24">
+                                            <Grid.Style>
+                                                <Style TargetType="Grid">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="running">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Grid.Style>
+                                            <Button Content="!" FontSize="14" FontWeight="Bold" MinWidth="24" MinHeight="24"
+                                                    Command="{Binding DataContext.ShowNodeStartupStatusCommand,
+                                                              RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource GearIconButtonStyle}">
+                                                        <!-- 默认绿色 = 全部加载成功(或从未启动,无 load_error) -->
+                                                        <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                        <Setter Property="ToolTip" Value="全部节点加载成功" />
+                                                        <Style.Triggers>
+                                                            <!-- 派生布尔 HasFailedNodes → 任意 ≥ 1 失败即红色 + 警示 ToolTip -->
+                                                            <DataTrigger Binding="{Binding HasFailedNodes}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+                                                                <Setter Property="ToolTip" Value="有节点未启动" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </Grid>
                                         <Border Padding="8,2" CornerRadius="4"
                                                 Background="{DynamicResource BackgroundBrush}">
                                             <TextBlock FontSize="11"
@@ -395,7 +437,6 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <!-- Row 0: 装卸链路 -->
                                     <!-- v1.0.0.x #577:启停合按钮 — text = env.StartStopButtonText (Load 末尾重算,
@@ -407,34 +448,10 @@
                                             Command="{Binding DataContext.StartStopCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}" />
-                                    <!-- v1.0.0.x:! 按钮 — 紧邻三角按钮右侧。点击弹 NodeStartupStatusDialog
-                                         列出当前 env 所有节点 + 加载失败标记(红字)。按钮内容固定 "!";右上角
-                                         badge(小红圆 + FailedNodeCount 数字)在 FailedNodeCount > 0 时显示,
-                                         FailedNodeCount == 0 时隐藏(默认 collapsed via converter)。
-                                         Grid 嵌套:外层装按钮 + 右上角 badge。 -->
-                                    <Grid Grid.Row="0" Grid.Column="1" Margin="2">
-                                        <Button Content="!" MinWidth="0" ToolTip="查看当前环境的节点启动状态(成功 / 加载失败)"
-                                                Style="{StaticResource MaterialButton}"
-                                                Command="{Binding DataContext.ShowNodeStartupStatusCommand,
-                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}" />
-                                        <!-- badge:FailedNodeCount > 0 时显示,绝对定位在按钮右上角 -->
-                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                Margin="0,-4,-4,0"
-                                                Padding="5,1" MinWidth="18"
-                                                CornerRadius="9"
-                                                Background="{DynamicResource ErrorBrush}"
-                                                Visibility="{Binding FailedNodeCount, Converter={StaticResource ZeroCountToVisibility}, FallbackValue=Collapsed}"
-                                                ToolTip="{Binding FailedNodeCount, StringFormat={}{0} 个节点加载失败}">
-                                            <TextBlock Text="{Binding FailedNodeCount}" FontSize="10" FontWeight="Bold"
-                                                       Foreground="{DynamicResource OnPrimaryBrush}"
-                                                       HorizontalAlignment="Center" />
-                                        </Border>
-                                    </Grid>
                                     <!-- v0.6.11+ T1:BED toggle — 已装显"卸载基础环境",未装显"安装基础环境",
                                          busy 时按钮灰 + label 变"安装基础环境中..."/"卸载基础环境中..."。
                                          复用 BaseEnvUninstallStatus inline 面板;BED picker dialog 走 OpenBaseEnvProgressAsync。 -->
-                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="0" Grid.Column="1" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleBaseEnvCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -443,7 +460,7 @@
                                     <!-- v0.6.11+ T1:Requirements toggle — 已装显"卸依赖",未装显"装依赖",
                                          busy 时按钮灰 + label 变"装依赖中..."/"卸依赖中..."。
                                          复用现有 RequirementsStatus inline 面板显示进度。 -->
-                                    <Button Grid.Row="0" Grid.Column="3" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleRequirementsCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -451,7 +468,7 @@
                                             ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
                                     <!-- v0.6.11+ T4:ComfyUI Manager toggle — git clone 网络源 + 装 requirements.txt;
                                          跟「安装本地常用」并列,语义不同(后者走 Settings.LocalNodesDirectory 本地预装包)。 -->
-                                    <Button Grid.Row="0" Grid.Column="4" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="0" Grid.Column="3" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ToggleComfyUiManagerCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -460,7 +477,7 @@
                                     <!-- v1.0.0.x #577:本地常用节点(末位) — 批量 copy Settings.LocalNodesDirectory
                                          下子目录到 env/custom_nodes/,逐个 pip install -r requirements.txt(过滤 torch 行);
                                          失败 skip 下一个。LocalNodeInstallStatus inline 面板显示进度 + 总结。 -->
-                                    <Button Grid.Row="0" Grid.Column="5" Content="{Binding LocalNodesButtonText}" Margin="2" MinWidth="0"
+                                    <Button Grid.Row="0" Grid.Column="4" Content="{Binding LocalNodesButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.InstallLocalNodesCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
