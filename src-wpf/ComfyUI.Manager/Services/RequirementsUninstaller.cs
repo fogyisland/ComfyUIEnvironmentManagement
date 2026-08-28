@@ -162,12 +162,12 @@ public class RequirementsUninstaller
             return Fail($"pip 退出码 {pipResult.ExitCode}", env.Name);
         }
 
-        // 成功 → 删 marker(v1.0.0.x:A1111 / Forge 用 A1111PreFlightConstants.MarkerFileName;
+        // 成功 → 删 marker(v1.0.0.x:Forge 用 ForgePreFlightConstants.MarkerFileName;
         // 其他 ComfyUI 用老 MarkerFileName。两套 marker 各自独立,跟 IsInstalled 一致)。
         var markerPath = Path.Combine(
             env.RootPath,
-            env.TemplateKind is "A1111" or "Forge"
-                ? A1111PreFlightConstants.MarkerFileName
+            env.TemplateKind is "Forge"
+                ? ForgePreFlightConstants.MarkerFileName
                 : MarkerFileName);
         try
         {

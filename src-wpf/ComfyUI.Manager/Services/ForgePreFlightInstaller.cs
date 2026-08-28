@@ -12,31 +12,31 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.Services;
 
 /// <summary>
-/// v1.0.0.x A1111 / Forge pre-flight installer:镜像 AUTOMATIC1111
+/// v1.0.0.x Forge pre-flight installer:镜像 lllyasviel/stable-diffusion-webui-forge
 /// <c>modules/launch_utils.py:prepare_environment()</c> 在「装依赖」阶段提前跑的
-/// 4 件事,让 <c>python launch.py</c> 启动时 13 步全部 idempotent 跳过(尤其
-/// step 9 git clone 5 个 repos — 这是 paths.py:34 <c>assert sd_path is not None</c>
-/// fail 的根因:直接 python webui.py 跳过 launch.py → repositories/stable-diffusion-stability-ai
-/// 目录不存在 → ddpm.py 找不到)。
+/// 4 件事,让 <c>python launch.py</c> 启动时 step 9 全部 idempotent 跳过
+/// (git clone 3 个 repos — assets / huggingface_guess / BLIP;Stability-AI
+/// 那 2 个 sd core 已经被 Forge 注释掉了,因为 Stability-AI/stablediffusion 仓库
+/// 已从 github 移除)。
 ///
-/// 4 件事执行顺序(镜像 launch_utils.py:393-415):
-///   1. <c>pip install openai/CLIP/archive/{hash}.zip</c>
-///   2. <c>pip install mlfoundations/open_clip/archive/{hash}.zip</c>
-///   3. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt</c>(过滤 torch 行,
+/// 4 件事执行顺序:
+///   1. <c>pip install openai/CLIP/archive/{hash}.zip --no-build-isolation</c>
+///   2. <c>pip install mlfoundations/open_clip/archive/{hash}.zip --no-build-isolation</c>
+///   3. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt --no-deps</c>(过滤裸 torch 行,
 ///      与 ComfyUI RequirementsInstaller 一致 — BED 已装 torch,装依赖不覆盖 profile 版本)
-///   4. <c>git clone</c> 5 个 repos 到 <c>&lt;envRoot&gt;/repositories/</c>(已存在 skip)
+///   4. <c>git clone</c> 3 个 repos 到 <c>&lt;envRoot&gt;/repositories/</c>(已存在 skip)
 ///
 /// 触发入口:RequirementsInstaller.InstallAsync 头部按 <c>env.TemplateKind</c> dispatch
-/// (A1111 / Forge → 走这里,ComfyUI / SwarmUI 走老 requirements.txt 路径)。
-/// 成功 marker:<see cref="A1111PreFlightConstants.MarkerFileName"/>。
+/// (Forge → 走这里,ComfyUI / SwarmUI 走老 requirements.txt 路径)。
+/// 成功 marker:<see cref="ForgePreFlightConstants.MarkerFileName"/>。
 /// </summary>
-public class A1111PreFlightInstaller
+public class ForgePreFlightInstaller
 {
     private readonly AppLogger? _logger;
     private readonly HttpProxyConfig? _proxy;
     private readonly string _gitExe;
 
-    public A1111PreFlightInstaller(
+    public ForgePreFlightInstaller(
         AppLogger? logger = null,
         HttpProxyConfig? proxy = null,
         string? gitExe = null)
@@ -49,13 +49,13 @@ public class A1111PreFlightInstaller
     }
 
     /// <summary>
-    /// 检查 A1111 / Forge pre-flight 是否已完成(marker 文件存在)。
+    /// 检查 Forge pre-flight 是否已完成(marker 文件存在)。
     /// RequirementsInstaller.IsInstalled 内部调用此处保持单一判定源。
     /// </summary>
     public static bool IsInstalled(Environment env)
     {
         if (env is null || string.IsNullOrWhiteSpace(env.RootPath)) return false;
-        return File.Exists(Path.Combine(env.RootPath, A1111PreFlightConstants.MarkerFileName));
+        return File.Exists(Path.Combine(env.RootPath, ForgePreFlightConstants.MarkerFileName));
     }
 
     /// <summary>
@@ -72,24 +72,24 @@ public class A1111PreFlightInstaller
         if (string.IsNullOrWhiteSpace(env.RootPath))
             throw new ArgumentException("env.RootPath 为空", nameof(env));
 
-        _logger?.Info("a1111-preflight",
-            $"env='{env.Name}' kind='{env.TemplateKind}' 开始 A1111 pre-flight (4 步)");
-        logProgress?.Report($"[a1111-preflight] env='{env.Name}' 开始 pre-flight");
+        _logger?.Info("forge-preflight",
+            $"env='{env.Name}' kind='{env.TemplateKind}' 开始 Forge pre-flight (4 步)");
+        logProgress?.Report($"[forge-preflight] env='{env.Name}' 开始 pre-flight");
 
         var pythonExe = ResolveVenvPython(env);
 
         // 1. clip zip
         var clipResult = await InstallZipAsync(
-            A1111PreFlightConstants.Zips[0], pythonExe, logProgress, ct);
+            ForgePreFlightConstants.Zips[0], pythonExe, logProgress, ct);
         if (!IsPipOk(clipResult)) return FailFrom(clipResult, "clip");
 
         // 2. open_clip zip
         var ocResult = await InstallZipAsync(
-            A1111PreFlightConstants.Zips[1], pythonExe, logProgress, ct);
+            ForgePreFlightConstants.Zips[1], pythonExe, logProgress, ct);
         if (!IsPipOk(ocResult)) return FailFrom(ocResult, "open_clip");
 
         // 3. requirements_versions.txt — 只过滤裸 torch 行(launch.py 单独装
-        //    torchvision / torchaudio / xformers 等,不在这个文件里;sdweb
+        //    torchvision / torchaudio / xformers 等,不在这个文件里;forge
         //    requirements_versions.txt 实际只有 1 行裸 torch)。不复用共享
         //    RequirementsFileInstaller.FilterTorchLines — 那个 regex 过滤 5 个
         //    标准 torch 系列(torch / torchvision / torchaudio / torchtext /
@@ -101,11 +101,11 @@ public class A1111PreFlightInstaller
         var reqPath = Path.Combine(env.RootPath, "requirements_versions.txt");
         if (!File.Exists(reqPath))
         {
-            // sdweb env 是用户从 ENVTemplate clone 出来的,理论上必有 requirements_versions.txt。
+            // forge env 是用户从 ENVTemplate clone 出来的,理论上必有 requirements_versions.txt。
             // 缺失 → 报清晰错(launch.py 也会 fail,用户需要 re-clone template)。
             var reason = $"找不到 requirements_versions.txt(预期路径:{reqPath})";
-            _logger?.Error("a1111-preflight", $"env='{env.Name}' {reason}");
-            logProgress?.Report($"[a1111-preflight] ✗ {reason}");
+            _logger?.Error("forge-preflight", $"env='{env.Name}' {reason}");
+            logProgress?.Report($"[forge-preflight] ✗ {reason}");
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
@@ -119,8 +119,8 @@ public class A1111PreFlightInstaller
         catch (Exception ex)
         {
             var reason = $"读取 requirements_versions.txt 失败:{ex.Message}";
-            _logger?.Error("a1111-preflight", $"env='{env.Name}' {reason}");
-            logProgress?.Report($"[a1111-preflight] ✗ {reason}");
+            _logger?.Error("forge-preflight", $"env='{env.Name}' {reason}");
+            logProgress?.Report($"[forge-preflight] ✗ {reason}");
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
@@ -132,8 +132,8 @@ public class A1111PreFlightInstaller
         catch (Exception ex)
         {
             var reason = $"写过滤文件失败:{ex.Message}";
-            _logger?.Error("a1111-preflight", $"env='{env.Name}' {reason}");
-            logProgress?.Report($"[a1111-preflight] ✗ {reason}");
+            _logger?.Error("forge-preflight", $"env='{env.Name}' {reason}");
+            logProgress?.Report($"[forge-preflight] ✗ {reason}");
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
@@ -143,8 +143,8 @@ public class A1111PreFlightInstaller
         // 里的 pytorch_lightning==1.9.4 要 torch<2.0,pip resolve 会把 torch 2.13+cu126
         // 卸了装 torch 2.12.1 —丢失 BED profile 锁的 CUDA wheel)。镜像 launch.py
         // 装 xformers 的策略:run_pip(f"install -U -I --no-deps {xformers_package}").
-        // 用户后续若发现某些包启动缺 deps,这是 sdweb requirements 跟 torch 2.13 的
-        // 固有不兼容,需等 sdweb 升级 requirements_versions.txt。
+        // 用户后续若发现某些包启动缺 deps,这是 forge requirements 跟 torch 2.13 的
+        // 固有不兼容,需等 forge 升级 requirements_versions.txt。
         var reqResult = await RunPipAsync(
             pythonExe,
             new[] { "install", "-r", filteredReqPath, "--disable-pip-version-check", "--no-deps" },
@@ -155,45 +155,45 @@ public class A1111PreFlightInstaller
         if (!IsPipOk(reqResult))
             return FailFrom(reqResult, $"pip install -r requirements_versions.txt (filtered)");
 
-        // 4. git clone 5 repos(每个独立 try/catch + IsInstalled skip,失败不阻断后续 repo;
+        // 4. git clone 3 repos(每个独立 try/catch + IsInstalled skip,失败不阻断后续 repo;
         //    最后整体成功判断,只要全部存在或 clone 成功 → success)
-        logProgress?.Report("[a1111-preflight] stage:git clone 5 repos");
+        logProgress?.Report("[forge-preflight] stage:git clone 3 repos");
         var cloneResults = await CloneAllReposAsync(env, logProgress, ct);
         var failedClone = cloneResults.FirstOrDefault(r => !r.Ok);
         if (failedClone is not null)
         {
             var reason = $"git clone '{failedClone.Spec.DisplayName}' 失败(exit={failedClone.Result?.ExitCode}):{failedClone.Result?.Stderr}";
-            _logger?.Error("a1111-preflight", $"env='{env.Name}' {reason}");
-            logProgress?.Report($"[a1111-preflight] ✗ {reason}");
+            _logger?.Error("forge-preflight", $"env='{env.Name}' {reason}");
+            logProgress?.Report($"[forge-preflight] ✗ {reason}");
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
 
         // 全部成功 → 写 marker
-        var markerPath = Path.Combine(env.RootPath, A1111PreFlightConstants.MarkerFileName);
+        var markerPath = Path.Combine(env.RootPath, ForgePreFlightConstants.MarkerFileName);
         try
         {
             File.WriteAllText(markerPath, DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
         }
         catch (Exception ex)
         {
-            _logger?.Warn("a1111-preflight",
+            _logger?.Warn("forge-preflight",
                 $"env='{env.Name}' marker 写失败(ex={ex.Message});下次装依赖会被短路");
         }
 
-        _logger?.Info("a1111-preflight", $"env='{env.Name}' pre-flight 完成(3 pip + 5 repos)");
-        logProgress?.Report("[a1111-preflight] ✓ 完成(3 pip + 5 repos)");
+        _logger?.Info("forge-preflight", $"env='{env.Name}' pre-flight 完成(3 pip + 3 repos)");
+        logProgress?.Report("[forge-preflight] ✓ 完成(3 pip + 3 repos)");
         return new RequirementsInstallResult(
             Success: true, Cancelled: false, Reason: null, InstalledCount: 0);
     }
 
     private async Task<PipResult> InstallZipAsync(
-        A1111PreFlightConstants.ZipPackage pkg,
+        ForgePreFlightConstants.ZipPackage pkg,
         string pythonExe,
         IProgress<string>? logProgress,
         CancellationToken ct)
     {
-        logProgress?.Report($"[a1111-preflight] stage:{pkg.DisplayName}");
+        logProgress?.Report($"[forge-preflight] stage:{pkg.DisplayName}");
         // CLIP / open_clip 老 setup.py 引用 `from pkg_resources import ...`(setuptools 自带)。
         // pip 默认 isolated build 会建干净的 build env 不带 setuptools → pkg_resources 缺失 →
         // `Getting requirements to build wheel` 失败。`--no-build-isolation` 让 pip 复用
@@ -201,7 +201,7 @@ public class A1111PreFlightInstaller
         // 但 launch.py 跑前 BED 阶段已经 `pip install --upgrade setuptools`,所以 launch.py
         // 跑 setup.py 间接有 pkg_resources — 我们 pre-flight 同样用 BED 后的 venv,加
         // `--no-build-isolation` 一致等价。
-        logProgress?.Report($"[a1111-preflight] $ pip install {pkg.Url} --no-build-isolation");
+        logProgress?.Report($"[forge-preflight] $ pip install {pkg.Url} --no-build-isolation");
         return await RunPipAsync(
             pythonExe,
             new[] { "install", pkg.Url, "--disable-pip-version-check", "--no-build-isolation" },
@@ -214,37 +214,37 @@ public class A1111PreFlightInstaller
         IProgress<string>? logProgress,
         CancellationToken ct)
     {
-        var reposDir = Path.Combine(env.RootPath, A1111PreFlightConstants.RepositoriesDirName);
+        var reposDir = Path.Combine(env.RootPath, ForgePreFlightConstants.RepositoriesDirName);
         try
         {
             Directory.CreateDirectory(reposDir);
         }
         catch (Exception ex)
         {
-            _logger?.Error("a1111-preflight",
+            _logger?.Error("forge-preflight",
                 $"env='{env.Name}' 创建 repositories 目录失败:{ex.Message}");
-            return A1111PreFlightConstants.Repos
+            return ForgePreFlightConstants.Repos
                 .Select(spec => new RepoCloneOutcome(spec, null, ex.Message))
                 .ToList();
         }
 
         // gitRunner per-call(每次重建 — proxy 是 live config,不能 stale)。
         var git = new GitRunner(_gitExe, _proxy);
-        var outcomes = new List<RepoCloneOutcome>(A1111PreFlightConstants.Repos.Count);
+        var outcomes = new List<RepoCloneOutcome>(ForgePreFlightConstants.Repos.Count);
 
-        foreach (var spec in A1111PreFlightConstants.Repos)
+        foreach (var spec in ForgePreFlightConstants.Repos)
         {
             ct.ThrowIfCancellationRequested();
             var targetDir = Path.Combine(reposDir, spec.DirName);
             // IsInstalled 检测:launch.py 自己的 git_clone 也检测 .git 存在就 skip。
             if (Directory.Exists(Path.Combine(targetDir, ".git")))
             {
-                logProgress?.Report($"[a1111-preflight] ✓ {spec.DisplayName} 已存在,跳过");
+                logProgress?.Report($"[forge-preflight] ✓ {spec.DisplayName} 已存在,跳过");
                 outcomes.Add(new RepoCloneOutcome(spec, null, null));
                 continue;
             }
 
-            logProgress?.Report($"[a1111-preflight] $ git clone {spec.Url} {spec.DirName}");
+            logProgress?.Report($"[forge-preflight] $ git clone {spec.Url} {spec.DirName}");
             GitResult? result = null;
             try
             {
@@ -257,7 +257,7 @@ public class A1111PreFlightInstaller
             }
             catch (Exception ex)
             {
-                _logger?.Warn("a1111-preflight",
+                _logger?.Warn("forge-preflight",
                     $"env='{env.Name}' git clone '{spec.DisplayName}' 异常:{ex.Message}");
                 outcomes.Add(new RepoCloneOutcome(spec, null, ex.Message));
                 continue;
@@ -271,18 +271,22 @@ public class A1111PreFlightInstaller
 
             // clone 成功 → checkout 到 pinned commit hash(launch_utils 用 git_clone(url, dir, name, commit_hash)
             // 第 4 参数就是 commit hash,功能等价于 clone + checkout 到该 commit)。
-            var coResult = await git.RunAsync(
-                targetDir,
-                new[] { "checkout", spec.CommitHash },
-                timeout: TimeSpan.FromMinutes(2),
-                ct: ct);
-            if (!coResult.Ok)
+            // HEAD hash 在 Constants 里特殊处理 — 直接跳过 checkout,等同 launch.py 不传 hash。
+            if (!string.Equals(spec.CommitHash, "HEAD", StringComparison.OrdinalIgnoreCase))
             {
-                // checkout 失败不致命 — git clone 已成功,后续 launch.py 自己会处理;
-                // 报 warn 但不阻断。
-                _logger?.Warn("a1111-preflight",
-                    $"env='{env.Name}' {spec.DisplayName} checkout {spec.CommitHash} 失败(exit={coResult.ExitCode}):{coResult.Stderr}");
-                logProgress?.Report($"[a1111-preflight] warn:{spec.DisplayName} checkout 失败(继续)");
+                var coResult = await git.RunAsync(
+                    targetDir,
+                    new[] { "checkout", spec.CommitHash },
+                    timeout: TimeSpan.FromMinutes(2),
+                    ct: ct);
+                if (!coResult.Ok)
+                {
+                    // checkout 失败不致命 — git clone 已成功,后续 launch.py 自己会处理;
+                    // 报 warn 但不阻断。
+                    _logger?.Warn("forge-preflight",
+                        $"env='{env.Name}' {spec.DisplayName} checkout {spec.CommitHash} 失败(exit={coResult.ExitCode}):{coResult.Stderr}");
+                    logProgress?.Report($"[forge-preflight] warn:{spec.DisplayName} checkout 失败(继续)");
+                }
             }
             outcomes.Add(new RepoCloneOutcome(spec, result, null));
         }
@@ -411,7 +415,7 @@ public class A1111PreFlightInstaller
     ///
     /// 故意不复用 <see cref="RequirementsFileInstaller.FilterTorchLines"/> —
     /// 那个 regex 匹配 5 个标准 torch 系列,被 ComfyUI / Manager / LocalNode
-    /// 装依赖共用,改它会扩散到其它 caller。这里只在 A1111 pre-flight 用,
+    /// 装依赖共用,改它会扩散到其它 caller。这里只在 Forge pre-flight 用,
     /// 只过滤 BED profile 锁版本的那 1 个包(裸 torch)。
     /// </summary>
     internal static bool IsBareTorchLine(string rawLine)
@@ -444,7 +448,7 @@ public class A1111PreFlightInstaller
     /// 已存在(skip) / clone 成功(可能 checkout 失败但已 warn) / 异常 captured(失败)。
     /// </summary>
     private sealed record RepoCloneOutcome(
-        A1111PreFlightConstants.RepoSpec Spec,
+        ForgePreFlightConstants.RepoSpec Spec,
         GitResult? Result,
         string? ErrorMessage)
     {

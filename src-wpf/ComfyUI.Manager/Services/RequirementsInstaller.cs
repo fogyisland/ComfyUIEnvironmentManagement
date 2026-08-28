@@ -39,36 +39,37 @@ public class RequirementsInstaller
     private readonly ComfyUIManagerInstaller _comfyUiManagerInstaller;
     // v0.6.11++:装依赖末尾 best-effort 装常用节点(G5 不阻断 requirements)。
     private readonly CommonNodeInstaller? _commonNodeInstaller;
-    // v1.0.0.x:A1111 / Forge env 的「装依赖」按钮走 pre-flight(4 件事:clip +
-    // open_clip zip + requirements_versions.txt + git clone 5 repos)而不是 ComfyUI
-    // 老的 requirements.txt 路径。null fallback 让老测试 ctor 不传也能构造。
-    private readonly A1111PreFlightInstaller? _a1111PreFlightInstaller;
+    // v1.0.0.x:Forge env 的「装依赖」按钮走 pre-flight(4 件事:clip + open_clip zip
+    // + requirements_versions.txt + git clone 3 repos)而不是 ComfyUI 老的
+    // requirements.txt 路径。null fallback 让老测试 ctor 不传也能构造。
+    // v1.0.0.x A1111 模板已下线:Stability-AI/stablediffusion 仓库已从 github 移除。
+    private readonly ForgePreFlightInstaller? _forgePreFlightInstaller;
 
     public RequirementsInstaller(
         AppLogger? logger = null,
         RequirementsFileInstaller? reqFileInstaller = null,
         ComfyUIManagerInstaller? comfyUiManagerInstaller = null,
         CommonNodeInstaller? commonNodeInstaller = null,
-        A1111PreFlightInstaller? a1111PreFlightInstaller = null)
+        ForgePreFlightInstaller? forgePreFlightInstaller = null)
     {
         _logger = logger;
         _reqFileInstaller = reqFileInstaller ?? new RequirementsFileInstaller();
         _comfyUiManagerInstaller = comfyUiManagerInstaller ?? new ComfyUIManagerInstaller(_reqFileInstaller);
-        _a1111PreFlightInstaller = a1111PreFlightInstaller;
+        _forgePreFlightInstaller = forgePreFlightInstaller;
         _commonNodeInstaller = commonNodeInstaller;
     }
 
     /// <summary>
     /// 检查 env 是否已经装过 requirements.txt(marker 文件存在)。
-    /// v1.0.0.x:A1111 / Forge env 用 <see cref="A1111PreFlightConstants.MarkerFileName"/>
-    /// 单独判定(<see cref="A1111PreFlightInstaller.IsInstalled"/>)。
+    /// v1.0.0.x:Forge env 用 <see cref="ForgePreFlightConstants.MarkerFileName"/>
+    /// 单独判定(<see cref="ForgePreFlightInstaller.IsInstalled"/>)。
     /// </summary>
     public static bool IsInstalled(Environment env)
     {
         if (env is null || string.IsNullOrWhiteSpace(env.RootPath)) return false;
-        // v1.0.0.x:A1111 / Forge pre-flight 走 A1111PreFlightInstaller 自己的 marker。
-        if (env.TemplateKind is "A1111" or "Forge")
-            return A1111PreFlightInstaller.IsInstalled(env);
+        // v1.0.0.x:Forge pre-flight 走 ForgePreFlightInstaller 自己的 marker。
+        if (env.TemplateKind is "Forge")
+            return ForgePreFlightInstaller.IsInstalled(env);
         return File.Exists(Path.Combine(env.RootPath, MarkerFileName));
     }
 
@@ -87,15 +88,15 @@ public class RequirementsInstaller
         if (string.IsNullOrWhiteSpace(env.RootPath))
             throw new ArgumentException("env.RootPath 为空", nameof(env));
 
-        // v1.0.0.x:A1111 / Forge env 的「装依赖」按钮 dispatch 到 pre-flight
-        // (clip + open_clip + requirements_versions.txt + git clone 5 repos),
-        // 镜像 AUTOMATIC1111 launch_utils.py:prepare_environment() 启动期步骤。
-        // 原因:直接 python webui.py 会跳过 launch.py → repositories/stable-diffusion-stability-ai
-        // 不存在 → paths.py:34 assert fail。pre-flight 让 launch.py 启动时这 4 步
-        // 全部 idempotent 跳过。
-        if (env.TemplateKind is "A1111" or "Forge")
+        // v1.0.0.x:Forge env 的「装依赖」按钮 dispatch 到 pre-flight
+        // (clip + open_clip + requirements_versions.txt + git clone 3 repos),
+        // 镜像 lllyasviel/stable-diffusion-webui-forge modules/launch_utils.py
+        // 启动期步骤。Stability-AI 两条 sd core 已被 Forge 注释掉(Stability-AI
+        // 仓库已从 github 移除),pre-flight 让 launch.py 启动时这 4 步全部
+        // idempotent 跳过。A1111 模板已下线,不再走这条路径。
+        if (env.TemplateKind is "Forge")
         {
-            var installer = _a1111PreFlightInstaller ?? new A1111PreFlightInstaller();
+            var installer = _forgePreFlightInstaller ?? new ForgePreFlightInstaller();
             return await installer.InstallAsync(env, logProgress, ct);
         }
 

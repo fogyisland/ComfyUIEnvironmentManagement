@@ -12,21 +12,22 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
-/// v1.0.0.x:A1111 / Forge pre-flight installer 测试。覆盖:
-/// - step 3 过滤 torch 行(跟 ComfyUI RequirementsInstaller 同 regex)
+/// v1.0.0.x:Forge pre-flight installer 测试。覆盖:
+/// - step 3 过滤裸 torch 行(launch.py 单独装 torchvision / torchaudio 等,
+///   名字含 torch 子串但不是 torch 包的也都保留)
 /// - 缺失 requirements_versions.txt → 失败
 /// - marker 写入与不存在判定
 ///
-/// 不覆盖:clip / open_clip / git clone 5 repos(走真实 pip + git,留 manual 集成验证)。
+/// 不覆盖:clip / open_clip / git clone 3 repos(走真实 pip + git,留 manual 集成验证)。
 /// </summary>
-public class A1111PreFlightInstallerTests : IDisposable
+public class ForgePreFlightInstallerTests : IDisposable
 {
     private readonly string _envRoot;
 
-    public A1111PreFlightInstallerTests()
+    public ForgePreFlightInstallerTests()
     {
         _envRoot = Path.Combine(Path.GetTempPath(),
-            $"a1111preflight-{Guid.NewGuid():N}");
+            $"forgepreflight-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_envRoot);
     }
 
@@ -35,7 +36,7 @@ public class A1111PreFlightInstallerTests : IDisposable
         try { Directory.Delete(_envRoot, recursive: true); } catch { }
     }
 
-    private Environment SeedEnv(string name = "sdweb")
+    private Environment SeedEnv(string name = "forge")
     {
         var venvDir = Path.Combine(_envRoot, name, "venv", "Scripts");
         Directory.CreateDirectory(venvDir);
@@ -47,10 +48,10 @@ public class A1111PreFlightInstallerTests : IDisposable
             Name = name,
             RootPath = Path.Combine(_envRoot, name),
             PythonExecutable = Path.Combine(venvDir, "python.exe"),
-            TemplateKind = "A1111",
+            TemplateKind = "Forge",
         };
         Directory.CreateDirectory(env.RootPath);
-        // requirements_versions.txt 镜像真实 sdweb 内容。**只过滤裸 torch 行**
+        // requirements_versions.txt 镜像真实 forge 内容。**只过滤裸 torch 行**
         // (v1.0.0.x 用户确认 — launch.py 单独装 torchvision / torchaudio /
         // xformers,不在此文件;这里只防 BED profile 锁的 torch 被覆盖)。
         // 同名含 torch 子串但不是 torch 包(torchdiffeq / torchsde /
@@ -76,7 +77,7 @@ public class A1111PreFlightInstallerTests : IDisposable
         // pre-create repositories/<repoName>/.git/ 让 git clone 步骤 skip
         // (集成测 test 不依赖网络 — CapturingInstaller 也只 mock pip,不 mock git)
         var reposDir = Path.Combine(env.RootPath, "repositories");
-        foreach (var spec in A1111PreFlightConstants.Repos)
+        foreach (var spec in ForgePreFlightConstants.Repos)
             Directory.CreateDirectory(Path.Combine(reposDir, spec.DirName, ".git"));
         return env;
     }
@@ -85,7 +86,7 @@ public class A1111PreFlightInstallerTests : IDisposable
     /// Fake:不真跑 pip(只验 filtered 文件内容 + pip args)。强制所有
     /// pip 调用都 success,捕获最后一次 pipArgs 跟 filtered 文件路径。
     /// </summary>
-    private class CapturingInstaller : A1111PreFlightInstaller
+    private class CapturingInstaller : ForgePreFlightInstaller
     {
         public List<string> LastPipArgs { get; } = new();
         public string? LastFilteredFile { get; private set; }
@@ -133,7 +134,7 @@ public class A1111PreFlightInstallerTests : IDisposable
     public void IsInstalled_ReturnsFalse_WhenMarkerMissing()
     {
         var env = SeedEnv();
-        Assert.False(A1111PreFlightInstaller.IsInstalled(env));
+        Assert.False(ForgePreFlightInstaller.IsInstalled(env));
     }
 
     [Fact]
@@ -141,9 +142,9 @@ public class A1111PreFlightInstallerTests : IDisposable
     {
         var env = SeedEnv();
         File.WriteAllText(
-            Path.Combine(env.RootPath, A1111PreFlightConstants.MarkerFileName),
+            Path.Combine(env.RootPath, ForgePreFlightConstants.MarkerFileName),
             "2026-08-28T00:00:00Z");
-        Assert.True(A1111PreFlightInstaller.IsInstalled(env));
+        Assert.True(ForgePreFlightInstaller.IsInstalled(env));
     }
 
     [Fact]
@@ -175,7 +176,7 @@ public class A1111PreFlightInstallerTests : IDisposable
         Assert.NotEmpty(installer.LastFilteredContent!);
         // 裸 torch 形式被过滤(行首 "torch" 后跟空白 / 行尾 / 比较运算符)
         Assert.DoesNotContain(installer.LastFilteredContent!, line =>
-            A1111PreFlightInstaller.IsBareTorchLine(line));
+            ForgePreFlightInstaller.IsBareTorchLine(line));
         // 保留的 torch 系列(launch.py 单独装,不在此过滤范围)
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchvision"));
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchaudio"));
@@ -208,7 +209,7 @@ public class A1111PreFlightInstallerTests : IDisposable
     [InlineData("", false)]                          // 空
     public void IsBareTorchLine_MatchesOnlyBareTorch(string line, bool expected)
     {
-        Assert.Equal(expected, A1111PreFlightInstaller.IsBareTorchLine(line));
+        Assert.Equal(expected, ForgePreFlightInstaller.IsBareTorchLine(line));
     }
 
     [Fact]
@@ -240,7 +241,7 @@ public class A1111PreFlightInstallerTests : IDisposable
         Assert.False(result.Success);
         Assert.Contains("requirements_versions.txt", result.Reason ?? "");
         Assert.False(File.Exists(
-            Path.Combine(env.RootPath, A1111PreFlightConstants.MarkerFileName)));
+            Path.Combine(env.RootPath, ForgePreFlightConstants.MarkerFileName)));
     }
 
     [Fact]
@@ -253,7 +254,7 @@ public class A1111PreFlightInstallerTests : IDisposable
 
         Assert.True(result.Success, $"pre-flight fail: {result.Reason}");
         Assert.True(File.Exists(
-            Path.Combine(env.RootPath, A1111PreFlightConstants.MarkerFileName)),
+            Path.Combine(env.RootPath, ForgePreFlightConstants.MarkerFileName)),
             "marker 文件未写入");
     }
 
