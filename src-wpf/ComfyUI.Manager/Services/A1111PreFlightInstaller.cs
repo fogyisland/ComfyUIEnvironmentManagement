@@ -146,10 +146,17 @@ public class A1111PreFlightInstaller
         CancellationToken ct)
     {
         logProgress?.Report($"[a1111-preflight] stage:{pkg.DisplayName}");
-        logProgress?.Report($"[a1111-preflight] $ pip install {pkg.Url}");
+        // CLIP / open_clip 老 setup.py 引用 `from pkg_resources import ...`(setuptools 自带)。
+        // pip 默认 isolated build 会建干净的 build env 不带 setuptools → pkg_resources 缺失 →
+        // `Getting requirements to build wheel` 失败。`--no-build-isolation` 让 pip 复用
+        // venv 里已装的 setuptools,带 pkg_resources。launch_utils.py 没显式传这 flag,
+        // 但 launch.py 跑前 BED 阶段已经 `pip install --upgrade setuptools`,所以 launch.py
+        // 跑 setup.py 间接有 pkg_resources — 我们 pre-flight 同样用 BED 后的 venv,加
+        // `--no-build-isolation` 一致等价。
+        logProgress?.Report($"[a1111-preflight] $ pip install {pkg.Url} --no-build-isolation");
         return await RunPipAsync(
             pythonExe,
-            new[] { "install", pkg.Url, "--disable-pip-version-check" },
+            new[] { "install", pkg.Url, "--disable-pip-version-check", "--no-build-isolation" },
             line => logProgress?.Report(line),
             ct);
     }
