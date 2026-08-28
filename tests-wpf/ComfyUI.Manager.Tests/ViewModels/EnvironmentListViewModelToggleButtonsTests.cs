@@ -116,6 +116,32 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
         Assert.True(env.ComfyUiManagerButtonVisible);
     }
 
+    // v1.0.0.x:「安装本地常用」是 ComfyUI custom_nodes 专属 — 用户预下载的节点包
+    // 逐个 copy 到 env/custom_nodes/。A1111 用 extensions/ 体系,SwarmUI 用自己的
+    // Modules 目录,跟 ComfyUI custom_nodes 不兼容。A1111/Forge/SwarmUI 不显示此按钮。
+    [Theory]
+    [InlineData("ComfyUI", true)]
+    [InlineData("A1111", false)]
+    [InlineData("Forge", false)]
+    [InlineData("SwarmUI", false)]
+    public void Model_LocalNodesButtonVisible_TrueOnlyForComfyUIKind(string kind, bool expected)
+    {
+        var env = new Environment
+        {
+            Id = "x", Name = "x", RootPath = @"C:\e",
+            TemplateKind = kind,
+        };
+        Assert.Equal(expected, env.LocalNodesButtonVisible);
+    }
+
+    [Fact]
+    public void Model_LocalNodesButtonVisible_DefaultsTrue_WhenTemplateKindNotSet()
+    {
+        var env = new Environment { Id = "x", Name = "x", RootPath = @"C:\e" };
+        Assert.Equal("ComfyUI", env.TemplateKind);
+        Assert.True(env.LocalNodesButtonVisible);
+    }
+
     [Fact]
     public void Model_PropertiesAreJsonIgnored_NotSerialized()
     {

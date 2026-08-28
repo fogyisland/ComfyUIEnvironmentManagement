@@ -105,6 +105,15 @@ public class Environment
     public string LocalNodesButtonText { get; set; } = "安装本地常用";
 
     /// <summary>
+    /// v1.0.0.x:A1111 / Forge / SwarmUI env 行不显示「安装本地常用」按钮 ——
+    /// 「本地常用」是用户预下载的 ComfyUI custom_nodes 包(逐个 copy 到 env/custom_nodes/),
+    /// A1111 / Forge 用 extensions/ 体系,SwarmUI 用自己的 Modules 目录,跟 ComfyUI
+    /// custom_nodes 不兼容。镜像 <see cref="ComfyUiManagerButtonVisible"/> 同模式。
+    /// </summary>
+    [JsonIgnore]
+    public bool LocalNodesButtonVisible => TemplateKind == "ComfyUI";
+
+    /// <summary>
     /// v1.0.0.x #577:启停单按钮文字 — env.Status == running → "停止";其它 → "启动"。
     /// busy(starting/stopping)时按钮禁用,文字保留以反映"当前要做的事"。
     /// </summary>

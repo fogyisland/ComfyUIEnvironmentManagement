@@ -478,9 +478,12 @@
                                             ToolTip="git clone ltdrdata/ComfyUI-Manager 到 custom_nodes 并装 requirements.txt;已装则 rm -rf 整个目录" />
                                     <!-- v1.0.0.x #577:本地常用节点(末位) — 批量 copy Settings.LocalNodesDirectory
                                          下子目录到 env/custom_nodes/,逐个 pip install -r requirements.txt(过滤 torch 行);
-                                         失败 skip 下一个。LocalNodeInstallStatus inline 面板显示进度 + 总结。 -->
+                                         失败 skip 下一个。LocalNodeInstallStatus inline 面板显示进度 + 总结。
+                                         v1.0.0.x:A1111 / Forge / SwarmUI 不显示(本地常用是 ComfyUI custom_nodes
+                                         专用,A1111 extensions / SwarmUI Modules 不兼容)。镜像 ComfyUiManagerButtonVisible。 -->
                                     <Button Grid.Row="0" Grid.Column="4" Content="{Binding LocalNodesButtonText}" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
+                                            Visibility="{Binding LocalNodesButtonVisible, Converter={StaticResource BoolToVisibility}}"
                                             Command="{Binding DataContext.InstallLocalNodesCommand,
                                                       RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             CommandParameter="{Binding}"
