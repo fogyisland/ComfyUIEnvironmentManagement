@@ -41,8 +41,26 @@ public partial class ConsolePanel : UserControl
         set => SetValue(TitleProperty, value);
     }
 
-    /// <summary>用户点 ✕ 按钮时 raise — parent view code-behind 处理(典型动作:调 VM.ClearConsoleLog)。</summary>
-    public event EventHandler? ConsoleCloseRequested;
+    /// <summary>
+    /// 用户点 ✕ 按钮时 raise — parent view code-behind 处理(典型动作:调 VM.ClearConsoleLog)。
+    /// v1.0.0.x: 必须是 <see cref="RoutedEventArgs"/> 而不是 <see cref="EventArgs"/> ——
+    /// parent XAML 用 <c>ConsoleCloseRequested="OnXxxClicked"</c> 属性语法订阅,
+    /// WPF XAML 属性语法只对 RoutedEvent 工作(plain event 会抛 XamlParseException
+    /// "无法从文本...创建 RoutedEvent")。10 处用法:EnvironmentListView x5 /
+    /// BulkUpdateView / LocalModelsView / LogViewer / ModelMarketplaceView /
+    /// WorkflowMarketplaceView / SettingsView / TemplateManagementView。
+    /// </summary>
+    public static readonly RoutedEvent ConsoleCloseRequestedEvent = EventManager.RegisterRoutedEvent(
+        nameof(ConsoleCloseRequested),
+        RoutingStrategy.Bubble,
+        typeof(EventHandler),
+        typeof(ConsolePanel));
+
+    public event EventHandler ConsoleCloseRequested
+    {
+        add { AddHandler(ConsoleCloseRequestedEvent, value); }
+        remove { RemoveHandler(ConsoleCloseRequestedEvent, value); }
+    }
 
     private INotifyCollectionChanged? _hookedSource;
 
@@ -89,7 +107,7 @@ public partial class ConsolePanel : UserControl
 
     private void OnCloseClicked(object sender, RoutedEventArgs e)
     {
-        ConsoleCloseRequested?.Invoke(this, EventArgs.Empty);
+        RaiseEvent(new RoutedEventArgs(ConsoleCloseRequestedEvent));
     }
 
     /// <summary>
