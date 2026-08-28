@@ -31,6 +31,10 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     // 可空:测试 callers 不传也能跑。
     private readonly IEnvironmentRepository? _envRepo;
     private readonly LocalNodeSyncService? _syncService;
+    // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — App.xaml.cs 注入共享实例,
+    // gitClone func 跟其他 service 同一份。可空:测试 callers 不传 → CanExecute 返 false,
+    // 按钮 disabled(CanExecute 默认 null/true 时跑不动)。
+    private readonly CommonNodeInstaller? _commonNodeInstaller;
     private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
@@ -90,7 +94,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         // v1.0.0.x #589:env → localnodes 反向 sync 入口依赖 — App.xaml.cs 注入共享实例;
         // 测试 callers 不传也能跑(命令 CanExecute 返 false,按钮 disabled)。
         IEnvironmentRepository? envRepo = null,
-        LocalNodeSyncService? syncService = null)
+        LocalNodeSyncService? syncService = null,
+        // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 没传 CanExecute 返 false。
+        CommonNodeInstaller? commonNodeInstaller = null)
     {
         _repo = repo;
         _proxy = proxy;
@@ -99,6 +105,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         _onEnvsDirSaved = onEnvsDirSaved;
         _envRepo = envRepo;
         _syncService = syncService;
+        _commonNodeInstaller = commonNodeInstaller;
         // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
         // 没有注入时(单元测试)才从 disk 加载。T12:走 LoadWithRawJson 拿到磁盘 raw JSON,
         // 以便 Apply 触发老 template_comfyui_dir 字段迁移。生产 App.xaml.cs 也用同一路径。
@@ -211,6 +218,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
                 _repo.Save(_settings);
             }
         });
+        // v1.0.0.x:把 enabled=true 的常用节点批量下到 Settings.LocalNodesDirectory
+        // (用户原话"将设置勾选的哪些节点 全部都下载到本地节点目录中")。busy guard 防
+        // 用户连点(单批次可能要 git clone 多个 repo);CanExecute 看 installer 注入
+        // + LocalNodesDirectory 非空 + 不在 busy。面板由 CommonNodeDownloadStatus
+        // ObservableObject 承载,跟 env-list LocalNodeInstallStatus 同模式(永远等用户
+        // 手动关)。Command 失败 warn 继续(G5 best-effort,跟 InstallEnabledAsync 一致)。
+        DownloadCommonNodesCommand = new RelayCommand(
+            async _ => await DownloadCommonNodesAsync(),
+            _ => _commonNodeInstaller is not null
+                && !string.IsNullOrWhiteSpace(_settings.LocalNodesDirectory)
+                && !IsCommonNodesDownloading);
+        CloseCommonNodeDownloadStatusCommand = new RelayCommand(
+            _ => CommonNodeDownloadStatus = null,
+            _ => CommonNodeDownloadStatus is { IsComplete: true });
         AddPythonInterpreterCommand = new RelayCommand(_ =>
         {
             NewPythonInterpreterName = "";
@@ -368,6 +389,66 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             async _ => await SyncNodesFromEnvAsync().ConfigureAwait(false),
             _ => _envRepo is not null && _syncService is not null && !IsSyncInProgress);
         RaiseAllPropertiesChanged();
+    }
+
+    /// <summary>
+    /// v1.0.0.x:执行 CommonNodeInstaller.InstallEnabledToAsync,把 enabled=true 节点
+    /// git clone 到 <c>Settings.LocalNodesDirectory</c>(默认 <c>D:\ToolDevelop\ComfyUI\localnodes</c>)。
+    /// busy guard 防重入,执行期间按钮 disabled。Progress&lt;string&gt; 包捕获 UI 线程同步上下文,
+    /// 后台 Report 自动 marshal 回 UI(避免 ObservableCollection 跨线程崩溃 —
+    /// v0.6.5.11 EnvListVM 修过的同款 pattern)。
+    /// v1.0.0.x:用户原话"下载进度只有在点击下载本地节点目录过程出现,其他会自动隐藏" ——
+    /// 完成后(成功/失败)自动隐藏面板,不再让用户手动关 ✕(用户反馈等批量操作太麻烦)。
+    /// 失败信息仍通过 status.Fail() 记录到 LogLines + Error,但 UI 立刻收起面板。
+    /// 用 status.Hide()(设 IsVisible=false)而不是 null 出 CommonNodeDownloadStatus —
+    /// XAML 的 Visibility 绑定 `CommonNodeDownloadStatus.IsVisible` 在 source 为 null
+    /// 时 binding path 解析失败,binding 值保留上一次结果(仍是 Visible),无法自动
+    /// 收起。Hide() 通过 RaisePropertyChanged(nameof(IsVisible)) 触发 binding 重算,
+    /// Border Visibility → Collapsed。
+    /// </summary>
+    private async Task DownloadCommonNodesAsync()
+    {
+        if (_commonNodeInstaller is null) return;
+        if (IsCommonNodesDownloading) return;
+        if (string.IsNullOrWhiteSpace(_settings.LocalNodesDirectory)) return;
+
+        var status = new CommonNodeDownloadStatusViewModel();
+        CommonNodeDownloadStatus = status;
+        RaisePropertyChanged(nameof(CommonNodeDownloadStatus));
+        status.Begin();
+
+        IsCommonNodesDownloading = true;
+        DownloadCommonNodesCommand.RaiseCanExecuteChanged();
+        try
+        {
+            var progress = new Progress<string>(line => status.Report(line));
+            var result = await _commonNodeInstaller.InstallEnabledToAsync(
+                _settings.LocalNodesDirectory, progress, CancellationToken.None);
+
+            if (!result.Success)
+            {
+                status.Fail(result.Reason ?? "未知错误");
+            }
+            else
+            {
+                status.Complete(result.Version ?? "完成");
+            }
+        }
+        catch (Exception ex)
+        {
+            status.Fail($"操作失败:{ex.Message}");
+        }
+        finally
+        {
+            IsCommonNodesDownloading = false;
+            DownloadCommonNodesCommand.RaiseCanExecuteChanged();
+            CloseCommonNodeDownloadStatusCommand.RaiseCanExecuteChanged();
+            // v1.0.0.x:下载完成后自动收起面板(无论成功/失败)——
+            // status.Hide() 清空 LogLines + 设 IsVisible=false,RaisePropertyChanged 触发
+            // XAML Border Visibility 绑定重算 → Collapsed。失败信息已写进 LogLines,
+            // 下次 Begin() 会 LogLines.Clear() 清掉,无 stale 行。
+            status.Hide();
+        }
     }
 
     public List<string> Languages { get; } = new() { "zh_CN", "en_US" };
@@ -1084,6 +1165,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     public RelayCommand ConfirmAddCommonNodeCommand { get; }
     public RelayCommand RemoveCommonNodeCommand { get; }
     public RelayCommand ToggleCommonNodeEnabledCommand { get; }
+    // v1.0.0.x:把 enabled=true 节点批量下到 LocalNodesDirectory。
+    public RelayCommand DownloadCommonNodesCommand { get; }
+    public RelayCommand CloseCommonNodeDownloadStatusCommand { get; }
 
     public string NewPythonInterpreterName
     {
@@ -1291,6 +1375,37 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             _isSyncInProgress = value;
             RaisePropertyChanged(nameof(IsSyncInProgress));
             SyncNodesFromEnvCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    // v1.0.0.x:SettingsView「下载到本地节点目录」按钮相关状态。
+    private bool _isCommonNodesDownloading;
+    public bool IsCommonNodesDownloading
+    {
+        get => _isCommonNodesDownloading;
+        private set
+        {
+            if (_isCommonNodesDownloading == value) return;
+            _isCommonNodesDownloading = value;
+            RaisePropertyChanged(nameof(IsCommonNodesDownloading));
+            DownloadCommonNodesCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    private CommonNodeDownloadStatusViewModel? _commonNodeDownloadStatus;
+    /// <summary>
+    /// 下载面板的 inline 状态 VM,null = 隐藏。XAML 通过 BoolToVisibility 转 IsVisible。
+    /// 设置 null 时 XAML panel 自动收起;成功/失败都保留面板等用户手动关。
+    /// </summary>
+    public CommonNodeDownloadStatusViewModel? CommonNodeDownloadStatus
+    {
+        get => _commonNodeDownloadStatus;
+        private set
+        {
+            if (ReferenceEquals(_commonNodeDownloadStatus, value)) return;
+            _commonNodeDownloadStatus = value;
+            RaisePropertyChanged(nameof(CommonNodeDownloadStatus));
+            CloseCommonNodeDownloadStatusCommand.RaiseCanExecuteChanged();
         }
     }
 

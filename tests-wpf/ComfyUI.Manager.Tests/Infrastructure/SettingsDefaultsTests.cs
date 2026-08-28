@@ -43,34 +43,45 @@ public class SettingsDefaultsTests
     {
         // v1.0.0.x #592:EnvsDir 默认 seed 绝对路径(用户原话"本地节点的路径默认获取
         // 当前项目的绝对路径,然后再加上相对路径,这样比较好" + "例如环境默认是
-        // 当前目录+envs")。GlobalNodesDir 保持空(不属于本地资源路径,服务层在使用时
-        // 报错)。
+        // 当前目录+envs")。
+        // v1.0.0.x #592 扩展:GlobalNodesDir 也走 ResolveAsAbsolute —
+        // 给 catalog 的数据库 nodes.db 所在目录,跟其他本地资源路径一致(seed 当前
+        // projectRoot + GlobalNodesSubdir 的绝对路径,<projectRoot>/Nodes/)。
+        // v1.0.0.x: SystemTemplateLibraryDir / WorkflowsDirectory 改 ResolveAsAbsolute
+        // 后空字段也 seed 绝对路径(用户原话"路径设置也和其他一样会自动列出当前的绝对目录")。
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal(@"D:\ToolDevelop\ComfyUI\Envs", s.EnvsDir);
-        Assert.Equal("", s.GlobalNodesDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\Nodes", s.GlobalNodesDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\ENVTemplate", s.SystemTemplateLibraryDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\Workflow", s.WorkflowsDirectory);
     }
 
     [Fact]
     public void Apply_DoesNotOverwriteRelativeExistingValues()
     {
-        // v1.0.0.x #592:EnvsDir 现在走 ResolveAsAbsolute — 相对路径转绝对。
-        // GlobalNodesDir 仍是 MigrateOnly(template-style 路径,空才保持空;非空保持原值)。
+        // v1.0.0.x #592 + v1.0.0.x 用户改"路径设置也和其他一样会自动列出当前的绝对目录":
+        // EnvsDir / GlobalNodesDir / SystemTemplateLibraryDir / WorkflowsDirectory
+        // 都走 ResolveAsAbsolute — 相对路径转绝对。
         // TemplatePythonDir 仍是 Resolve(template-style,空 seed "Python";非空保持)。
         var s = new Settings
         {
             TemplatePythonDir = "E:\\my-python",
             EnvsDir = "my-envs",
             GlobalNodesDir = "shared-nodes",
+            SystemTemplateLibraryDir = "my-templates",
+            WorkflowsDirectory = "my-workflows",
         };
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal("E:\\my-python", s.TemplatePythonDir);
         Assert.Equal(@"D:\ToolDevelop\ComfyUI\my-envs", s.EnvsDir);
-        Assert.Equal("shared-nodes", s.GlobalNodesDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\shared-nodes", s.GlobalNodesDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\my-templates", s.SystemTemplateLibraryDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\my-workflows", s.WorkflowsDirectory);
         // v1.0.0.x:空 ComfyUI template entry 被 seed 默认 LocalSourceDir = 相对路径 "ComfyUI"
 // (bug #509 修复后去掉 "envTemplates/" 前缀)
         Assert.Equal("ComfyUI", s.Templates["ComfyUI"].LocalSourceDir);
@@ -134,16 +145,18 @@ public class SettingsDefaultsTests
     [Fact]
     public void Apply_MigratesLegacySubdirNames_ToPascalCase()
     {
-        // v1.0.0.x #592:EnvsDir / LocalNodeDirectory 现在走 ResolveAsAbsolute —
-        // MigrateOldSubdirName 迁到 PascalCase 后再转绝对。
-        // GlobalNodesDir / WorkflowsDirectory / DefaultModelsDirectory 仍是 Resolve
-        // (template-style,空 seed 子目录名)。
+        // v1.0.0.x #592:EnvsDir / LocalNodeDirectory / GlobalNodesDir 现在走
+        // ResolveAsAbsolute — MigrateOldSubdirName 迁到 PascalCase 后再转绝对。
+        // v1.0.0.x: SystemTemplateLibraryDir / WorkflowsDirectory 也走 ResolveAsAbsolute —
+        // 同样 MigrateOldSubdirName → PascalCase 后转绝对。
+        // TemplatePythonDir / DefaultModelsDirectory 仍是 Resolve (template-style,空 seed 子目录名)。
         var s = new Settings
         {
             TemplatePythonDir = "python",
             EnvsDir = "envs",
             GlobalNodesDir = "global-nodes",
             LocalNodeDirectory = "local-nodes",
+            SystemTemplateLibraryDir = "envtemplate",
             WorkflowsDirectory = "workflows",
             DefaultModelsDirectory = "models",
         };
@@ -152,9 +165,10 @@ public class SettingsDefaultsTests
 
         Assert.Equal("Python", s.TemplatePythonDir);
         Assert.Equal(@"D:\ToolDevelop\ComfyUI\Envs", s.EnvsDir);
-        Assert.Equal("Nodes", s.GlobalNodesDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\Nodes", s.GlobalNodesDir);
         Assert.Equal(@"D:\ToolDevelop\ComfyUI\LocalNodes", s.LocalNodeDirectory);
-        Assert.Equal("Workflow", s.WorkflowsDirectory);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\ENVTemplate", s.SystemTemplateLibraryDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\Workflow", s.WorkflowsDirectory);
         Assert.Equal("Models", s.DefaultModelsDirectory);
     }
 
@@ -518,20 +532,22 @@ public class SettingsDefaultsTests
     // SettingsDefaults.Apply 现在空字段 seed 相对 "ENVTemplate",resolve 拼出 <projectRoot>/ENVTemplate/<Kind>。
 
     [Fact]
-    public void Apply_SystemTemplateLibraryDir_Empty_DefaultsToRelativeEnvTemplate()
+    public void Apply_SystemTemplateLibraryDir_Empty_DefaultsToAbsoluteEnvTemplate()
     {
-        // 空 → seed 相对 "ENVTemplate" (template-style path,跟 LocalNodeDirectory / WorkflowsDirectory 同款)
+        // v1.0.0.x 用户原话"路径设置也和其他一样会自动列出当前的绝对目录" ——
+        // SystemTemplateLibraryDir 改 ResolveAsAbsolute,空 → seed 当前 projectRoot +
+        // "ENVTemplate" 的绝对路径(<projectRoot>/ENVTemplate/)。
         var s = new Settings();
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("ENVTemplate", s.SystemTemplateLibraryDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\ENVTemplate", s.SystemTemplateLibraryDir);
     }
 
     [Fact]
     public void Apply_SystemTemplateLibraryDir_LegacyLowercase_MigratedToEnvTemplate()
     {
-        // 老 settings 里大/小写不一致的 "envtemplate" → 迁到 "ENVTemplate"
+        // 老 settings 里大/小写不一致的 "envtemplate" → 迁到 "ENVTemplate"(再转绝对)
         var s = new Settings
         {
             SystemTemplateLibraryDir = "envtemplate",
@@ -539,13 +555,13 @@ public class SettingsDefaultsTests
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("ENVTemplate", s.SystemTemplateLibraryDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\ENVTemplate", s.SystemTemplateLibraryDir);
     }
 
     [Fact]
     public void Apply_SystemTemplateLibraryDir_PreservesUserCustomRelativePath()
     {
-        // 用户主动填了相对路径(非默认)→ 保留
+        // 用户主动填了相对路径(非默认)→ 转绝对(跟 EnvsDir 等本地资源路径一致)
         var s = new Settings
         {
             SystemTemplateLibraryDir = "my-templates",
@@ -553,13 +569,14 @@ public class SettingsDefaultsTests
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("my-templates", s.SystemTemplateLibraryDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\my-templates", s.SystemTemplateLibraryDir);
     }
 
     [Fact]
-    public void Apply_SystemTemplateLibraryDir_AbsoluteUnderProjectRoot_MigratedToRelative()
+    public void Apply_SystemTemplateLibraryDir_AbsoluteUnderProjectRoot_PreservedAsAbsolute()
     {
-        // 用户老 settings 写了绝对路径且在 projectRoot 下 → 转相对(剥前缀)
+        // ResolveAsAbsolute 对所有绝对路径都保留(包括 projectRoot 下),
+        // 不做"projectRoot 下 → 转相对"剥前缀(用户原意:每次启动重新算 projectRoot)。
         var s = new Settings
         {
             SystemTemplateLibraryDir = @"D:\ToolDevelop\ComfyUI\old-ENVTemplate",
@@ -567,7 +584,7 @@ public class SettingsDefaultsTests
 
         SettingsDefaults.Apply(s, ProjectRoot);
 
-        Assert.Equal("old-ENVTemplate", s.SystemTemplateLibraryDir);
+        Assert.Equal(@"D:\ToolDevelop\ComfyUI\old-ENVTemplate", s.SystemTemplateLibraryDir);
     }
 
     [Fact]

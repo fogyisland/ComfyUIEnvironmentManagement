@@ -20,9 +20,13 @@ namespace ComfyUI.Manager.Infrastructure;
 ///   v1.0.0.x #569 phase 2:SystemTemplateLibraryDir 空时 seed 相对 "ENVTemplate",
 ///   让 TemplatePathResolver.Resolve 拼出 <projectRoot>/ENVTemplate/<Kind>,
 ///   符合"项目目录+envtemplate+模板路径"约定。
-/// - **user-configured paths** (EnvsDir / GlobalNodesDir) — 默认保持空,
-///   因为这些是用户主动管理的数据(env 列表 / 全局 catalog),不预创建不预填,
+/// - **user-configured paths** (EnvsDir) — 默认保持空,
+///   因为这些是用户主动管理的数据(env 列表),不预创建不预填,
 ///   留到用户配置后再用。服务使用点(EnvCreatorService)在 path 为空时主动报错。
+///   v1.0.0.x #592 起,EnvsDir / LocalNodeDirectory / LocalNodesDirectory 改用
+///   ResolveAsAbsolute 3-branch,空时 seed projectRoot + subdir 的绝对路径;
+///   v1.0.0.x 扩展到 GlobalNodesDir(catalog 数据库 nodes.db 所在目录),空时
+///   seed projectRoot + "Nodes/" 的绝对路径,跨机器自动跟随 projectRoot。
 ///
 /// 存相对路径而非绝对路径:绿色 zip 跨机器/跨盘符时 settings.json 不需要
 /// 重新生成。所有 path 使用方在运行时通过 Path.Combine(projectRoot, settings.X)
@@ -66,6 +70,13 @@ public static class SettingsDefaults
     public const string LocalNodesBulkSubdir = "localnodes";
     public const string WorkflowsSubdir = "Workflow";
     public const string ModelsSubdir = "Models";
+    /// <summary>
+    /// v1.0.0.x:日志根目录的默认子目录名(Logs/ 子目录的父目录)。用户原话
+    /// "目录为 logs"(lowercase),SettingsDefaults.Apply 自动 seed 当前
+    /// projectRoot + 此 subdir 的绝对路径。AppLogger 会再拼上 "Logs" 子目录
+    /// 形成实际写入路径 &lt;projectRoot&gt;/logs/Logs/。
+    /// </summary>
+    public const string LogsSubdir = "logs";
     public const string DefaultQuerySourceName = "comfyui manager";
     public const string DefaultQuerySourceUrl =
         "https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main/custom-node-list.json";
@@ -125,10 +136,14 @@ public static class SettingsDefaults
         // v1.0.0.x: shipped portable git 存在 + GitExe 空 → seed 相对路径 "bin/git-portable/cmd/git.exe"。
         // 跟 python 解释器同款处理:相对路径存储 + 运行时 ResolveGitExe(projectRoot, settings.GitExe)
         // 拼绝对。App.xaml.cs 已经支持绝对/相对/空 三态。不覆盖用户已填的(避免把手动配的绝对路径冲掉)。
+        // v1.0.0.x: 用户原话"git 程序也是绝对目录方式和之前一样" ——
+        // 跟 EnvsDir / LocalNodeDirectory 等本地资源路径一致,seed 当前 projectRoot +
+        // "bin/git-portable/cmd/git.exe" 的绝对路径。Path.GetFullPath 规范化分隔符避免 UI
+        // 显示 ..\ 之类相对形式;跨机器靠每次 Apply 重算 projectRoot + 重新拼接跟随。
         if (string.IsNullOrWhiteSpace(s.GitExe)
             && File.Exists(Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe")))
         {
-            s.GitExe = Path.Combine("bin", "git-portable", "cmd", "git.exe");
+            s.GitExe = Path.GetFullPath(Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe"));
         }
 
         // v1.0.0 目录结构重构:老 settings.json 里写过的旧子目录名(全小写 / kebab-case)
@@ -156,10 +171,17 @@ public static class SettingsDefaults
         // v1.0.0.x #569 phase 2: SystemTemplateLibraryDir 空时 seed 相对 "ENVTemplate"。
         // 老用户 settings.json 里若写了大/小写不一致的 "envtemplate" 也迁过来。绝对路径
         // 在 projectRoot 下 → 转相对(剥前缀),外面 → 保留(用户故意选的别处)。
+        // v1.0.0.x 用户反馈"路径设置也和其他一样会自动列出当前的绝对目录" ——
+        // 跟 EnvsDir / LocalNodeDirectory 等本地资源路径一致,改 ResolveAsAbsolute 自动
+        // seed 当前 projectRoot + "ENVTemplate" 的绝对路径(<projectRoot>/ENVTemplate/)。
+        // 用户跨机器时每次 Apply 重新计算 projectRoot,自动跟随;不污染用户手填的别处绝对路径。
         s.SystemTemplateLibraryDir = MigrateOldSubdirName(s.SystemTemplateLibraryDir, "envtemplate", SystemTemplateLibrarySubdir);
-        s.SystemTemplateLibraryDir = Resolve(s.SystemTemplateLibraryDir, SystemTemplateLibrarySubdir, projectRoot);
-        s.GlobalNodesDir = MigrateOnly(s.GlobalNodesDir, projectRoot);
-        s.WorkflowsDirectory = Resolve(s.WorkflowsDirectory, WorkflowsSubdir, projectRoot);
+        s.SystemTemplateLibraryDir = ResolveAsAbsolute(s.SystemTemplateLibraryDir, SystemTemplateLibrarySubdir, projectRoot);
+        // v1.0.0.x: WorkflowsDirectory 跟其他本地资源路径一致 ——
+        // 用户原话"工作流市场也变更为绝对目录,也就是和之前提到的一样"。
+        // ResolveAsAbsolute:空 → seed 当前 projectRoot + "Workflow" 的绝对路径;
+        // 相对 → 转绝对;绝对 → 保留。跨机器靠每次 Apply 重算 projectRoot + 重新拼接跟随。
+        s.WorkflowsDirectory = ResolveAsAbsolute(s.WorkflowsDirectory, WorkflowsSubdir, projectRoot);
         s.DefaultModelsDirectory = Resolve(s.DefaultModelsDirectory, ModelsSubdir, projectRoot);
         // v1.0.0.x #592:本地资源路径默认绝对 — 用户原话"本地节点的路径默认获取当前
         // 项目的绝对路径,然后再加上相对路径,这样比较好" + "每次启动执行都会扫描
@@ -170,6 +192,12 @@ public static class SettingsDefaults
         s.EnvsDir = ResolveAsAbsolute(s.EnvsDir, EnvsSubdir, projectRoot);
         s.LocalNodeDirectory = ResolveAsAbsolute(s.LocalNodeDirectory, LocalNodesSubdir, projectRoot);
         s.LocalNodesDirectory = ResolveAsAbsolute(s.LocalNodesDirectory, LocalNodesBulkSubdir, projectRoot);
+        // v1.0.0.x 扩展 #592 到 GlobalNodesDir — 用户原话"设置中的 base 节点目录指的是
+        // 给 catalog 的数据库的内容,也需要和前面一样使用绝对目录,放的是 nodes.db 数据库"。
+        // 行为跟 EnvsDir / LocalNodesDirectory 一致:空 → seed 当前 projectRoot + GlobalNodesSubdir
+        // 的绝对路径(<projectRoot>/Nodes/),相对 → 转绝对,绝对 → 保留。nodes.db 由 catalog
+        // 服务在第一次 scan 时建到该目录下,跨机器跟随 projectRoot。
+        s.GlobalNodesDir = ResolveAsAbsolute(s.GlobalNodesDir, GlobalNodesSubdir, projectRoot);
 
         // 节点源:空列表 → 装默认 "comfyui manager";空 active → 回落到列表第一条
         if (s.QuerySources is null || s.QuerySources.Count == 0)
@@ -286,6 +314,13 @@ public static class SettingsDefaults
         // (HF/ModelScope disabled 等)保护没配 token 的新装用户避免看到空结果。
         ApplyDevOverridesIfEnabled(s);
 
+        // v1.0.0.x: LogDirectory 用户原话"日志目录也列出绝对路径,目录为 logs" ——
+        // 跟 EnvsDir / LocalNodeDirectory 等本地资源路径一致:空 → seed 当前
+        // projectRoot + "logs" 的绝对路径(<projectRoot>/logs);相对 → 转绝对;
+        // 绝对 → 保留(用户故意选的别处)。AppLogger 构造时仍会拼上 "Logs" 子目录
+        // (历史约定,parent of Logs/),实际日志写到 <projectRoot>/logs/Logs/。
+        s.LogDirectory = ResolveAsAbsolute(s.LogDirectory, LogsSubdir, projectRoot);
+
         // v0.6.12:LogDirectory 非空则 Directory.CreateDirectory,失败静默
         if (!string.IsNullOrWhiteSpace(s.LogDirectory))
         {
@@ -334,7 +369,11 @@ public static class SettingsDefaults
         if (current is { Count: > 0 }) return current;
         return new List<CommonNodeEntry>
         {
-            new() { Id = "ltdrdata/ComfyUI-Manager",         DisplayName = "ComfyUI Manager",                IsBuiltIn = true, Enabled = true },
+            // v1.0.0.x:ComfyUI-Manager 从 seed 去掉 — 用户原话"针对 comfyui 有独立的
+            // 界面进行操作",EnvListVM 的 ToggleComfyUiManagerCommand(env 行末按钮 +
+            // 显示 inline 状态面板)已经在每行 env 单独管理 ComfyUI-Manager 装/卸,
+            // 再在 common_nodes 里出现冗余且会跟独立界面抢 git clone 时机。新装用户
+            // settings.inf CommonNodes 列表里不再有 ComfyUI-Manager。
             new() { Id = "ltdrdata/ComfyUI-Impact-Pack",     DisplayName = "ComfyUI Impact Pack",            IsBuiltIn = true, Enabled = true },
             new() { Id = "ltdrdata/ComfyUI-Inspire-Pack",    DisplayName = "ComfyUI Inspire Pack",           IsBuiltIn = true, Enabled = true },
             new() { Id = "pythongosssss/ComfyUI-Custom-Scripts", DisplayName = "ComfyUI Custom Scripts",     IsBuiltIn = true, Enabled = true },

@@ -148,7 +148,7 @@
                 <TextBox Text="{Binding LogDirectory, UpdateSourceTrigger=PropertyChanged}"
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
-            <TextBlock Text="日志文件夹位置(Logs/ 子目录会创建在此目录下);空 = 默认 &lt;安装目录&gt;。"
+            <TextBlock Text="日志文件夹位置(Logs/ 子目录会创建在此目录下);默认 seed 当前项目根下的 logs/ 绝对路径。"
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
@@ -317,14 +317,13 @@
             <TextBlock x:Name="SectionPaths" Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
             <!-- v1.0.0.x #630: 系统模板库目录加回 Settings 页 ——
-                 用户原话"为什么设置中的模板目录不见了"(之前误删)。TemplatePathResolver
-                 锚定此字段解析所有 built-in template 的 LocalSourceDir(空 → fallback 到
-                 AppContext.BaseDirectory 拼 dev bin/,污染 dev build,所以不推荐空值)。
-                 SettingsDefaults.Apply 已经 seed 默认相对 "ENVTemplate" ——
-                 <projectRoot>/ENVTemplate/<Kind> 符合"项目目录+envtemplate+模板路径"约定。
-                 留空会退化到 BaseDirectory(警告在 help text)。 -->
+                 v1.0.0.x 用户改名为"模板路径",改用 ResolveAsAbsolute 自动 seed 当前项目根
+                 下的绝对路径(类似 EnvsDir / LocalNodeDirectory 等本地资源路径)。
+                 TemplatePathResolver 锚定此字段解析所有 built-in template 的 LocalSourceDir
+                 (空 → fallback 到 AppContext.BaseDirectory 拼 dev bin/,污染 dev build,所以
+                 不推荐空值)。默认 seed 绝对 <projectRoot>/ENVTemplate/。 -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <TextBlock Text="系统模板库目录(8 个内置模板源码根目录)" VerticalAlignment="Center"/>
+                <TextBlock Text="模板路径(8 个内置模板源码根目录)" VerticalAlignment="Center"/>
                 <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource WarningBrush}"
@@ -338,7 +337,7 @@
                 <TextBox Text="{Binding SystemTemplateLibraryDir, UpdateSourceTrigger=PropertyChanged}"
                          Style="{StaticResource MaterialTextBox}" />
             </DockPanel>
-            <TextBlock Text="默认相对 &quot;ENVTemplate&quot;(&lt;projectRoot&gt;/ENVTemplate/&lt;Kind&gt;);留空会退化到 bin/ 目录(dbg dev build)不建议。"
+            <TextBlock Text="默认 seed 当前项目根下的 ENVTemplate/ 绝对路径;留空会退化到 bin/ 目录(dbg dev build)不建议。"
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
@@ -452,15 +451,20 @@
                                      Converter={StaticResource BoolToVisibility}}" />
 
             <!-- v1.0.0.x:批量下载进度面板 — 跟 env-list LocalNodeInstallStatus 同模式。
-                 永远等用户手动关(批量无固定时长,success/fail 都展示总结行)。
+                 v1.0.0.x 用户改"下载完成自动收起":status.Hide() 设 IsVisible=false →
+                 Border Visibility → Collapsed。下载过程中 IsVisible=true 走显示。
                  v1.0.0.x #590:日志区换成 Controls/ConsolePanel — terminal 深灰底浅字风格,
-                 ✕ 关闭按钮交给 ConsolePanel 内部 ConsoleCloseRequested → CloseCommand。 -->
+                 ✕ 关闭按钮交给 ConsolePanel 内部 ConsoleCloseRequested → CloseCommand。
+                 (当前主路径里 ✕ 已不再触发,因为面板自动收起;CloseCommonNodeDownloadStatusCommand
+                  仍保留供 ConsolePanel 内部 ✕ handler 调用 — 调用是 no-op 因为 IsVisible
+                  已为 false,但保留以防用户在其他路径下手动触发。) -->
             <Border Margin="0,8,0,0" Padding="8" CornerRadius="4"
                     Background="{DynamicResource Brush.Surface.Variant}"
                     BorderBrush="{DynamicResource Brush.Border.Subtle}"
                     BorderThickness="1"
                     Visibility="{Binding CommonNodeDownloadStatus.IsVisible,
-                                 Converter={StaticResource BoolToVisibility}}">
+                                 Converter={StaticResource BoolToVisibility},
+                                 FallbackValue=Collapsed}">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                         <TextBlock Text="下载进度:" FontWeight="Bold" VerticalAlignment="Center" />
@@ -610,7 +614,7 @@
                            ToolTip="尚未保存"
                            Visibility="{Binding Dirty[WorkflowsDirectory], Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>
-            <TextBlock Text="工作流市场页面使用的共享 workflows 目录;留空 = 默认 workflows/。"
+            <TextBlock Text="工作流市场页面使用的共享 workflows 目录;默认 seed 当前项目根下的 Workflow/ 绝对路径。"
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
@@ -1001,7 +1005,7 @@
 
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
                 <TextBlock Text="git.exe 路径" VerticalAlignment="Center"/>
-                <TextBlock Text="(默认 bin/git-portable/cmd/git.exe,留空自动探测 shipped portable)" Margin="6,0,0,0"
+                <TextBlock Text="(默认 seed shipped portable 绝对路径,留空自动探测)" Margin="6,0,0,0"
                            VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource MutedText}"/>
                 <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                            VerticalAlignment="Center"

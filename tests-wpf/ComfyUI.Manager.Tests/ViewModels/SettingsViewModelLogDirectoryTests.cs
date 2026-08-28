@@ -74,8 +74,15 @@ public class SettingsViewModelLogDirectoryTests : IDisposable
     [Fact]
     public void LogDirectory_DefaultEmpty()
     {
+        // v1.0.0.x 用户原话"日志目录也列出绝对路径,目录为 logs" ——
+        // LogDirectory 改 ResolveAsAbsolute,空 → seed 当前 projectRoot + "logs"
+        // 的绝对路径。SettingsRepository 临时文件在 Path.GetTempPath()下,所以
+        // VM ctor 调 SettingsDefaults.Apply 后 LogDirectory 是 temp 根 + "logs"。
+        // 此 测试改为确认非空 + 包含 "logs" 子目录名(种子逻辑走绝对路径)。
         var vm = CreateVm(new Settings());
-        Assert.Equal("", vm.LogDirectory);
+        Assert.NotEqual("", vm.LogDirectory);
+        Assert.EndsWith("logs", vm.LogDirectory);
+        Assert.True(Path.IsPathRooted(vm.LogDirectory));
     }
 
     // —— v0.6.12 hotfix:BrowseLogDirectoryCommand 测试 ——
@@ -97,7 +104,9 @@ public class SettingsViewModelLogDirectoryTests : IDisposable
 
         Assert.Equal(picked, vm.LogDirectory);
         Assert.True(vm.HasUnsavedChanges);
-        Assert.Equal("", passedInitialPath);  // 当前 LogDirectory 是空 → 传 null
+        // v1.0.0.x:SettingsDefaults.Apply 后 LogDirectory 不再是空,传 VM 当前值作 initial
+        Assert.NotEqual("", passedInitialPath);
+        Assert.True(Path.IsPathRooted(passedInitialPath));
     }
 
     [Fact]

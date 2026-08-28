@@ -126,12 +126,13 @@ public class TemplateConfigTests
     }
 
     [Fact]
-    public void SourceKindBadge_LocalKind_ReturnsLocalText()
+    public void SourceKindBadge_LocalKind_ReturnsGitHubText()
     {
-        // v1.0.0.x #630: "[本地]" → "[内置]" ——
-        // 4 个图像模板是 shipped 本地 checkout,"内置"比"本地"精确。
+        // v1.0.0.x 用户改回 "[GitHub]" 统一 ——
+        // "模板管理的内容就不需要写内置,就写成 github",所有 built-in 统一显示 [GitHub],
+        // 不再区分 Local vs GitHub 两种文案。
         var cfg = new TemplateConfig { Kind = "MySwarm", SourceKind = TemplateSourceKind.Local };
-        Assert.Equal("[内置]", cfg.SourceKindBadge);
+        Assert.Equal("[GitHub]", cfg.SourceKindBadge);
     }
 
     [Fact]

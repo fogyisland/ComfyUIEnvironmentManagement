@@ -67,18 +67,19 @@ public class TemplateConfig
 
     /// <summary>
     /// Human-readable badge for the template kind. v1.0.0+: used by TemplateManagementView
-    /// card to display "[GitHub]" / "[内置]". Not serialized — derived from SourceKind.
+    /// card to display "[GitHub]". Not serialized — derived from SourceKind.
     /// v1.0.0.x #630: "[本地]" → "[内置]" ——
     /// 4 个图像模板(ComfyUI / A1111 / Forge / SwarmUI)是 shipped 本地 checkout,
     /// "内置源码"比"本地"更精确,避免跟"用户自定义 local" 概念冲突。
+    /// v1.0.0.x 用户改回 "[GitHub]" 统一 ——
+    /// "模板管理的内容就不需要写内置,就写成 github",所有 8 个 built-in 模板在
+    /// 模板管理卡片统一显示 "[GitHub]",用户不再看到 "[内置]"(此前 #630 改成
+    /// "[内置]" 也被推翻)。新策略:8 个 built-in 都视为 GitHub source(其中 4 个
+    /// 图像模板走 shipped 本地 checkout 但语义上是 GitHub repo 的 source,
+    /// 4 个 AI 语音模板是真正 GitHub clone)。
     /// </summary>
     [JsonIgnore]
-    public string SourceKindBadge => SourceKind switch
-    {
-        TemplateSourceKind.GitHub => "[GitHub]",
-        TemplateSourceKind.Local => "[内置]",
-        _ => "",
-    };
+    public string SourceKindBadge => "[GitHub]";
 
     /// <summary>
     /// Whether this template's source can be updated via
