@@ -52,14 +52,15 @@
 
                                 <!-- Row 0: Name + SourceKindBadge + LocalDirMissing badge (single line, full width) -->
                                 <DockPanel Grid.Row="0" Grid.Column="0">
-                                    <!-- v1.0.0.x:本地目录状态 — 内置 OpenVoice/Whisper/CoquiTTS/Bark
-                                         shipped 但 envTemplates 目录未 git clone 时显红色 badge 提醒
-                                         用户点 「下载与更新」。SourceKindBadge 之前。 -->
+                                    <!-- v1.0.0.x:本地目录状态 — GitHub 模板(Whisper / CoquiTTS / Bark)
+                                         首次使用前没 git clone 时显琥珀色 badge 提醒用户点 「下载与更新」。
+                                         SourceKindBadge 之前。v1.0.0.x #630: 颜色 #D32F2F 红 →
+                                         #F59E0B 琥珀 — "未下载" 不是错误,红色让用户误以为坏了。 -->
                                     <Border DockPanel.Dock="Right" Margin="6,0,0,0"
                                             Padding="6,2" CornerRadius="3"
-                                            Background="#D32F2F"
+                                            Background="#F59E0B"
                                             Visibility="{Binding LocalDirMissing, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
-                                            ToolTip="模板源码目录不存在 — 点「下载与更新」按钮把源码 git clone 到本地">
+                                            ToolTip="模板源码未下载 — 点「下载与更新」按钮把源码 git clone 到本地">
                                         <TextBlock Text="{x:Static models:TemplateConfig.LocalDirBadgeHint}"
                                                    Foreground="White" FontSize="11" FontWeight="SemiBold"/>
                                     </Border>

@@ -67,13 +67,16 @@ public class TemplateConfig
 
     /// <summary>
     /// Human-readable badge for the template kind. v1.0.0+: used by TemplateManagementView
-    /// card to display "[GitHub]" / "[本地]". Not serialized — derived from SourceKind.
+    /// card to display "[GitHub]" / "[内置]". Not serialized — derived from SourceKind.
+    /// v1.0.0.x #630: "[本地]" → "[内置]" ——
+    /// 4 个图像模板(ComfyUI / A1111 / Forge / SwarmUI)是 shipped 本地 checkout,
+    /// "内置源码"比"本地"更精确,避免跟"用户自定义 local" 概念冲突。
     /// </summary>
     [JsonIgnore]
     public string SourceKindBadge => SourceKind switch
     {
         TemplateSourceKind.GitHub => "[GitHub]",
-        TemplateSourceKind.Local => "[本地]",
+        TemplateSourceKind.Local => "[内置]",
         _ => "",
     };
 
@@ -137,8 +140,11 @@ public class TemplateConfig
     /// <summary>
     /// v1.0.0.x:模板管理卡片用本地状态 badge。<see cref="LocalDirBadgeHint"/>
     /// 没本地目录时显示,提醒用户「在模板管理页点 下载与更新 把模板源码 clone 到本地」。
+    /// v1.0.0.x #630: 文字"本地目录为空" → "源码未下载" ——
+    /// 3 个 GitHub AI 语音模板(Whisper / CoquiTTS / Bark)首次使用前没 clone,
+    /// 旧文案容易被误读为「错误」;新文案直白「未下载」配合琥珀 badge 颜色,语义清楚。
     /// </summary>
-    public const string LocalDirBadgeHint = "本地目录为空";
+    public const string LocalDirBadgeHint = "源码未下载";
 
     /// <summary>
     /// 返回本地目录状态文字 — 用于 TemplateManagementView 卡片显示。

@@ -98,6 +98,20 @@ public partial class SettingsView : UserControl
         }
     }
 
+    /// <summary>
+    /// v1.0.0.x #630: 把系统模板库目录浏览按钮加回 Settings 页 ——
+    /// 用户原话"为什么设置中的模板目录不见了"。PickFolder 用 WPF OpenFolderDialog,
+    /// 选完后把绝对路径写到 VM.SystemTemplateLibraryDir(MarkDirty 自动触发 ⚠ 警告)。
+    /// </summary>
+    private void BrowseSystemTemplateLibraryDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.SystemTemplateLibraryDir = picked;
+        }
+    }
+
     private void BrowseGlobalNodesDir(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)
@@ -385,5 +399,17 @@ public partial class SettingsView : UserControl
     {
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// v1.0.0.x #590:ConsolePanel 内置 ✕ 按钮 raise 此事件 — 桥接到 VM 的 CloseCommonNodeDownloadStatusCommand。
+    /// ConsoleCloseRequested 是 EventHandler(非 RoutedEvent),参数类型用 EventArgs。
+    /// </summary>
+    private void OnCommonNodeDownloadConsoleCloseClicked(object sender, EventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            vm.CloseCommonNodeDownloadStatusCommand.Execute(null);
+        }
     }
 }

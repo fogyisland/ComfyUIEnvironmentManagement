@@ -128,8 +128,10 @@ public class TemplateConfigTests
     [Fact]
     public void SourceKindBadge_LocalKind_ReturnsLocalText()
     {
+        // v1.0.0.x #630: "[本地]" → "[内置]" ——
+        // 4 个图像模板是 shipped 本地 checkout,"内置"比"本地"精确。
         var cfg = new TemplateConfig { Kind = "MySwarm", SourceKind = TemplateSourceKind.Local };
-        Assert.Equal("[本地]", cfg.SourceKindBadge);
+        Assert.Equal("[内置]", cfg.SourceKindBadge);
     }
 
     [Fact]
@@ -362,7 +364,8 @@ public class TemplateConfigTests
         {
             var cfg = new TemplateConfig { LocalSourceDir = dir };
             Assert.Equal("", cfg.LocalDirBadge(null));
-            Assert.Equal("本地目录为空", TemplateConfig.LocalDirBadgeHint);
+            // v1.0.0.x #630: "本地目录为空" → "源码未下载"
+            Assert.Equal("源码未下载", TemplateConfig.LocalDirBadgeHint);
         }
         finally { try { Directory.Delete(dir, recursive: true); } catch { } }
     }

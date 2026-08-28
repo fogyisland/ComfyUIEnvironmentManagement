@@ -316,6 +316,32 @@
             <!-- ============ 路径 ============ -->
             <TextBlock x:Name="SectionPaths" Text="路径" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
 
+            <!-- v1.0.0.x #630: 系统模板库目录加回 Settings 页 ——
+                 用户原话"为什么设置中的模板目录不见了"(之前误删)。TemplatePathResolver
+                 锚定此字段解析所有 built-in template 的 LocalSourceDir(空 → fallback 到
+                 AppContext.BaseDirectory 拼 dev bin/,污染 dev build,所以不推荐空值)。
+                 SettingsDefaults.Apply 已经 seed 默认相对 "ENVTemplate" ——
+                 <projectRoot>/ENVTemplate/<Kind> 符合"项目目录+envtemplate+模板路径"约定。
+                 留空会退化到 BaseDirectory(警告在 help text)。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="系统模板库目录(8 个内置模板源码根目录)" VerticalAlignment="Center"/>
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[SystemTemplateLibraryDir], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <DockPanel Margin="0,2,0,0">
+                <Button DockPanel.Dock="Right" Content="浏览..."
+                        Click="BrowseSystemTemplateLibraryDir"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <TextBox Text="{Binding SystemTemplateLibraryDir, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+            <TextBlock Text="默认相对 &quot;ENVTemplate&quot;(&lt;projectRoot&gt;/ENVTemplate/&lt;Kind&gt;);留空会退化到 bin/ 目录(dbg dev build)不建议。"
+                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+
             <!-- ============ v0.6.11++ Pip 镜像 ============ -->
             <TextBlock x:Name="SectionPipMirror" Text="Pip 镜像" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="选择 pip 镜像源(影响 ComfyUI / ComfyUI Manager 依赖安装,BED 仍走 pytorch.org)"
@@ -387,9 +413,18 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <Button Content="+ 添加节点" Margin="0,8,0,0" HorizontalAlignment="Left"
-                    Command="{Binding AddCommonNodeCommand}"
-                    Style="{StaticResource MaterialButton}" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <!-- v1.0.0.x:把 enabled=true 的常用节点批量 git clone 到 Settings.LocalNodesDirectory
+                     (用户原话"将设置勾选的哪些节点 全部都下载到本地节点目录中")。已装自动跳过,
+                     单包失败 warn 继续,busy 期间 disabled 防双击。-->
+                <Button Content="下载到本地节点目录" Margin="0,0,8,0" HorizontalAlignment="Left"
+                        Command="{Binding DownloadCommonNodesCommand}"
+                        ToolTip="把上方勾选的节点 git clone 到 Settings.local_nodes_directory"
+                        Style="{StaticResource MaterialButton}" />
+                <Button Content="+ 添加节点" HorizontalAlignment="Left"
+                        Command="{Binding AddCommonNodeCommand}"
+                        Style="{StaticResource MaterialButton}" />
+            </StackPanel>
             <Grid Margin="0,8,0,0"
                   Visibility="{Binding IsAddCommonNodeOpen,
                                 Converter={StaticResource BoolToVisibility}}">
@@ -415,6 +450,34 @@
                        Margin="0,4,0,0"
                        Visibility="{Binding HasAddCommonNodeError,
                                      Converter={StaticResource BoolToVisibility}}" />
+
+            <!-- v1.0.0.x:批量下载进度面板 — 跟 env-list LocalNodeInstallStatus 同模式。
+                 永远等用户手动关(批量无固定时长,success/fail 都展示总结行)。
+                 v1.0.0.x #590:日志区换成 Controls/ConsolePanel — terminal 深灰底浅字风格,
+                 ✕ 关闭按钮交给 ConsolePanel 内部 ConsoleCloseRequested → CloseCommand。 -->
+            <Border Margin="0,8,0,0" Padding="8" CornerRadius="4"
+                    Background="{DynamicResource Brush.Surface.Variant}"
+                    BorderBrush="{DynamicResource Brush.Border.Subtle}"
+                    BorderThickness="1"
+                    Visibility="{Binding CommonNodeDownloadStatus.IsVisible,
+                                 Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock Text="下载进度:" FontWeight="Bold" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding CommonNodeDownloadStatus.StatusText}"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding CommonNodeDownloadStatus.Error}"
+                               Foreground="OrangeRed" FontSize="11" TextWrapping="Wrap"
+                               Margin="0,4,0,0"
+                               Visibility="{Binding CommonNodeDownloadStatus.HasError,
+                                         Converter={StaticResource BoolToVisibility}}" />
+                    <controls:ConsolePanel Title="下载日志"
+                                           Lines="{Binding CommonNodeDownloadStatus.LogLines}"
+                                           ConsoleCloseRequested="OnCommonNodeDownloadConsoleCloseClicked"
+                                           Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
 
             <!-- v1.0.0.x: 系统模板库目录 — 由 Settings.SystemTemplateLibraryDir 承载(从 settings.inf 读,
                  老用户值在)但 Settings 页不再暴露编辑入口(用户原话"干脆这个模板目录就不能设置,
