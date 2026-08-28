@@ -127,4 +127,25 @@ public sealed class BaseEnvUninstallerTests : IDisposable
         Assert.Null(env.BedProfileId);
         Assert.Null(env.BedFailedReason);
     }
+
+    // v1.0.0.x:IsInstalled 只在 BedStatus=="done" 时返回 true。之前的实现把 "failed" 和
+    // "installing" 也算 installed,导致 BaseEnvButtonText 在 failed 时显示"卸载基础环境",
+    // 用户想重试要先去卸载再装,绕路。新行为 failed → 按钮显示"安装基础环境"直接重试。
+    [Theory]
+    [InlineData("done", true)]
+    [InlineData("failed", false)]
+    [InlineData("installing", false)]
+    [InlineData(null, false)]
+    public void IsInstalled_BedStatus_ReturnsTrueOnlyWhenDone(string? bedStatus, bool expected)
+    {
+        var env = new Environment
+        {
+            Id = "e", Name = "e", RootPath = _tempRoot,
+            VenvPath = Path.Combine(_tempRoot, "venv"),
+            Status = "stopped",
+            BedStatus = bedStatus,
+        };
+
+        Assert.Equal(expected, BaseEnvUninstaller.IsInstalled(env));
+    }
 }

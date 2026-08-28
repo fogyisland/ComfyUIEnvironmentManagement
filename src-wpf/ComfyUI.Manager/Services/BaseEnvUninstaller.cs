@@ -27,7 +27,7 @@ public class BaseEnvUninstaller
     }
 
     public static bool IsInstalled(Environment env)
-        => env.BedStatus is "done" or "failed" or "installing";
+        => env.BedStatus == "done";
 
     public virtual BaseEnvUninstallResult Uninstall(Environment env)
     {

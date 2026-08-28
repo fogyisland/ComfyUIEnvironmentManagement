@@ -330,6 +330,23 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
         Assert.False(sut.Environments[1].IsBaseEnvInstalled);
     }
 
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("installing")]
+    public void Load_FailedOrInstallingBedStatus_ShowsInstallBaseEnvLabel(string bedStatus)
+    {
+        // v1.0.0.x:BED install 失败或正在装时,BaseEnvButtonText 显示"安装基础环境"
+        // (之前 IsInstalled 把 failed/installing 也算 installed → 显示"卸载基础环境",
+        // 用户想重试要先去卸载再装,绕路)。
+        using var db = new TestDb();
+        SeedEnv("e1", bedStatus: bedStatus);
+        var sut = NewSut();
+
+        var env = sut.Environments[0];
+        Assert.False(env.IsBaseEnvInstalled);
+        Assert.Equal("安装基础环境", env.BaseEnvButtonText);
+    }
+
     /// <summary>
     /// 假 BED uninstaller:沿 EnvironmentListViewModelUninstallTests.cs FakeBaseEnvUninstaller 模式。
     /// 跟踪 Install / Uninstall 路径。
