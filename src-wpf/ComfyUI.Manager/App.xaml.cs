@@ -459,7 +459,14 @@ public partial class App : Application
             logger);
         var envCreator = new EnvCreatorService(
             dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
-        var requirementsInstaller = new RequirementsInstaller(logger, reqFileInstaller, comfyUiManagerInstaller, commonNodeInstaller);
+        // v1.0.0.x:A1111 / Forge 「装依赖」pre-flight 走 A1111PreFlightInstaller
+        // (镜像 AUTOMATIC1111 launch_utils.py:prepare_environment() 启动期 4 步:
+        //  clip + open_clip zip + requirements_versions.txt + git clone 5 repos)。
+        // 共享 gitExe + gitProxy,跟 comfyUiManagerInstaller 一致。
+        var a1111PreFlightInstaller = new A1111PreFlightInstaller(logger, gitProxy, gitExe);
+        var requirementsInstaller = new RequirementsInstaller(
+            logger, reqFileInstaller, comfyUiManagerInstaller, commonNodeInstaller,
+            a1111PreFlightInstaller);
         // v0.6.5.22: 卸载 service(BED reset 跟 requirements pip uninstall)。
         // EnvListVM 行内"卸载基础环境" / "卸载依赖"按钮 + 互斥 mutex 用这两份。
         _baseEnvUninstaller = new BaseEnvUninstaller(logger);
