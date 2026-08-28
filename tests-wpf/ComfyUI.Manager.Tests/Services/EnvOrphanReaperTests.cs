@@ -156,6 +156,39 @@ public sealed class EnvOrphanReaperTests : IDisposable
     }
 
     [Fact]
+    public async Task Reap_PortablePythonWithEnvMainPy_StopperCalled()
+    {
+        // v1.0.0.x: 真场景重现 — PID 37732 = portable python + env main.py
+        // MainModule 给的是 <projectRoot>/python/python.exe,不在 envRoot 下(规则 1 漏判);
+        // 规则 2 启发式(EXE 是 shipped-portable + CommandLine 引用 envRoot)兜底识别为本 app。
+        // Reaper 走全 seam:ListeningPidLookup 给 pid,ExePathLookup 给 portable,
+        // CommandLineLookup 给 env cmdline,Stopper 验证被调。
+        var envRoot = @"D:\Envs\faceswap";
+        var (svc, repo) = MakeService();
+        var env = MakeEnv("faceswap", envRoot, port: 7000, pid: 1234);
+        repo.Upsert(env);
+
+        svc.ListeningPidLookup = _ => 1234;
+        svc.ExePathLookup = _ => @"D:\ToolDevelop\ComfyUI\python\python.exe";
+        svc.CommandLineLookup = _ =>
+            $@"""D:\ToolDevelop\ComfyUI\python\python.exe"" {envRoot}\main.py --port 7000";
+
+        int stoppedPid = -1;
+        svc.Stopper = (e, _, _) =>
+        {
+            stoppedPid = e.Pid ?? -1;
+            return Task.CompletedTask;
+        };
+
+        var reaped = await svc.ReapOrphansAsync();
+
+        Assert.Equal(1, reaped);
+        Assert.Equal(1234, stoppedPid);
+        Assert.Equal("stopped", repo.Get("faceswap")!.Status);
+        Assert.Null(repo.Get("faceswap")!.Pid);
+    }
+
+    [Fact]
     public async Task Reap_StopperThrows_StillMarkedStopped()
     {
         var (svc, repo) = MakeService();

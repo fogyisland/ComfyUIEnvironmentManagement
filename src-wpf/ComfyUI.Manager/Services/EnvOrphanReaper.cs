@@ -29,9 +29,18 @@ namespace ComfyUI.Manager.Services;
 /// - status 翻 stopped + pid null(idempotent + 兜底 stop 失败)
 /// - 失败只 warn,不阻断启动 — 同 <see cref="EnvStartupStopper"/> 容错模式
 ///
+/// v1.0.0.x hotfix:EXE 不在 env.RootPath 下时,也用 shipped-portable + CommandLine
+/// 启发式兜底(见 <see cref="EnvPortProbe.IsEnvProcessOwned"/> 规则 2)。
+/// 不破坏现有 <see cref="EnvOwnerCheck"/> seam,新增 <see cref="ExePathLookup"/> +
+/// <see cref="CommandLineLookup"/> seam,Reaper 在 ownerCheck 循环外 try/finally 临时
+/// 注入到 <see cref="EnvPortProbe"/> static seam,循环结束还原(避免把 EnvPortProbe 重构
+/// 为 instance class 触发全调用链改动;启动期单次调用,static mutable 风险低)。
+///
 /// 测试 seam(全部可注入 Func,默认走真实实现):
 /// - <see cref="ListeningPidLookup"/>: int port → int? pid(默认 <see cref="EnvPortProbe.GetListeningPidByPort"/>)
 /// - <see cref="EnvOwnerCheck"/>: (int pid, string envRootPath) → bool(默认 <see cref="EnvPortProbe.IsEnvProcessOwned"/>)
+/// - <see cref="ExePathLookup"/>: int pid → string? exe 路径(默认 <see cref="EnvPortProbe.GetExePathByPid"/> 默认实现)
+/// - <see cref="CommandLineLookup"/>: int pid → string? cmdline(默认 <see cref="EnvPortProbe.GetProcessCommandLine"/> WMI)
 /// - <see cref="Stopper"/>: graceful stop delegate(默认 <c>_launcher.StopEnvAsync</c>)
 /// </summary>
 public sealed class EnvOrphanReaper
@@ -62,6 +71,18 @@ public sealed class EnvOrphanReaper
     public Func<int, string, bool>? EnvOwnerCheck { get; set; }
 
     /// <summary>
+    /// v1.0.0.x 测试 seam: pid → EXE 路径(注入到 <see cref="EnvPortProbe.ExePathLookup"/>)。
+    /// null → EnvPortProbe 走默认 <c>Process.GetProcessById + MainModule</c> 实现。
+    /// </summary>
+    public Func<int, string?>? ExePathLookup { get; set; }
+
+    /// <summary>
+    /// v1.0.0.x 测试 seam: pid → CommandLine(注入到 <see cref="EnvPortProbe.CommandLineLookup"/>)。
+    /// null → EnvPortProbe 走默认 WMI <c>Win32_Process.CommandLine</c> 实现。
+    /// </summary>
+    public Func<int, string?>? CommandLineLookup { get; set; }
+
+    /// <summary>
     /// 测试 seam: 单 env stop delegate。null → 走 <see cref="ProcessLauncher.StopEnvAsync"/>。
     /// </summary>
     public Func<Environment, int, CancellationToken, Task>? Stopper { get; set; }
@@ -69,6 +90,11 @@ public sealed class EnvOrphanReaper
     /// <summary>
     /// 跑一次启动期孤儿扫描 + 杀进程。返回"实际尝试过 stop"的 env 数(成功失败都算)。
     /// 不抛 — try/catch 在内部所有路径,只 warn 写日志。
+    ///
+    /// v1.0.0.x: 在循环外 try/finally 临时把 <see cref="ExePathLookup"/> +
+    /// <see cref="CommandLineLookup"/> 注入到 <see cref="EnvPortProbe"/> 的 static seam,
+    /// 让 <see cref="EnvPortProbe.IsEnvProcessOwned"/> 走 shipped-portable + CommandLine
+    /// 启发式(规则 2);finally 还原 prev 值,避免污染下一次调用 / 其他 caller。
     /// </summary>
     public async Task<int> ReapOrphansAsync(CancellationToken ct = default)
     {
@@ -76,84 +102,104 @@ public sealed class EnvOrphanReaper
         if (envs.Count == 0) return 0;
 
         var pidLookup = ListeningPidLookup ?? EnvPortProbe.GetListeningPidByPort;
-        var ownerCheck = EnvOwnerCheck ?? EnvPortProbe.IsEnvProcessOwned;
         var stopper = Stopper ?? ((env, t, c) => _launcher.StopEnvAsync(env, t, c));
 
+        // v1.0.0.x:try/finally 临时注入 EnvPortProbe static seam — 兜底 shipped-portable
+        // 启发式。不破坏 EnvOwnerCheck 直接注入的旧路径:EnvOwnerCheck 非 null 时直接用,
+        // 根本不读 static seam(避免浪费 WMI 调用 + 防止既有测试被新逻辑影响)。
+        var prevExe = EnvPortProbe.ExePathLookup;
+        var prevCmd = EnvPortProbe.CommandLineLookup;
         int reaped = 0;
-        foreach (var env in envs)
+        try
         {
-            ct.ThrowIfCancellationRequested();
-
-            int port = env.Port!.Value;
-            int? pid;
-            try
+            if (EnvOwnerCheck is null)
             {
-                pid = pidLookup(port);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Warn("env-orphan-reap",
-                    $"env='{env.Name}' port={port} 查 pid 失败:{ex.GetType().Name}: {ex.Message}");
-                continue;
+                EnvPortProbe.ExePathLookup = ExePathLookup;
+                EnvPortProbe.CommandLineLookup = CommandLineLookup;
             }
 
-            if (pid is null)
-            {
-                // 端口无人监听 — 不是 port-based orphan。留给 EnvStartupReconciler 标 stale。
-                continue;
-            }
+            var ownerCheck = EnvOwnerCheck ?? EnvPortProbe.IsEnvProcessOwned;
 
-            bool ownedByEnv;
-            try
+            foreach (var env in envs)
             {
-                ownedByEnv = ownerCheck(pid.Value, env.RootPath);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Warn("env-orphan-reap",
-                    $"env='{env.Name}' pid={pid} 查 EXE 路径失败:{ex.GetType().Name}: {ex.Message}");
-                continue;
-            }
+                ct.ThrowIfCancellationRequested();
 
-            if (!ownedByEnv)
-            {
-                _logger?.Info("env-orphan-reap",
-                    $"env='{env.Name}' port={port} pid={pid} EXE 不在 env.RootPath='{env.RootPath}' 下,跳过(非本 app 启动)");
-                continue;
-            }
+                int port = env.Port!.Value;
+                int? pid;
+                try
+                {
+                    pid = pidLookup(port);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("env-orphan-reap",
+                        $"env='{env.Name}' port={port} 查 pid 失败:{ex.GetType().Name}: {ex.Message}");
+                    continue;
+                }
 
-            // owned by env → 上次会话孤儿,graceful stop。
-            try
-            {
-                await stopper(env, 5, ct).ConfigureAwait(false);
-                _logger?.Info("env-orphan-reap",
-                    $"env='{env.Name}' port={port} pid={pid} 启动期孤儿已停");
-            }
-            catch (OperationCanceledException)
-            {
-                _logger?.Warn("env-orphan-reap", $"env='{env.Name}' 启动期停止取消");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger?.Warn("env-orphan-reap",
-                    $"env='{env.Name}' 启动期停止失败:{ex.GetType().Name}: {ex.Message}");
-                // 仍翻 status=stopped(stop 失败的 env 也保证 DB 一致)。
-            }
+                if (pid is null)
+                {
+                    // 端口无人监听 — 不是 port-based orphan。留给 EnvStartupReconciler 标 stale。
+                    continue;
+                }
 
-            try
-            {
-                var fresh = _envRepo.Get(env.Id) ?? env;
-                fresh.Status = "stopped";
-                fresh.Pid = null;
-                _envRepo.Upsert(fresh);
+                bool ownedByEnv;
+                try
+                {
+                    ownedByEnv = ownerCheck(pid.Value, env.RootPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("env-orphan-reap",
+                        $"env='{env.Name}' pid={pid} 查 EXE 路径失败:{ex.GetType().Name}: {ex.Message}");
+                    continue;
+                }
+
+                if (!ownedByEnv)
+                {
+                    _logger?.Info("env-orphan-reap",
+                        $"env='{env.Name}' port={port} pid={pid} EXE 不在 env.RootPath='{env.RootPath}' 下,跳过(非本 app 启动)");
+                    continue;
+                }
+
+                // owned by env → 上次会话孤儿,graceful stop。
+                try
+                {
+                    await stopper(env, 5, ct).ConfigureAwait(false);
+                    _logger?.Info("env-orphan-reap",
+                        $"env='{env.Name}' port={port} pid={pid} 启动期孤儿已停");
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger?.Warn("env-orphan-reap", $"env='{env.Name}' 启动期停止取消");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("env-orphan-reap",
+                        $"env='{env.Name}' 启动期停止失败:{ex.GetType().Name}: {ex.Message}");
+                    // 仍翻 status=stopped(stop 失败的 env 也保证 DB 一致)。
+                }
+
+                try
+                {
+                    var fresh = _envRepo.Get(env.Id) ?? env;
+                    fresh.Status = "stopped";
+                    fresh.Pid = null;
+                    _envRepo.Upsert(fresh);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("env-orphan-reap",
+                        $"env='{env.Name}' 状态写回失败:{ex.GetType().Name}: {ex.Message}");
+                }
+                reaped++;
             }
-            catch (Exception ex)
-            {
-                _logger?.Warn("env-orphan-reap",
-                    $"env='{env.Name}' 状态写回失败:{ex.GetType().Name}: {ex.Message}");
-            }
-            reaped++;
+        }
+        finally
+        {
+            EnvPortProbe.ExePathLookup = prevExe;
+            EnvPortProbe.CommandLineLookup = prevCmd;
         }
 
         if (reaped > 0)
