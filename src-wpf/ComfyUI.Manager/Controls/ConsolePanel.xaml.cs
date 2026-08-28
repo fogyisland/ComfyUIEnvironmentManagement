@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace ComfyUI.Manager.Controls;
 
@@ -146,5 +147,36 @@ public partial class ConsolePanel : UserControl
             // 剪贴板被其他进程独占(典型:远程桌面 / clip.exe / OneDrive 同步)
             // → COMException。静默吞,UI 不弹错误打扰。
         }
+    }
+
+    /// <summary>
+    /// v1.0.0.x 用户原话"log 日志滚动鼠标必须在右边才可用,能否在 log 区域都可以滚动":
+    /// ListBox 内嵌的 ScrollViewer 会拦截 PreviewMouseWheel 并自己滚,导致鼠标在
+    /// ListBox 中央 / 左半部分滚动时 outer ScrollViewer 收不到事件,只有把鼠标移到
+    /// outer ScrollViewer 的滚动条(右侧)才能滚。
+    /// 修法:在 outer ScrollViewer 上挂 PreviewMouseWheel 接管,tunnel 阶段早于 inner
+    /// ScrollViewer 的 OnMouseWheel 处理,set e.Handled=true 阻止 inner 处理,自己
+    /// 调 ScrollToVerticalOffset / ScrollToHorizontalOffset 完成滚动。Shift+Wheel
+    /// 走水平(outer ScrollViewer.HorizontalScrollBarVisibility=Auto 支持)。
+    /// </summary>
+    private void OnScrollViewerPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta == 0) return;
+        var sv = ConsoleScrollViewer;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            var newH = sv.HorizontalOffset - e.Delta;
+            if (newH < 0) newH = 0;
+            else if (newH > sv.ScrollableWidth) newH = sv.ScrollableWidth;
+            sv.ScrollToHorizontalOffset(newH);
+        }
+        else
+        {
+            var newV = sv.VerticalOffset - e.Delta;
+            if (newV < 0) newV = 0;
+            else if (newV > sv.ScrollableHeight) newV = sv.ScrollableHeight;
+            sv.ScrollToVerticalOffset(newV);
+        }
+        e.Handled = true;
     }
 }

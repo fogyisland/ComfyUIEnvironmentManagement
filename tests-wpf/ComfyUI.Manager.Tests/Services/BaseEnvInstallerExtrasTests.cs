@@ -88,7 +88,9 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
 
         Assert.Equal(1, result.SucceededCount);
         Assert.Equal(0, result.FailedCount);
-        // 3 次 pip 调用:pre-install(upgrade pip)+ main(torch+CUDA)+ extras(gitpython+triton)
+        // 3 次 pip 调用:pre-install(upgrade pip)+ main(torch+CUDA)+ extras(gitpython only)
+        // v1.0.0.x:triton 已从 DefaultExtraPackages 移除(Windows CUDA wheel 不在 PyPI 上,
+        // 装 PyPI mirror 找不到);extras 现只装 gitpython。详见 BaseEnvInstaller.cs。
         Assert.Equal(3, fake.CallHistory.Count);
         // 顺序固定
         Assert.Equal("pre-install", fake.PhaseAt(0));
@@ -98,7 +100,7 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
         Assert.Contains("--upgrade", fake.CallHistory[0]);
         Assert.Contains("torch==2.5.0", fake.CallHistory[1]);
         Assert.Contains("gitpython", fake.CallHistory[2]);
-        Assert.Contains("triton", fake.CallHistory[2]);
+        Assert.DoesNotContain("triton", fake.CallHistory[2]);
         var final = _envRepo.Get("env-a");
         Assert.Equal("done", final!.BedStatus);
     }
