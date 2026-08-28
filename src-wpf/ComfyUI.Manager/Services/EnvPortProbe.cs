@@ -66,9 +66,17 @@ public static class EnvPortProbe
             for (int i = 0; i < count; i++)
             {
                 var row = Marshal.PtrToStructure<MIB_TCPROW_OWNER_PID>(rowPtr);
-                // dwLocalPort 是 ULONG,实际只用 16 bits,按 network byte order 存。
-                // x86/x64 little-endian 上:读成 uint 后高 16 位是有效端口字节。
-                int localPort = (int)((row.dwLocalPort & 0xFFFF0000u) >> 16);
+                // dwLocalPort 是 ULONG,端口号存于**低 16 位**(网络字节序 / big-endian):
+                // 在 little-endian host 上 memory bytes 是 [b0, b1, b2, b3];端口字节是 b0 (高) + b1 (低),
+                // 整体在低 16 位。dwLocalPort & 0xFFFF 后 byte-swap 高低字节得端口号。
+                // 验证(2026-08-28 dump):
+                //   row[0] dwLocalPort=0x00000100 → byte-swap = 0x0001 = 1   (netstat port 1,pid 28360 ✓)
+                //   row[1] dwLocalPort=0x00008700 → byte-swap = 0x0087 = 135 (netstat port 135,pid 2196 ✓)
+                //   row[2] dwLocalPort=0x0000BD01 → byte-swap = 0x01BD = 445 (netstat port 445,pid 4 ✓)
+                //   row[3] dwLocalPort=0x00009905 → byte-swap = 0x0599 = 1433 (netstat port 1433,pid 25924 ✓)
+                //   row[4] dwLocalPort=0x00008308 → byte-swap = 0x0883 = 2179 (netstat port 2179,pid 4184 ✓)
+                uint low16 = row.dwLocalPort & 0xFFFFu;
+                int localPort = (int)(((low16 >> 8) & 0xFFu) | ((low16 & 0xFFu) << 8));
                 if (localPort == port)
                 {
                     return (int)row.dwOwningPid;
@@ -116,8 +124,9 @@ public static class EnvPortProbe
         var procDir = Path.GetDirectoryName(exePath);
         if (string.IsNullOrEmpty(procDir)) return false;
 
+        bool rule1 = PathStartsWith(procDir, envRootPath);
         // 规则 1:现有 — procDir 在 envRootPath 下
-        if (PathStartsWith(procDir, envRootPath)) return true;
+        if (rule1) return true;
 
         // 规则 2 (v1.0.0.x):EXE 是 shipped-portable-python + CommandLine 引用 envRootPath
         if (IsShippedPortablePython(exePath))
@@ -237,13 +246,21 @@ public static class EnvPortProbe
 
     private static string? DefaultGetProcessCommandLine(int pid)
     {
-        using var searcher = new ManagementObjectSearcher(
-            $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {pid}");
-        using var results = searcher.Get();
-        foreach (ManagementObject obj in results)
+        try
         {
-            var cmd = obj["CommandLine"]?.ToString();
-            if (!string.IsNullOrEmpty(cmd)) return cmd;
+            using var searcher = new ManagementObjectSearcher(
+                $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {pid}");
+            using var results = searcher.Get();
+            foreach (ManagementObject obj in results)
+            {
+                var cmd = obj["CommandLine"]?.ToString();
+                if (!string.IsNullOrEmpty(cmd)) return cmd;
+            }
+        }
+        catch
+        {
+            // 失败一律返 null — WMI down / 进程已退出 / 权限不足 / 任何异常都不上抛。
+            // Reaper 必须 fail-safe,绝不让 WMI 异常阻断启动。
         }
         return null;
     }

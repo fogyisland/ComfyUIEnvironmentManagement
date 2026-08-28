@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -114,8 +115,12 @@ public sealed class EnvOrphanReaper
         {
             if (EnvOwnerCheck is null)
             {
-                EnvPortProbe.ExePathLookup = ExePathLookup;
-                EnvPortProbe.CommandLineLookup = CommandLineLookup;
+                // 只在 Reaper 自己被注入 lookup 时才覆盖 EnvPortProbe 的 static seam — production
+                // 无 test injection 时这两个都是 null,**绝不能覆盖** EnvPortProbe 的默认实现
+                // (尤其 CommandLineLookup 静态初始化时绑定 DefaultGetProcessCommandLine — null
+                // 覆盖会导致 GetProcessCommandLine 内 lookup(pid) NRE,catch 后返 null,rule 2 失效)。
+                if (ExePathLookup is not null) EnvPortProbe.ExePathLookup = ExePathLookup;
+                if (CommandLineLookup is not null) EnvPortProbe.CommandLineLookup = CommandLineLookup;
             }
 
             var ownerCheck = EnvOwnerCheck ?? EnvPortProbe.IsEnvProcessOwned;
@@ -162,12 +167,19 @@ public sealed class EnvOrphanReaper
                     continue;
                 }
 
-                // owned by env → 上次会话孤儿,graceful stop。
+                // owned by env → 上次会话孤儿。优先 graceful stopper(<c>ProcessLauncher.StopEnvAsync</c>
+                // — 仅当 entry 在 _running map 里才有效,即 launcher 启动的 env);对**外部进程**启的
+                // orphan(stopped 状态、entry 不在 map),stopper 只清 DB 不杀进程,所以**必须** fallback
+                // hard-kill pid 本身 — 不然 Reaper 跑完 PID 37732 仍活着。
+                bool stopped = false;
                 try
                 {
                     await stopper(env, 5, ct).ConfigureAwait(false);
+                    // 即使 stopper 走 DB cleanup 路径没真杀,我们也走 hard-kill 兜底(下面 kill 失败时
+                    // 才会落到"已被 launcher kill"分支)— orphan 进程必须确定终止,不能光靠 DB 状态。
+                    stopped = TryHardKill(pid.Value, env.Name, _logger);
                     _logger?.Info("env-orphan-reap",
-                        $"env='{env.Name}' port={port} pid={pid} 启动期孤儿已停");
+                        $"env='{env.Name}' port={port} pid={pid} 启动期孤儿处理完毕(stopper+hard-kill)");
                 }
                 catch (OperationCanceledException)
                 {
@@ -180,6 +192,7 @@ public sealed class EnvOrphanReaper
                         $"env='{env.Name}' 启动期停止失败:{ex.GetType().Name}: {ex.Message}");
                     // 仍翻 status=stopped(stop 失败的 env 也保证 DB 一致)。
                 }
+                _ = stopped; // 当前 caller 不基于 stopped 走分支 — log 已记录。
 
                 try
                 {
@@ -228,6 +241,48 @@ public sealed class EnvOrphanReaper
         }
         catch
         {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x hotfix: 启动期 orphan hard-kill — <see cref="ProcessLauncher.StopEnvAsync"/> 对
+    /// 不在 _running map 里的 orphan 进程只清 DB 不杀进程(它的设计假设是 launcher 启动的进程,
+    /// entry 在 _running 里),所以 Reaper 必须自己 hard-kill 兜底,否则 PID 37732 一直活着。
+    /// <para>策略:Process.GetProcessById(pid).Kill() + WaitForExit(2s)— orphan 是 dev / portable
+    /// 启动的,不需要走 graceful(graceful shutdown 也走不到 — 它们没注册本 app 的 graceful handler)。</para>
+    /// <para>失败一律返 false 不上抛(进程已退 / 权限不足 / Win32Exception)— 启动期必须 fail-safe。</para>
+    /// </summary>
+    internal static bool TryHardKill(int pid, string envName, AppLogger? logger)
+    {
+        if (pid <= 0) return false;
+        try
+        {
+            using var proc = Process.GetProcessById(pid);
+            if (proc.HasExited)
+            {
+                logger?.Info("env-orphan-reap", $"env='{envName}' pid={pid} 已退出,跳过 hard-kill");
+                return true;
+            }
+            proc.Kill(entireProcessTree: true);
+            if (proc.WaitForExit(2000))
+            {
+                logger?.Info("env-orphan-reap", $"env='{envName}' pid={pid} hard-kill 成功");
+                return true;
+            }
+            logger?.Warn("env-orphan-reap", $"env='{envName}' pid={pid} hard-kill 后 2s 未退");
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            // 进程不存在 — 已被 stopper / OS 自动退。
+            logger?.Info("env-orphan-reap", $"env='{envName}' pid={pid} 已被外部 stop,跳过 hard-kill");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn("env-orphan-reap",
+                $"env='{envName}' pid={pid} hard-kill 失败:{ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }

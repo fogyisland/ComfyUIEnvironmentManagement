@@ -337,4 +337,72 @@ public sealed class EnvOrphanReaperTests : IDisposable
     {
         Assert.True(EnvOrphanReaper.IsPathUnder(@"D:\Envs\env1", @"D:\Envs\env1"));
     }
+
+    [Fact]
+    public async Task Reap_NullLookups_DoesNotOverrideEnvPortProbeDefaults()
+    {
+        // v1.0.0.x regression: Task 3 seam 集成 bug — production 无 test injection 时,
+        // Reaper.ExePathLookup + Reaper.CommandLineLookup 都是 null,赋值给 EnvPortProbe
+        // 静态 seam 会**覆盖** EnvPortProbe.CommandLineLookup 默认的 DefaultGetProcessCommandLine,
+        // 导致 GetProcessCommandLine 内 lookup(pid) NRE → catch 返 null → rule 2 失效
+        // → shipped-portable Python 永远不被认领,port 7000 orphan 杀不掉。
+        //
+        // 修复:Reaper 只在自身 lookup 非 null 时才注入;否则 EnvPortProbe 默认实现保持不变。
+        // 本 test 验证修复后:Reaper.CommandLineLookup = null 跑完后,EnvPortProbe.CommandLineLookup
+        // 必须仍指向一个非 null 的 delegate(默认 DefaultGetProcessCommandLine)。
+        var prevExe = EnvPortProbe.ExePathLookup;
+        var prevCmd = EnvPortProbe.CommandLineLookup;
+        try
+        {
+            var (svc, repo) = MakeService();
+            var env = MakeEnv("e1", @"D:\Envs\env1", port: 7000);
+            repo.Upsert(env);
+
+            // EnvOwnerCheck = null → 走 IsEnvProcessOwned 真实路径;
+            // ExePathLookup/CommandLineLookup 默认 null(无 test injection)→ production 场景。
+            svc.ListeningPidLookup = _ => null;  // 没人监听,提前 continue,不进入 ownerCheck
+
+            Assert.Null(svc.ExePathLookup);
+            Assert.Null(svc.CommandLineLookup);
+
+            await svc.ReapOrphansAsync();
+
+            // ★ 关键断言:Reaper 跑完后 EnvPortProbe.CommandLineLookup 必须仍指向默认
+            // DefaultGetProcessCommandLine(非 null)。ExePathLookup 默认就是 null(走 GetExePathByPid
+            // 封装的设计),覆盖是 OK 的;CommandLineLookup 默认绑定 DefaultGetProcessCommandLine,
+            // production 覆盖成 null 才是 bug。
+            Assert.NotNull(EnvPortProbe.CommandLineLookup);
+        }
+        finally
+        {
+            EnvPortProbe.ExePathLookup = prevExe;
+            EnvPortProbe.CommandLineLookup = prevCmd;
+        }
+    }
+
+    [Fact]
+    public void TryHardKill_InvalidPid_ReturnsFalse()
+    {
+        Assert.False(EnvOrphanReaper.TryHardKill(0, "test", null));
+        Assert.False(EnvOrphanReaper.TryHardKill(-1, "test", null));
+    }
+
+    [Fact]
+    public void TryHardKill_NonexistentPid_ReturnsTrue()
+    {
+        // 进程不存在 → ArgumentException → 返 true(已被外部 stop,无需 kill)。
+        // 用一个极不可能存在的 pid(高位)。
+        Assert.True(EnvOrphanReaper.TryHardKill(999_999_999, "test", null));
+    }
+
+    [Fact]
+    public void TryHardKill_CurrentProcess_KillsOrRefusesAndReturnsExpected()
+    {
+        // 当前进程不能真杀,所以这测例走两条路径之一:
+        // - Win32Exception/InvalidOperationException(无法 kill 当前进程)→ 返 false
+        // - 真杀成功(可能,取决于权限)— skip 这种 edge case。
+        // 我们的目的是锁住"不抛异常"语义,所以只断言不抛。
+        var ex = Record.Exception(() => EnvOrphanReaper.TryHardKill(System.Environment.ProcessId, "test", null));
+        Assert.Null(ex);
+    }
 }

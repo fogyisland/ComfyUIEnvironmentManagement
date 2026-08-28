@@ -50,6 +50,30 @@ public class EnvPortProbeTests
         Assert.Null(EnvPortProbe.GetListeningPidByPort(49152));
     }
 
+    /// <summary>
+    /// v1.0.0.x: 真实 socket 启 listener + probe 它 → 必须返回 listener 进程的 pid。
+    /// 这是 port decode 修复的 regression test — 之前 `(dwLocalPort &amp; 0xFFFF0000u) &gt;&gt; 16`
+    /// 错取高 16 位,port &lt; 65536 永远解码为 0,导致 GetListeningPidByPort 永远 null,
+    /// unit test 只覆盖 invalid port (&gt; 65535) 让 bug 静默存活。本测试用一个 &lt; 65536
+    /// 的真实 TCP listener 强制覆盖真实 port 范围,任何 byte-order 错位立刻 fail。
+    /// </summary>
+    [Fact]
+    public void GetListeningPidByPort_RealListener_ReturnsOwnPid()
+    {
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            int port = ((System.Net.IPEndPoint) listener.LocalEndpoint).Port;
+            int? pid = EnvPortProbe.GetListeningPidByPort(port);
+            Assert.Equal(Environment.ProcessId, pid);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
     [Fact]
     public void IsEnvProcessOwned_CurrentProcessInsideRoot_ReturnsTrue()
     {

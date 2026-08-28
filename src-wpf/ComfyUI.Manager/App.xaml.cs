@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading;
@@ -596,7 +597,12 @@ public partial class App : Application
             localNodeBulkInstaller: localNodeBulkInstaller,
             // v1.0.0.x #589:env → localnodes 反向 sync service — 传给 SettingsViewModel 的
             // SyncNodesFromEnvCommand(把 ComfyUI-Manager 装的节点一次性 copy 回本地源)。
-            localNodeSyncService: localNodeSyncService);
+            localNodeSyncService: localNodeSyncService,
+            // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 透传到
+            // SettingsViewModel.DownloadCommonNodesCommand(把 enabled common_nodes
+            // git clone 到 settings.LocalNodesDirectory)。共享同一份 gitRunner +
+            // gitProxy + logger,行为跟 RequirementsInstaller.AutoInstallCommonNodesAsync 一致。
+            commonNodeInstaller: commonNodeInstaller);
 
         // v1.0.0.x: 用户覆盖本地路径 repo factory
 
