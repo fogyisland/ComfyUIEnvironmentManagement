@@ -149,4 +149,23 @@ public class Environment
         "installing" => "⏳ 装中",
         _ => "✗ 未装",
     };
+
+    // ──────────────── v1.0.0.x:节点启动状态(供 ! 按钮 badge + dialog) ────────────────
+    // EnvironmentListViewModel.Load() 末尾根据 nodeRepo.ListByEnv(env.Id) 重算;
+    // 启动期 5s grace 后 ProcessLauncher NodeStartupErrorDetector 写入 ScanMeta["load_error"],
+    // UI 用户重新打开 dialog 时 Load 触发重算看到新值。
+    // JSON 不持久化(JsonIgnore),Runtime-only 计数。
+
+    /// <summary>
+    /// 该 env 当前 ScanMeta["load_error"] 非空的节点数。0 = 全部加载成功或从未启动过。
+    /// env 行 ! 按钮 badge 显示这个数字(>0 时变红)。
+    /// </summary>
+    [JsonIgnore]
+    public int FailedNodeCount { get; set; }
+
+    /// <summary>
+    /// 该 env 当前 ScannedNode 总数(env 行 ! 按钮 ToolTip 副文本)。
+    /// </summary>
+    [JsonIgnore]
+    public int TotalNodeCount { get; set; }
 }

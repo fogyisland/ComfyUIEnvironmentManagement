@@ -223,6 +223,14 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand CloseNodeManagementCommand { get; }
 
     /// <summary>
+    /// v1.0.0.x: env 行 ! 按钮 — 弹 modal dialog(<see cref="NodeStartupStatusDialog"/>)
+    /// 列出当前 env 所有节点 + 加载失败标记。CanExecute:env 非 null(即使 env 从未
+    /// 启动过也允许点 — dialog 显示空集合 + "未扫描到任何节点" 提示)。Execute
+    /// 每次新 new VM(实时拿最新 ScannedNode,跟 dialog 打开时刻对齐)。
+    /// </summary>
+    public RelayCommand ShowNodeStartupStatusCommand { get; }
+
+    /// <summary>
     /// v0.6.22.x 删:"模板更新"按钮从 env-list 移到主窗口 工具菜单
     /// (MainViewModel.UpdateTemplateCommand)。用户原话"我们不会去更新环境
     /// 中的环境,只是为下一个创建的环境更新" — 操作对象改为 &lt;projectRoot&gt;/ComfyUITemplate/
@@ -565,6 +573,12 @@ public class EnvironmentListViewModel : ViewModelBase
         ReopenStartStatusCommand = new RelayCommand(
             p => ReopenStartStatus(p as Environment ?? Selected),
             p => (p as Environment ?? Selected) is not null);
+        // v1.0.0.x:env 行 ! 按钮 — 弹 dialog 列出当前 env 所有节点 + 加载失败标记。
+        // CanExecute:env 非 null(即使 env 从未启动过也允许点 — dialog 显示空集合 + 提示)。
+        // Execute:从 _nodeRepo.ListByEnv 拉快照传给 VM(每次开 dialog 拿最新,避免 stale)。
+        ShowNodeStartupStatusCommand = new RelayCommand(
+            p => ShowNodeStartupStatus(p as Environment ?? Selected),
+            p => (p as Environment ?? Selected) is not null);
         Load();
     }
 
@@ -651,6 +665,21 @@ public class EnvironmentListViewModel : ViewModelBase
             env.LocalNodesButtonText = localInstalled ? "重装本地常用" : "安装本地常用";
             env.StartStopButtonText = env.Status == "running" ? "停止" : "启动";
             env.StartStopButtonEnabled = !IsEnvBusy(env) && env.Status is "stopped" or "running";
+
+            // v1.0.0.x:节点启动状态计数 — env 行 ! 按钮 badge 用。env 启动期 5s 后
+            // ProcessLauncher NodeStartupErrorDetector 会写 load_error,用户重开 dialog
+            // 时 ctor 内 VM 拿最新值。Count 0 时 badge 隐藏,>0 时红字显示。
+            if (_nodeRepo is not null)
+            {
+                var nodes = _nodeRepo.ListByEnv(env.Id);
+                env.TotalNodeCount = nodes.Count;
+                env.FailedNodeCount = nodes.Count(n => n.HasLoadError);
+            }
+            else
+            {
+                env.TotalNodeCount = 0;
+                env.FailedNodeCount = 0;
+            }
         }
         RaiseCommandsChanged();
     }
@@ -1662,6 +1691,27 @@ public class EnvironmentListViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// v1.0.0.x: env 行 ! 按钮 → 弹 <see cref="NodeStartupStatusDialog"/> 显示当前 env
+    /// 所有节点 + 加载失败标记。**每次新 new VM**(不开 cache)拿当前 _nodeRepo 实时
+    /// 快照 — 用户点开 dialog 看到的就是这一刻 DB 里 ScannedNode 的最新状态,env 重启
+    /// 后再开 dialog 自动反映新 load_error。
+    ///
+    /// 测试 ctor 没注入 _nodeRepo 时静默 no-op(同 OpenNodeManagement 容错)。
+    /// Application.Current.MainWindow 在测试 context 抛 NRE,所以 ShowDialog 前先 null check。
+    /// </summary>
+    private void ShowNodeStartupStatus(Environment? env)
+    {
+        if (env is null) return;
+        if (_nodeRepo is null) return;
+        var main = Application.Current?.MainWindow;
+        if (main is null) return;  // 测试 / 启动期 → no-op
+
+        var vm = new NodeStartupStatusViewModel(_nodeRepo, env.Id, env.Name);
+        var dlg = new NodeStartupStatusDialog(vm) { Owner = main };
+        dlg.ShowDialog();
+    }
+
+    /// <summary>
     /// OpenInstallNodePicker:从 env 行点"安装节点" → 弹 CatalogEntryPickerDialog,
     /// picker 自己管安装(行内 InstallCommand,不再弹 InstallDialog)。
     ///
@@ -1933,5 +1983,8 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.17:启动 / 关面板 / 启动成功 / 删除 env 都会改 _startStatuses dict,
         // "再次打开" 按钮要 refresh。
         ReopenStartStatusCommand.RaiseCanExecuteChanged();
+        // v1.0.0.x:env 行 ! 按钮 — 同其他命令一起 refresh。CanExecute 只看 env 非 null,
+        // 实际变化少,但跟其他命令一起 raise 保持一致(避免遗漏)。
+        ShowNodeStartupStatusCommand.RaiseCanExecuteChanged();
     }
 }

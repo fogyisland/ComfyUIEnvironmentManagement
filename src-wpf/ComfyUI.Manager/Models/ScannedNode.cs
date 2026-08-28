@@ -199,4 +199,21 @@ public class ScannedNode : INotifyPropertyChanged
     [JsonIgnore]
     public bool HasInit =>
         ScanMeta is not null && ScanMeta.TryGetValue("has_init", out var v) && v == "1";
+
+    // ──────────────── v1.0.0.x:load_error display helpers ────────────────
+    // ProcessLauncher 启动 5s grace 后 NodeStartupErrorDetector 扫描 stdout/stderr,
+    // 把 ImportError / ModuleNotFoundError / "Failed to import module" / "Error loading"
+    // 等节点加载失败写入 ScanMeta["load_error"] = err.ErrorMessage(raw 错误行)。
+    // UI 用 HasLoadError 决定行颜色,LoadErrorDisplay 在 dialog / 行 details 里展示。
+
+    /// <summary>ScanMeta["load_error"] 非空 → true。env 启动时加载失败的节点。</summary>
+    [JsonIgnore]
+    public bool HasLoadError =>
+        ScanMeta is not null && ScanMeta.TryGetValue("load_error", out var v) && !string.IsNullOrEmpty(v);
+
+    /// <summary>ScanMeta["load_error"] — 启动期加载错误原文。空 = 没失败。</summary>
+    [JsonIgnore]
+    public string LoadErrorDisplay =>
+        ScanMeta is not null && ScanMeta.TryGetValue("load_error", out var v) && !string.IsNullOrEmpty(v)
+            ? v : "";
 }
