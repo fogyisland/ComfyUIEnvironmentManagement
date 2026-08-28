@@ -90,6 +90,18 @@ public partial class EnvironmentListView : UserControl
     }
 
     /// <summary>
+    /// v1.0.0.x:Forge BED inline 面板 ✕ 按钮 handler — 镜像 OnRequirementsStatusCloseClicked
+    /// 同 pattern。失败/取消场景下面板不会 auto-hide,用户用 ✕ 手动收起。
+    /// </summary>
+    private void OnBaseEnvStatusCloseClicked(object sender, EventArgs e)
+    {
+        if (DataContext is ViewModels.EnvironmentListViewModel vm)
+        {
+            vm.BaseEnvStatus?.Hide();
+        }
+    }
+
+    /// <summary>
     /// v0.6.22.x 删:OnTemplateUpdateStatusCloseClicked handler — 模板更新状态面板
     /// 跟 UpdateTemplateCommand 一起移走至 MainViewModel,env-list 不再展示模板更新。
     /// </summary>

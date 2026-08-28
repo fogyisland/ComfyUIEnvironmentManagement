@@ -68,6 +68,11 @@ public class MainViewModel : ViewModelBase
     // ToggleComfyUiManagerCommand。App.xaml.cs 总是传非 null;null = 测试 ctor 不传走
     // EnvironmentListViewModel 内部 default ComfyUIManagerInstaller(new RequirementsFileInstaller())。
     private readonly ComfyUIManagerInstaller? _comfyUiManagerInstaller;
+    // v1.0.0.x:Forge 「安装基础环境」installer — 传给 EnvironmentListViewModel 让 Forge env
+    // 跳过 BaseEnvProfilePickerDialog + BaseEnvProgressDialog,直接 dispatch ForgeBaseEnvInstaller
+    // 跑 0-5 全套,inline 面板显示进度。App.xaml.cs 总是传非 null;null = 测试 ctor 不传走
+    // EnvListVM 内部 default ForgeBaseEnvInstaller()(跑不出状态但构造 OK)。
+    private readonly ForgeBaseEnvInstaller? _forgeBaseEnvInstaller;
     // v1.0.0.x #577:本地常用节点批量 installer — 传给 EnvListVM 的 InstallLocalNodesCommand。
     private readonly LocalNodeBulkInstaller? _localNodeBulkInstaller;
     // v1.0.0.x #589:env → localnodes 反向 sync service — 传给 SettingsViewModel
@@ -434,7 +439,11 @@ public class MainViewModel : ViewModelBase
         LocalNodeSyncService? localNodeSyncService = null,
         // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 透传给 SettingsViewModel。
         // 共享 App.xaml.cs 已构造的实例(同 gitRunner + gitProxy + logger),避免重复创建。
-        CommonNodeInstaller? commonNodeInstaller = null)
+        CommonNodeInstaller? commonNodeInstaller = null,
+        // v1.0.0.x:Forge 「安装基础环境」installer — 透传给 EnvListVM 让 Forge env 跳过
+        // BaseEnvProfilePickerDialog + BaseEnvProgressDialog,inline panel 显示进度。可空让
+        // 测试 ctor 不传(EnvListVM fallback 自己 new 一份)。
+        ForgeBaseEnvInstaller? forgeBaseEnvInstaller = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -473,6 +482,8 @@ public class MainViewModel : ViewModelBase
         // v1.0.0.x #589:env → localnodes sync service — ShowSettings 里传给 SettingsViewModel。
         _localNodeSyncService = localNodeSyncService;
         _commonNodeInstaller = commonNodeInstaller;
+        // v1.0.0.x:Forge BED installer — 透传给 EnvListVM(见 _forgeBaseEnvInstaller 字段注释)。
+        _forgeBaseEnvInstaller = forgeBaseEnvInstaller;
         // v0.6.11+ SDD D1:AppLogger — RestartEnvAsync 的 env-not-found / EnvListVM-未构造
         // 诊断日志。nullable ctor(测试 ctor 不传走 _logger?.Warn 安全路径);生产 DI 在
         // App.xaml.cs 注入(已有 var logger = new AppLogger(projectRoot);)。
@@ -588,7 +599,8 @@ public class MainViewModel : ViewModelBase
                 versionRepo: versionRepo,                 // v0.6.14 T4 per-row version dropdown
                 workflowSymlinker: _workflowSymlinker,   // v0.6.19 T10: env-start 后异步 sync workflows
                 modelSymlinker: _modelSymlinker,     // v0.6.20 T9: env-start 后异步 sync models
-                localNodeBulkInstaller: _localNodeBulkInstaller);  // v1.0.0.x #577
+                localNodeBulkInstaller: _localNodeBulkInstaller,  // v1.0.0.x #577
+                forgeBaseEnvInstaller: _forgeBaseEnvInstaller);    // v1.0.0.x:Forge BED 跳过 PickerDialog
             // v0.6.22.x:removed templateUpdater arg — 模板更新改到 MainViewModel 上
             // v0.6.11+ SDD D1:wire MainViewModel 反向引用,让 EnvListVM.OpenInstallNodePicker
             // 能拿 _mvm.RestartEnvAsync 当 onInstallSuccess 回调 — 节点装成功时 fire-and-forget

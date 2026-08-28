@@ -103,6 +103,29 @@
                 </StackPanel>
             </Border>
 
+            <!-- v1.0.0.x:Forge BED inline 状态面板 — Forge env 行点「安装基础环境」时跳过
+            PickerDialog + BaseEnvProgressDialog,直接 dispatch ForgeBaseEnvInstaller 跑 0-5
+            全套,这里显示进度。镜像 RequirementsStatus 单阶段面板 pattern(SurfaceBrush +
+            OutlineBrush + BoolToVisibility + ConsoleCloseRequested ✕)。
+            仅 TemplateKind=="Forge" 的 env 触发;其它 env 走原 BaseEnvUninstallStatus 路径。 -->
+            <Border Margin="0,6,0,0" Padding="12"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="{Binding BaseEnvStatus.IsVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                <StackPanel DataContext="{Binding BaseEnvStatus}">
+                    <TextBlock Text="{Binding StatusText}" FontSize="14" Margin="0,4"
+                               Foreground="{DynamicResource OnSurfaceBrush}" TextWrapping="Wrap" />
+                    <controls:ConsolePanel Title="Forge 基础环境安装状态"
+                                           Lines="{Binding LogLines}"
+                                           ConsoleCloseRequested="OnBaseEnvStatusCloseClicked"
+                                           Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding Error}" Foreground="{DynamicResource ErrorBrush}"
+                               Margin="0,4,0,0" FontWeight="Bold" TextWrapping="Wrap"
+                               Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                </StackPanel>
+            </Border>
+
             <!-- v0.6.11+ T4:ComfyUI Manager 状态 — 镜像 RequirementsStatus 单阶段
             inline 面板(同 SurfaceBrush / OutlineBrush / CornerRadius + BoolToVisibility
             converter),✕ 按钮走 ConsolePanel 内部 ConsoleCloseRequested → code-behind

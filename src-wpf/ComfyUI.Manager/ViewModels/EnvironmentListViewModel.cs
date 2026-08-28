@@ -57,10 +57,66 @@ public class EnvironmentListViewModel : ViewModelBase
     // v1.0.0.x #577:env 行「安装本地常用」按钮 — 批量 copy + pip install。
     // null 兜底 new 默认实现;生产 DI 在 App.xaml.cs 注入 share。
     private readonly LocalNodeBulkInstaller _localNodeBulkInstaller;
+    // v1.0.0.x:Forge 「安装基础环境」installer — Forge env 行点按钮时跳过
+    // BaseEnvProfilePickerDialog + BaseEnvProgressDialog,直接 dispatch ForgeBaseEnvInstaller
+    // 跑 0-5 全套(0=torch2.4.0 + 1-5=pre-flight)。null 兜底 new 默认实现(测试 ctor 不传也能
+    // 构造;生产 DI 在 App.xaml.cs 注入)。
+    private readonly ForgeBaseEnvInstaller _forgeBaseEnvInstaller;
     // v0.6.22 T5:ComfyUI template update service(wipe env.ComfyuiSource 内容
     // + git clone comfyanonymous/ComfyUI --depth=1)。可空保留旧测试 ctor
     // 兼容;生产 DI 在 App.xaml.cs 注入。
     // v0.6.22.x 删:_templateUpdater 字段 + ctor param(移走至 MainViewModel)。
+
+    // v1.0.0.x:Forge BED inline 状态面板(env 行「安装基础环境」按钮触发后)。
+    // 跟 RequirementsStatusViewModel / BaseEnvUninstallStatusViewModel 同模式 — 完成 →
+    // 2s 自动 Hide;失败 → 等用户关。ComfyUI / SwarmUI env 走老 OpenBaseEnvProgressForSingleEnvAsync
+    // 路径(弹 dialog),只有 Forge env 才走这里(不弹框,inline panel 显示进度)。
+    public BaseEnvStatusViewModel? BaseEnvStatus { get; private set; }
+
+    /// <summary>
+    /// v1.0.0.x:Forge BED inline 面板 toggle。已装过(marker 文件存在)→ 显示"已安装"
+    /// 状态;未装 → 跑 0-5 全套并显示进度。镜像 RequirementsStatusViewModel.MarkAlreadyInstalled
+    /// + RunAsync 模式。
+    /// </summary>
+    private async System.Threading.Tasks.Task ToggleForgeBaseEnvAsync(Environment env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;  // T4:per-env mutex
+
+        if (ForgeBaseEnvInstaller.IsInstalled(env))
+        {
+            var timestamp = await ReadMarkerTimestampAsync(env, ForgeBaseEnvConstants.MarkerFileName);
+            var alreadyInstalled = new BaseEnvStatusViewModel(env, _forgeBaseEnvInstaller);
+            BaseEnvStatus = alreadyInstalled;
+            RaisePropertyChanged(nameof(BaseEnvStatus));
+            alreadyInstalled.MarkAlreadyInstalled(timestamp);
+            return;
+        }
+
+        var status = new BaseEnvStatusViewModel(env, _forgeBaseEnvInstaller);
+        BaseEnvStatus = status;
+        RaisePropertyChanged(nameof(BaseEnvStatus));
+        env.BaseEnvButtonText = "安装基础环境中...";
+        MarkEnvBusy(env, BusyKind.BEDInstall);
+        try
+        {
+            await status.RunAsync();
+            // 成功 → 2s 后收起;失败/取消 → 不收起,等用户手动关(UI 提供 ✕ 按钮)
+            if (status.IsComplete && !status.HasError)
+            {
+                env.IsBaseEnvInstalled = true;
+                env.BaseEnvButtonText = "卸载基础环境";
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                status.Hide();
+            }
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
 
     /// <summary>
     /// v0.6.5.22 T4:per-env 互斥锁 — 同 env 上同时只允许一个长操作(BED install / uninstall /
@@ -337,7 +393,11 @@ public class EnvironmentListViewModel : ViewModelBase
         // 取 env.Id, envComfyuiSource 取 env.ComfyuiSource(同 workflow hook)。
         ModelSymlinker? modelSymlinker = null,
         // v1.0.0.x #577:env 行「安装本地常用」按钮。可空保留测试 ctor 兼容;生产 DI 注入。
-        LocalNodeBulkInstaller? localNodeBulkInstaller = null)   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
+        LocalNodeBulkInstaller? localNodeBulkInstaller = null,
+        // v1.0.0.x:Forge 「安装基础环境」installer — Forge env 行点按钮时跳过
+        // BaseEnvProfilePickerDialog + BaseEnvProgressDialog,直接 dispatch ForgeBaseEnvInstaller
+        // 跑 0-5 全套。可空保留测试 ctor 兼容(null → fallback new ForgeBaseEnvInstaller())。
+        ForgeBaseEnvInstaller? forgeBaseEnvInstaller = null)   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
     {
         _repo = repo;
         _launcher = launcher;
@@ -362,6 +422,9 @@ public class EnvironmentListViewModel : ViewModelBase
         // 模式 — 测试 ctor 不传也能构造(_settings 在 line 320 已 set,RequirementsFileInstaller
         // 跟 ComfyUIManagerInstaller 共用一个 fallback 实例够用)。
         _localNodeBulkInstaller = localNodeBulkInstaller ?? new LocalNodeBulkInstaller(_settings ?? new Settings(), new RequirementsFileInstaller(), _logger);
+        // v1.0.0.x:Forge 「安装基础环境」installer — 透传 App.xaml.cs 共享实例;
+        // null fallback 让旧测试 ctor 不传也能构造。
+        _forgeBaseEnvInstaller = forgeBaseEnvInstaller ?? new ForgeBaseEnvInstaller();
         // v0.6.11+ SDD D1:AppLogger — 自动重启诊断日志(nullable ctor param)。
         _logger = logger;
         // v0.6.14 picker redesign:catalog + node + version repo(默认 null,测试 ctor
@@ -533,6 +596,11 @@ public class EnvironmentListViewModel : ViewModelBase
                 var env = p as Environment ?? Selected;
                 if (env is null) return false;
                 if (IsEnvBusy(env)) return false;
+                // v1.0.0.x:Forge env 已装过(标记文件存在)→ 按钮禁用(由 Load 末尾的
+                // 单独列「安装基础环境」text + IsBaseEnvInstalled 决定;此处仅负责
+                // 阻止重复触发 inline panel)。
+                if (env.TemplateKind == "Forge"
+                    && ForgeBaseEnvInstaller.IsInstalled(env)) return false;
                 return true;
             });
         // v1.0.0.x #577:env 行末位「安装本地常用」按钮 — 单向 install(不 toggle,没有
@@ -1115,6 +1183,10 @@ public class EnvironmentListViewModel : ViewModelBase
     /// dialog → 装完写 IsBaseEnvInstalled / BaseEnvButtonText 让 toggle 切到"卸载基础环境"。
     /// 工具栏 BaseEnvCommand 仍走 <see cref="OpenBaseEnvProgressAsync()"/> 工具栏版(用 Selected),
     /// 行为不变 — toggle 完走完后 Load() 末尾重算 button text。
+    ///
+    /// v1.0.0.x:Forge env 跳过 picker + progress dialog(用户原话 2026-08-29 "forge 不会弹框
+    /// 直接点击按照上面的方式来进行安装,以log方式显示进度"),直接 dispatch ToggleForgeBaseEnvAsync
+    /// → ForgeBaseEnvInstaller 跑 0-5 全套 + BaseEnvStatusViewModel inline 面板显示。
     /// </summary>
     private async System.Threading.Tasks.Task OpenBaseEnvProgressForSingleEnvAsync(Environment env)
     {
@@ -1130,6 +1202,13 @@ public class EnvironmentListViewModel : ViewModelBase
             ShowInfoDialog(
                 $"env '{env.Name}' 正在执行其他操作,请稍候",
                 "无法部署基础环境");
+            return;
+        }
+        // v1.0.0.x:Forge env 走 inline 面板(跳过 picker + progress dialog)。
+        // 用户原话 2026-08-29:"forge 不会弹框 直接点击按照上面的方式来进行安装,以log方式显示进度"。
+        if (env.TemplateKind == "Forge")
+        {
+            await ToggleForgeBaseEnvAsync(env);
             return;
         }
         var profiles = await _profileLoader.LoadAsync();
@@ -1240,10 +1319,11 @@ public class EnvironmentListViewModel : ViewModelBase
     /// <summary>
     /// 读取 <c>.requirements_installed</c> marker 文件里的时间戳。失败 / 文件空内容 → 回退
     /// "未知"(读不出来也不阻塞 UI — 升级路径上 marker 可能是空文件或非标内容)。
+    /// v1.0.0.x:重载接受任意 markerFileName(Forge 用 .forge_base_env_installed)。
     /// </summary>
-    private static async Task<string> ReadMarkerTimestampAsync(Environment env)
+    private static async Task<string> ReadMarkerTimestampAsync(Environment env, string markerFileName)
     {
-        var path = Path.Combine(env.RootPath, RequirementsInstaller.MarkerFileName);
+        var path = Path.Combine(env.RootPath, markerFileName);
         if (!File.Exists(path)) return "未知";
         try
         {
@@ -1255,6 +1335,9 @@ public class EnvironmentListViewModel : ViewModelBase
             return "未知";
         }
     }
+
+    private static Task<string> ReadMarkerTimestampAsync(Environment env)
+        => ReadMarkerTimestampAsync(env, RequirementsInstaller.MarkerFileName);
 
     public RequirementsStatusViewModel? RequirementsStatus { get; private set; }
 

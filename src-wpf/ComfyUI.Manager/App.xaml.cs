@@ -466,6 +466,13 @@ public partial class App : Application
         // gitProxy,跟 comfyUiManagerInstaller 一致。A1111 模板已下线(Stability-AI
         // 仓库已从 github 移除)。
         var forgePreFlightInstaller = new ForgePreFlightInstaller(logger, gitProxy, gitExe);
+        // v1.0.0.x:Forge 「安装基础环境」installer — 镜像 launch_utils.py:prepare_environment()
+        // 全套 0-5(0=torch2.4.0/torchvision0.19.0/torchaudio2.4.0 + 1-2=clip/open_clip +
+        // 3=requirements_versions.txt + 4-5=3 个 repos)。由 forgePreFlightInstaller 跑 1-5
+        // (env 已装过 BED 的「装依赖」按钮),ForgeBaseEnvInstaller 跑 0-5 全套(新 env-create
+        // 后第一次「安装基础环境」直接走这里 — 跳过 BaseEnvProfilePickerDialog + BaseEnvProgressDialog,
+        // 改 inline panel,用户原话 2026-08-29:"forge 不会弹框 直接点击按照上面的方式来进行安装")。
+        var forgeBaseEnvInstaller = new ForgeBaseEnvInstaller(logger, gitProxy, gitExe, forgePreFlightInstaller);
         var requirementsInstaller = new RequirementsInstaller(
             logger, reqFileInstaller, comfyUiManagerInstaller, commonNodeInstaller,
             forgePreFlightInstaller);
