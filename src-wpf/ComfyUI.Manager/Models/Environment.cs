@@ -114,6 +114,19 @@ public class Environment
     public bool LocalNodesButtonVisible => TemplateKind == "ComfyUI";
 
     /// <summary>
+    /// v1.0.0.x:A1111 / Forge / SwarmUI env 行不显示「节点管理」按钮 ——
+    /// 节点管理打开的是 <c>NodeManagementView</c>(节点扫描 / 安装 / 升级 / 卸载),
+    /// 底层操作的是 env 的 custom_nodes/ 目录 + ScannedNode DB。A1111 / Forge 用
+    /// extensions/ 体系,SwarmUI 用 Modules 目录,跟 ComfyUI custom_nodes 不兼容,
+    /// 节点管理无意义。镜像 <see cref="LocalNodesButtonVisible"/> 同模式。
+    /// 注:<see cref="ViewModels.EnvironmentListViewModel.OpenNodeManagementCommand"/>
+    /// 不挡 TemplateKind(只在 VM 隐藏 — 通过 XAML Visibility),保留 command 供其他
+    /// 入口(若有)用,行为跟 LocalNodesButtonVisible 完全对称。
+    /// </summary>
+    [JsonIgnore]
+    public bool NodeManagementButtonVisible => TemplateKind == "ComfyUI";
+
+    /// <summary>
     /// v1.0.0.x #577:启停单按钮文字 — env.Status == running → "停止";其它 → "启动"。
     /// busy(starting/stopping)时按钮禁用,文字保留以反映"当前要做的事"。
     /// </summary>

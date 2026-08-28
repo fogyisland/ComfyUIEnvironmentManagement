@@ -142,6 +142,33 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
         Assert.True(env.LocalNodesButtonVisible);
     }
 
+    // v1.0.0.x:「节点管理」打开 NodeManagementView,底层操作 custom_nodes/ 目录 +
+    // ScannedNode DB。A1111 / Forge 用 extensions/,SwarmUI 用 Modules 目录,节点
+    // 扫描 / 安装 / 升级无意义 — A1111 / Forge / SwarmUI 不显示此按钮。镜像
+    // LocalNodesButtonVisible 同模式。
+    [Theory]
+    [InlineData("ComfyUI", true)]
+    [InlineData("A1111", false)]
+    [InlineData("Forge", false)]
+    [InlineData("SwarmUI", false)]
+    public void Model_NodeManagementButtonVisible_TrueOnlyForComfyUIKind(string kind, bool expected)
+    {
+        var env = new Environment
+        {
+            Id = "x", Name = "x", RootPath = @"C:\e",
+            TemplateKind = kind,
+        };
+        Assert.Equal(expected, env.NodeManagementButtonVisible);
+    }
+
+    [Fact]
+    public void Model_NodeManagementButtonVisible_DefaultsTrue_WhenTemplateKindNotSet()
+    {
+        var env = new Environment { Id = "x", Name = "x", RootPath = @"C:\e" };
+        Assert.Equal("ComfyUI", env.TemplateKind);
+        Assert.True(env.NodeManagementButtonVisible);
+    }
+
     [Fact]
     public void Model_PropertiesAreJsonIgnored_NotSerialized()
     {

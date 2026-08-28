@@ -512,12 +512,22 @@
                                             CommandParameter="{Binding}"
                                             ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
                                     <!-- v0.6.15.8 T6 + v0.6.15.9:节点管理(原"安装节点"改名)。
-                                         升级节点 删除独立按钮 — 升级迁入节点管理面板行内(过时才显示)。 -->
-                                    <Button Grid.Row="1" Grid.Column="2" Content="节点管理" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.OpenNodeManagementCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}" />
+                                         升级节点 删除独立按钮 — 升级迁入节点管理面板行内(过时才显示)。
+                                         v1.0.0.x:节点管理只对 ComfyUI kind 有意义(A1111 / Forge 用
+                                         extensions/,SwarmUI 用 Modules 目录,节点扫描装卸无意义)。
+                                         A1111 / Forge / SwarmUI 不显示按钮 — 用 placeholder 占位
+                                         保持 Row 1 5 列视觉密度。镜像 Col 3 / Col 4 placeholder
+                                         pattern(ComfyUiManagerButtonVisible + LocalNodesButtonVisible)。 -->
+                                    <Grid Grid.Row="1" Grid.Column="2" Margin="2">
+                                        <Button Content="节点管理" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Visibility="{Binding NodeManagementButtonVisible, Converter={StaticResource BoolToVisibility}}"
+                                                Command="{Binding DataContext.OpenNodeManagementCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Border Background="Transparent" CornerRadius="4"
+                                                Visibility="{Binding NodeManagementButtonVisible, Converter={StaticResource InverseBoolToVisibility}}" />
+                                    </Grid>
                                     <Button Grid.Row="1" Grid.Column="3" Content="组件报告" Margin="2" MinWidth="0"
                                             Style="{StaticResource MaterialButton}"
                                             Command="{Binding DataContext.ReportComponentsCommand,
