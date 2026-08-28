@@ -22,7 +22,8 @@ namespace ComfyUI.Manager.Services;
 /// 4 件事执行顺序(镜像 launch_utils.py:393-415):
 ///   1. <c>pip install openai/CLIP/archive/{hash}.zip</c>
 ///   2. <c>pip install mlfoundations/open_clip/archive/{hash}.zip</c>
-///   3. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt</c>
+///   3. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt</c>(过滤 torch 行,
+///      与 ComfyUI RequirementsInstaller 一致 — BED 已装 torch,装依赖不覆盖 profile 版本)
 ///   4. <c>git clone</c> 5 个 repos 到 <c>&lt;envRoot&gt;/repositories/</c>(已存在 skip)
 ///
 /// 触发入口:RequirementsInstaller.InstallAsync 头部按 <c>env.TemplateKind</c> dispatch
@@ -87,7 +88,9 @@ public class A1111PreFlightInstaller
             A1111PreFlightConstants.Zips[1], pythonExe, logProgress, ct);
         if (!IsPipOk(ocResult)) return FailFrom(ocResult, "open_clip");
 
-        // 3. requirements_versions.txt
+        // 3. requirements_versions.txt — 过滤 torch 行,跟 ComfyUI RequirementsInstaller 一致:
+        //    BED 阶段已经按 profile 锁版本装好 torch,装依赖不能让它被覆盖。
+        //    复用 RequirementsFileInstaller.FilterTorchLines 同一 regex(避免定义第二份)。
         var reqPath = Path.Combine(env.RootPath, "requirements_versions.txt");
         if (!File.Exists(reqPath))
         {
@@ -99,13 +102,45 @@ public class A1111PreFlightInstaller
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
+        var filteredReqPath = Path.Combine(env.RootPath,
+            RequirementsFileInstaller.FilteredRequirementsFileName);
+        List<string> rawLines;
+        try
+        {
+            rawLines = new List<string>(await File.ReadAllLinesAsync(reqPath, ct));
+        }
+        catch (Exception ex)
+        {
+            var reason = $"读取 requirements_versions.txt 失败:{ex.Message}";
+            _logger?.Error("a1111-preflight", $"env='{env.Name}' {reason}");
+            logProgress?.Report($"[a1111-preflight] ✗ {reason}");
+            return new RequirementsInstallResult(
+                Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
+        }
+        var filteredLines = RequirementsFileInstaller.FilterTorchLines(rawLines);
+        try
+        {
+            await File.WriteAllLinesAsync(filteredReqPath, filteredLines, ct);
+        }
+        catch (Exception ex)
+        {
+            var reason = $"写过滤文件失败:{ex.Message}";
+            _logger?.Error("a1111-preflight", $"env='{env.Name}' {reason}");
+            logProgress?.Report($"[a1111-preflight] ✗ {reason}");
+            return new RequirementsInstallResult(
+                Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
+        }
+        // requirements_versions.txt 都是预编译 wheel,不需要 --no-build-isolation
+        // (这是 InstallZipAsync 用的,因为 CLIP / open_clip 是源码 sdist 带 setup.py)。
         var reqResult = await RunPipAsync(
             pythonExe,
-            new[] { "install", "-r", reqPath, "--disable-pip-version-check" },
+            new[] { "install", "-r", filteredReqPath, "--disable-pip-version-check" },
             line => logProgress?.Report(line),
             ct);
+        // 成功失败都清理 filtered 文件(避免下次 install 看到 stale 文件)
+        try { File.Delete(filteredReqPath); } catch { }
         if (!IsPipOk(reqResult))
-            return FailFrom(reqResult, $"pip install -r requirements_versions.txt");
+            return FailFrom(reqResult, $"pip install -r requirements_versions.txt (filtered)");
 
         // 4. git clone 5 repos(每个独立 try/catch + IsInstalled skip,失败不阻断后续 repo;
         //    最后整体成功判断,只要全部存在或 clone 成功 → success)
