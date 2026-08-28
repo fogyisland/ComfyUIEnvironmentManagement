@@ -15,7 +15,10 @@ public class LogViewerViewModel : ViewModelBase, IDisposable
     private const int MaxLines = 500;
     private readonly LogTailer _tailer;
 
-    public ObservableCollection<LogLine> Lines { get; } = new();
+    // v1.0.0.x #590 扩展:ConsolePanel 接受 ObservableCollection<string>。
+    // 保留原 LogLine(可能外部还在引用),同时维持 Lines 是字符串集合 — 喂给 ConsolePanel。
+    public ObservableCollection<LogLine> RawLines { get; } = new();
+    public ObservableCollection<string> Lines { get; } = new();
     public RelayCommand ClearCommand { get; }
 
     public string EnvId { get; }
@@ -27,7 +30,11 @@ public class LogViewerViewModel : ViewModelBase, IDisposable
         EnvId = envId;
         _tailer = tailer ?? throw new ArgumentNullException(nameof(tailer));
 
-        ClearCommand = new RelayCommand(_ => Lines.Clear());
+        ClearCommand = new RelayCommand(_ =>
+        {
+            RawLines.Clear();
+            Lines.Clear();
+        });
 
         _tailer.NewLine += OnNewLine;
         _tailer.Start();
@@ -41,11 +48,13 @@ public class LogViewerViewModel : ViewModelBase, IDisposable
 
     private void AppendLine(LogLine line)
     {
-        Lines.Add(line);
+        RawLines.Add(line);
+        Lines.Add(line.Text);
         // cap at MaxLines —— 删最旧的
         while (Lines.Count > MaxLines)
         {
             Lines.RemoveAt(0);
+            if (RawLines.Count > 0) RawLines.RemoveAt(0);
         }
     }
 

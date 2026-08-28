@@ -74,6 +74,11 @@ public class MainViewModel : ViewModelBase
     // SyncNodesFromEnvCommand 把 ComfyUI-Manager 装的节点补到本地源目录。可空让测试 ctor
     // 不传(SettingsViewModel 的 SyncNodesFromEnvCommand CanExecute 返 false,按钮 disabled)。
     private readonly LocalNodeSyncService? _localNodeSyncService;
+    // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — App.xaml.cs 注入共享实例,
+    // 让 SettingsVM 的 DownloadCommonNodesCommand 调 InstallEnabledToAsync 把 enabled
+    // common_nodes git clone 到 settings.LocalNodesDirectory。可空:测试 ctor 不传
+    // (DownloadCommonNodesCommand CanExecute 返 false,按钮 disabled)。
+    private readonly CommonNodeInstaller? _commonNodeInstaller;
     // v0.6.5.22: 卸载 service — 跟 BaseEnvInstaller / RequirementsInstaller 同生命周期。
     // 传 EnvListVM 给行内"卸载基础环境" / "卸载依赖"按钮 + per-env mutex 用。
     // 字段类型可空:测试可不传(EnvListVM 自己有 null-fallback ?? new);
@@ -426,7 +431,10 @@ public class MainViewModel : ViewModelBase
         // 可空让测试 ctor 不传(EnvListVM fallback 自己 new 一份)。
         LocalNodeBulkInstaller? localNodeBulkInstaller = null,
         // v1.0.0.x #589:env → localnodes sync service。可空让测试不传。
-        LocalNodeSyncService? localNodeSyncService = null)
+        LocalNodeSyncService? localNodeSyncService = null,
+        // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 透传给 SettingsViewModel。
+        // 共享 App.xaml.cs 已构造的实例(同 gitRunner + gitProxy + logger),避免重复创建。
+        CommonNodeInstaller? commonNodeInstaller = null)
     {
         _dbFactory = dbFactory;
         _launcher = launcher;
@@ -464,6 +472,7 @@ public class MainViewModel : ViewModelBase
         _localNodeBulkInstaller = localNodeBulkInstaller;
         // v1.0.0.x #589:env → localnodes sync service — ShowSettings 里传给 SettingsViewModel。
         _localNodeSyncService = localNodeSyncService;
+        _commonNodeInstaller = commonNodeInstaller;
         // v0.6.11+ SDD D1:AppLogger — RestartEnvAsync 的 env-not-found / EnvListVM-未构造
         // 诊断日志。nullable ctor(测试 ctor 不传走 _logger?.Warn 安全路径);生产 DI 在
         // App.xaml.cs 注入(已有 var logger = new AppLogger(projectRoot);)。
@@ -921,7 +930,9 @@ public class MainViewModel : ViewModelBase
                 },
                 // v1.0.0.x #589:env → localnodes sync — 共享注入的 sync service + env repo。
                 envRepo: _envRepo,
-                syncService: _localNodeSyncService);
+                syncService: _localNodeSyncService,
+                // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 共享 App 注入的实例。
+                commonNodeInstaller: _commonNodeInstaller);
             CurrentView = SettingsViewFactory is null
                 ? new SettingsView { DataContext = _settingsViewModel }
                 : SettingsViewFactory(_settingsViewModel) as SettingsView;
