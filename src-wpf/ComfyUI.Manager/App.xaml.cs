@@ -255,6 +255,23 @@ public partial class App : Application
             logger?.Warn("app-startup", $"EnvStartupStopper 失败,继续启动: {ex.Message}");
         }
 
+        // v1.0.0.x: 启动期 port-based orphan 清理 — 用户原话"界面开启后,检查环境,
+        // 如果配置的环境端口与我们系统端口一致,就检查是不是当前目录启动的服务,
+        // 如果是则关闭环境"。EnvStartupStopper 走 DB 状态(env.Status="running");
+        // 本服务走 port→pid→cwd,兜底 DB 没记录但进程仍监听 port 的孤儿(典型:
+        // 上次 app crash / hard-kill / 断电,进程没被本 app graceful 关闭)。
+        // 顺序:EnvStartupStopper 先(便宜,无 Win32 调用)→ EnvOrphanReaper 后
+        // (走 iphlpapi + ntdll,慢一些)。
+        try
+        {
+            var reaper = new EnvOrphanReaper(envRepo, _launcher, logger);
+            reaper.ReapOrphansAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn("app-startup", $"EnvOrphanReaper 失败,继续启动: {ex.Message}");
+        }
+
         // 首次启动:把 path 类字段默认填为相对子目录名 + 迁移旧的绝对路径。
         // 1) 空字段 → 默认子目录名(相对)
         // 2) 已经在 projectRoot 下的绝对路径 → 转相对(跨机器/跨盘符时
