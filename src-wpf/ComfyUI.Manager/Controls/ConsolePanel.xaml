@@ -8,6 +8,12 @@
     - Title DP 默认 "Console",可改用于 "Console (model)" / "Console (workflow)" 等场景。
     - ConsoleCloseRequested RoutedEvent:用户点 ✕ → parent view code-behind 调 VM.ClearConsoleLog。
     - Auto-scroll 自管:订阅 Lines.CollectionChanged → ScrollToEnd,parent 不再需要 hook/unhook。
+
+    v1.0.0.x 用户原话"console 的日志可以复制到剪贴板,目前是不行的":
+    - ItemsControl → ListBox SelectionMode=Extended(WPF 内置 Ctrl+C 复制 SelectedItems,
+      Ctrl+A 全选;ListBox 有 keyboard focus 时直接生效)
+    - 顶部 toolbar 加 "复制" 按钮 — 兜底无焦点场景(选中行 → 复制选中,无选中 → 复制全部)
+    - selection 高亮色 inline 半透明 ConsoleSelectionBrush(不抢 terminal 风格)
     -->
     <Border Background="{DynamicResource ConsoleBackgroundBrush}"
             BorderBrush="{DynamicResource ConsoleHeaderBrush}" BorderThickness="1"
@@ -24,6 +30,12 @@
                         Foreground="{DynamicResource ConsoleForegroundBrush}"
                         Click="OnCloseClicked"
                         ToolTip="关闭 Console(下次自动重新打开时再次显示)" />
+                <Button DockPanel.Dock="Right" Content="复制"
+                        Style="{StaticResource GearIconButtonStyle}"
+                        Foreground="{DynamicResource ConsoleForegroundBrush}"
+                        Click="OnCopyClicked"
+                        Margin="0,0,4,0"
+                        ToolTip="复制选中行到剪贴板(无选中则复制全部日志;Ctrl+C 在 ListBox 焦点下也可用)" />
                 <TextBlock VerticalAlignment="Center" FontWeight="Bold" FontSize="13"
                            Foreground="{DynamicResource ConsoleForegroundBrush}"
                            FontFamily="Consolas, Cascadia Mono, monospace">
@@ -39,15 +51,52 @@
                           Background="{DynamicResource ConsoleBackgroundBrush}"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Auto">
-                <ItemsControl x:Name="LinesItemsControl">
-                    <ItemsControl.ItemTemplate>
+                <ListBox x:Name="LinesListBox"
+                         SelectionMode="Extended"
+                         Background="{DynamicResource ConsoleBackgroundBrush}"
+                         BorderThickness="0"
+                         Focusable="True"
+                         HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                    <ListBox.Resources>
+                        <!-- 半透明蓝,inline 在 ListBox.Resources 让 ItemContainerStyle StaticResource 拿得到 -->
+                        <SolidColorBrush x:Key="ConsoleSelectionBrush" Color="#33569CD6" />
+                    </ListBox.Resources>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Setter Property="Padding" Value="4,1,4,1" />
+                            <Setter Property="Margin" Value="0" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Foreground" Value="{DynamicResource ConsoleForegroundBrush}" />
+                            <Setter Property="Focusable" Value="False" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border Background="{TemplateBinding Background}"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Stretch" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource ConsoleSelectionBrush}" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}" FontFamily="Consolas, Cascadia Mono, monospace"
                                        FontSize="11" TextWrapping="NoWrap"
                                        Foreground="{DynamicResource ConsoleForegroundBrush}" />
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </ScrollViewer>
         </Grid>
     </Border>
