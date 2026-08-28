@@ -299,12 +299,16 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
     }
 
     [Fact]
-    public void DefaultExtraPackages_ContainsGitPythonAndTriton()
+    public void DefaultExtraPackages_ContainsGitPythonOnly_NoTriton()
     {
+        // v1.0.0.x:triton 从默认移除 — Windows CUDA wheels 只走
+        // download.pytorch.org/whl/{cu},不在 PyPI mirror 范围。extras 走 PyPI
+        // mirror 会报 "Could not find a version that satisfies the requirement
+        // triton"(实测 fail)。ComfyUI 启动时 launcher 自己装 triton(走 pytorch 源)。
         var fake = new FakeBaseEnvInstaller(_envRepo);
         var extras = fake.GetExtrasPublic();
         Assert.Contains("gitpython", extras);
-        Assert.Contains("triton", extras);
+        Assert.DoesNotContain("triton", extras);
     }
 
     // ───── 10. v1.0.0.x:BED extras 拼接 Settings.PipMirror (清华/阿里/USTC) ─────
@@ -333,7 +337,7 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
         Assert.Contains("--index-url", fake.CallHistory[2]);
         Assert.Contains("https://pypi.tuna.tsinghua.edu.cn/simple", fake.CallHistory[2]);
         Assert.Contains("gitpython", fake.CallHistory[2]);
-        Assert.Contains("triton", fake.CallHistory[2]);
+        Assert.DoesNotContain(fake.CallHistory[2], a => a == "triton");
     }
 
     [Fact]

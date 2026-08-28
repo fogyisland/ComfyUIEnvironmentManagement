@@ -36,11 +36,18 @@ public class BaseEnvInstaller
         RegexOptions.Compiled);
 
     // BED extras:主 pip install(torch+CUDA)成功后顺手装这些「ComfyUI 启动时常现场
-    // 装」的小包 — gitpython(ComfyUI-Manager 依赖)和 triton(ComfyUI nightly/CUDA 12.x
-    // 依赖)。在 BED 阶段预装可以避免每次 env 启动时 manager / ComfyUI 再花几秒到几十秒
-    // 现场 pip install,「启动的时候安装需要很多时间」用户反馈。
+    // 装」的小包 — gitpython(ComfyUI-Manager 依赖)。在 BED 阶段预装可以避免每次
+    // env 启动时 manager / ComfyUI 再花几秒到几十秒现场 pip install,「启动的时候
+    // 安装需要很多时间」用户反馈。
     // extras 失败只 Warn log 不影响 BED done 终态 — 它们是「顺便」不是「必须」。
-    private static readonly string[] DefaultExtraPackages = new[] { "gitpython", "triton" };
+    //
+    // v1.0.0.x:triton 从默认列表移除 — triton 的 Windows CUDA wheels **不在 PyPI 上**,
+    // 只走 download.pytorch.org/whl/{cu}。BED 主 install 已经用 --index-url
+    // download.pytorch.org 装 torch,但 extras 是独立 pip 调用,不复用主 install
+    // 的 index-url。若 extras 走 PyPI mirror(清华/阿里/USTC)→ "Could not find a
+    // version that satisfies the requirement triton"(实测 fail)。ComfyUI 启动时
+    // 它自己的 launcher 会用 pytorch 源装 triton,BED 阶段不预装,避免 mirror 互斥。
+    private static readonly string[] DefaultExtraPackages = new[] { "gitpython" };
 
     // BED pre-install:主 pip install 之前跑 `pip install --upgrade pip`,把 venv
     // 里的 pip 升级到最新版。后续装 torch / extras 时 pip 已是最新版,避免每次
@@ -389,12 +396,13 @@ public class BaseEnvInstaller
     /// <see cref="RunOptionalStageAsync"/>。只在主 install ExitCode==0 时被调
     /// (主失败 / cancel 不会进 extras)。
     ///
-    /// v1.0.0.x:extras 是纯 PyPI 包(gitpython/triton 等) — 拼 Settings.PipMirror
+    /// v1.0.0.x:extras 是纯 PyPI 包(默认 gitpython)— 拼 Settings.PipMirror
     /// 提供的 --index-url 走 PyPI 镜像(清华/阿里/USTC)。主 install 走 profile 自己的
     /// --index-url download.pytorch.org/whl/{cu},不变(避免 PyPI mirror 覆盖 pytorch
     /// CUDA wheel 源 — 清华/USTC 不镜像 download.pytorch.org)。如果用户希望主
     /// install 也走代理加速,设 Settings.HttpProxyMode + URL/Port → HTTP_PROXY env
-    /// 在 RunPipAsync 注入。
+    /// 在 RunPipAsync 注入。注:triton 不在 extras 默认列表(Windows CUDA wheels
+    /// 走 download.pytorch.org 不走 PyPI mirror,ComfyUI 启动时自己装)。
     /// </summary>
     private Task TryInstallExtrasAsync(
         string envId, string envName, string pythonExe,
