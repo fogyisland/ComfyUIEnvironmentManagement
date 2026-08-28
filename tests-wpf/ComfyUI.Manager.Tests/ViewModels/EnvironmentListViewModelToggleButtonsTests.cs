@@ -86,6 +86,36 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
         Assert.False(env.IsBaseEnvInstalled);
     }
 
+    // v1.0.0.x:ComfyUI-Manager 是 ComfyUI 专属 custom_nodes extension,SD Web(A1111 / Forge / SwarmUI)
+    // 用 extensions 体系,没 ComfyUI-Manager 概念。「安装 ComfyUI Manager」按钮在非 ComfyUI
+    // kind 上不应出现(否则用户点了会 git clone ComfyUI-Manager 到 SD Web 的 custom_nodes,
+    // 但 ComfyUI-Manager 只能装 ComfyUI 依赖,SD Web 用不上)。装依赖 按钮保留 —
+    // SD Web 也有非 torch 依赖(xformers / clip / gradio / Pillow 等)要装。
+    [Theory]
+    [InlineData("ComfyUI", true)]
+    [InlineData("A1111", false)]
+    [InlineData("Forge", false)]
+    [InlineData("SwarmUI", false)]
+    public void Model_ComfyUiManagerButtonVisible_TrueOnlyForComfyUIKind(string kind, bool expected)
+    {
+        var env = new Environment
+        {
+            Id = "x", Name = "x", RootPath = @"C:\e",
+            TemplateKind = kind,
+        };
+        Assert.Equal(expected, env.ComfyUiManagerButtonVisible);
+    }
+
+    [Fact]
+    public void Model_ComfyUiManagerButtonVisible_DefaultsTrue_WhenTemplateKindNotSet()
+    {
+        // 老 env 行 SQLite template_kind 列可能 null(backfill 之前),默认 TemplateKind
+        // = "ComfyUI" 让 ComfyUiManagerButtonVisible 返 true(安全 fallback — 老 env 走老行为)。
+        var env = new Environment { Id = "x", Name = "x", RootPath = @"C:\e" };
+        Assert.Equal("ComfyUI", env.TemplateKind);  // 默认值锁
+        Assert.True(env.ComfyUiManagerButtonVisible);
+    }
+
     [Fact]
     public void Model_PropertiesAreJsonIgnored_NotSerialized()
     {

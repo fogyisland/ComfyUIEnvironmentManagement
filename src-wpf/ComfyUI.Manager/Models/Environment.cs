@@ -83,6 +83,14 @@ public class Environment
     public string ComfyUiManagerButtonText { get; set; } = "安装 ComfyUI Manager";
 
     /// <summary>
+    /// v1.0.0.x:A1111 / Forge / SwarmUI env 行不显示「安装 ComfyUI Manager」按钮 —
+    /// ComfyUI-Manager 是 ComfyUI 专属 custom_nodes extension,SD Web 用 extensions 体系,
+    /// 没有 ComfyUI-Manager 概念。「装依赖」按钮保留(sdweb 也有非 torch 依赖要装)。
+    /// </summary>
+    [JsonIgnore]
+    public bool ComfyUiManagerButtonVisible => TemplateKind == "ComfyUI";
+
+    /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
     /// (Settings.LocalNodesDirectory 下每个子包都已在 env/custom_nodes/),false = 未装或不全。
     /// Load 末尾重新算(LocalNodeInstaller.IsInstalled),不持久化(同 IsComfyUiManagerInstalled pattern)。
