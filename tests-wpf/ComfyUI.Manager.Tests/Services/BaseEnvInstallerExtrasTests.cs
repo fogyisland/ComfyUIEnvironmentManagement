@@ -307,6 +307,90 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
         Assert.Contains("triton", extras);
     }
 
+    // ───── 10. v1.0.0.x:BED extras 拼接 Settings.PipMirror (清华/阿里/USTC) ─────
+    // 用户加速:extras 是纯 PyPI 包(默认 gitpython + triton),清华/阿里镜像有效。
+    // 主 install 走 profile 自带 --index-url download.pytorch.org/whl/{cu},
+    // PyPI 镜像不镜像 download.pytorch.org,所以主 install *不* 拼 mirror。
+
+    [Fact]
+    public async Task InstallAsync_ExtrasWithTsinghuaMirror_IncludesIndexUrl()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bed-mirror-tuna-{Guid.NewGuid():N}");
+        SeedEnv("env-mt", root);
+        var settings = new Settings { PipMirror = "tsinghua_tuna" };
+        var fake = new FakeBaseEnvInstaller(_envRepo, settings: settings);
+
+        await fake.InstallAsync(
+            new[] { "env-mt" }, DefaultProfile(), progress: null, CancellationToken.None);
+
+        Assert.Equal(3, fake.CallHistory.Count);
+        // pre-install 不拼 mirror(只 `install --upgrade pip`)
+        Assert.DoesNotContain("--index-url", fake.CallHistory[0]);
+        // main 不拼 tuna mirror(走 profile 自带 download.pytorch.org)
+        Assert.DoesNotContain(fake.CallHistory[1], a => a.Contains("pypi.tuna"));
+        Assert.Contains("https://download.pytorch.org/whl/cu121", fake.CallHistory[1]);
+        // extras 拼 mirror --index-url + https://pypi.tuna.tsinghua.edu.cn/simple
+        Assert.Contains("--index-url", fake.CallHistory[2]);
+        Assert.Contains("https://pypi.tuna.tsinghua.edu.cn/simple", fake.CallHistory[2]);
+        Assert.Contains("gitpython", fake.CallHistory[2]);
+        Assert.Contains("triton", fake.CallHistory[2]);
+    }
+
+    [Fact]
+    public async Task InstallAsync_ExtrasWithOfficialMirror_NoIndexUrl()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bed-mirror-off-{Guid.NewGuid():N}");
+        SeedEnv("env-mo", root);
+        // PipMirror=official(默认)→ 不拼 --index-url
+        var settings = new Settings { PipMirror = "official" };
+        var fake = new FakeBaseEnvInstaller(_envRepo, settings: settings);
+
+        await fake.InstallAsync(
+            new[] { "env-mo" }, DefaultProfile(), progress: null, CancellationToken.None);
+
+        Assert.Equal(3, fake.CallHistory.Count);
+        // extras 不拼 mirror(走官方 pypi.org)
+        Assert.DoesNotContain("--index-url", fake.CallHistory[2]);
+        Assert.Contains("gitpython", fake.CallHistory[2]);
+    }
+
+    [Fact]
+    public async Task InstallAsync_ExtrasWithNullSettings_NoIndexUrl()
+    {
+        // 兼容性:settings=null 走老路径,不拼 mirror(也无 HTTP_PROXY 注入)
+        var root = Path.Combine(Path.GetTempPath(), $"bed-mirror-null-{Guid.NewGuid():N}");
+        SeedEnv("env-mn", root);
+        var fake = new FakeBaseEnvInstaller(_envRepo, settings: null);
+
+        await fake.InstallAsync(
+            new[] { "env-mn" }, DefaultProfile(), progress: null, CancellationToken.None);
+
+        Assert.Equal(3, fake.CallHistory.Count);
+        Assert.DoesNotContain("--index-url", fake.CallHistory[2]);
+    }
+
+    [Fact]
+    public async Task InstallAsync_MainArgsPreservePytorchIndexUrl_WhenMirrorConfigured()
+    {
+        // 关键不变量:即使配了 PyPI mirror,主 install 的 --index-url 必须保持
+        // download.pytorch.org/whl/{cuda} —— 清华/USTC 不镜像 download.pytorch.org,
+        // 否则 CUDA wheel 找不到。这条测试锁住"主 install 不被 mirror 污染"。
+        var root = Path.Combine(Path.GetTempPath(), $"bed-mirror-main-{Guid.NewGuid():N}");
+        SeedEnv("env-mm", root);
+        var settings = new Settings { PipMirror = "aliyun" };
+        var fake = new FakeBaseEnvInstaller(_envRepo, settings: settings);
+
+        await fake.InstallAsync(
+            new[] { "env-mm" }, DefaultProfile(), progress: null, CancellationToken.None);
+
+        var mainArgs = fake.CallHistory[1];
+        // 主 install 必含 pytorch CUDA 源(exact element)
+        Assert.Contains("--index-url", mainArgs);
+        Assert.Contains("https://download.pytorch.org/whl/cu121", mainArgs);
+        // 主 install 必不含 aliyun mirror URL —— 避免 mirror 覆盖 pytorch CUDA 源
+        Assert.DoesNotContain(mainArgs, a => a.Contains("aliyun"));
+    }
+
     // ───── helpers ─────
 
     private enum PipPhase { None, PreInstall, Main, Extras }
@@ -340,6 +424,8 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
     /// <summary>
     /// 默认 3 阶段 fake — PreInstallResult / MainResult / ExtrasResult 分别设,
     /// CallHistory 记录全部 args 顺序,PhaseAt(i) 返阶段标签。
+    /// v1.0.0.x:接受可选 <paramref name="settings"/> 透传给 base ctor,让测试
+    /// 验证 PipMirror 拼接逻辑(只在 BaseEnvInstaller.TryInstallExtrasAsync 里拼)。
     /// </summary>
     private class FakeBaseEnvInstaller : BaseEnvInstaller
     {
@@ -348,7 +434,8 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
         public PipResult MainResult { get; set; } = new(0, false);
         public PipResult ExtrasResult { get; set; } = new(0, false);
 
-        public FakeBaseEnvInstaller(IEnvironmentRepository repo) : base(repo) { }
+        public FakeBaseEnvInstaller(IEnvironmentRepository repo, Settings? settings = null)
+            : base(repo, settings: settings) { }
 
         public string PhaseAt(int index) => PhaseLabel(ClassifyPhase(CallHistory[index]));
         public IReadOnlyList<string> GetPreInstallPublic() => PreInstallPipArgs;

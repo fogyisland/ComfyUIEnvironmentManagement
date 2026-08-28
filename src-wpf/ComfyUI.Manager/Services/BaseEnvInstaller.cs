@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using Environment = ComfyUI.Manager.Models.Environment;
 
@@ -51,11 +52,20 @@ public class BaseEnvInstaller
 
     private readonly IEnvironmentRepository _envRepo;
     private readonly AppLogger? _logger;
+    /// <summary>
+    /// v1.0.0.x:optional settings 注入 — 让 RunPipAsync 应用全局代理到 pip 进程
+    /// (Settings.HttpProxyMode / HttpProxyUrl / HttpProxyPort → HTTP_PROXY env),
+    /// extras 阶段拼 PyPI mirror (Settings.PipMirror → --index-url)。
+    /// 默认 null 走无代理 + 官方 PyPI(老 ctor 调用方不变)。
+    /// </summary>
+    private readonly Models.Settings? _settings;
 
-    public BaseEnvInstaller(IEnvironmentRepository envRepo, AppLogger? logger = null)
+    public BaseEnvInstaller(IEnvironmentRepository envRepo, AppLogger? logger = null,
+        Models.Settings? settings = null)
     {
         _envRepo = envRepo ?? throw new ArgumentNullException(nameof(envRepo));
         _logger = logger;
+        _settings = settings;
     }
 
     /// <summary>
@@ -378,6 +388,13 @@ public class BaseEnvInstaller
     /// BED extras 阶段薄壳 — 拼 "install" + <see cref="ExtraPackages"/> 然后走
     /// <see cref="RunOptionalStageAsync"/>。只在主 install ExitCode==0 时被调
     /// (主失败 / cancel 不会进 extras)。
+    ///
+    /// v1.0.0.x:extras 是纯 PyPI 包(gitpython/triton 等) — 拼 Settings.PipMirror
+    /// 提供的 --index-url 走 PyPI 镜像(清华/阿里/USTC)。主 install 走 profile 自己的
+    /// --index-url download.pytorch.org/whl/{cu},不变(避免 PyPI mirror 覆盖 pytorch
+    /// CUDA wheel 源 — 清华/USTC 不镜像 download.pytorch.org)。如果用户希望主
+    /// install 也走代理加速,设 Settings.HttpProxyMode + URL/Port → HTTP_PROXY env
+    /// 在 RunPipAsync 注入。
     /// </summary>
     private Task TryInstallExtrasAsync(
         string envId, string envName, string pythonExe,
@@ -387,6 +404,9 @@ public class BaseEnvInstaller
         var extras = ExtraPackages;
         if (extras.Count == 0) return Task.CompletedTask;
         var args = new List<string> { "install" };
+        // 拼 PyPI mirror --index-url(如果用户配了 mirror) — extras 全是 PyPI 上的包,镜像有效。
+        var mirrorArgs = PipMirrorResolver.BuildPipArgs(_settings);
+        args.AddRange(mirrorArgs);
         args.AddRange(extras);
         return RunOptionalStageAsync(
             "extras", args, envId, envName, pythonExe,
@@ -432,6 +452,11 @@ public class BaseEnvInstaller
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
+        // v1.0.0.x: 应用全局代理到 pip 子进程(per-process, 不污染 WPF)。
+        // 用户设 Settings.HttpProxyMode/Custom → 写 HTTP_PROXY/HTTPS_PROXY env,
+        // pip 走代理下载 torch CUDA wheel (download.pytorch.org) + PyPI 包。
+        // Off 或 settings=null → 跳过(无 env 写入)。
+        HttpProxyConfig.From(_settings).ApplyTo(psi);
         psi.ArgumentList.Add("-m");
         psi.ArgumentList.Add("pip");
         foreach (var a in pipArgs)

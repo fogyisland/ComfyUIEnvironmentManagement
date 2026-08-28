@@ -183,9 +183,13 @@ public class CreateEnvDialogViewModel : ViewModelBase
     public RelayCommand ApplyTemplateCommand { get; }
 
     /// <summary>
-    /// 步骤进度面板:CreateEnvDialog 启动时构造,N=6 个 CreateStepViewModel
-    /// 与 EnvCreatorService.CreateAsync emit 的 6 个 CreateStepReport 一一对应。
+    /// 步骤进度面板:CreateEnvDialog 启动时构造,N=7 个 CreateStepViewModel
+    /// 与 EnvCreatorService.CreateAsync emit 的 7 个 CreateStepReport 一一对应。
     /// View 层 ItemsControl 绑定,DataTemplate 用 Status → Glyph/color DataTrigger。
+    ///
+    /// v1.0.0.x:加「升级 venv 内 pip」步骤(对应 EnvCreatorService step 6.5)—
+    /// 之前 service 端发 step 名但 VM 列表没注册,OnStepReport 找不到匹配就静默丢弃,
+    /// 用户在进度面板看不到 pip 升级在跑(实际后端在跑,Console 有输出)。
     /// </summary>
     public ObservableCollection<CreateStepViewModel> Steps { get; } =
         new()
@@ -196,6 +200,7 @@ public class CreateEnvDialogViewModel : ViewModelBase
             new CreateStepViewModel("复制 template 源"),
             new CreateStepViewModel("链接 Models 目录"),
             new CreateStepViewModel("创建 venv 环境"),
+            new CreateStepViewModel("升级 venv 内 pip"),
         };
 
     internal void ResetSteps()

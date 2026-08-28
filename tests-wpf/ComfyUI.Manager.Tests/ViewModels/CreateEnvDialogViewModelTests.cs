@@ -445,16 +445,18 @@ public class CreateEnvDialogViewModelTests
     {
         var (vm, _, _, _, _, _) = MakeVm();
 
-        // 与 EnvCreatorService.CreateAsync emit 的 6 个 CreateStepReport 一一对应
+        // 与 EnvCreatorService.CreateAsync emit 的 7 个 CreateStepReport 一一对应
         // v1.0.0.x: 「链接 ComfyUI 源」改名为「复制 template 源」(对齐 service emit),
         // 新增「链接 Models 目录」步骤;「保存配置」步骤删(YAML 不再写)。
-        Assert.Equal(6, vm.Steps.Count);
+        // v1.0.0.x:末尾新增「升级 venv 内 pip」对应 service step 6.5(所有模板都跑)。
+        Assert.Equal(7, vm.Steps.Count);
         Assert.Equal("校验输入", vm.Steps[0].Name);
         Assert.Equal("分配端口", vm.Steps[1].Name);
         Assert.Equal("创建 env 根目录", vm.Steps[2].Name);
         Assert.Equal("复制 template 源", vm.Steps[3].Name);
         Assert.Equal("链接 Models 目录", vm.Steps[4].Name);
         Assert.Equal("创建 venv 环境", vm.Steps[5].Name);
+        Assert.Equal("升级 venv 内 pip", vm.Steps[6].Name);
     }
 
     [Fact]
@@ -520,35 +522,38 @@ public class CreateEnvDialogViewModelTests
     [Fact]
     public void OnStepReport_AllPreviousDone_WhenLastStepEmits()
     {
-        // v1.0.0.x: env-create 步骤列表从 6 项改为 6 项(改名 + 加项):
+        // v1.0.0.x: env-create 步骤列表从 6 项改为 7 项(改名 + 加项):
         //   1.校验输入 → 2.分配端口 → 3.创建 env 根目录 → 4.复制 template 源
-        //   → 5.链接 Models 目录 → 6.创建 venv 环境
+        //   → 5.链接 Models 目录 → 6.创建 venv 环境 → 7.升级 venv 内 pip
         // 「保存配置」步骤删(YAML 写不再有);「链接 ComfyUI 源」改名为
-        // 「复制 template 源」;新增「链接 Models 目录」对齐 service 实际进度。
+        // 「复制 template 源」;新增「链接 Models 目录」对齐 service 实际进度;
+        // 末尾新增「升级 venv 内 pip」对应 service step 6.5。
         var (vm, _, _, _, _, _) = MakeVm();
 
-        Assert.Equal(6, vm.Steps.Count);
+        Assert.Equal(7, vm.Steps.Count);
         Assert.Equal("校验输入", vm.Steps[0].Name);
         Assert.Equal("分配端口", vm.Steps[1].Name);
         Assert.Equal("创建 env 根目录", vm.Steps[2].Name);
         Assert.Equal("复制 template 源", vm.Steps[3].Name);
         Assert.Equal("链接 Models 目录", vm.Steps[4].Name);
         Assert.Equal("创建 venv 环境", vm.Steps[5].Name);
+        Assert.Equal("升级 venv 内 pip", vm.Steps[6].Name);
 
-        // 一次性推到第 6 个 step
+        // 一次性推到第 7 个 step
         for (int i = 0; i < vm.Steps.Count - 1; i++)
         {
             vm.OnStepReport(new CreateStepReport(vm.Steps[i].Name));
         }
-        vm.OnStepReport(new CreateStepReport("创建 venv 环境", "python -m venv /tmp/venv"));
+        vm.OnStepReport(new CreateStepReport("升级 venv 内 pip", "/venv/Scripts/python.exe -m pip install --upgrade pip"));
 
         Assert.Equal(CreateStepStatus.Done, vm.Steps[0].Status);
         Assert.Equal(CreateStepStatus.Done, vm.Steps[1].Status);
         Assert.Equal(CreateStepStatus.Done, vm.Steps[2].Status);
         Assert.Equal(CreateStepStatus.Done, vm.Steps[3].Status);
         Assert.Equal(CreateStepStatus.Done, vm.Steps[4].Status);
-        Assert.Equal(CreateStepStatus.Running, vm.Steps[5].Status);
-        Assert.Equal("python -m venv /tmp/venv", vm.Steps[5].Detail);
+        Assert.Equal(CreateStepStatus.Done, vm.Steps[5].Status);
+        Assert.Equal(CreateStepStatus.Running, vm.Steps[6].Status);
+        Assert.Equal("/venv/Scripts/python.exe -m pip install --upgrade pip", vm.Steps[6].Detail);
     }
 
     [Fact]

@@ -413,7 +413,7 @@ public partial class App : Application
             httpCacheStore: catalogHttpCacheStore);     // v0.6.14: 8th param
         var bulkOrchestrator = new BulkUpdateOrchestrator(
             projectRoot, gitExe, envRepo, nodeRepo, gitProxy, logger);
-        var baseEnvInstaller = new BaseEnvInstaller(envRepo, logger);
+        var baseEnvInstaller = new BaseEnvInstaller(envRepo, logger, settings);
         // v0.6.5.x hotfix:Env 删除跑腿 service(stop running + 删目录 + 删 SQLite 行)。
         // 复用 envRepo 跟 _launcher,跟 EnvironmentListView 共一份。
         var envDeleter = new EnvDeleterService(envRepo, _launcher);
