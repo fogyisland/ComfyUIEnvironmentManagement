@@ -233,6 +233,20 @@ public sealed class ProcessLauncher : IDisposable
             psi.EnvironmentVariables["PYTHONPATH"] =
                 $"{_projectRoot};{Path.Combine(_projectRoot, "src")}";
 
+            // v1.0.0.x (2026-08-29):Forge env 启动时附加 env vars,目前只
+            // SD_WEBUI_RESTARTING=1 禁用 webui.py 启动后自动打开浏览器 —
+            // 用户原话:"他启动后自动打开网页,在这里我们不推荐"。
+            // 机制:Forge webui.py 检查 `os.getenv('SD_WEBUI_RESTARTING') != '1'`
+            // (A1111 upstream PR #11037 引入的官方机制,原本为 restart 场景,
+            // Forge fork 把它扩展到所有启动场景),env var 是 "1" → 跳过整段
+            // auto_launch_browser 逻辑 → 不会弹浏览器。用户要用浏览器时
+            // 通过我们 app 的 OpenBrowser 按钮(走 BrowserLauncher Chrome fallback)
+            // 手动打开,避免 webui.py 自动弹打扰。
+            foreach (var kvp in ForgeExtraEnvironmentVariables(env))
+            {
+                psi.EnvironmentVariables[kvp.Key] = kvp.Value;
+            }
+
             Process? process = null;
             try
             {
@@ -854,7 +868,83 @@ public sealed class ProcessLauncher : IDisposable
         if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
             entryArgs += " " + snapshot.UserExtraArgs;
 
+        // v1.0.0.x (2026-08-29):Forge env 显式拼 --ckpt-dir / --vae-dir / --lora-dir /
+        // --controlnet-dir 等指向 Settings.DefaultModelsDirectory,让 webui.py 启动时
+        // 直接读用户共享本地模型库,避免 Forge 默认 a1111_home/models/ 跟 junction
+        // 共享盘的实际子目录命名约定不同导致启动报 "You do not have any model!"。
+        //
+        // 用户共享盘布局为 ComfyUI 风格(<DefaultModelsDirectory>/checkpoints/ + vae/ +
+        // loras/ + controlnet/),而非 Forge/A1111 默认的 Stable-diffusion/ + VAE/ +
+        // lora/ + ControlNet/(2026-08-29 用户纠正:"其实--ckpt-dir 挂的是这个目录,
+        // 不要挂 stable diffusion")。所以用 ComfyUI 子目录名,让 webui.py 通过 --ckpt-dir
+        // 直接定位到有 .safetensors 的实际目录(目录名对 webui.py 是透明的,只看文件)。
+        //
+        // 条件:env.TemplateKind == "Forge" 且 settings.DefaultModelsDirectory 非空
+        // (env-create 时这个字段驱动 junction 共享;这里再叠一层,即便 junction 子目录
+        // 命名约定不同,Forge 也能通过 --ckpt-dir 直接定位到 DefaultModelsDirectory 的
+        // ComfyUI 风格子目录)。
+        if (env.TemplateKind == "Forge" &&
+            !string.IsNullOrWhiteSpace(settings.DefaultModelsDirectory))
+        {
+            var modelsRoot = Path.GetFullPath(settings.DefaultModelsDirectory);
+            // Path.Combine 替字符串拼接,处理 modelsRoot 末尾斜杠 + 跨平台分隔符;
+            // 路径里含空格由 ProcessStartInfo.ArgumentList 自动 quote(StartEnvAsync
+            // line 229 按空格 Split 喂进去)。无需手写 QuoteArg。
+            entryArgs +=
+                $" --ckpt-dir {Path.Combine(modelsRoot, "checkpoints")}" +
+                $" --vae-dir {Path.Combine(modelsRoot, "vae")}" +
+                $" --lora-dir {Path.Combine(modelsRoot, "loras")}" +
+                $" --controlnet-dir {Path.Combine(modelsRoot, "controlnet")}";
+        }
+
+        // v1.0.0.x (2026-08-29):Forge 启动禁用 webui.py 自动开浏览器 —
+        // 用户原话:"他启动后自动打开网页,在这里我们不推荐"。
+        //
+        // 双管齐下(defense-in-depth):
+        // (a) --no-autolaunch CLI flag:用户参考 webui-user.bat 文档推荐的方式
+        //     (2026-08-29 用户原话"参考这个")。A1111/Forge 用自定义 bool_py2 argparse
+        //     action 支持 --no-foo 否定形(默认 dest 前缀 no_ 检测),所以 --no-autolaunch
+        //     实际等价于 --autolaunch=False。如果 Forge 升级去掉这个自定义 action,
+        //     该 flag 会报 "unrecognized arguments" — 配合下方 (b) env var 兜底。
+        // (b) SD_WEBUI_RESTARTING=1 env var:A1111 upstream PR #11037 引入的官方
+        //     机制,Forge webui.py 用它跳过整段 auto_launch_browser 逻辑
+        //     (`if os.getenv('SD_WEBUI_RESTARTING') != '1':`)。
+        //     这层独立于 CLI flag,即便 (a) 失败也兜住不弹浏览器。
+        if (env.TemplateKind == "Forge")
+        {
+            entryArgs += " --no-autolaunch";
+        }
+
         return (venvPython, (entryScript, entryArgs));
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):Forge env 启动时附加 env vars,目前只 <c>SD_WEBUI_RESTARTING=1</c>
+    /// 禁用 webui.py 启动后自动打开浏览器 — 用户原话:"他启动后自动打开网页,在这里我们不推荐"。
+    ///
+    /// 机制:Forge webui.py 检查 <c>os.getenv('SD_WEBUI_RESTARTING') != '1'</c>
+    /// (A1111 upstream PR #11037 引入的官方机制,原本为 restart 场景设计,Forge fork 把它
+    /// 扩展到所有启动场景)。env var 是 "1" → 跳过整段 <c>auto_launch_browser</c> 逻辑 →
+    /// 默认 <c>False</c> → 不弹浏览器。用户要用浏览器时,通过我们 app 的 OpenBrowser 按钮
+    /// (走 BrowserLauncher Chrome fallback)手动打开,避免 webui.py 自动弹打扰。
+    ///
+    /// 边界条件:
+    /// - <c>env.TemplateKind != "Forge"</c> → 不 set(ComfyUI / OpenVoice / HunyuanVideo 等
+    ///   不走 webui.py 的 auto-launch 路径,set 了也无害但浪费)
+    /// - <c>env.TemplateKind == null / ""</c> → 不 set(老 env SQLite template_kind 列可能 null,
+    ///   兜底走 "ComfyUI" 默认行为)
+    /// </summary>
+    /// <remarks>
+    /// 单独抽 helper 让单元测试可调 — StartEnvAsync 内部 set,集成测试覆盖整个流程成本太高。
+    /// </remarks>
+    public static IReadOnlyDictionary<string, string> ForgeExtraEnvironmentVariables(Environment env)
+    {
+        var extras = new Dictionary<string, string>();
+        if (string.Equals(env.TemplateKind, "Forge", StringComparison.Ordinal))
+        {
+            extras["SD_WEBUI_RESTARTING"] = "1";
+        }
+        return extras;
     }
 
     private static void TryKillProcessTree(Process process)

@@ -274,4 +274,186 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
 
         Assert.Equal(Path.Combine(_projectRoot, "envs", "e-fallback", "main.py"), args.File);
     }
+
+    // ====================================================================
+    // v1.0.0.x (2026-08-29):Forge env 显式拼 --ckpt-dir / --vae-dir /
+    // --lora-dir / --controlnet-dir 等指向 Settings.DefaultModelsDirectory。
+    // 用户原话:"在 forge 中写入启动参数中写入路径到 models --ckpt-dir"
+    // 目的:让 webui.py 启动时直接读共享本地模型库,避免 Forge 默认 a1111_home/
+    // models/ 跟用户共享盘的实际 ComfyUI 风格子目录(checkpoints/ vae/ loras/
+    // controlnet/)命名约定不同导致 "You do not have any model!" 错误。
+    //
+    // v1.0.0.x (2026-08-29) followup:子目录名用 ComfyUI 风格而非 Forge/A1111 默认
+    // (Stable-diffusion/ VAE/ lora/ ControlNet/)— 用户共享盘实际是 ComfyUI 布局,
+    // 直接拼 ComfyUI 子目录(webui.py 只看目录里的 .safetensors,不关心目录名)。
+    // ====================================================================
+
+    [Fact]
+    public void BuildStartCommand_Forge_WithDefaultModelsDirectory_AppendsCkptDirEtcArgs()
+    {
+        // G10: Forge + DefaultModelsDirectory 非空 → EntryArgs 末尾拼 --ckpt-dir /
+        // --vae-dir / --lora-dir / --controlnet-dir 4 个绝对路径(ComfyUI 风格子目录:
+        // checkpoints/ vae/ loras/ controlnet/) + --no-autolaunch 禁自动开浏览器
+        var env = new Environment
+        {
+            Id = "e-forge", Name = "ForgeUI", Status = "stopped",
+            TemplateKind = "Forge",
+            Port = 9001,
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "Forge",
+                EntryScript = "webui.py",
+                EntryArgs = "--port {port} --api",
+            },
+        };
+        var modelsDir = Path.Combine(_projectRoot, "shared-models");
+        var settings = new Settings { DefaultModelsDirectory = modelsDir };
+        CreateFakeEntryFile("ForgeUI", "webui.py");
+
+        var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
+
+        // 4 个参数 + 4 个 ComfyUI 风格绝对路径子目录
+        Assert.Contains("--ckpt-dir", args.ArgsString);
+        Assert.Contains("--vae-dir", args.ArgsString);
+        Assert.Contains("--lora-dir", args.ArgsString);
+        Assert.Contains("--controlnet-dir", args.ArgsString);
+        Assert.Contains(Path.Combine(modelsDir, "checkpoints"), args.ArgsString);
+        Assert.Contains(Path.Combine(modelsDir, "vae"), args.ArgsString);
+        Assert.Contains(Path.Combine(modelsDir, "loras"), args.ArgsString);
+        Assert.Contains(Path.Combine(modelsDir, "controlnet"), args.ArgsString);
+        // v1.0.0.x (2026-08-29):Forge 禁自动开浏览器 — 用户原话 "他启动后自动打开网页,
+        // 在这里我们不推荐",参考 webui-user.bat COMMANDLINE_ARGS=--no-autolaunch 思路。
+        Assert.Contains("--no-autolaunch", args.ArgsString);
+    }
+
+    [Fact]
+    public void BuildStartCommand_Forge_WithEmptyDefaultModelsDirectory_DoesNotAppendCkptArgs()
+    {
+        // 用户没配 DefaultModelsDirectory → 不要拼 --ckpt-dir 等(env 内 models/ 目录按
+        // Forge 默认 a1111_home/models/ 走),也避免 launcher 引用空字符串触发 webui.py
+        // 启动错。但 --no-autolaunch 仍要拼(它是独立的 browser-disable 行为,不依赖
+        // DefaultModelsDirectory)。
+        var env = new Environment
+        {
+            Id = "e-forge2", Name = "ForgeUI2", Status = "stopped",
+            TemplateKind = "Forge",
+            Port = 9002,
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "Forge",
+                EntryScript = "webui.py",
+                EntryArgs = "--port {port}",
+            },
+        };
+        var settings = new Settings { DefaultModelsDirectory = "" };  // 未配
+        CreateFakeEntryFile("ForgeUI2", "webui.py");
+
+        var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
+
+        Assert.DoesNotContain("--ckpt-dir", args.ArgsString);
+        Assert.DoesNotContain("--vae-dir", args.ArgsString);
+        Assert.DoesNotContain("--lora-dir", args.ArgsString);
+        Assert.DoesNotContain("--controlnet-dir", args.ArgsString);
+        // 仍拼 --no-autolaunch(独立行为)
+        Assert.Contains("--no-autolaunch", args.ArgsString);
+    }
+
+    [Fact]
+    public void BuildStartCommand_NonForge_WithDefaultModelsDirectory_DoesNotAppendCkptArgs()
+    {
+        // ComfyUI env 不需要 --ckpt-dir(走自己的 models/checkpoints/ 约定);同样的
+        // DefaultModelsDirectory 不应触发 Forge-only 注入。锁住这个 boundary —
+        // Forge-specific 行为不能 spill 到 ComfyUI env(后者有自己的 args 模板)。
+        // --no-autolaunch 也只对 Forge 拼(ComfyUI 启动不弹浏览器,不需要这个 flag)。
+        var env = new Environment
+        {
+            Id = "e-comfy", Name = "ComfyMain", Status = "stopped",
+            TemplateKind = "ComfyUI",
+            Port = 9003,
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "ComfyUI",
+                EntryScript = "main.py",
+                EntryArgs = "--port {port} --listen 0.0.0.0",
+            },
+        };
+        var modelsDir = Path.Combine(_projectRoot, "shared-models");
+        var settings = new Settings { DefaultModelsDirectory = modelsDir };
+        CreateFakeEntryFile("ComfyMain", "main.py");
+
+        var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
+
+        Assert.DoesNotContain("--ckpt-dir", args.ArgsString);
+        Assert.DoesNotContain("--vae-dir", args.ArgsString);
+        Assert.DoesNotContain("--lora-dir", args.ArgsString);
+        Assert.DoesNotContain("--controlnet-dir", args.ArgsString);
+        Assert.DoesNotContain("--no-autolaunch", args.ArgsString);
+    }
+
+    // ====================================================================
+    // v1.0.0.x (2026-08-29):Forge env 启动禁用 webui.py 自动开浏览器。
+    // 用户原话:"他启动后自动打开网页,在这里我们不推荐"。
+    // 机制:ForgeExtraEnvironmentVariables(Environment) → IDictionary,StartEnvAsync
+    // 把 entries 灌到 ProcessStartInfo.EnvironmentVariables;Forge webui.py 检测
+    // `os.getenv('SD_WEBUI_RESTARTING') != '1'`(A1111 PR #11037 官方机制,Foge 扩展
+    // 到所有启动场景),env var = "1" → 跳过整段 auto_launch_browser 逻辑 → 不弹浏览器。
+    // 用户用我们 app 的 OpenBrowser 按钮手动开。
+    // ====================================================================
+
+    [Fact]
+    public void ForgeExtraEnvironmentVariables_Forge_SetsSdWebuiRestarting()
+    {
+        // G11: Forge env → 返回 dict 含 SD_WEBUI_RESTARTING="1",供 StartEnvAsync
+        // 灌到 ProcessStartInfo.EnvironmentVariables → webui.py 检测后跳过 auto_launch。
+        var env = new Environment
+        {
+            Id = "e-forge-env", Name = "ForgeUI", Status = "stopped",
+            TemplateKind = "Forge",
+            Port = 9001,
+            TemplateConfigSnapshot = null,
+        };
+
+        var extras = ProcessLauncher.ForgeExtraEnvironmentVariables(env);
+
+        Assert.Single(extras);
+        Assert.True(extras.ContainsKey("SD_WEBUI_RESTARTING"));
+        Assert.Equal("1", extras["SD_WEBUI_RESTARTING"]);
+    }
+
+    [Fact]
+    public void ForgeExtraEnvironmentVariables_NonForge_DoesNotSetSdWebuiRestarting()
+    {
+        // ComfyUI 不走 webui.py 的 auto-launch 路径(ComfyUI 是无 GUI 后端,自己不带
+        // 默认浏览器启动逻辑),不需要这个 env var。锁住 boundary:Forge-specific
+        // 行为不 spill 到其它 template。
+        var env = new Environment
+        {
+            Id = "e-comfy", Name = "ComfyMain", Status = "stopped",
+            TemplateKind = "ComfyUI",
+            Port = 9002,
+            TemplateConfigSnapshot = null,
+        };
+
+        var extras = ProcessLauncher.ForgeExtraEnvironmentVariables(env);
+
+        Assert.Empty(extras);
+    }
+
+    [Fact]
+    public void ForgeExtraEnvironmentVariables_EmptyTemplateKind_DoesNotSetSdWebuiRestarting()
+    {
+        // 老 env SQLite template_kind 列可能 null(legacy data),兜底走 "ComfyUI"
+        // 默认行为 — 不要凭空 set SD_WEBUI_RESTARTING(避免误伤)。
+        var env = new Environment
+        {
+            Id = "e-legacy", Name = "Legacy", Status = "stopped",
+            TemplateKind = null,
+            Port = 9003,
+            TemplateConfigSnapshot = null,
+        };
+
+        var extras = ProcessLauncher.ForgeExtraEnvironmentVariables(env);
+
+        Assert.Empty(extras);
+    }
 }
