@@ -411,25 +411,40 @@ public class TemplateSourceUpdaterTests : IDisposable
     }
 
     [Fact]
-    public void UpdateAsync_RecordsProgressLines_InExpectedFormat()
+    public async Task UpdateAsync_RecordsProgressLines_InExpectedFormat()
     {
         // v1.0.0.x: 同 CloneAsync 但走 update 路径 — targetDir 必须先存在。
         // Fake git path 让 RunAsync 抛 InvalidOperationException → "[src] ✗ ..." 行。
+        // v1.0.0.x followup:原 .GetAwaiter().GetResult() sync 阻塞 test thread,
+        // Progress<T>.Report 通过 SyncContext Post 的 callback 没机会 fire,GetResult
+        // 返回后立刻 enumerate lines 时 callback 才 dispatch → "Collection was modified"。
+        // 改成 async + 等 snapshot 稳定(关键行到位)+ ToList 隔离后续修改。
         var target = Path.Combine(_workRoot, "update-target");
         Directory.CreateDirectory(target);
         var lines = new System.Collections.Generic.List<string>();
         var progress = new Progress<string>(s => lines.Add(s));
 
         var updater = new TemplateSourceUpdater("/no/such/git", gitProxy: null, logger: null);
-        var result = updater.UpdateAsync(
+        var result = await updater.UpdateAsync(
             targetDir: target,
             repoUrl: "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git",
             progress: progress,
-            ct: default).GetAwaiter().GetResult();
+            ct: default);
+
+        // 等 Progress<T> callback flush(等到关键行到位或超时)
+        var snapshot = new System.Collections.Generic.List<string>();
+        for (int i = 0; i < 50; i++)
+        {
+            await System.Threading.Tasks.Task.Yield();
+            snapshot = lines.ToList();
+            if (snapshot.Any(l => l.StartsWith("[src] → github.com"))
+                && snapshot.Any(l => l.StartsWith("[src] ✗")))
+                break;
+        }
 
         Assert.False(result.Success);
-        Assert.Contains(lines, l => l.StartsWith("[src] → github.com"));
-        Assert.Contains(lines, l => l.StartsWith("[src] ✗"));
+        Assert.Contains(snapshot, l => l.StartsWith("[src] → github.com"));
+        Assert.Contains(snapshot, l => l.StartsWith("[src] ✗"));
     }
 
     // --- v1.0.0.x: 显示 git 命令 + 提取包大小 ---
