@@ -207,11 +207,20 @@ public static class EnvComponentReportRenderer
 
     private static void AppendSection4Comfyui(StringBuilder sb, EnvComponentReport report)
     {
+        // v1.0.0.x (2026-08-29):section heading 不再 hardcode "ComfyUI 源码状态" ——
+        // 用 ComfyuiStatus.DisplayName 派生(Builder 已经按 env.TemplateKind 算好,
+        // 如 "ComfyUI 源码" / "Forge 源码" / "OpenVoice 源码")。DisplayName 已经以
+        // "源码" 结尾,直接拼"状态"(不加空格)→ "ComfyUI 源码状态" / "Forge 源码状态"。
+        // fallback "源码状态" 是理论上 builder 永远会 set DisplayName 的防御,
+        // 这里只兜底 null DisplayName。
+        var heading = report.ComfyuiStatus is { } s && !string.IsNullOrEmpty(s.DisplayName)
+            ? $"阶段 4 — {s.DisplayName}状态"
+            : "阶段 4 — 源码状态";
         sb.AppendLine("<section class=\"stage stage-comfyui\">");
-        sb.AppendLine("<h2>阶段 4 — ComfyUI 源码状态</h2>");
+        sb.Append("<h2>").Append(heading).AppendLine("</h2>");
         if (report.ComfyuiStatus is null)
         {
-            sb.AppendLine("<p class=\"skip-notice\">跳过:ComfyUI 源码目录未设置(ComfyuiSource=null)或目录不存在。</p>");
+            sb.AppendLine("<p class=\"skip-notice\">跳过:源码目录未设置(ComfyuiSource=null)或目录不存在。</p>");
             sb.AppendLine("</section>");
             return;
         }

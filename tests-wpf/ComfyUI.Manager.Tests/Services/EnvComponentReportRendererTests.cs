@@ -155,5 +155,40 @@ public sealed class EnvComponentReportRendererTests
         Assert.Contains("不是 git 仓库", html);
         Assert.Contains("not a git repository", html);
         Assert.Contains("阶段 4", html);
+        Assert.Contains("ComfyUI 源码状态", html);
+    }
+
+    // --- v1.0.0.x (2026-08-29):section heading 按 ComfyuiStatus.DisplayName 派生 ---
+
+    [Theory]
+    [InlineData("ComfyUI 源码", "ComfyUI 源码状态")]
+    [InlineData("Forge 源码", "Forge 源码状态")]
+    [InlineData("OpenVoice 源码", "OpenVoice 源码状态")]
+    [InlineData("HunyuanVideo 源码", "HunyuanVideo 源码状态")]
+    public void Render_Section4Heading_ReflectsDisplayName(
+        string displayName, string expectedHeading)
+    {
+        // v1.0.0.x:Renderer 不再 hardcode "ComfyUI 源码状态" — 用 ComfyuiStatus.DisplayName
+        // 拼出 heading。这样 Builder 按 env.TemplateKind 派生 DisplayName 之后,
+        // 标题自动跟随(ComfyUI 兼容、Forge 等多模板正确)。
+        var report = new EnvComponentReport
+        {
+            EnvName = "test",
+            GeneratedAtUtc = new DateTime(2026, 8, 7, 10, 0, 0, DateTimeKind.Utc),
+            AppVersion = "0.6.7.0",
+            ComfyuiStatus = new GitTargetStatus
+            {
+                DisplayName = displayName,
+                Path = "C:\\fake\\source",
+                State = GitTargetState.Ok,
+                CommitHash = "abc1234",
+                Branch = "main",
+                LastCommitTimeUtc = DateTime.UtcNow,
+            },
+        };
+
+        var html = EnvComponentReportRenderer.Render(report);
+
+        Assert.Contains($"阶段 4 — {expectedHeading}", html);
     }
 }

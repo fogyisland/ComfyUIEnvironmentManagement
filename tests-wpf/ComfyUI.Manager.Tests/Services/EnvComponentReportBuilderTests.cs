@@ -49,7 +49,8 @@ public sealed class EnvComponentReportBuilderTests : IDisposable
         string? pythonExe = null,
         string? venvPath = null,
         string? comfyuiSource = null,
-        string? customNodes = null)
+        string? customNodes = null,
+        string templateKind = "ComfyUI")
     {
         var root = Path.Combine(_tempRoot, id);
         Directory.CreateDirectory(root);
@@ -66,6 +67,7 @@ public sealed class EnvComponentReportBuilderTests : IDisposable
             Status = "stopped",
             BedProfileId = bedProfileId,
             BedStatus = bedProfileId is null ? null : "done",
+            TemplateKind = templateKind,
         };
         _envRepo.Upsert(env);
         return env;
@@ -305,6 +307,61 @@ public sealed class EnvComponentReportBuilderTests : IDisposable
         Assert.NotNull(report.ComfyuiStatus);
         Assert.Equal(GitTargetState.NotARepository, report.ComfyuiStatus!.State);
         Assert.Contains("not a git repository", report.ComfyuiStatus.ErrorMessage ?? "");
+    }
+
+    // --- v1.0.0.x (2026-08-29):EnvComponentReport 源码 DisplayName 按 TemplateKind 派生 ---
+
+    [Theory]
+    [InlineData("ComfyUI", "ComfyUI 源码")]      // 向后兼容:ComfyUI 留原样
+    [InlineData("Forge", "Forge 源码")]
+    [InlineData("OpenVoice", "OpenVoice 源码")]
+    [InlineData("Whisper", "Whisper 源码")]
+    [InlineData("HunyuanVideo", "HunyuanVideo 源码")]
+    [InlineData("LTXVideo", "LTXVideo 源码")]
+    public async Task BuildAsync_SourceDisplayName_DerivedFromTemplateKind(
+        string templateKind, string expectedDisplayName)
+    {
+        // v1.0.0.x:组件报告 hardcode "ComfyUI 源码" 不管 env.TemplateKind 是什么 ——
+        // 多模板(Forge/OpenVoice/HunyuanVideo 等)共享 env.ComfyuiSource 字段,但显示必须
+        // 按实际 template kind。ComfyUI 留 "ComfyUI 源码"(向后兼容);其他 → "{Kind} 源码"。
+        var dir = Path.Combine(_tempRoot, "source");
+        Directory.CreateDirectory(dir);
+        var env = SeedEnv(comfyuiSource: dir, templateKind: templateKind);
+        var builder = new FakeBuilder(
+            CreateProfileLoader(DefaultProfile()),
+            _envRepo,
+            "fake-git",
+            "0.6.7.0");
+        // rev-parse 失败让 status 落 NotARepository 分支(只需要 status 非 null + DisplayName 可读)
+        builder.NextRun = MakeFail(128, "fatal: not a git repository\n");
+
+        var report = await builder.BuildAsync(env);
+
+        Assert.NotNull(report.ComfyuiStatus);
+        Assert.Equal(expectedDisplayName, report.ComfyuiStatus!.DisplayName);
+    }
+
+    [Fact]
+    public async Task BuildAsync_EmptyTemplateKind_FallsBackToComfyUIString()
+    {
+        // 防御:env.TemplateKind 为空(老 env 行没填这字段)→ 回落 "ComfyUI 源码" 旧行为。
+        // 不抛、不空 DisplayName。
+        var dir = Path.Combine(_tempRoot, "source");
+        Directory.CreateDirectory(dir);
+        var env = SeedEnv(comfyuiSource: dir);
+        env.TemplateKind = "";  // 显式清空
+        _envRepo.Upsert(env);
+        var builder = new FakeBuilder(
+            CreateProfileLoader(DefaultProfile()),
+            _envRepo,
+            "fake-git",
+            "0.6.7.0");
+        builder.NextRun = MakeFail(128, "fatal: not a git repository\n");
+
+        var report = await builder.BuildAsync(env);
+
+        Assert.NotNull(report.ComfyuiStatus);
+        Assert.Equal("ComfyUI 源码", report.ComfyuiStatus!.DisplayName);
     }
 
     // ----------- helpers -----------
