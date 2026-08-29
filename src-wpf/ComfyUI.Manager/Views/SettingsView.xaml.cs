@@ -412,4 +412,70 @@ public partial class SettingsView : UserControl
             vm.CloseCommonNodeDownloadStatusCommand.Execute(null);
         }
     }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):env-create 后 Forge 提示框「去设置」入口 —
+    /// 把 Forge 模型目录 <c>GroupBox</c> 滚到视口里 + 短暂高亮(2s BorderBrush 变橙),
+    /// 引导用户修改 LoRA/VAE 等 6 个 per-type 路径。
+    ///
+    /// <para>
+    /// 调用方应在 SettingsView.Loaded 事件里调本方法(不是构造完立即调),否则
+    /// <c>UpdateLayout()</c> 之前 x:Name 元素还没注册,FindName 返 null。
+    /// canonical 调用模式(由 MainViewModel.OpenSettingsAndJumpToForgePaths 用):
+    /// </para>
+    /// <code>
+    /// settingsView.Loaded += (s, e) => settingsView.JumpToForgePaths(afterShown: () => {
+    ///     // 选填:用户改完路径后,重写刚创建 env 的 yaml
+    ///     ForgeExtraModelPathsYamlGenerator.EnsureWritten(env.RootPath, settings);
+    /// });
+    /// </code>
+    ///
+    /// <para>
+    /// 如果 XAML 还没加 <c>x:Name="ForgePathsGroupBox"</c>(未来重构遗漏),FindName 返 null,
+    /// 本方法 silent no-op + Debug.WriteLine 警告 — 不抛,不影响用户进 Settings 页。
+    /// </para>
+    /// </summary>
+    /// <param name="afterShown">选填回调,在 scroll + highlight 完成后 invoke。
+    /// caller 通常在此回调里重写刚创建 env 的 extra_model_paths.yaml。</param>
+    public void JumpToForgePaths(Action? afterShown = null)
+    {
+        // FindName 需要 x:Name 元素已注册;Loaded 后 UpdateLayout 已完成。
+        UpdateLayout();
+        // Cast to Control 而不是 FrameworkElement — BorderBrush/BorderThickness 是 Control 的属性
+        // (GroupBox 通过 Control 继承,BringIntoView 通过 FrameworkElement 继承)。
+        var element = FindName("ForgePathsGroupBox") as Control;
+        if (element is null)
+        {
+            // x:Name 缺失(理论上不会发生 — SettingsView.xaml:139 已加,这里 defense-in-depth)。
+            Debug.WriteLine(
+                "[SettingsView.JumpToForgePaths] ForgePathsGroupBox x:Name 未找到,skip scroll/highlight");
+            afterShown?.Invoke();
+            return;
+        }
+
+        // 1) ScrollViewer 滚到 GroupBox(BringIntoView 走 ScrollIntoView 语义)。
+        element.BringIntoView();
+
+        // 2) 临时把 BorderBrush 设成橙色,2s 后还原 — 高亮提示用户。
+        // 用 DispatcherTimer 比 async Task.Delay 更 WPF 友好(走 UI thread 同步队列)。
+        var originalBrush = element.BorderBrush;
+        var originalThickness = element.BorderThickness;
+        var highlightBrush = System.Windows.Media.Brushes.Orange;
+        element.BorderBrush = highlightBrush;
+        element.BorderThickness = new Thickness(2);
+
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            element.BorderBrush = originalBrush;
+            element.BorderThickness = originalThickness;
+            // 回调在还原之后调 — caller(如 MainViewModel)此时读 _settings 已无 UI 副作用。
+            afterShown?.Invoke();
+        };
+        timer.Start();
+    }
 }

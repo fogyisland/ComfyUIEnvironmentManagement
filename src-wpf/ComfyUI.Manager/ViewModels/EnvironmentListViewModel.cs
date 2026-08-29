@@ -1092,7 +1092,59 @@ public class EnvironmentListViewModel : ViewModelBase
     private void CreateEnv()
     {
         var created = Views.CreateEnvDialog.Show(_envCreator, _settings, _projectRoot, RecentBasePythonPath, _repo);
-        if (created is not null) Load();
+        if (created is not null)
+        {
+            Load();
+            // v1.0.0.x (2026-08-29):Forge env 创建成功后弹「去设置 LoRA/VAE 路径」提示框。
+            // 用户原话:"在创建forge的时候有个提示框,请在设置中设置forge的lora vae路径"。
+            // Forge env 实际依赖 Settings.ForgePaths 6 个 per-type 字段,env-create step 7.5
+            // 立即用 DefaultModelsDirectory 派生写 yaml(env-create 时用户没机会配置)。
+            // 弹框让用户显式选择:去设置(后续 yaml 重写 + 跳到 Forge 模型目录)/ 跳过(用默认派生)。
+            // 仅当 TemplateKind == "Forge" 时弹,其它 kind(ComfyUI / 4 视频模板)不弹
+            // — 它们的模型目录约定不同(ComfyUI 用 Settings.ModelsDir junction,视频模板自己管理)。
+            if (string.Equals(created.TemplateKind, "Forge", StringComparison.Ordinal))
+            {
+                PromptForgePostCreateSettings(created);
+            }
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x:Forge env 创建成功后弹「去设置 LoRA/VAE 路径」提示框。
+    /// 用户选「去设置」→ 委托 <see cref="_mvm"/>.OpenSettingsAndJumpToForgePaths(env)
+    /// 切到 Settings section + scroll/highlight Forge 模型目录 + 重写该 env 的 yaml;
+    /// 选「跳过」/关窗 → no-op(env-create step 7.5 已用默认派生写 yaml,
+    /// 后续用户在 Settings 改了 + Save 会级联重写,见 SettingsViewModel.SaveCommand)。
+    ///
+    /// _mvm 是 MainViewModel 反向引用(null = EnvListVM 早于 MVM 构造,常见于单元测试
+    /// 桩)。null → 退化成只弹提示框,不能切 Settings(测试环境也没 Settings view)。
+    /// </summary>
+    private void PromptForgePostCreateSettings(Environment env)
+    {
+        try
+        {
+            var vm = new ForgePostCreatePromptViewModel(env.Name);
+            var dlg = new ForgePostCreatePromptDialog(vm)
+            {
+                Owner = Application.Current?.MainWindow,
+            };
+            // canonical pattern:vm.CloseRequested 触发 dlg.Close(),关闭后读 vm.Choice。
+            dlg.ShowDialog();
+            if (vm.Choice == "settings" && _mvm is not null)
+            {
+                _mvm.OpenSettingsAndJumpToForgePaths(env);
+            }
+        }
+        catch (Exception ex)
+        {
+            // 提示框本身失败(env-create 已成功,这是 UX bonus 不应 crash env-list):
+            // - 测试环境无 MainWindow → Application.Current 抛 / Owner setter 抛
+            // - 其他 WPF 异常
+            // 静默 + Debug 输出;用户可在 Settings 手动改路径,启动时 ProcessLauncher
+            // EnsureWritten 会再写一次 yaml。
+            System.Diagnostics.Debug.WriteLine(
+                $"[EnvListVM] ForgePostCreatePrompt 弹框失败(env 已创建,不影响主流程): {ex.Message}");
+        }
     }
 
     // Test seam — unit tests set this to intercept the dialog launch (which calls

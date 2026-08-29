@@ -1,0 +1,55 @@
+<Window x:Class="ComfyUI.Manager.Views.ForgePostCreatePromptDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Forge env 已创建"
+        Height="240" Width="480"
+        Background="{StaticResource BackgroundBrush}"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
+    <!--
+    v1.0.0.x (2026-08-29):Forge env 创建成功后弹的提示框 ——
+    镜像 NodeInstallDiffWarningDialog 的 modal pattern
+    (DataContext = vm; vm.CloseRequested += Close)。
+    Owner 不设 — env-create dialog (CreateEnvDialog) 关闭后,Application.Current.MainWindow
+    在此 dialog 弹时已可见(用户刚关了 env-create 进度面板);但保险起见不强制 Owner。
+    -->
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Forge env 已创建"
+                   FontSize="16" FontWeight="Bold"
+                   Foreground="{DynamicResource OnSurfaceBrush}"
+                   Margin="0,0,0,12" />
+
+        <TextBlock Grid.Row="1"
+                   Text="{Binding Message}"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource OnSurfaceBrush}"
+                   FontSize="13" />
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,0">
+            <Button Content="跳过"
+                    Command="{Binding SkipCommand}"
+                    IsCancel="True"
+                    Style="{StaticResource MaterialButton}"
+                    Width="80" />
+            <Button Content="去设置"
+                    Command="{Binding GoToSettingsCommand}"
+                    IsDefault="True"
+                    Style="{StaticResource MaterialButton}"
+                    Margin="8,0,0,0"
+                    Width="100" />
+        </StackPanel>
+    </Grid>
+</Window>

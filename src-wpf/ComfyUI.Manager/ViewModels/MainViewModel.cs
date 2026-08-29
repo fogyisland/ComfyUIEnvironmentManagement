@@ -17,6 +17,7 @@ using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.Views;
 using ComfyUI.Manager.Views.TemplateManagement;
 using Microsoft.Win32;
+using Environment = ComfyUI.Manager.Models.Environment;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -919,6 +920,65 @@ public class MainViewModel : ViewModelBase
         _modelMarketplaceView = null;
         ShowModelsCommand.Execute(null);
         _ = _modelMarketplaceViewModel?.RefreshAsync();
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):Forge env 创建成功后,弹「去设置」提示框用户点选「去设置」时调用 —
+    /// 切换到 Settings section + 等 SettingsView Loaded 后调
+    /// <see cref="SettingsView.JumpToForgePaths"/> scroll/highlight Forge 模型目录 +
+    /// 重写刚创建 env 的 extra_model_paths.yaml(用当前 Settings,可能含用户刚编辑的 LoRA/VAE 路径)。
+    ///
+    /// <para>
+    /// 由 <see cref="EnvironmentListViewModel"/> 在用户选「去设置」时调。
+    /// 关键时序:
+    /// </para>
+    /// <list type="number">
+    /// <item>ShowSettings() 构造 SettingsView + 设 CurrentView → MainWindow ContentControl 切到 SettingsView</item>
+    /// <item>SettingsView 加载完成后触发 Loaded event → JumpToForgePaths</item>
+    /// <item>JumpToForgePaths 内部 scroll + 2s 高亮 + afterShown 回调</item>
+    /// <item>afterShown 回调里调 ForgeExtraModelPathsYamlGenerator.EnsureWritten 用当前 Settings 重写 yaml</item>
+    /// </list>
+    ///
+    /// <para>
+    /// 重写 yaml 的语义:env-create step 7.5 用 DefaultModelsDirectory 派生写了初始 yaml;
+    /// 此时 _settings 已反映用户在 TextBox 里的实时编辑(SettingsViewModel 6 个 ForgePaths setter
+    /// 直接写 _settings.ForgePaths.*),所以 EnsureWritten 拿到的是「用户实际想要的最新值」。
+    /// 如果用户没编辑就关掉 Settings → 重写出来跟 step 7.5 一样,无副作用(idempotent)。
+    /// </para>
+    /// </summary>
+    /// <param name="env">刚创建成功的 Forge env,需要其 RootPath 重写 yaml。</param>
+    internal void OpenSettingsAndJumpToForgePaths(Environment env)
+    {
+        if (env is null) return;
+        // ShowSettings 切 CurrentSection + 构造 / 复用 SettingsView。
+        ShowSettings();
+        // CurrentView 在 ShowSettings 末尾被设 — 拿到刚构造(或复用)的 SettingsView 实例。
+        if (CurrentView is SettingsView sv)
+        {
+            // 用 local handler + 自身引用 self-unsubscribe 模式 — 闭包捕获 env 参数,
+            // 避免 field 持有 + 多重触发隐患。Loaded 触发一次立即 unsubscribe。
+            RoutedEventHandler? handler = null;
+            handler = (s, e) =>
+            {
+                sv.Loaded -= handler;
+                sv.JumpToForgePaths(afterShown: () =>
+                {
+                    try
+                    {
+                        // 闭包捕获本方法的 env 参数 — 每次调用独立,无 field 共享隐患。
+                        ForgeExtraModelPathsYamlGenerator.EnsureWritten(env.RootPath, _settings);
+                    }
+                    catch (Exception ex)
+                    {
+                        // yaml 重写失败不影响 Settings UI;启动时 ProcessLauncher.StartEnvAsync
+                        // EnsureWritten 会再写一次,这里 fail-soft。
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[MainViewModel] ForgePostCreate yaml 重写失败(env 启动时 ProcessLauncher 重试): {ex.Message}");
+                    }
+                });
+            };
+            sv.Loaded += handler;
+        }
     }
 
     private void ShowSettings()
