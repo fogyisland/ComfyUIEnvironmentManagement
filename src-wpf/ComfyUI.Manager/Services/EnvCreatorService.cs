@@ -32,13 +32,13 @@ namespace ComfyUI.Manager.Services;
 ///   6.5 升级 venv 内的 pip(<c>python -m pip install --upgrade pip</c>,warn-only)
 ///   6.6 seed wheel 包到 venv(<c>python -m pip install wheel</c>,required — fix Forge pre-flight CLIP `bdist_wheel` missing)
 ///   7. 插 SQLite 行(持久化 TemplateKind + TemplateConfigSnapshot JSON 克隆)
+///   7.5 v1.0.0.x:Forge env 写初始 extra_model_paths.yaml(<see cref="ForgeExtraModelPathsYamlGenerator"/>),
+///       让 env-create 后 OpenExtraModelPathsYaml 立刻看到真实内容;启动时
+///       ProcessLauncher.StartEnvAsync 会再写一次(幂等)。
 ///
-/// v1.0.0.x: env-create 不再自动跑「安装常用节点」/「写 extra_model_paths.yaml」。
-/// 安装常用节点由用户在 env 列表行点击按钮触发(RequirementsInstaller /
-/// env 行内按钮已存在,逻辑独立)。extra_model_paths.yaml 完全不需要写:
-/// Environment.ExtraModelPathsYaml DB 列已记精确路径,MainViewModel
-/// OpenExtraModelPathsYamlCommand 用路径直接打开,EnsureFileExists 在文件缺失
-/// 时写 placeholder 兜底。
+/// v1.0.0.x: env-create 不再自动跑「安装常用节点」(由 env 行按钮触发,RequirementsInstaller /
+/// env 行内按钮已存在,逻辑独立)。Forge env 的 extra_model_paths.yaml 由 step 7.5 自动写,
+/// Non-Forge kind 不写(yaml 是 Forge 专属 — ComfyUI 用 settings.models 目录约定 + junction)。
 /// </summary>
 public sealed class EnvCreatorService
 {
@@ -295,6 +295,28 @@ public sealed class EnvCreatorService
         // 在文件缺失时写 placeholder 兜底。Env.ExtraModelPathsYaml 字段值仍计算,
         // 只是不实际写文件。
         var extraYaml = Path.Combine(rootPath, "extra_model_paths.yaml");
+
+        // 7.5 v1.0.0.x (2026-08-29):Forge env 立即写初始 extra_model_paths.yaml —
+        // 用户 env-create 之后能立刻在 env-list「extra_model_paths.yaml」按钮看到
+        // 真实内容(而不是 placeholder),启动时 ProcessLauncher.StartEnvAsync 会再
+        // 写一次(幂等,覆盖)。Settings.DefaultModelsDirectory 为空时不写(yaml 渲染
+        // 失败也是 warning-only —— env 已创建好,启动时 ProcessLauncher.EnsureWritten
+        // 会再试一次,两次都失败再走 fail-fast)。
+        if (string.Equals(templateConfig.Kind, "Forge", StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(_settings.DefaultModelsDirectory))
+        {
+            try
+            {
+                ForgeExtraModelPathsYamlGenerator.EnsureWritten(rootPath, _settings);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+            {
+                // env 已创建,只 yaml 没写 — 不抛(env-create 整体不该因此失败)。
+                // 启动时 ProcessLauncher.EnsureWritten 会再试一次,那里再 fail-fast。
+                System.Diagnostics.Debug.WriteLine(
+                    $"[EnvCreator] Forge extra_model_paths.yaml 写入失败 (非致命,启动时 ProcessLauncher 重试): {ex.Message}");
+            }
+        }
         var env = new Environment
         {
             Id = envId,
