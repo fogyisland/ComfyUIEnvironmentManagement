@@ -290,33 +290,12 @@ public sealed class EnvCreatorService
         // 编辑不会 mutate 已存在的 env snapshot(测试 `CreateAsync_SnapshotIsFrozen_*`)。
         // ComfyuiLayout 列保留旧字段("isolated" 标量字面),仍写到 DB 以兼容老 schema。
         //
-        // v1.0.0.x: 不再创建 extra_model_paths.yaml 占位文件 — DB 列已记精确路径,
-        // MainViewModel.OpenExtraModelPathsYamlCommand 用路径打开,EnsureFileExists
-        // 在文件缺失时写 placeholder 兜底。Env.ExtraModelPathsYaml 字段值仍计算,
-        // 只是不实际写文件。
+        // v1.0.0.x (2026-08-29):Forge env 模型目录配置改回 CLI args,不再写
+        // extra_model_paths.yaml 文件(实测 Forge fork 不读 yaml,grep 整个
+        // ForgeUI 目录零引用 — 详见 ProcessLauncher.BuildStartCommand 注释)。
+        // Env.ExtraModelPathsYaml 字段值仍计算,MainViewModel.OpenExtraModelPathsYamlCommand
+        // 用该路径打开 —— 即便文件不存在也不影响启动。
         var extraYaml = Path.Combine(rootPath, "extra_model_paths.yaml");
-
-        // 7.5 v1.0.0.x (2026-08-29):Forge env 立即写初始 extra_model_paths.yaml —
-        // 用户 env-create 之后能立刻在 env-list「extra_model_paths.yaml」按钮看到
-        // 真实内容(而不是 placeholder),启动时 ProcessLauncher.StartEnvAsync 会再
-        // 写一次(幂等,覆盖)。Settings.DefaultModelsDirectory 为空时不写(yaml 渲染
-        // 失败也是 warning-only —— env 已创建好,启动时 ProcessLauncher.EnsureWritten
-        // 会再试一次,两次都失败再走 fail-fast)。
-        if (string.Equals(templateConfig.Kind, "Forge", StringComparison.Ordinal)
-            && !string.IsNullOrWhiteSpace(_settings.DefaultModelsDirectory))
-        {
-            try
-            {
-                ForgeExtraModelPathsYamlGenerator.EnsureWritten(rootPath, _settings);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
-            {
-                // env 已创建,只 yaml 没写 — 不抛(env-create 整体不该因此失败)。
-                // 启动时 ProcessLauncher.EnsureWritten 会再试一次,那里再 fail-fast。
-                System.Diagnostics.Debug.WriteLine(
-                    $"[EnvCreator] Forge extra_model_paths.yaml 写入失败 (非致命,启动时 ProcessLauncher 重试): {ex.Message}");
-            }
-        }
         var env = new Environment
         {
             Id = envId,

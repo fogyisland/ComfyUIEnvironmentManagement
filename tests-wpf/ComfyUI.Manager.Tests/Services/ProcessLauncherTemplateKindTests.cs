@@ -276,47 +276,34 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
     }
 
     // ====================================================================
-    // v1.0.0.x (2026-08-29):Forge env 模型目录配置改走 extra_model_paths.yaml
-    // 文件(由 <see cref="ForgeExtraModelPathsYamlGenerator"/> 在 StartEnvAsync
-    // 启动前自动写),不再在 CLI 上拼 --ckpt-dir / --vae-dir / --lora-dir /
-    // --controlnet-dir。
+    // v1.0.0.x (2026-08-29):Forge env 模型目录配置改回 CLI args(标准 A1111 args,
+    // Forge fork 保留 — 见 Envs/ForgeUI/modules/cmd_args.py line 27-29 / 36 / 38
+    // / 140 + modules/launch_utils.py line 524-527)。Forge fork 不读
+    // extra_model_paths.yaml(实测 grep 整个 ForgeUI 目录零引用),之前 eab383d
+    // 写的 yaml 方案是死代码 —— 文件写了 Forge 不读,checkpoint 下拉框仍然空。
     //
-    // 历史(2026-08-29 初版拼 CLI 参数的版本,已被撤回):
-    //   用户原话:"在 forge 中写入启动参数中写入路径到 models --ckpt-dir"。
-    //   G10: Forge + DefaultModelsDirectory 非空 → EntryArgs 末尾拼 4 个绝对路径
-    //   (ComfyUI 风格子目录:checkpoints/ vae/ loras/ controlnet/),避免 Forge 默认
-    //   a1111_home/models/ 跟用户共享盘实际 ComfyUI 布局不同导致 "You do not have
-    //   any model!" 错误。
+    // BuildStartCommand 直接从 settings.ForgePaths 6 字段派生 6 个 --*dir CLI
+    // arg,任一字段非空 → 拼;空 → 跳过。
     //
-    // followup(2026-08-29):用户进一步澄清 "我们的Forge 可以设置和应用这些目录
-    // 位置,不用自己生成" → 改写 yaml 方案,BuildStartCommand 不再掺 IO,启动前
-    // ForgeExtraModelPathsYamlGenerator.EnsureWritten 写 <env-root>/
-    // extra_model_paths.yaml。下方 BuildStartCommand_Forge_* 测试改为
-    // Assert.DoesNotContain(--*dir) 锁住"绝对不再拼 CLI 参数"的不变量。
+    // 历史:eab383d (2026-08-29) 改 yaml 方案时假设 "Forge fork 自己有 read
+    // extra_model_paths.yaml 的内置机制(A1111 official yaml 格式支持)" —
+    // 实测错误,撤回。
+    //
+    // 浏览器禁自动开走 env var SD_WEBUI_RESTARTING=1
+    // (ForgeExtraEnvironmentVariables tests 覆盖),不走 --no-autolaunch CLI flag —
+    // 实测 Forge fork 移除了 A1111 的 bool_py2 自定义 argparse action,导致
+    // `webui.py: error: unrecognized arguments: --no-autolaunch` 直接 crash。
     // ====================================================================
 
     [Fact]
-    public void BuildStartCommand_Forge_WithDefaultModelsDirectory_AppendsCkptDirEtcArgs()
+    public void BuildStartCommand_Forge_WithAllForgePathsSet_AppendsAllSixCliArgs()
     {
-        // v1.0.0.x (2026-08-29) followup:Forge env 模型目录配置改走
-        // extra_model_paths.yaml 文件(由 <see cref="ForgeExtraModelPathsYamlGenerator"/>
-        // 在 StartEnvAsync 启动前自动写),不再在 CLI 上拼 --ckpt-dir / --vae-dir /
-        // --lora-dir / --controlnet-dir。
-        //
-        // 历史(2026-08-29 初版):
-        //   G10: Forge + DefaultModelsDirectory 非空 → EntryArgs 末尾拼 --ckpt-dir /
-        //   --vae-dir / --lora-dir / --controlnet-dir 4 个绝对路径(ComfyUI 风格子目录:
-        //   checkpoints/ vae/ loras/ controlnet/),避免 Forge 默认 a1111_home/models/
-        //   跟用户共享盘实际 ComfyUI 布局不同导致 "You do not have any model!"。
-        //   用户原话 2026-08-29:"我们的Forge 可以设置和应用这些目录位置,不用自己生成"
-        //   → 改 yaml 方案:Forge 自己读 <env-root>/extra_model_paths.yaml,我们 app 写。
-        //   同样 fix bug,且 yaml 还能覆盖 embeddings / hypernetworks 两个 CLI 参数
-        //   不支持的目录。
-        //
-        // 浏览器禁自动开走 env var SD_WEBUI_RESTARTING=1
-        // (ForgeExtraEnvironmentVariables tests 覆盖),不走 --no-autolaunch CLI flag —
-        // 实测 Forge fork 移除了 A1111 的 bool_py2 自定义 argparse action,导致
-        // `webui.py: error: unrecognized arguments: --no-autolaunch` 直接 crash。
+        // G10 (2026-08-29 撤回后回炉版):Forge + settings.ForgePaths 6 字段全配
+        // → EntryArgs 末尾拼 6 个 --ckpt-dir / --vae-dir / --lora-dir /
+        // --embeddings-dir / --hypernetwork-dir / --controlnet-dir CLI args,
+        // 直接对应用户 Settings UI 的 6 个「浏览...」按钮。
+        // 这是 Forge fork 真正认的路径机制(cmd_args.py 标准 A1111 args,
+        // Forge 保留;extra_model_paths.yaml 不读)。
         var env = new Environment
         {
             Id = "e-forge", Name = "ForgeUI", Status = "stopped",
@@ -329,40 +316,52 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
                 EntryArgs = "--port {port} --api",
             },
         };
-        var modelsDir = Path.Combine(_projectRoot, "shared-models");
-        var settings = new Settings { DefaultModelsDirectory = modelsDir };
+        var ckpt = Path.Combine(_projectRoot, "models", "CheckPoint");
+        var lora = Path.Combine(_projectRoot, "models", "loras");
+        var vae = Path.Combine(_projectRoot, "models", "VAE");
+        var emb = Path.Combine(_projectRoot, "models", "embeddings");
+        var hyp = Path.Combine(_projectRoot, "models", "hypernetworks");
+        var cnet = Path.Combine(_projectRoot, "models", "controlnet");
+        var settings = new Settings
+        {
+            ForgePaths = new ForgePaths
+            {
+                CheckpointsDir = ckpt,
+                LorasDir = lora,
+                VaeDir = vae,
+                EmbeddingsDir = emb,
+                HypernetworksDir = hyp,
+                ControlnetDir = cnet,
+            },
+        };
         CreateFakeEntryFile("ForgeUI", "webui.py");
 
         var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
 
-        // v1.0.0.x followup:4 个 --*dir CLI 参数不再拼(yaml 接管)。锁住
-        // "BuildStartCommand 永远不掺 IO / 不写 yaml" 的边界 —— 写 yaml 是
-        // StartEnvAsync 启动前的责任,BuildStartCommand 只派生 entry args。
-        Assert.DoesNotContain("--ckpt-dir", args.ArgsString);
-        Assert.DoesNotContain("--vae-dir", args.ArgsString);
-        Assert.DoesNotContain("--lora-dir", args.ArgsString);
-        Assert.DoesNotContain("--controlnet-dir", args.ArgsString);
-        // ComfyUI 风格绝对路径子目录也不应出现在 args(用户改 DefaultModelsDirectory
-        // 不再影响 ProcessLauncher 行为,只影响下次启动时 yaml 写入内容)。
-        Assert.DoesNotContain(Path.Combine(modelsDir, "checkpoints"), args.ArgsString);
-        Assert.DoesNotContain(Path.Combine(modelsDir, "vae"), args.ArgsString);
-        Assert.DoesNotContain(Path.Combine(modelsDir, "loras"), args.ArgsString);
-        Assert.DoesNotContain(Path.Combine(modelsDir, "controlnet"), args.ArgsString);
-        // v1.0.0.x (2026-08-29):Forge 禁自动开浏览器 — 用户原话 "他启动后自动打开网页,
-        // 在这里我们不推荐"。**实撤回 --no-autolaunch CLI flag**(2026-08-29 followup):
-        // Forge fork 移除 A1111 的 bool_py2 自定义 argparse action,导致
-        // `webui.py: error: unrecognized arguments: --no-autolaunch` (exit code 2)
-        // 直接 fail。改纯靠 SD_WEBUI_RESTARTING=1 env var(ForgeExtraEnvironmentVariables
-        // tests 覆盖)。这里只锁住 CLI flag 不要再回归。
+        // 6 个 --*dir CLI args + 对应绝对路径都注入(顺序无所谓但都要在)
+        Assert.Contains("--ckpt-dir", args.ArgsString);
+        Assert.Contains(ckpt, args.ArgsString);
+        Assert.Contains("--vae-dir", args.ArgsString);
+        Assert.Contains(vae, args.ArgsString);
+        Assert.Contains("--lora-dir", args.ArgsString);
+        Assert.Contains(lora, args.ArgsString);
+        Assert.Contains("--embeddings-dir", args.ArgsString);
+        Assert.Contains(emb, args.ArgsString);
+        Assert.Contains("--hypernetwork-dir", args.ArgsString);
+        Assert.Contains(hyp, args.ArgsString);
+        Assert.Contains("--controlnet-dir", args.ArgsString);
+        Assert.Contains(cnet, args.ArgsString);
+        // --no-autolaunch 也不拼(Forge fork 移除 bool_py2 自定义 action,直接 crash webui.py)
         Assert.DoesNotContain("--no-autolaunch", args.ArgsString);
     }
 
     [Fact]
-    public void BuildStartCommand_Forge_WithEmptyDefaultModelsDirectory_DoesNotAppendCkptArgs()
+    public void BuildStartCommand_Forge_WithEmptyForgePaths_DoesNotAppendDirArgs()
     {
-        // 用户没配 DefaultModelsDirectory → 不要拼 --ckpt-dir 等(env 内 models/ 目录按
-        // Forge 默认 a1111_home/models/ 走),也避免 launcher 引用空字符串触发 webui.py
-        // 启动错。--no-autolaunch 也不再拼(同上,Forge 报 unrecognized arguments)。
+        // 用户没配 ForgePaths 6 字段 → 不要拼 --*dir CLI args(Forge 走 cmd_args.py
+        // 内置 default:embeddings=data_path/embeddings;hypernetworks=models_path/
+        // hypernetworks;其他 None = 不挂载)。也避免 launcher 引用空字符串触发
+        // webui.py 启动错。--no-autolaunch 也不再拼(同上,Forge 报 unrecognized arguments)。
         var env = new Environment
         {
             Id = "e-forge2", Name = "ForgeUI2", Status = "stopped",
@@ -375,7 +374,7 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
                 EntryArgs = "--port {port}",
             },
         };
-        var settings = new Settings { DefaultModelsDirectory = "" };  // 未配
+        var settings = new Settings { ForgePaths = new ForgePaths() };  // 6 字段全 null
         CreateFakeEntryFile("ForgeUI2", "webui.py");
 
         var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
@@ -383,24 +382,62 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
         Assert.DoesNotContain("--ckpt-dir", args.ArgsString);
         Assert.DoesNotContain("--vae-dir", args.ArgsString);
         Assert.DoesNotContain("--lora-dir", args.ArgsString);
+        Assert.DoesNotContain("--embeddings-dir", args.ArgsString);
+        Assert.DoesNotContain("--hypernetwork-dir", args.ArgsString);
         Assert.DoesNotContain("--controlnet-dir", args.ArgsString);
         // --no-autolaunch 也不拼(Forge fork 移除 bool_py2 自定义 action,直接 crash webui.py)
         Assert.DoesNotContain("--no-autolaunch", args.ArgsString);
     }
 
     [Fact]
-    public void BuildStartCommand_NonForge_WithDefaultModelsDirectory_DoesNotAppendCkptArgs()
+    public void BuildStartCommand_Forge_PartialForgePaths_OnlyAppendsSetArgs()
     {
-        // ComfyUI env 不需要 --ckpt-dir(走自己的 models/checkpoints/ 约定);同样的
-        // DefaultModelsDirectory 不应触发 Forge-only 注入。锁住这个 boundary —
+        // G11:ForgePaths 6 字段部分配 → 只拼已配字段的 CLI arg,未配字段跳过 —
+        // 用户可能只想覆盖 checkpoints(共享盘特殊布局),其他走 Forge 默认。
+        // 锁住「未配字段绝对不拼」(避免空字符串触发 webui.py 启动错)。
+        var env = new Environment
+        {
+            Id = "e-forge3", Name = "ForgeUI3", Status = "stopped",
+            TemplateKind = "Forge",
+            Port = 9003,
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "Forge",
+                EntryScript = "webui.py",
+                EntryArgs = "--port {port}",
+            },
+        };
+        var ckpt = Path.Combine(_projectRoot, "models", "CheckPoint");
+        var settings = new Settings
+        {
+            ForgePaths = new ForgePaths { CheckpointsDir = ckpt },  // 只配 checkpoints
+        };
+        CreateFakeEntryFile("ForgeUI3", "webui.py");
+
+        var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
+
+        // 已配:checkpoints 拼上
+        Assert.Contains("--ckpt-dir", args.ArgsString);
+        Assert.Contains(ckpt, args.ArgsString);
+        // 未配:5 个其他 CLI arg 不拼
+        Assert.DoesNotContain("--vae-dir", args.ArgsString);
+        Assert.DoesNotContain("--lora-dir", args.ArgsString);
+        Assert.DoesNotContain("--embeddings-dir", args.ArgsString);
+        Assert.DoesNotContain("--hypernetwork-dir", args.ArgsString);
+        Assert.DoesNotContain("--controlnet-dir", args.ArgsString);
+    }
+
+    [Fact]
+    public void BuildStartCommand_NonForge_WithForgePathsSet_DoesNotAppendForgeDirArgs()
+    {
+        // ComfyUI env 不需要 Forge 的 --*dir(走自己的 models/checkpoints/ 约定);
+        // settings.ForgePaths 不应触发 Forge-only 注入。锁住这个 boundary —
         // Forge-specific 行为不能 spill 到 ComfyUI env(后者有自己的 args 模板)。
-        // --no-autolaunch 也不拼(ComfyUI 启动本来就不弹浏览器,且该 flag 在 Forge 报
-        // unrecognized arguments)。
         var env = new Environment
         {
             Id = "e-comfy", Name = "ComfyMain", Status = "stopped",
             TemplateKind = "ComfyUI",
-            Port = 9003,
+            Port = 9004,
             TemplateConfigSnapshot = new TemplateConfig
             {
                 Kind = "ComfyUI",
@@ -408,8 +445,13 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
                 EntryArgs = "--port {port} --listen 0.0.0.0",
             },
         };
-        var modelsDir = Path.Combine(_projectRoot, "shared-models");
-        var settings = new Settings { DefaultModelsDirectory = modelsDir };
+        var settings = new Settings
+        {
+            ForgePaths = new ForgePaths
+            {
+                CheckpointsDir = Path.Combine(_projectRoot, "models", "CheckPoint"),
+            },
+        };
         CreateFakeEntryFile("ComfyMain", "main.py");
 
         var (_, args) = ProcessLauncher.BuildStartCommand(env, settings, projectRoot: _projectRoot);
@@ -417,6 +459,8 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
         Assert.DoesNotContain("--ckpt-dir", args.ArgsString);
         Assert.DoesNotContain("--vae-dir", args.ArgsString);
         Assert.DoesNotContain("--lora-dir", args.ArgsString);
+        Assert.DoesNotContain("--embeddings-dir", args.ArgsString);
+        Assert.DoesNotContain("--hypernetwork-dir", args.ArgsString);
         Assert.DoesNotContain("--controlnet-dir", args.ArgsString);
         Assert.DoesNotContain("--no-autolaunch", args.ArgsString);
     }

@@ -368,42 +368,13 @@ public class SettingsViewModel : ViewModelBase, IDisposable
                     try { await _onEnvsDirSaved(envsDirValue ?? ""); }
                     catch { /* scan 失败不阻塞 save 反馈 */ }
                 }
-                // v1.0.0.x:ForgePaths 改了 → 重写所有 Forge env yaml。空 env Repo
-                // 注入(测试路径)→ skip;每个 env 的 EnsureWritten 单独 try-catch,
-                // 单 env 失败不阻塞其它 env(并发 + 权限问题常见)。
-                // EnsureWritten 内部在 BuildYamlContent 返 "" 时抛
-                // InvalidOperationException(全空 Settings → 不写 yaml),这里也吞掉
-                // — 用户清空所有路径时旧 yaml 保留,用户手动删除或重启后 ProcessLauncher
-                // 跳过 Forge yaml 写入(改 DefaultModelsDirectory 非空后下次启动又写)。
-                if (forgePathsChanged && _envRepo is not null)
-                {
-                    try
-                    {
-                        foreach (var env in _envRepo.ListAll())
-                        {
-                            if (!string.Equals(env.TemplateKind, "Forge", StringComparison.Ordinal)) continue;
-                            if (string.IsNullOrWhiteSpace(env.RootPath)) continue;
-                            try
-                            {
-                                ForgeExtraModelPathsYamlGenerator.EnsureWritten(env.RootPath, _settings);
-                            }
-                            catch (InvalidOperationException)
-                            {
-                                // 全空 Settings → 跳过写 yaml(防用户清空所有路径误报)。
-                            }
-                            catch (Exception ex)
-                            {
-                                System.Diagnostics.Debug.WriteLine(
-                                    $"[SettingsViewModel] Forge env '{env.Name}' yaml 写入失败: {ex.Message}");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[SettingsViewModel] Forge env yaml 级联失败: {ex.Message}");
-                    }
-                }
+                // v1.0.0.x (2026-08-29) 撤回:ForgePaths / DefaultModelsDirectory 改了
+                // 后级联重写所有 Forge env 的 extra_model_paths.yaml —— Forge fork
+                // 不读 yaml(实测 grep 整个 ForgeUI 目录零引用),Settings 改动直接由下次
+                // ProcessLauncher.BuildStartCommand 读 settings.ForgePaths 派生
+                // --*dir CLI arg,无需 IO。保留 `forgePathsChanged` 字段供 future 兼容
+                // hook(目前 unused,设为 var 只是显式标注「我们知道这几个字段变了」)。
+                _ = forgePathsChanged;
             },
             _ => HasUnsavedChanges);
         // v0.6.12 hotfix:BrowseLogDirectory 按钮绑的命令。initialPath = 当前 LogDirectory,
@@ -973,10 +944,11 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     }
 
     // v1.0.0.x:Forge env 6 个 per-type 模型目录覆盖(checkpoints/loras/vae/
-    // embeddings/hypernetworks/controlnet)。空 → 走 DefaultModelsDirectory/<sub>
-    // 派生,非空 → 该 sub-key 用绝对路径(由 ForgeExtraModelPathsYamlGenerator
-    // BuildYamlContent 读)。用户原话 2026-08-29:"应用设置这里没有forge 的路径
-    // 设置呢?" —— 之前 yaml 只看 DefaultModelsDirectory 一个字段,用户看不到
+    // embeddings/hypernetworks/controlnet)。空 → 走 cmd_args.py 内置 default;
+    // 非空 → ProcessLauncher.BuildStartCommand 直接拼对应 --*dir CLI arg 注入
+    // 启动命令(Forge fork 保留的标准 A1111 args)。
+    // 用户原话 2026-08-29:"应用设置这里没有forge 的路径设置呢?" —— 之前 yaml
+    // 只看 DefaultModelsDirectory 一个字段,用户看不到
     // Forge 实际用的 6 个路径。改 Settings → 保存 → SaveCommand 级联重写所有
     // Forge env 的 extra_model_paths.yaml。
     // 6 getter 都把 null 暴露成 "" 供 XAML TextBox 绑定;setter 把 whitespace-only

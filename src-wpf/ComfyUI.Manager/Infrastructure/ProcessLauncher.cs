@@ -247,43 +247,6 @@ public sealed class ProcessLauncher : IDisposable
                 psi.EnvironmentVariables[kvp.Key] = kvp.Value;
             }
 
-            // v1.0.0.x (2026-08-29):Forge env 启动前自动写
-            // <env.RootPath>/extra_model_paths.yaml —— Settings.DefaultModelsDirectory
-            // 派生 6 类模型目录(checkpoints / vae / loras / embeddings /
-            // hypernetworks / controlnet,ComfyUI 风格子目录名)。跟之前 BuildStartCommand
-            // 拼的 4 个 --ckpt-dir / --vae-dir / --lora-dir / --controlnet-dir CLI 参数
-            // 同源,改写 yaml 是因为:
-            //   (1) Forge fork 自己有 read extra_model_paths.yaml 的内置机制(A1111
-            //       官方 yaml 格式支持),不用在 CLI 上拼路径
-            //   (2) yaml 能覆盖 6 类模型目录(embeddings / hypernetworks 这两个 CLI
-            //       参数没有),配置更完整
-            //   (3) env-create 阶段已经写过一次(env-create step 7.5),这里再写一次
-            //       兜底 — 用户在 env-create 后改 Settings.DefaultModelsDirectory,下次
-            //       启动时 yaml 自动跟着变
-            //
-            // DefaultModelsDirectory 为空时跳过 — 此时 Forge 走默认 a1111_home/models/
-            // 行为(跟 ComfyUI 不共享 models,用户已知)。
-            //
-            // 失败策略:fail-fast,抛 InvalidOperationException 含明确诊断信息。用户
-            // 看到「Forge 模型路径 yaml 写入失败 (path): <reason>」能直接定位权限 /
-            // 磁盘问题,不静默 fallback(静默 fallback 到不写 yaml 会让 Forge 报
-            // "You do not have any model!" —— 跟我们要修的 bug 同症)。
-            if (string.Equals(env.TemplateKind, "Forge", StringComparison.Ordinal)
-                && !string.IsNullOrWhiteSpace(settings.DefaultModelsDirectory))
-            {
-                var yamlPath = Path.Combine(env.RootPath, "extra_model_paths.yaml");
-                try
-                {
-                    ForgeExtraModelPathsYamlGenerator.EnsureWritten(env.RootPath, settings);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
-                {
-                    throw new InvalidOperationException(
-                        $"Forge env '{env.Name}' 写 extra_model_paths.yaml 失败 ({yamlPath}): {ex.Message}。" +
-                        $"检查 env 根目录权限或磁盘空间。", ex);
-                }
-            }
-
             Process? process = null;
             try
             {
@@ -905,22 +868,40 @@ public sealed class ProcessLauncher : IDisposable
         if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
             entryArgs += " " + snapshot.UserExtraArgs;
 
-        // v1.0.0.x (2026-08-29):Forge env 模型目录配置改走 extra_model_paths.yaml
-        // 文件(由 <see cref="ForgeExtraModelPathsYamlGenerator"/> 生成),不再拼
-        // --ckpt-dir / --vae-dir / --lora-dir / --controlnet-dir 4 个 CLI 参数。
+        // v1.0.0.x (2026-08-29):Forge env 模型目录配置改回 CLI args(标准 A1111 args,
+        // Forge fork 保留 — 见 Envs/ForgeUI/modules/cmd_args.py line 27-29 / 36 / 38
+        // / 140 + modules/launch_utils.py line 524-527)。Forge fork 不读
+        // extra_model_paths.yaml(实测 grep 整个 ForgeUI 目录零引用),之前 eab383d
+        // 写的 yaml 方案是死代码 —— 文件写了 Forge 不读,checkpoint 下拉框仍然空。
         //
-        // 原因(用户原话 2026-08-29):
-        //   "我们的Forge 可以设置和应用这些目录位置,不用自己生成"——
-        //   即 Forge 自己从 env 根的 extra_model_paths.yaml 读模型目录配置,
-        //   我们 app 负责写这个 yaml,用户不用自己手动维护。
+        // 6 个 per-type 路径从 <see cref="Settings.ForgePaths"/> 派生,任一非空
+        // → 拼对应 --*dir CLI arg;空 → 跳过(走 cmd_args.py 内置 default:
+        // embeddings=data_path/embeddings;hypernetworks=models_path/hypernetworks;
+        // 其他 None = 不挂载)。
         //
-        // yaml 在 StartEnvAsync 启动前由 ForgeExtraModelPathsYamlGenerator.EnsureWritten
-        // 写(env.RootPath/extra_model_paths.yaml),BuildStartCommand 只负责派生
-        // entry args,不掺 IO。内容派生逻辑(6 类 subdir 路径 + ComfyUI 风格子目录名)
-        // 全在 generator 里集中维护。
+        // 历史:eab383d (2026-08-29) 改 yaml 方案时假设 "Forge fork 自己有 read
+        // extra_model_paths.yaml 的内置机制(A1111 official yaml 格式支持)" —
+        // 实测错误,撤回。回到 CLI args 方案,跟早期
+        // project_v1_0_0_x_forge_entry_args_ckpt_dir.md 一致。
         //
-        // 边界条件:settings.DefaultModelsDirectory 为空时不写 yaml,Forge 走默认
-        // a1111_home/models/ 行为(跟 ComfyUI 不共享 models,用户已知并接受)。
+        // 边界条件:settings.ForgePaths 全空 → Forge 走 cmd_args.py 内置 default;
+        // 用户在 Settings 改了 ForgePaths → 下次 StartEnvAsync 自动反映。
+        if (string.Equals(snapshot.Kind, "Forge", StringComparison.Ordinal))
+        {
+            var fp = settings.ForgePaths ?? new ForgePaths();
+            if (!string.IsNullOrWhiteSpace(fp.CheckpointsDir))
+                entryArgs += $" --ckpt-dir {fp.CheckpointsDir}";
+            if (!string.IsNullOrWhiteSpace(fp.VaeDir))
+                entryArgs += $" --vae-dir {fp.VaeDir}";
+            if (!string.IsNullOrWhiteSpace(fp.LorasDir))
+                entryArgs += $" --lora-dir {fp.LorasDir}";
+            if (!string.IsNullOrWhiteSpace(fp.EmbeddingsDir))
+                entryArgs += $" --embeddings-dir {fp.EmbeddingsDir}";
+            if (!string.IsNullOrWhiteSpace(fp.HypernetworksDir))
+                entryArgs += $" --hypernetwork-dir {fp.HypernetworksDir}";
+            if (!string.IsNullOrWhiteSpace(fp.ControlnetDir))
+                entryArgs += $" --controlnet-dir {fp.ControlnetDir}";
+        }
 
         // v1.0.0.x (2026-08-29):Forge 启动禁用 webui.py 自动开浏览器 —
         // 用户原话:"他启动后自动打开网页,在这里我们不推荐"。

@@ -484,8 +484,8 @@ public partial class SettingsView : UserControl
     /// </para>
     /// <code>
     /// settingsView.Loaded += (s, e) => settingsView.JumpToForgePaths(afterShown: () => {
-    ///     // 选填:用户改完路径后,重写刚创建 env 的 yaml
-    ///     ForgeExtraModelPathsYamlGenerator.EnsureWritten(env.RootPath, settings);
+    ///     // 选填:用户改完路径后,下次 Forge env 启动时 ProcessLauncher.BuildStartCommand
+    ///     // 自动从 settings.ForgePaths 派生 --*dir CLI arg,无需手动重写 yaml。
     /// });
     /// </code>
     ///

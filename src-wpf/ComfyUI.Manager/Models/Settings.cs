@@ -73,16 +73,16 @@ public class Settings
     [JsonPropertyName("default_models_directory")]
     public string DefaultModelsDirectory { get; set; } = "";
     /// <summary>
-    /// v1.0.0.x:Forge env 模型目录 per-type 覆盖(6 个 ComfyUI 风格子目录:
-    /// checkpoints / loras / vae / embeddings / hypernetworks / controlnet)。
-    /// 任意字段非空 → 该 sub-key 用对应绝对路径;<see cref="DefaultModelsDirectory"/>
-    /// 为空但 ForgePaths 全空 → ForgeExtraModelPathsYamlGenerator.BuildYamlContent
-    /// 返 ""(跟之前一样不写 yaml,Forge 走默认 a1111_home/models/ 行为);
-    /// 任一字段非空 → 写 yaml 且该 sub-key 用 override,其余 fallback 到
-    /// <c>&lt;DefaultModelsDirectory&gt;/&lt;默认子目录名&gt;</c>。
-    /// 改后下次 Forge env 启动生效(ProcessLauncher.EnsureWritten);
-    /// 用户在 Settings UI 点保存也会触发级联重写所有 Forge env 的
-    /// extra_model_paths.yaml(SettingsViewModel.SaveCommand)。
+    /// v1.0.0.x (2026-08-29):Forge env 模型目录 per-type 覆盖(6 个 ComfyUI 风格
+    /// 子目录:checkpoints / loras / vae / embeddings / hypernetworks / controlnet)。
+    /// 任意字段非空 → <see cref="ProcessLauncher.BuildStartCommand"/> 把该
+    /// 绝对路径以对应 --*dir CLI arg 注入 Forge 启动命令(Forge fork 保留的
+    /// 标准 A1111 args,modules/cmd_args.py line 27-29 / 36 / 38 / 140);
+    /// 字段空 → 跳过该 arg,Forge 走 cmd_args.py 内置 default
+    /// (embeddings=data_path/embeddings;hypernetworks=models_path/hypernetworks;
+    /// 其他 None = 不挂载)。
+    /// 改后下次 Forge env 启动生效,无需手动重写文件(早期 eab383d 的 yaml 方案
+    /// 已撤回 —— Forge fork 不读 extra_model_paths.yaml)。
     /// </summary>
     [JsonPropertyName("forge_paths")]
     public ForgePaths ForgePaths { get; set; } = new();
@@ -342,8 +342,8 @@ public class ExtraPath
 /// v1.0.0.x:Forge env extra_model_paths.yaml 的 per-type 模型目录覆盖。
 /// 6 个 ComfyUI 风格子目录(checkpoints / loras / vae / embeddings /
 /// hypernetworks / controlnet)各自的绝对路径;空 = 走
-/// <see cref="Settings.DefaultModelsDirectory"/>/&lt;子目录名&gt; 派生。
-/// <see cref="ForgeExtraModelPathsYamlGenerator"/> 读这里。
+/// 路径由 <see cref="ProcessLauncher.BuildStartCommand"/> 直接读,每个非空字段
+/// 生成对应 --*dir CLI arg 注入 Forge 启动命令。
 /// </summary>
 public sealed class ForgePaths
 {
