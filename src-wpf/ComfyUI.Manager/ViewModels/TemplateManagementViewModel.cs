@@ -303,6 +303,8 @@ public class TemplateManagementViewModel : ViewModelBase
         "LTXVideo" => "https://github.com/Lightricks/LTX-Video.git",
         "CogVideoX" => "https://github.com/THUDM/CogVideo.git",
         "Fooocus" => "https://github.com/lllyasviel/Fooocus.git",
+        // v1.0.0.x (2026-08-29): HivisionIDPhotos(Zeyi-Lin) AI 证件照 Gradio app。
+        "HivisionIDPhotos" => "https://github.com/Zeyi-Lin/HivisionIDPhotos.git",
         _ => "",
     };
 }

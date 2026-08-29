@@ -165,6 +165,8 @@ public sealed class EnvComponentReportRendererTests
     [InlineData("Forge 源码", "Forge 源码状态")]
     [InlineData("OpenVoice 源码", "OpenVoice 源码状态")]
     [InlineData("HunyuanVideo 源码", "HunyuanVideo 源码状态")]
+    [InlineData("Fooocus 源码", "Fooocus 源码状态")]
+    [InlineData("HivisionIDPhotos 源码", "HivisionIDPhotos 源码状态")]
     public void Render_Section4Heading_ReflectsDisplayName(
         string displayName, string expectedHeading)
     {

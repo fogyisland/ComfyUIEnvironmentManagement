@@ -11,12 +11,14 @@ public class SettingsDefaultsTemplateSeedTests
         Path.Combine(Path.GetTempPath(), "cmgr-templates-test");
 
     [Fact]
-    public void Apply_EmptySettings_SeedsAllSixBuiltInTemplates()
+    public void Apply_EmptySettings_SeedsAllBuiltInTemplates()
     {
         // v1.0.0.x: 加 5 个 built-in(Forge 是 shipped 但漏注册 → #497 修复;
         // OpenVoice/Whisper/CoquiTTS/Bark 是 GitHub-cloned AI 语音 defaults)。
         // v1.0.0.x:A1111 + SwarmUI 模板已下线,不再 seed(A1111 因 Stability-AI
         // 仓库从 github 移除;SwarmUI 因 ProcessLauncher Python 假设 functional break)。
+        // v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX/Fooocus → 6 → 10;
+        // +HivisionIDPhotos → 11。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -28,6 +30,11 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.True(s.Templates.ContainsKey("Whisper"));
         Assert.True(s.Templates.ContainsKey("CoquiTTS"));
         Assert.True(s.Templates.ContainsKey("Bark"));
+        Assert.True(s.Templates.ContainsKey("HunyuanVideo"));
+        Assert.True(s.Templates.ContainsKey("LTXVideo"));
+        Assert.True(s.Templates.ContainsKey("CogVideoX"));
+        Assert.True(s.Templates.ContainsKey("Fooocus"));
+        Assert.True(s.Templates.ContainsKey("HivisionIDPhotos"));
     }
 
     [Fact]
@@ -210,7 +217,7 @@ public class SettingsDefaultsTemplateSeedTests
     // --- v1.0.0.x bug #509: LocalSourceDir 嵌套 envTemplates/ 前缀 ---
 
     [Fact]
-    public void Apply_EmptySettings_AllSixBuiltInTemplates_HaveLocalSourceDirWithoutEnvTemplatesPrefix()
+    public void Apply_EmptySettings_AllBuiltInTemplates_HaveLocalSourceDirWithoutEnvTemplatesPrefix()
     {
         // v1.0.0.x bug #509: 旧 default 的 LocalSourceDir = "envTemplates\<Kind>",
         // 跟 Settings.SystemTemplateLibraryDir (= 用户配的 ENVTemplate/) 一拼 →
@@ -218,7 +225,7 @@ public class SettingsDefaultsTemplateSeedTests
         // default 直接写 "<Kind>",新装用户走这条路。
         // v1.0.0.x (2026-08-29): SwarmUI 已下线,8 个 built-in 减到 6 个;
         // +4 个 GitHub-clone 视频/图像生成模板(HunyuanVideo/LTXVideo/CogVideoX/Fooocus)
-        // 共 10 个。
+        // 共 10 个;+HivisionIDPhotos → 11 个。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -232,6 +239,7 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("LTXVideo", s.Templates["LTXVideo"].LocalSourceDir);
         Assert.Equal("CogVideoX", s.Templates["CogVideoX"].LocalSourceDir);
         Assert.Equal("Fooocus", s.Templates["Fooocus"].LocalSourceDir);
+        Assert.Equal("HivisionIDPhotos", s.Templates["HivisionIDPhotos"].LocalSourceDir);
     }
 
     [Fact]

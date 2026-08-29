@@ -100,7 +100,8 @@ public class Environment
     /// 跟 launch_utils.py 跑同一份代码,只是把 4 件事从「每次 launch」前置到「一次性」,
     /// 用户体感反而多一个无意义按钮。
     /// ComfyUI / OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX /
-    /// Fooocus 保留「装/卸依赖」按钮 — 它们有各自独立的 requirements.txt 要 pip install。
+    /// Fooocus / HivisionIDPhotos 保留「装/卸依赖」按钮 — 它们有各自独立的
+    /// requirements.txt 要 pip install。
     /// 镜像 <see cref="ComfyUiManagerButtonVisible"/> 同模式(inverse:对 ComfyUI 显示对 Forge 隐藏)。
     /// </summary>
     [JsonIgnore]

@@ -461,7 +461,7 @@ public static class SettingsDefaults
         // HunyuanVideo / LTXVideo / CogVideoX / Fooocus。ProcessLauncher Python 假设
         // 兼容(都是 python <entryScript>.py --port <port> 模式),所以归类为正常 built-in。
         // 走 GitHub-clone 模式 — 仓库都 ~GB 级不 ship,TemplateSourceUpdater.UpdateAsync
-        // 首次创建 env 时 git clone。Built-in count 6 → 10。
+        // 首次创建 env 时 git clone。Built-in count 6 → 10;+HivisionIDPhotos → 11。
         if (!s.Templates.ContainsKey("HunyuanVideo"))
         {
             s.Templates["HunyuanVideo"] = TemplateConfigDefaults.HunyuanVideo(projectRoot);
@@ -478,16 +478,24 @@ public static class SettingsDefaults
         {
             s.Templates["Fooocus"] = TemplateConfigDefaults.Fooocus(projectRoot);
         }
+        // v1.0.0.x (2026-08-29): +HivisionIDPhotos → 10 → 11。HivisionIDPhotos 是
+        // AI 身份证/护照照片生成 Gradio app,git clone + pip install 后 app.py 启动。
+        if (!s.Templates.ContainsKey("HivisionIDPhotos"))
+        {
+            s.Templates["HivisionIDPhotos"] = TemplateConfigDefaults.HivisionIdPhotos(projectRoot);
+        }
     }
 
-    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 10 个 built-in 同步。
+    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 11 个 built-in 同步。
     // v1.0.0.x:A1111 + SwarmUI 从 seed + BuiltInKinds 移除(模板已下线),剩 6 个。
     // v1.0.0.x (2026-08-29): 加 HunyuanVideo/LTXVideo/CogVideoX/Fooocus → 6 → 10。
+    // v1.0.0.x (2026-08-29): +HivisionIDPhotos → 10 → 11。
     private static readonly string[] BuiltInKinds =
     {
         "ComfyUI", "Forge",
         "OpenVoice", "Whisper", "CoquiTTS", "Bark",
         "HunyuanVideo", "LTXVideo", "CogVideoX", "Fooocus",
+        "HivisionIDPhotos",
     };
 
     /// <summary>
@@ -496,7 +504,7 @@ public static class SettingsDefaults
     /// 已从 BuiltInKinds 移除(不会再 seed),但 shipped 用户 settings.inf 里仍可能 persist
     /// 老条目。Apply 末尾调 PruneDeprecatedBuiltInKinds 一次性从 s.Templates dict 清掉,
     /// 模板管理 UI(TemplateManagementViewModel 直接遍历 s.Templates)不再显示。
-    /// **不**碰 BuiltInKinds 当前的 10 个,**不**碰用户手填的 custom kind。
+    /// **不**碰 BuiltInKinds 当前的 11 个,**不**碰用户手填的 custom kind。
     /// </summary>
     private static readonly string[] DeprecatedBuiltInKinds =
     {

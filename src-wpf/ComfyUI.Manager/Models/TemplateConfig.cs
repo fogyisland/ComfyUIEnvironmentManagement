@@ -99,9 +99,10 @@ public class TemplateConfig
     /// <summary>
     /// Whether the user can delete this template from the management UI. Built-in
     /// templates are protected (G13) — they always exist as canonical templates.
-    /// v1.0.0.x (2026-08-29): 10 built-in kinds (2 图像 + 4 语音 + 4 视频/图像生成:
+    /// v1.0.0.x (2026-08-29): 11 built-in kinds (2 图像 + 4 语音 + 5 视频/图像生成/工具:
     /// ComfyUI + Forge + OpenVoice + Whisper + CoquiTTS + Bark +
-    /// HunyuanVideo + LTXVideo + CogVideoX + Fooocus;A1111 + SwarmUI 已下线)。
+    /// HunyuanVideo + LTXVideo + CogVideoX + Fooocus + HivisionIDPhotos;
+    /// A1111 + SwarmUI 已下线)。
     /// Hides the grayed-out Delete button on built-in cards.
     /// </summary>
     [JsonIgnore]
@@ -109,7 +110,8 @@ public class TemplateConfig
     {
         "ComfyUI" or "Forge"
             or "OpenVoice" or "Whisper" or "CoquiTTS" or "Bark"
-            or "HunyuanVideo" or "LTXVideo" or "CogVideoX" or "Fooocus" => false,
+            or "HunyuanVideo" or "LTXVideo" or "CogVideoX" or "Fooocus"
+            or "HivisionIDPhotos" => false,
         _ => true,
     };
 

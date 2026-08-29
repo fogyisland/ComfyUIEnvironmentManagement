@@ -32,9 +32,10 @@ public class StartupPathProbeTests
     }
 
     /// <summary>
-    /// Seed 10 个内置 built-in 模板(LocalSourceDir 用默认相对路径 = kind name)。
+    /// Seed 11 个内置 built-in 模板(LocalSourceDir 用默认相对路径 = kind name)。
     /// 模拟真实 SettingsDefaults.Apply 跑完后的状态。
     /// v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX/Fooocus → 6 → 10。
+    /// v1.0.0.x (2026-08-29): +HivisionIDPhotos → 10 → 11。
     /// v1.0.0.x: A1111 + SwarmUI 从内置列表移除(模板已下线),剩 6 个。
     /// </summary>
     private static void SeedBuiltInTemplates(Settings s, params string[] kinds)
@@ -43,6 +44,7 @@ public class StartupPathProbeTests
             "ComfyUI", "Forge",
             "OpenVoice", "Whisper", "CoquiTTS", "Bark",
             "HunyuanVideo", "LTXVideo", "CogVideoX", "Fooocus",
+            "HivisionIDPhotos",
         };
         foreach (var k in kinds.Length == 0 ? all : kinds)
         {
@@ -199,7 +201,7 @@ public class StartupPathProbeTests
         var root = MakeTempDir();
         var s = NewBareSettings();
         s.SystemTemplateLibraryDir = "ENVTemplate";
-        SeedBuiltInTemplates(s);  // seed 8 个内置模板
+        SeedBuiltInTemplates(s);  // seed 11 个内置模板
 
         // 把 ComfyUI 的 LocalSourceDir 改成用户自定义(非默认 seed)且不存在的路径
         s.Templates["ComfyUI"].LocalSourceDir = "D:\\NonExistent\\Path\\ForComfyUI";
@@ -218,10 +220,10 @@ public class StartupPathProbeTests
         var root = MakeTempDir();
         var s = NewBareSettings();
         s.SystemTemplateLibraryDir = "ENVTemplate";
-        SeedBuiltInTemplates(s);  // 8 个全 seed,但一个 ENVTemplate/{Kind}/ 都没创建
+        SeedBuiltInTemplates(s);  // 11 个全 seed,但一个 ENVTemplate/{Kind}/ 都没创建
 
         var result = StartupPathProbe.Detect(s, root);
-        // 8 个全不该 flag
+        // 11 个全不该 flag
         Assert.DoesNotContain(result, i => i.Label.StartsWith("Template:"));
     }
 
@@ -234,7 +236,7 @@ public class StartupPathProbeTests
 
         var s = NewBareSettings();
         s.SystemTemplateLibraryDir = "ENVTemplate";
-        SeedBuiltInTemplates(s);  // seed 8 个,但只有 ComfyUI 实际存在目录
+        SeedBuiltInTemplates(s);  // seed 11 个,但只有 ComfyUI 实际存在目录
 
         var result = StartupPathProbe.Detect(s, root);
         Assert.DoesNotContain(result, i => i.Label == "Template:ComfyUI.LocalSourceDir");

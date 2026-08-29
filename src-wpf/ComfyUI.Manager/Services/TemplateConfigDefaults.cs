@@ -232,4 +232,26 @@ public static class TemplateConfigDefaults
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
     };
+
+    /// <summary>
+    /// v1.0.0.x: HivisionIDPhotos (Zeyi-Lin/HivisionIDPhotos)。
+    /// AI 身份证 / 护照照片生成 Gradio app ——
+    /// 用 CNN 检测人像 + 生成符合规格的标准证件照(支持自定义背景色 / 尺寸 / 美颜)。
+    /// GitHub-clone source。Entry: <c>app.py</c>(仓库根目录的 Gradio app 启动脚本),
+    /// 通过 <c>--port {port}</c> 设端口(Gradio 标准 CLI);默认 Gradio 端口 7860
+    /// (用户可在 Settings 改 {port} 占位)。
+    /// </summary>
+    public static TemplateConfig HivisionIdPhotos(string projectRoot) => new()
+    {
+        Name = "HivisionIDPhotos",
+        Kind = "HivisionIDPhotos",
+        LocalSourceDir = "HivisionIDPhotos",
+        SourceKind = TemplateSourceKind.GitHub,
+        GitHubRepoUrl = "https://github.com/Zeyi-Lin/HivisionIDPhotos.git",
+        EntryScript = "app.py",
+        EntryArgs = "--port {port}",
+        ModelsSubdir = "models",
+        ExtraJunctionTargets = new(),
+        UserExtraArgs = "",
+    };
 }

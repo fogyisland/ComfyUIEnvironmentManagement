@@ -97,7 +97,7 @@ public class EnvComponentReportBuilder
 
         // 阶段 4:源码 git 状态(ComfyUI 源码 / Forge 源码 / OpenVoice 源码 / ...)
         // v1.0.0.x (2026-08-29):不再是 hardcode "ComfyUI 源码" — 多模板(env.TemplateKind ∈
-        // ComfyUI/Forge/OpenVoice/Whisper/CoquiTTS/Bark/HunyuanVideo/LTXVideo/CogVideoX/Fooocus)
+        // ComfyUI/Forge/OpenVoice/Whisper/CoquiTTS/Bark/HunyuanVideo/LTXVideo/CogVideoX/Fooocus/HivisionIDPhotos)
         // 共享同一个 env.ComfyuiSource 字段(派生:env root = 模板源码根),但 display 必须按实际
         // template kind 显示。ComfyUI 留 "ComfyUI 源码"(向后兼容已有读图/测试/用户认知),
         // 其他 kind → "{Kind} 源码"。

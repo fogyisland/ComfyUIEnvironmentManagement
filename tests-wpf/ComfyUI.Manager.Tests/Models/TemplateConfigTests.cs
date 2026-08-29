@@ -251,6 +251,15 @@ public class TemplateConfigTests
         Assert.False(cfg.CanDelete);
     }
 
+    // --- v1.0.0.x (2026-08-29): HivisionIDPhotos built-in (G13 delete 保护) ---
+
+    [Fact]
+    public void CanDelete_BuiltInHivisionIDPhotos_False()
+    {
+        var cfg = new TemplateConfig { Kind = "HivisionIDPhotos", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
     // --- v1.0.0.x: Forge 加 built-in repo URL,可走 UpdateAsync ---
 
     [Fact]
