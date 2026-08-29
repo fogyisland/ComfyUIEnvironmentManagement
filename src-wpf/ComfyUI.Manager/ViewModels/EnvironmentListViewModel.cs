@@ -448,14 +448,19 @@ public class EnvironmentListViewModel : ViewModelBase
                 var env = p as Environment ?? Selected;
                 if (env is null) return false;
                 if (env.Status != "stopped") return false;
-                // BED 未装 / 装中 → 禁用
+                // BED 未装 / 装中 → 禁用;**失败例外** —— BED 失败时允许用户继续启动
+                // (retry / debug),这是 StartCommand BED-aware (ca0dae3e) 的原始设计。
                 // v1.0.0.x (2026-08-29):用 BaseEnvUninstaller.IsInstalled(env) 而不是
                 // 直查 env.BedStatus —— IsInstalled 对老 Forge env 有 marker file fallback
                 // (env.BedStatus=NULL 但 .forge_preflight_installed 存在 = BED 实际跑过),
                 // 让老 env 启动按钮可用。装中状态走 IsInstalled(覆盖) + raw "installing"
                 // 直查(BedStatus 是显式 DB 字段,IsInstalled 不读 "installing" 值,
-                // 必须 raw 检查避免 install 中双启动)。
-                if (!BaseEnvUninstaller.IsInstalled(env) || env.BedStatus == "installing") return false;
+                // 必须 raw 检查避免 install 中双启动)。"failed" 是状态机合法值(用户
+                // 显式失败 / 上次重试不成功),不该被 IsInstalled 误判为"未装" →
+                // 单独留白(BED 失败仍允许 Start,符合 ca0dae3e 原始
+                // StartCommand_EnabledWhenBedStatusFailed 测试意图)。
+                if (env.BedStatus == "installing") return false;
+                if (env.BedStatus != "failed" && !BaseEnvUninstaller.IsInstalled(env)) return false;
                 // per-env mutex:同 env 上已有 BED install/uninstall/req/start/stop/delete 在跑 → 禁用
                 if (IsEnvBusy(env)) return false;
                 return true;
@@ -490,10 +495,9 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (IsEnvBusy(env)) return false;
                 if (env.Status == "stopped")
                 {
-                    // 跟 StartCommand 一致:BED 未装 / 装中 → 禁用
-                    // v1.0.0.x (2026-08-29):用 IsInstalled + raw "installing" 直查
-                    // (同 StartCommand 注释)—— 老 Forge env 有 marker file fallback。
-                    if (!BaseEnvUninstaller.IsInstalled(env) || env.BedStatus == "installing") return false;
+                    // 跟 StartCommand 一致:BED 未装 / 装中 → 禁用;**失败例外**(同 StartCommand 注释)
+                    if (env.BedStatus == "installing") return false;
+                    if (env.BedStatus != "failed" && !BaseEnvUninstaller.IsInstalled(env)) return false;
                     return true;
                 }
                 if (env.Status == "running") return true;

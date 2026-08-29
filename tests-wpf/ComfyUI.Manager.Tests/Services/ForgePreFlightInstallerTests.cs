@@ -332,7 +332,7 @@ public class ForgePreFlightInstallerTests : IDisposable
 
     // v1.0.0.x (2026-08-29):step 3c 解析 pytorch_lightning 的 METADATA Requires-Dist,
     // 装 lightning-utilities + torchmetrics 等 transitive deps(跳过 torch 系列 +
-    // extras;pip sees satisfied → no-op 跳已装的)。
+    // numpy + extras;pip sees satisfied → no-op 跳已装的)。
     [Fact]
     public async Task InstallAsync_PytorchLightningTransitiveDeps_InstalledFromMetadata()
     {
@@ -355,6 +355,11 @@ public class ForgePreFlightInstallerTests : IDisposable
             a.Equals("torch", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(depsCall!, a =>
             a.Equals("torchvision", StringComparison.OrdinalIgnoreCase));
+        // 2026-08-29 修:不该装 numpy — step 3a 已用 requirements_versions.txt 的
+        // numpy==1.26.2 pin 装好,step 3c 再装会把 numpy 升到 2.x,破坏 torch 2.4.x
+        // 的 numpy 1.x ABI → webui 启动 crash。
+        Assert.DoesNotContain(depsCall!, a =>
+            a.Equals("numpy", StringComparison.OrdinalIgnoreCase));
         // 不该装 extras(matches METADATA 里的 Provides-Extra 行)
         Assert.DoesNotContain(depsCall!, a => a.Contains("matplotlib"));
         // 该用 --disable-pip-version-check(跟其他 step 一致)
@@ -363,6 +368,8 @@ public class ForgePreFlightInstallerTests : IDisposable
 
     // ParsePytorchLightningRequiresDist 直接单测,独立验证 filter 规则:
     // - 跳 torch / torchvision / torchaudio
+    // - 跳 numpy(2026-08-29 修:step 3a 已装 numpy==1.26.2,step 3c 再装会升到 2.x
+    //   与 torch 2.4.x ABI 不兼容 → 启动 crash)
     // - 跳 extras(provides-extra + extra == 标记)
     // - dedup
     // - 没 pytorch_lightning*.dist-info → 空 list(skip 而非抛)
@@ -373,10 +380,11 @@ public class ForgePreFlightInstallerTests : IDisposable
         var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
 
         // 验证 fixture 写得对:fixture 含 numpy/torch/tqdm/fsspec/torchmetrics/lightning-utilities
-        // 预期 result:fsspec、lightning-utilities、numpy、torchmetrics、tqdm
+        // 预期 result:fsspec、lightning-utilities、torchmetrics、tqdm
         //   - torch 被过滤
+        //   - numpy 被过滤(2026-08-29 修,理由见 method doc)
         //   - matplotlib (extra == 'all') 被过滤
-        Assert.Contains("numpy", deps);
+        Assert.DoesNotContain("numpy", deps);
         Assert.Contains("tqdm", deps);
         Assert.Contains("fsspec", deps);
         Assert.Contains("torchmetrics", deps);
@@ -430,6 +438,44 @@ public class ForgePreFlightInstallerTests : IDisposable
         var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
 
         Assert.Empty(deps);
+    }
+
+    // 2026-08-29:用户报 Forge 启动 fail,根因 step 3c 调 `pip install numpy`(无版本约束)
+    // 升级到 numpy 2.2.6,跟 torch 2.4.x 的 numpy 1.x ABI 编译产物不兼容 → webui 启动
+    // crash 在 `backend/memory_management.py:6 import torch` → `_ARRAY_API not found`。
+    // step 3a 已用 requirements_versions.txt 的 numpy==1.26.2 pin 装好,step 3c 必须
+    // 跳过 numpy 不再调 pip install(否则把 step 3a 的 pin 升掉)。
+    [Fact]
+    public void ParsePytorchLightningRequiresDist_FiltersNumpy_PreservesTorch1xAbi()
+    {
+        // fixture METADATA 含 `Requires-Dist: numpy (>=1.17.2)`(pytorch_lightning 1.9.4
+        // 真实列出的 dep,无版本上限 → numpy 2.x 满足),parse 必须把它过滤掉。
+        var env = SeedEnv();
+        var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
+
+        Assert.DoesNotContain("numpy", deps);
+        // sanity:其他 dep 不受 numpy filter 影响
+        Assert.Contains("tqdm", deps);
+        Assert.Contains("lightning-utilities", deps);
+    }
+
+    [Fact]
+    public void ParsePytorchLightningRequiresDist_FiltersNumpyRegardlessOfCase()
+    {
+        // 防御:大写 NUMPY / 混合 NumPy 也得过滤(case-insensitive)
+        var env = SeedEnv();
+        var distInfo = Path.Combine(env.RootPath, "venv", "Lib", "site-packages",
+            "pytorch_lightning-1.9.4.dist-info");
+        File.WriteAllText(Path.Combine(distInfo, "METADATA"),
+            "Metadata-Version: 2.1\nName: pytorch-lightning\nVersion: 1.9.4\n" +
+            "Requires-Dist: NumPy (>=1.17.2)\n" +
+            "Requires-Dist: tqdm (>=4.57.0)\n");
+
+        var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
+
+        Assert.DoesNotContain(deps, d => d.Equals("numpy", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(deps, d => d.Equals("NumPy", StringComparison.Ordinal));
+        Assert.Contains("tqdm", deps);
     }
 
     [Fact]

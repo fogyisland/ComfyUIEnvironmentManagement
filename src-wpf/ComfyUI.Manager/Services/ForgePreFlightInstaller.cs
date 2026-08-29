@@ -580,7 +580,7 @@ public class ForgePreFlightInstaller
     /// <summary>
     /// v1.0.0.x (2026-08-29):解析 pytorch_lightning 安装后的
     /// <c>&lt;envRoot&gt;/venv/Lib/site-packages/pytorch_lightning-*.dist-info/METADATA</c>
-    /// 文件,提取 <c>Requires-Dist</c> 列表里**非 extras / 非 torch 系列**的包名,
+    /// 文件,提取 <c>Requires-Dist</c> 列表里**非 extras / 非 torch 系列 / 非 numpy** 的包名,
     /// 返回去重的字符串列表,作为 step 3c 第二次 pip install 的参数。
     ///
     /// 为什么需要这一步:step 3b 用 <c>--no-deps</c> 装 pytorch_lightning 是为了
@@ -595,6 +595,11 @@ public class ForgePreFlightInstaller
     /// parse 自动适配。filter 规则:
     ///   - 跳过 <c>; extra == 'all'</c>(Provides-Extra 标记的可选 extras)
     ///   - 跳过 torch / torchvision / torchaudio(BED 已锁,不能动)
+    ///   - 跳过 numpy(step 3a 已用 requirements_versions.txt 里的 <c>numpy==1.26.2</c>
+    ///     pin 装好;step 3c 再调 <c>pip install numpy</c> 无版本约束会把 numpy
+    ///     升到 2.x,而 torch 2.4.x 是 numpy 1.x ABI 编译的,numpy 2.x 与
+    ///     torch 2.4.x ABI 不兼容 → <c>_ARRAY_API not found</c> + webui 启动
+    ///     crash 在 <c>backend/memory_management.py:6 import torch</c>)
     ///   - 包名用首段(token before space / version / env marker)
     ///
     /// 返回空 list = 解析失败 / 没装 pytorch_lightning / 过滤后空 ——
@@ -636,6 +641,10 @@ public class ForgePreFlightInstaller
             if (pkgName.Equals("torch", StringComparison.OrdinalIgnoreCase)) continue;
             if (pkgName.Equals("torchvision", StringComparison.OrdinalIgnoreCase)) continue;
             if (pkgName.Equals("torchaudio", StringComparison.OrdinalIgnoreCase)) continue;
+            // 跳过 numpy:step 3a 用 requirements_versions.txt 的 numpy==1.26.2 已装;
+            // step 3c 再 pip install numpy(无版本约束)会升到 2.x,破坏 torch 2.4.x
+            // 的 numpy 1.x ABI 编译产物(用户 2026-08-29 启动 fail 的根因)。
+            if (pkgName.Equals("numpy", StringComparison.OrdinalIgnoreCase)) continue;
             // dedup(同一包多个版本约束去重 — pip 只要包名,不取版本约束)
             if (!seen.Add(pkgName)) continue;
             result.Add(pkgName);
