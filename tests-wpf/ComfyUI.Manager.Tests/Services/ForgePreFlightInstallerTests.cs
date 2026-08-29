@@ -79,6 +79,24 @@ public class ForgePreFlightInstallerTests : IDisposable
         var reposDir = Path.Combine(env.RootPath, "repositories");
         foreach (var spec in ForgePreFlightConstants.Repos)
             Directory.CreateDirectory(Path.Combine(reposDir, spec.DirName, ".git"));
+
+        // 写 fake pytorch_lightning METADATA(step 3c parse 这个文件提 Requires-Dist)。
+        // 不写真实 METADATA 内容 — 测试 fixture 显式控制 Requires-Dist 行,
+        // 让 ParsePytorchLightningRequiresDist 单测独立验证。
+        var distInfo = Path.Combine(env.RootPath, "venv", "Lib", "site-packages",
+            "pytorch_lightning-1.9.4.dist-info");
+        Directory.CreateDirectory(distInfo);
+        File.WriteAllText(Path.Combine(distInfo, "METADATA"),
+            "Metadata-Version: 2.1\nName: pytorch-lightning\nVersion: 1.9.4\n" +
+            "Requires-Dist: numpy (>=1.17.2)\n" +
+            "Requires-Dist: torch (>=1.10.0)\n" +
+            "Requires-Dist: tqdm (>=4.57.0)\n" +
+            "Requires-Dist: fsspec[http] (>2021.06.0)\n" +
+            "Requires-Dist: torchmetrics (>=0.7.0)\n" +
+            "Requires-Dist: lightning-utilities (>=0.6.0.post0)\n" +
+            "Provides-Extra: all\n" +
+            "Requires-Dist: matplotlib (>3.1) ; extra == 'all'\n");
+
         return env;
     }
 
@@ -98,6 +116,7 @@ public class ForgePreFlightInstallerTests : IDisposable
         public bool FailOnOpenClip { get; set; }
         public bool FailOnReq { get; set; }
         public bool FailOnPytorchLightning { get; set; }
+        public bool FailOnPytorchLightningDeps { get; set; }
         public bool FailOnRepoClone { get; set; }
 
         public CapturingInstaller() : base() { }
@@ -127,10 +146,14 @@ public class ForgePreFlightInstallerTests : IDisposable
             var isOpenClip = pipArgs.Any(a => a.Contains("open_clip/archive"));
             var isReqFile = pipArgs.Any(a => a.Contains(".requirements_filtered.txt"));
             var isPytorchLightning = pipArgs.Any(a => a.StartsWith("pytorch_lightning"));
+            // step 3c: 装 pytorch_lightning 的 transitive deps(多个包,不含 pytorch_lightning 前缀)
+            var isPytorchLightningDeps = !isPytorchLightning && pipArgs.Any(a =>
+                a.Contains("lightning-utilities") || a.Contains("torchmetrics"));
             var result = (isClip && FailOnClip) ||
                          (isOpenClip && FailOnOpenClip) ||
                          (isReqFile && FailOnReq) ||
-                         (isPytorchLightning && FailOnPytorchLightning)
+                         (isPytorchLightning && FailOnPytorchLightning) ||
+                         (isPytorchLightningDeps && FailOnPytorchLightningDeps)
                 ? new PipResult(1, WasCancelled: false)
                 : new PipResult(0, WasCancelled: false);
             return Task.FromResult(result);
@@ -299,6 +322,108 @@ public class ForgePreFlightInstallerTests : IDisposable
         Assert.NotNull(ptlCall);
         Assert.Contains("pytorch_lightning==1.9.4", ptlCall!);
         Assert.Contains("--no-deps", ptlCall!);
+    }
+
+    // v1.0.0.x (2026-08-29):step 3c 解析 pytorch_lightning 的 METADATA Requires-Dist,
+    // 装 lightning-utilities + torchmetrics 等 transitive deps(跳过 torch 系列 +
+    // extras;pip sees satisfied → no-op 跳已装的)。
+    [Fact]
+    public async Task InstallAsync_PytorchLightningTransitiveDeps_InstalledFromMetadata()
+    {
+        var env = SeedEnv();
+        var installer = new CapturingInstaller();
+
+        await installer.InstallAsync(env);
+
+        // 找 step 3c 调用(不是 req / pytorch_lightning,是装多个 ptl deps 那个)
+        // 特征:含 "lightning-utilities" 或 "torchmetrics" 但**不**含 "pytorch_lightning=="
+        var depsCall = installer.AllPipCalls.FirstOrDefault(args =>
+            !args.Any(a => a.StartsWith("pytorch_lightning==")) &&
+            args.Any(a => a.Contains("lightning-utilities") || a.Contains("torchmetrics")));
+        Assert.NotNull(depsCall);
+        // 装 METADATA 里的关键 dep(lightning-utilities + torchmetrics)
+        Assert.Contains("lightning-utilities", depsCall!);
+        Assert.Contains("torchmetrics", depsCall!);
+        // 不该装 torch 系列(BED 已锁,装它会降级)
+        Assert.DoesNotContain(depsCall!, a =>
+            a.Equals("torch", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(depsCall!, a =>
+            a.Equals("torchvision", StringComparison.OrdinalIgnoreCase));
+        // 不该装 extras(matches METADATA 里的 Provides-Extra 行)
+        Assert.DoesNotContain(depsCall!, a => a.Contains("matplotlib"));
+        // 该用 --disable-pip-version-check(跟其他 step 一致)
+        Assert.Contains("--disable-pip-version-check", depsCall!);
+    }
+
+    // ParsePytorchLightningRequiresDist 直接单测,独立验证 filter 规则:
+    // - 跳 torch / torchvision / torchaudio
+    // - 跳 extras(provides-extra + extra == 标记)
+    // - dedup
+    // - 没 pytorch_lightning*.dist-info → 空 list(skip 而非抛)
+    [Fact]
+    public void ParsePytorchLightningRequiresDist_FiltersTorchSeriesAndExtras()
+    {
+        var env = SeedEnv();
+        var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
+
+        // 验证 fixture 写得对:fixture 含 numpy/torch/tqdm/fsspec/torchmetrics/lightning-utilities
+        // 预期 result:fsspec、lightning-utilities、numpy、torchmetrics、tqdm
+        //   - torch 被过滤
+        //   - matplotlib (extra == 'all') 被过滤
+        Assert.Contains("numpy", deps);
+        Assert.Contains("tqdm", deps);
+        Assert.Contains("fsspec", deps);
+        Assert.Contains("torchmetrics", deps);
+        Assert.Contains("lightning-utilities", deps);
+        Assert.DoesNotContain("torch", deps);
+        Assert.DoesNotContain("matplotlib", deps);
+        // fsspec[http] 这种 extras 标记 strip 掉,只留 fsspec
+        Assert.DoesNotContain(deps, d => d.Contains("["));
+    }
+
+    [Fact]
+    public void ParsePytorchLightningRequiresDist_NoDistInfoDir_ReturnsEmpty()
+    {
+        // env 没 pytorch_lightning*.dist-info → 返空 list (caller 走 skip)
+        var env = SeedEnv();
+        var distInfo = Path.Combine(env.RootPath, "venv", "Lib", "site-packages",
+            "pytorch_lightning-1.9.4.dist-info");
+        if (Directory.Exists(distInfo)) Directory.Delete(distInfo, recursive: true);
+
+        var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
+
+        Assert.Empty(deps);
+    }
+
+    [Fact]
+    public void ParsePytorchLightningRequiresDist_MissingMetadataFile_ReturnsEmpty()
+    {
+        // dist-info 存在但 METADATA 缺失(异常 install) → 返空 list 不报错
+        var env = SeedEnv();
+        var distInfo = Path.Combine(env.RootPath, "venv", "Lib", "site-packages",
+            "pytorch_lightning-1.9.4.dist-info");
+        File.Delete(Path.Combine(distInfo, "METADATA"));
+
+        var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
+
+        Assert.Empty(deps);
+    }
+
+    [Fact]
+    public void ParsePytorchLightningRequiresDist_OnlyExtras_ReturnsEmpty()
+    {
+        // METADATA 只有 extras 行 → 过滤后空 list,走 skip 路径
+        var env = SeedEnv();
+        var distInfo = Path.Combine(env.RootPath, "venv", "Lib", "site-packages",
+            "pytorch_lightning-1.9.4.dist-info");
+        File.WriteAllText(Path.Combine(distInfo, "METADATA"),
+            "Metadata-Version: 2.1\nName: pytorch-lightning\n" +
+            "Provides-Extra: all\n" +
+            "Requires-Dist: matplotlib (>3.1) ; extra == 'all'\n");
+
+        var deps = ForgePreFlightInstaller.ParsePytorchLightningRequiresDist(env);
+
+        Assert.Empty(deps);
     }
 
     [Fact]

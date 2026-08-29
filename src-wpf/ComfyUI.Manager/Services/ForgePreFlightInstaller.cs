@@ -164,11 +164,8 @@ public class ForgePreFlightInstaller
 
         // 3b. pytorch_lightning 单独装 + --no-deps:
         //     它要求 torch<2.0 与 BED torch 2.4.0+cu121 冲突,必须 --no-deps 避免
-        //     pip 自动降级 torch(丢失 CUDA wheel + cu121 index)。pytorch_lightning
-        //     1.9.4 自己的 transitive deps(在 Forge webui.py 主启动期不一定都用到)
-        //     跳过不致命 — webui.py 真正 import 的只有 fastapi/starlette/pydantic/
-        //     gradio/gradio_client 等已装。镜像 Forge launch.py 装 xformers
-        //     的策略:run_pip(f"install -U -I --no-deps {xformers_package}").
+        //     pip 自动降级 torch(丢失 CUDA wheel + cu121 index)。镜像 Forge launch.py
+        //     装 xformers 的策略:run_pip(f"install -U -I --no-deps {xformers_package}").
         logProgress?.Report("[forge-preflight] stage:pytorch_lightning --no-deps (avoid torch downgrade)");
         var ptlResult = await RunPipAsync(
             pythonExe,
@@ -177,6 +174,42 @@ public class ForgePreFlightInstaller
             ct);
         if (!IsPipOk(ptlResult))
             return FailFrom(ptlResult, $"pip install pytorch_lightning==1.9.4 --no-deps");
+
+        // 3c. pytorch_lightning 自己的 transitive deps 补装:
+        //     step 3b 的 --no-deps 跳过了 pytorch_lightning 的所有 transitive deps,
+        //     但 forge modules/initialize.py:16 `import pytorch_lightning  # noqa: F401`
+        //     会触发完整 import chain(pytorch_lightning → lightning_fabric →
+        //     lightning_utilities),缺任何一环 → ModuleNotFoundError。
+        //     pytorch_lightning==1.9.4 Requires-Dist 列表(从其 installed
+        //     .dist-info/METADATA 解析):
+        //       numpy, tqdm, PyYAML, fsspec[http], torchmetrics, packaging,
+        //       typing-extensions, lightning-utilities
+        //     大部分(step 3a 已装的 huggingface-hub → fsspec、pydantic →
+        //     typing-extensions 等)其实已被装上,装上时 pip sees satisfied
+        //     version → no-op。关键的 lightning-utilities + torchmetrics 不会
+        //     被任何 step 3a 包拉,必须显式装。
+        //     解析 + 过滤而非硬编码 list 的理由:pytorch_lightning 升级时
+        //     Requires-Dist 会变,parse 自动适配,避免下一次 whack-a-mole。
+        //     过滤规则:
+        //     - torch / torchvision / torchaudio → BED 已装,pip 不能动(防降级)
+        //     - 含 `extra ==` 的行(Provides-Extra)→ 可选 extras,用户没装就
+        //       显式装是多余的
+        var ptlDeps = ParsePytorchLightningRequiresDist(env);
+        if (ptlDeps.Count > 0)
+        {
+            logProgress?.Report($"[forge-preflight] stage:pytorch_lightning transitive deps ({ptlDeps.Count} pkgs from METADATA)");
+            var ptlDepsArgs = new List<string> { "install" };
+            ptlDepsArgs.AddRange(ptlDeps);
+            ptlDepsArgs.Add("--disable-pip-version-check");
+            var ptlDepsResult = await RunPipAsync(
+                pythonExe,
+                ptlDepsArgs,
+                line => logProgress?.Report(line),
+                ct);
+            if (!IsPipOk(ptlDepsResult))
+                return FailFrom(ptlDepsResult,
+                    $"pip install pytorch_lightning transitive deps ({string.Join(",", ptlDeps)})");
+        }
 
         // 4. git clone 3 repos(每个独立 try/catch + IsInstalled skip,失败不阻断后续 repo;
         //    最后整体成功判断,只要全部存在或 clone 成功 → success)
@@ -503,6 +536,72 @@ public class ForgePreFlightInstaller
         return char.IsWhiteSpace(next)
             || next == '=' || next == '<' || next == '>'
             || next == '!' || next == '~' || next == ';';
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):解析 pytorch_lightning 安装后的
+    /// <c>&lt;envRoot&gt;/venv/Lib/site-packages/pytorch_lightning-*.dist-info/METADATA</c>
+    /// 文件,提取 <c>Requires-Dist</c> 列表里**非 extras / 非 torch 系列**的包名,
+    /// 返回去重的字符串列表,作为 step 3c 第二次 pip install 的参数。
+    ///
+    /// 为什么需要这一步:step 3b 用 <c>--no-deps</c> 装 pytorch_lightning 是为了
+    /// 避开它的 <c>torch&lt;2.0</c> 约束(防降级 BED 锁的 torch 2.4.0+cu121),但
+    /// <c>--no-deps</c> 同时跳过了 pytorch_lightning 自己的 transitive deps。
+    /// forge 的 <c>modules/initialize.py:16</c> 有 <c>import pytorch_lightning</c>,
+    /// Python 会沿完整 import chain 触发 <c>lightning_fabric → lightning_utilities</c>,
+    /// 缺关键 dep → <c>ModuleNotFoundError</c> 启动 crash。
+    ///
+    /// 故意 parse METADATA 而不是硬编码包名清单的原因:pytorch_lightning 升级时
+    /// Requires-Dist 会变(1.9.4 加 lightning-utilities,未来版本可能换 dep),
+    /// parse 自动适配。filter 规则:
+    ///   - 跳过 <c>; extra == 'all'</c>(Provides-Extra 标记的可选 extras)
+    ///   - 跳过 torch / torchvision / torchaudio(BED 已锁,不能动)
+    ///   - 包名用首段(token before space / version / env marker)
+    ///
+    /// 返回空 list = 解析失败 / 没装 pytorch_lightning / 过滤后空 ——
+    /// caller 走 skip 路径,不报错(防意外破坏成功 pre-flight)。
+    /// </summary>
+    internal static List<string> ParsePytorchLightningRequiresDist(Environment env)
+    {
+        var result = new List<string>();
+        var sitePackages = Path.Combine(env.RootPath, "venv", "Lib", "site-packages");
+        if (!Directory.Exists(sitePackages)) return result;
+
+        // pytorch_lightning-1.9.4.dist-info / pytorch_lightning-2.0.0.dist-info
+        string? distInfoDir = null;
+        try
+        {
+            distInfoDir = Directory.EnumerateDirectories(sitePackages, "pytorch_lightning-*.dist-info")
+                .FirstOrDefault();
+        }
+        catch { return result; }
+        if (distInfoDir is null) return result;
+
+        var metadataPath = Path.Combine(distInfoDir, "METADATA");
+        if (!File.Exists(metadataPath)) return result;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawLine in File.ReadAllLines(metadataPath))
+        {
+            if (!rawLine.StartsWith("Requires-Dist:", StringComparison.Ordinal)) continue;
+            var spec = rawLine.Substring("Requires-Dist:".Length).Trim();
+            // 跳过 Provides-Extra 标记的可选 extras —— Requires-Dist: foo ; extra == 'all'
+            if (spec.Contains("extra ==", StringComparison.OrdinalIgnoreCase)) continue;
+
+            // 取首个 token(包名,strip extras 标记 `fsspec[http]` / 版本 / env marker)
+            var tokenMatch = System.Text.RegularExpressions.Regex.Match(
+                spec, @"^\s*([A-Za-z0-9][A-Za-z0-9_.\-]*)");
+            if (!tokenMatch.Success) continue;
+            var pkgName = tokenMatch.Groups[1].Value;
+            // 跳过 torch 系列(BED 锁版本,不能动)
+            if (pkgName.Equals("torch", StringComparison.OrdinalIgnoreCase)) continue;
+            if (pkgName.Equals("torchvision", StringComparison.OrdinalIgnoreCase)) continue;
+            if (pkgName.Equals("torchaudio", StringComparison.OrdinalIgnoreCase)) continue;
+            // dedup(同一包多个版本约束去重 — pip 只要包名,不取版本约束)
+            if (!seen.Add(pkgName)) continue;
+            result.Add(pkgName);
+        }
+        return result;
     }
 
     /// <summary>
