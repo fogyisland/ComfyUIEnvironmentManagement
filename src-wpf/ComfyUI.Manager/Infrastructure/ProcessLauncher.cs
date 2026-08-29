@@ -900,20 +900,18 @@ public sealed class ProcessLauncher : IDisposable
         // v1.0.0.x (2026-08-29):Forge 启动禁用 webui.py 自动开浏览器 —
         // 用户原话:"他启动后自动打开网页,在这里我们不推荐"。
         //
-        // 双管齐下(defense-in-depth):
-        // (a) --no-autolaunch CLI flag:用户参考 webui-user.bat 文档推荐的方式
-        //     (2026-08-29 用户原话"参考这个")。A1111/Forge 用自定义 bool_py2 argparse
-        //     action 支持 --no-foo 否定形(默认 dest 前缀 no_ 检测),所以 --no-autolaunch
-        //     实际等价于 --autolaunch=False。如果 Forge 升级去掉这个自定义 action,
-        //     该 flag 会报 "unrecognized arguments" — 配合下方 (b) env var 兜底。
-        // (b) SD_WEBUI_RESTARTING=1 env var:A1111 upstream PR #11037 引入的官方
-        //     机制,Forge webui.py 用它跳过整段 auto_launch_browser 逻辑
-        //     (`if os.getenv('SD_WEBUI_RESTARTING') != '1':`)。
-        //     这层独立于 CLI flag,即便 (a) 失败也兜住不弹浏览器。
-        if (env.TemplateKind == "Forge")
-        {
-            entryArgs += " --no-autolaunch";
-        }
+        // 修法:仅靠 SD_WEBUI_RESTARTING=1 env var(A1111 upstream PR #11037 引入的官方
+        // 机制,Forge fork 保留),webui.py 检查
+        //   if os.getenv('SD_WEBUI_RESTARTING') != '1':
+        //       auto_launch_browser = ...
+        // env var = "1" → 整段跳过 → 默认 False → 不弹浏览器。
+        //
+        // 历史(2026-08-29 初版曾加 --no-autolaunch CLI flag):用户参考 webui-user.bat
+        // 文档推荐的方式,假设 Forge 用 A1111 的 bool_py2 自定义 argparse action 支持
+        // --no-foo 否定形。实测 Forge webui.py fork 移除了这层 action,导致:
+        //   webui.py: error: unrecognized arguments: --no-autolaunch  (exit code 2)
+        // 整段 webui 启动 fail,env var 还没机会跑。已撤回 — 纯靠 env var 防御。
+        // 详见 <see cref="ForgeExtraEnvironmentVariables"/>。
 
         return (venvPython, (entryScript, entryArgs));
     }

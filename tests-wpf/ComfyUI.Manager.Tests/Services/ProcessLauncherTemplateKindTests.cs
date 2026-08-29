@@ -293,7 +293,10 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
     {
         // G10: Forge + DefaultModelsDirectory 非空 → EntryArgs 末尾拼 --ckpt-dir /
         // --vae-dir / --lora-dir / --controlnet-dir 4 个绝对路径(ComfyUI 风格子目录:
-        // checkpoints/ vae/ loras/ controlnet/) + --no-autolaunch 禁自动开浏览器
+        // checkpoints/ vae/ loras/ controlnet/)。浏览器禁自动开走 env var SD_WEBUI_RESTARTING=1
+        // (ForgeExtraEnvironmentVariables tests 覆盖),不走 --no-autolaunch CLI flag —
+        // 实测 Forge fork 移除了 A1111 的 bool_py2 自定义 argparse action,导致
+        // `webui.py: error: unrecognized arguments: --no-autolaunch` 直接 crash。
         var env = new Environment
         {
             Id = "e-forge", Name = "ForgeUI", Status = "stopped",
@@ -322,8 +325,12 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
         Assert.Contains(Path.Combine(modelsDir, "loras"), args.ArgsString);
         Assert.Contains(Path.Combine(modelsDir, "controlnet"), args.ArgsString);
         // v1.0.0.x (2026-08-29):Forge 禁自动开浏览器 — 用户原话 "他启动后自动打开网页,
-        // 在这里我们不推荐",参考 webui-user.bat COMMANDLINE_ARGS=--no-autolaunch 思路。
-        Assert.Contains("--no-autolaunch", args.ArgsString);
+        // 在这里我们不推荐"。**实撤回 --no-autolaunch CLI flag**(2026-08-29 followup):
+        // Forge fork 移除 A1111 的 bool_py2 自定义 argparse action,导致
+        // `webui.py: error: unrecognized arguments: --no-autolaunch` (exit code 2)
+        // 直接 fail。改纯靠 SD_WEBUI_RESTARTING=1 env var(ForgeExtraEnvironmentVariables
+        // tests 覆盖)。这里只锁住 CLI flag 不要再回归。
+        Assert.DoesNotContain("--no-autolaunch", args.ArgsString);
     }
 
     [Fact]
@@ -331,8 +338,7 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
     {
         // 用户没配 DefaultModelsDirectory → 不要拼 --ckpt-dir 等(env 内 models/ 目录按
         // Forge 默认 a1111_home/models/ 走),也避免 launcher 引用空字符串触发 webui.py
-        // 启动错。但 --no-autolaunch 仍要拼(它是独立的 browser-disable 行为,不依赖
-        // DefaultModelsDirectory)。
+        // 启动错。--no-autolaunch 也不再拼(同上,Forge 报 unrecognized arguments)。
         var env = new Environment
         {
             Id = "e-forge2", Name = "ForgeUI2", Status = "stopped",
@@ -354,8 +360,8 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
         Assert.DoesNotContain("--vae-dir", args.ArgsString);
         Assert.DoesNotContain("--lora-dir", args.ArgsString);
         Assert.DoesNotContain("--controlnet-dir", args.ArgsString);
-        // 仍拼 --no-autolaunch(独立行为)
-        Assert.Contains("--no-autolaunch", args.ArgsString);
+        // --no-autolaunch 也不拼(Forge fork 移除 bool_py2 自定义 action,直接 crash webui.py)
+        Assert.DoesNotContain("--no-autolaunch", args.ArgsString);
     }
 
     [Fact]
@@ -364,7 +370,8 @@ public class ProcessLauncherTemplateKindTests : System.IDisposable
         // ComfyUI env 不需要 --ckpt-dir(走自己的 models/checkpoints/ 约定);同样的
         // DefaultModelsDirectory 不应触发 Forge-only 注入。锁住这个 boundary —
         // Forge-specific 行为不能 spill 到 ComfyUI env(后者有自己的 args 模板)。
-        // --no-autolaunch 也只对 Forge 拼(ComfyUI 启动不弹浏览器,不需要这个 flag)。
+        // --no-autolaunch 也不拼(ComfyUI 启动本来就不弹浏览器,且该 flag 在 Forge 报
+        // unrecognized arguments)。
         var env = new Environment
         {
             Id = "e-comfy", Name = "ComfyMain", Status = "stopped",
