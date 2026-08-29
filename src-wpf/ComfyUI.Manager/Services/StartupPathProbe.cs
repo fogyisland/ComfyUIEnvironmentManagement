@@ -28,8 +28,8 @@ namespace ComfyUI.Manager.Services;
 /// - 9 个主路径字段:TemplatePythonDir / SystemTemplateLibraryDir / EnvsDir /
 ///   GlobalNodesDir / LocalNodeDirectory / LocalNodesDirectory /
 ///   DefaultModelsDirectory / WorkflowsDirectory / LogDirectory
-/// - 7 个 built-in TemplateConfig.LocalSourceDir(ComfyUI / Forge /
-///   SwarmUI / OpenVoice / Whisper / CoquiTTS / Bark)—— 通过
+/// - 6 个 built-in TemplateConfig.LocalSourceDir(ComfyUI / Forge /
+///   OpenVoice / Whisper / CoquiTTS / Bark)—— 通过
 ///   <see cref="TemplatePathResolver.Resolve"/> 拼出绝对路径再判 exists。
 ///   **但** LocalSourceDir 仍是默认 seed 值(== kind 名,如 "Whisper")且目录不存在
 ///   时 → 跳过:用户压根没下载这个模板是正常状态,不是路径错位。
@@ -38,7 +38,7 @@ namespace ComfyUI.Manager.Services;
 /// GitExe 已 seed 在 bin/git-portable/cmd/git.exe 下;PythonInterpreter.Path
 /// Apply 已合成完整路径;ExtraPath 是用户主动加的额外路径,probe 阶段不一定存在。
 ///
-/// v1.0.0.x: A1111 从 8 个内置里移除(模板已下线),剩 7 个。
+/// v1.0.0.x: A1111 + SwarmUI 从 8 个内置里移除(模板已下线),剩 6 个。
 /// </summary>
 public static class StartupPathProbe
 {
@@ -46,7 +46,6 @@ public static class StartupPathProbe
     {
         new("ComfyUI", "ComfyUI"),
         new("Forge", "Forge"),
-        new("SwarmUI", "SwarmUI"),
         new("OpenVoice", "OpenVoice"),
         new("Whisper", "Whisper"),
         new("CoquiTTS", "CoquiTTS"),
@@ -81,7 +80,7 @@ public static class StartupPathProbe
         TryAddIfMissing(items, "LogDirectory",
             s.LogDirectory, "Logs", projectRoot, isDirectory: true);
 
-        // 8 个 built-in TemplateConfig.LocalSourceDir —— 用 TemplatePathResolver 解析
+        // 6 个 built-in TemplateConfig.LocalSourceDir —— 用 TemplatePathResolver 解析
         // raw 是相对时锚到 SystemTemplateLibraryDir(SystemTemplateLibraryDir 自己可能是相对/绝对,
         // 先绝对化再喂给 Resolve,保证最终路径以 projectRoot 为根)。
         var systemLibraryAbs = string.IsNullOrWhiteSpace(s.SystemTemplateLibraryDir)

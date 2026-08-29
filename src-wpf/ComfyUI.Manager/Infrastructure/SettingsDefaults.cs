@@ -36,7 +36,7 @@ namespace ComfyUI.Manager.Infrastructure;
 ///   - Python    : 模板 Python 根(指向 package 自带的 portable Python/ 目录,
 ///                 内含 3.10/3.11/.../python.exe)
 ///   - ENVTemplate: 系统模板库根(v1.0.0.x seed,放所有内置 + 用户模板源码 ——
-///                 ComfyUI / Forge / SwarmUI / OpenVoice / Whisper / CoquiTTS / Bark)
+///                 ComfyUI / Forge / OpenVoice / Whisper / CoquiTTS / Bark)
 ///   - ComfyUITemplate : shared 布局的 ComfyUI 源(package root/ComfyUITemplate/,v1.0.0+ 从 `ComfyUI/` 重命名)
 ///   - Envs      : EnvCreatorService 创建 env 时放这里(空 → 不预创建)
 ///   - Nodes     : 全局 catalog 节点根(空 → 不预创建)
@@ -401,7 +401,7 @@ public static class SettingsDefaults
     }
 
     /// <summary>
-    /// v1.0.0 multi-template:首次启动 seed ComfyUI + Forge + SwarmUI + 4 个语音模板
+    /// v1.0.0 multi-template:首次启动 seed ComfyUI + Forge + 4 个语音模板
     /// built-in templates(G4 防覆盖。只在 Templates dict 缺对应 key 时填默认,
     /// 用户定制过的 entry 不会被覆盖。
     /// v1.0.0.x: 新增 <see cref="Settings.DisableBuiltInTemplatesSeed"/> 逃生口 — 设置后整个 seed 跳过,
@@ -411,6 +411,12 @@ public static class SettingsDefaults
     /// A1111 pre-flight 跟 sdweb 启动都会 fail paths.py:34。用户决定去掉 A1111 模板,
     /// 保留 Forge(用 huggingface_guess 替代 SD core)。老 settings.inf 里的 A1111
     /// entry 留 settings 备份不删 — 用户在 Settings 面板里手动 remove 即可。
+    ///
+    /// v1.0.0.x (2026-08-29): SwarmUI 模板已下线 — ProcessLauncher 的 Python 假设
+    /// 对 SwarmUI(.NET app)functional break,venv python 不存在 + Models junction
+    /// 路径错 + PYTHONPATH 无意义。用户决定去掉 SwarmUI 模板。同样保留老 settings.inf
+    /// 里残留的 SwarmUI entry(用户在 Settings 面板手动 remove 即可;已用 SwarmUI
+    /// 创建的 env 仍可跑 — env.TemplateConfigSnapshot 是冻结的独立副本)。
     /// </summary>
     private static void SeedBuiltInTemplatesIfMissing(Settings s, string projectRoot)
     {
@@ -418,10 +424,11 @@ public static class SettingsDefaults
         if (s.DisableBuiltInTemplatesSeed) return;
 
         // G4: only seed if missing — never overwrite user customization
-        // v1.0.0.x: 加 6 个 built-in defaults — Forge/SwarmUI(#497 修复)+
+        // v1.0.0.x: 加 5 个 built-in defaults — Forge(#497 修复)+
         // OpenVoice/Whisper/CoquiTTS/Bark(AI 语音 GitHub clone)。G13 delete 保护
-        // 通过 TemplateConfig.CanDelete 里的 hardcoded kind 白名单保护所有 8 个。
-        // v1.0.0.x: A1111 不再 seed — 模板已下线。
+        // 通过 TemplateConfig.CanDelete 里的 hardcoded kind 白名单保护所有 7 个。
+        // v1.0.0.x: A1111 + SwarmUI 不再 seed — 模板已下线(A1111 因 Stability-AI
+        // 仓库移除;SwarmUI 因 ProcessLauncher Python 假设 functional break)。
         if (!s.Templates.ContainsKey("ComfyUI"))
         {
             s.Templates["ComfyUI"] = TemplateConfigDefaults.ComfyUi(projectRoot);
@@ -429,10 +436,6 @@ public static class SettingsDefaults
         if (!s.Templates.ContainsKey("Forge"))
         {
             s.Templates["Forge"] = TemplateConfigDefaults.Forge(projectRoot);
-        }
-        if (!s.Templates.ContainsKey("SwarmUI"))
-        {
-            s.Templates["SwarmUI"] = TemplateConfigDefaults.SwarmUi(projectRoot);
         }
         if (!s.Templates.ContainsKey("OpenVoice"))
         {
@@ -452,11 +455,11 @@ public static class SettingsDefaults
         }
     }
 
-    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 8 个 built-in 同步。
-    // v1.0.0.x:A1111 从 seed + BuiltInKinds 移除(模板已下线),剩 7 个。
+    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 7 个 built-in 同步。
+    // v1.0.0.x:A1111 + SwarmUI 从 seed + BuiltInKinds 移除(模板已下线),剩 6 个。
     private static readonly string[] BuiltInKinds =
     {
-        "ComfyUI", "Forge", "SwarmUI",
+        "ComfyUI", "Forge",
         "OpenVoice", "Whisper", "CoquiTTS", "Bark",
     };
 

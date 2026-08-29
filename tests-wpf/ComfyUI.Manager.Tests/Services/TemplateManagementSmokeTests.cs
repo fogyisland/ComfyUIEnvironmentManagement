@@ -13,8 +13,8 @@ namespace ComfyUI.Manager.Tests.Services;
 /// 红色 badge 提醒用户 clone 模板源码。GUI 手测容易漏看,改成程序化 smoke — 把 7 个内置
 /// 模板逐一调 <c>LocalDirExists</c> + <c>LocalDirBadge</c>,跟实际磁盘对账:
 ///
-/// <list type="bullet">
-///   <item><b>已 shipped 4 个</b>(ComfyUI / Forge / OpenVoice / SwarmUI)— 完整
+/// <list type="bullet>
+///   <item><b>已 shipped 3 个</b>(ComfyUI / Forge / OpenVoice)— 完整
 ///         git clone 产物,目录存在 + 非空 → <c>LocalDirExists = true</c> + <c>LocalDirBadge = ""</c></item>
 ///   <item><b>未 shipped 3 个</b>(Whisper / CoquiTTS / Bark)— 目录不存在 → <c>false</c>
 ///         + <c>"本地目录为空"</c> red badge 提示用户 clone</item>
@@ -24,6 +24,7 @@ namespace ComfyUI.Manager.Tests.Services;
 /// shipped 状态变了(例如 OpenVoice 后续删了),手工更新 <see cref="ClonedBuiltinKinds"/> /
 /// <see cref="PendingBuiltinKinds"/> 即可,不必重写测试。
 ///
+/// v1.0.0.x (2026-08-29): SwarmUI 模板已下线 + 删除目录,总数 7 → 6。
 /// v1.0.0.x: A1111 不再是内置模板(已下线),从所有列表移除,总数 8 → 7。
 /// </summary>
 public sealed class TemplateManagementSmokeTests
@@ -36,13 +37,14 @@ public sealed class TemplateManagementSmokeTests
         Path.Combine(RepoRoot, "ENVTemplate");
 
     /// <summary>
-    /// shipped 状态下 <c>ENVTemplate/</c> 实际有内容的 4 个内置模板(完整 git clone 产物)。
+    /// shipped 状态下 <c>ENVTemplate/</c> 实际有内容的 3 个内置模板(完整 git clone 产物)。
     /// 测试断言 LocalDirExists=true 且 badge=""(不显示)。
+    /// v1.0.0.x (2026-08-29): 从 4 个减到 3 个 — SwarmUI 已下线 + 目录已删除。
     /// v1.0.0.x: 从 5 个减到 4 个 — A1111 已下线。
     /// </summary>
     private static readonly string[] ClonedBuiltinKinds =
     {
-        "ComfyUI", "Forge", "SwarmUI", "OpenVoice",
+        "ComfyUI", "Forge", "OpenVoice",
     };
 
     /// <summary>
@@ -55,15 +57,14 @@ public sealed class TemplateManagementSmokeTests
     };
 
     /// <summary>
-    /// 一站式枚举 7 个内置模板 → 实际 TemplateConfig 实例,供 [Theory] / [Fact] 用。
+    /// 一站式枚举 6 个内置模板 → 实际 TemplateConfig 实例,供 [Theory] / [Fact] 用。
     /// 用 projectRoot="" 占位,LocalSourceDir 全部是 "<Kind>" 相对路径,不需要真 projectRoot。
-    /// v1.0.0.x: 从 8 个减到 7 个。
+    /// v1.0.0.x (2026-08-29): 从 7 个减到 6 个 — SwarmUI 已下线。
     /// </summary>
     private static IEnumerable<(string Kind, TemplateConfig Cfg)> AllBuiltins()
     {
         yield return ("ComfyUI",   TemplateConfigDefaults.ComfyUi(""));
         yield return ("Forge",     TemplateConfigDefaults.Forge(""));
-        yield return ("SwarmUI",   TemplateConfigDefaults.SwarmUi(""));
         yield return ("OpenVoice", TemplateConfigDefaults.OpenVoice(""));
         yield return ("Whisper",   TemplateConfigDefaults.Whisper(""));
         yield return ("CoquiTTS",  TemplateConfigDefaults.CoquiTts(""));
@@ -71,7 +72,7 @@ public sealed class TemplateManagementSmokeTests
     }
 
     /// <summary>
-    /// 4 个已 shipped 内置模板,目录存在 + 非空 → badge 不显示,card 显示源 [本地]/[GitHub] 即可。
+    /// 3 个已 shipped 内置模板,目录存在 + 非空 → badge 不显示,card 显示源 [本地]/[GitHub] 即可。
     /// </summary>
     [Fact]
     public void ClonedBuiltins_HaveLocalDir_NoBadge()
@@ -128,18 +129,19 @@ public sealed class TemplateManagementSmokeTests
     }
 
     /// <summary>
-    /// 防回归:TemplateConfigDefaults 必须正好注册 7 个内置模板(kind 列表 = Cloned + Pending)。
+    /// 防回归:TemplateConfigDefaults 必须正好注册 6 个内置模板(kind 列表 = Cloned + Pending)。
     /// 漏注册(用户报「只有 2 个模板」#497 历史)或重命名都会让这个测试 fail。
     /// 这个测试**不依赖** ENVTemplate/ 是否存在,锁的是代码契约。
+    /// v1.0.0.x (2026-08-29): 从 7 个减到 6 个 — SwarmUI 已下线。
     /// v1.0.0.x: 从 8 个减到 7 个 — A1111 已下线。
     /// </summary>
     [Fact]
-    public void AllBuiltins_EnumExactlySeven()
+    public void AllBuiltins_EnumExactlySix()
     {
         var actual = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (kind, _) in AllBuiltins())
             actual.Add(kind);
-        Assert.Equal(7, actual.Count);
+        Assert.Equal(6, actual.Count);
         foreach (var kind in ClonedBuiltinKinds)
             Assert.Contains(kind, actual);
         foreach (var kind in PendingBuiltinKinds)
@@ -147,7 +149,7 @@ public sealed class TemplateManagementSmokeTests
     }
 
     /// <summary>
-    /// 防回归:7 个内置模板的 <see cref="TemplateConfig.CanDelete"/> 必须全部为 false(G13)。
+    /// 防回归:6 个内置模板的 <see cref="TemplateConfig.CanDelete"/> 必须全部为 false(G13)。
     /// 任何内置模板漏写白名单 → 用户能删 → 模板管理列表掉项。
     /// </summary>
     [Fact]
@@ -161,10 +163,11 @@ public sealed class TemplateManagementSmokeTests
 
     /// <summary>
     /// 防回归:内置模板 SourceKind + GitHubRepoUrl 配套。
-    /// - Local 类(ComfyUI/Forge/SwarmUI)— SourceKind=Local,无 repo URL 是 OK 的
+    /// - Local 类(ComfyUI/Forge)— SourceKind=Local,无 repo URL 是 OK 的
     ///   (它们的 CanUpdateSource 走白名单,但 URL 是给 Update 用的,创建时不强制)。
     /// - GitHub 类(OpenVoice/Whisper/CoquiTTS/Bark)— SourceKind=GitHub + URL 非空,
     ///   才能被 TemplateSourceUpdater.CloneAsync 用上(否则 clone target 拿不到)。
+    /// v1.0.0.x (2026-08-29): SwarmUI 已下线,从 Local case 列表移除。
     /// </summary>
     [Fact]
     public void AllBuiltins_SourceKindMatchesKind()
@@ -175,7 +178,6 @@ public sealed class TemplateManagementSmokeTests
             {
                 case "ComfyUI":
                 case "Forge":
-                case "SwarmUI":
                     Assert.Equal(TemplateSourceKind.Local, cfg.SourceKind);
                     break;
                 case "OpenVoice":
@@ -195,7 +197,6 @@ public sealed class TemplateManagementSmokeTests
     {
         "ComfyUI"   => TemplateConfigDefaults.ComfyUi(""),
         "Forge"     => TemplateConfigDefaults.Forge(""),
-        "SwarmUI"   => TemplateConfigDefaults.SwarmUi(""),
         "OpenVoice" => TemplateConfigDefaults.OpenVoice(""),
         "Whisper"   => TemplateConfigDefaults.Whisper(""),
         "CoquiTTS"  => TemplateConfigDefaults.CoquiTts(""),

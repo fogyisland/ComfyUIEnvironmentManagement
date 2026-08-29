@@ -34,13 +34,13 @@ public class CreateEnvDialogViewModel : ViewModelBase
         _recentBasePythonPath = recentBasePythonPath;
         _onResult = onResult;
         _envRepo = envRepo;
-        // v1.0.0 T7:模板 kind 选项从 Settings.Templates 来 — T2 seed ComfyUI + Forge + SwarmUI
-        // + 4 个语音模板(共 7 个);v1.0.0.x:A1111 模板已下线,不再 seed。
+        // v1.0.0 T7:模板 kind 选项从 Settings.Templates 来 — T2 seed ComfyUI + Forge
+        // + 4 个语音模板(共 6 个);v1.0.0.x:A1111 + SwarmUI 模板已下线,不再 seed。
         // 顺序无所谓,UI 用 SelectedTemplateKind 匹配 SelectedItem。
         // v1.0.0.x:LocalSourceDir 不存在的 template 不出现在下拉列表 — 用户在
         // ComboBox 里只看到已 clone / 已下载的可用模板;未下载的去 TemplateManagement
         // 下载完再回来。完全干净的 LocalSourceDir 不显示,跟"显示警告 + 灰按钮" 旧
-        // 行为对比 — 旧行为让用户在 ComboBox 看到 8 项但只有 3 项能选,UI 噪音大;
+        // 行为对比 — 旧行为让用户在 ComboBox 看到 7 项但只有 3 项能选,UI 噪音大;
         // 新行为 ComboBox 只显示能选的,清楚。
         TemplateOptions = _settings.Templates.Values
             .Where(t => t.LocalDirExists(_settings.SystemTemplateLibraryDir))

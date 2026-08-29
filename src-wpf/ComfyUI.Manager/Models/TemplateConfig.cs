@@ -69,13 +69,13 @@ public class TemplateConfig
     /// Human-readable badge for the template kind. v1.0.0+: used by TemplateManagementView
     /// card to display "[GitHub]". Not serialized — derived from SourceKind.
     /// v1.0.0.x #630: "[本地]" → "[内置]" ——
-    /// 3 个图像模板(ComfyUI / Forge / SwarmUI)是 shipped 本地 checkout,
+    /// 2 个图像模板(ComfyUI / Forge)是 shipped 本地 checkout,
     /// "内置源码"比"本地"更精确,避免跟"用户自定义 local" 概念冲突。
-    /// v1.0.0.x: A1111 模板已下线,从 4 → 3。
+    /// v1.0.0.x (2026-08-29): A1111 + SwarmUI 模板已下线,从 4 → 2。
     /// v1.0.0.x 用户改回 "[GitHub]" 统一 ——
-    /// "模板管理的内容就不需要写内置,就写成 github",所有 8 个 built-in 模板在
+    /// "模板管理的内容就不需要写内置,就写成 github",所有 7 个 built-in 模板在
     /// 模板管理卡片统一显示 "[GitHub]",用户不再看到 "[内置]"(此前 #630 改成
-    /// "[内置]" 也被推翻)。新策略:8 个 built-in 都视为 GitHub source(其中 4 个
+    /// "[内置]" 也被推翻)。新策略:7 个 built-in 都视为 GitHub source(其中 2 个
     /// 图像模板走 shipped 本地 checkout 但语义上是 GitHub repo 的 source,
     /// 4 个 AI 语音模板是真正 GitHub clone)。
     /// </summary>
@@ -86,28 +86,27 @@ public class TemplateConfig
     /// Whether this template's source can be updated via
     /// <see cref="ComfyUI.Manager.Services.TemplateSourceUpdater.UpdateAsync"/>.
     /// GitHub templates always can (URL is in config). Local templates only if built-in
-    /// (ComfyUI / Forge / SwarmUI — they have a default repo URL). Custom Local
+    /// (ComfyUI / Forge — they have a default repo URL). Custom Local
     /// templates have no remote.
-    /// v1.0.0.x: A1111 从 built-in 白名单移除(模板已下线),剩 3 个图像模板。
+    /// v1.0.0.x (2026-08-29): A1111 + SwarmUI 从 built-in 白名单移除(模板已下线),剩 2 个图像模板。
     /// v1.0.0+: used by TemplateManagementView "更新源码" button Visibility binding.
     /// </summary>
     [JsonIgnore]
     public bool CanUpdateSource => SourceKind == TemplateSourceKind.GitHub
         || Kind == "ComfyUI"
-        || Kind == "Forge"
-        || Kind == "SwarmUI";
+        || Kind == "Forge";
 
     /// <summary>
     /// Whether the user can delete this template from the management UI. Built-in
     /// templates are protected (G13) — they always exist as canonical templates.
-    /// v1.0.0.x: extended to 7 built-in kinds (ComfyUI + Forge + SwarmUI +
-    /// OpenVoice + Whisper + CoquiTTS + Bark;A1111 已下线不再 protect)。
+    /// v1.0.0.x (2026-08-29): 7 built-in kinds (ComfyUI + Forge +
+    /// OpenVoice + Whisper + CoquiTTS + Bark;A1111 + SwarmUI 已下线不再 protect)。
     /// Hides the grayed-out Delete button on built-in cards.
     /// </summary>
     [JsonIgnore]
     public bool CanDelete => Kind switch
     {
-        "ComfyUI" or "Forge" or "SwarmUI"
+        "ComfyUI" or "Forge"
             or "OpenVoice" or "Whisper" or "CoquiTTS" or "Bark" => false,
         _ => true,
     };

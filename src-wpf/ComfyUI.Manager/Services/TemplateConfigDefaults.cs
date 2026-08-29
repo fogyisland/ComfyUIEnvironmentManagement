@@ -6,9 +6,12 @@ namespace ComfyUI.Manager.Services;
 /// v1.0.0 multi-template: built-in default TemplateConfig singletons.
 /// Used by SettingsDefaults.Apply to seed on first run. Read-only after construction.
 ///
-/// v1.0.0.x: 加 6 个 built-in — Forge/SwarmUI(本地 shipped,但之前没注册 → #497 用户
+/// v1.0.0.x: 加 6 个 built-in — Forge(本地 shipped,但之前没注册 → #497 用户
 /// 看到「只有 2 个模板」)+ OpenVoice/Whisper/CoquiTTS/Bark(GitHub clone,AI 语音服务)。
-/// 所有 8 个 kind 都受 G13 delete 保护(改 <see cref="TemplateConfig.CanDelete"/>)。
+/// v1.0.0.x (2026-08-29): SwarmUI 已下线 — ProcessLauncher 的 Python 假设对 SwarmUI
+/// (.NET app)functional break,venv python 不存在 + Models junction 路径错 +
+/// PYTHONPATH 无意义。用户决定去掉 SwarmUI 模板。剩 7 个 built-in 都受 G13 delete
+/// 保护(改 <see cref="TemplateConfig.CanDelete"/>)。
 /// </summary>
 public static class TemplateConfigDefaults
 {
@@ -17,11 +20,12 @@ public static class TemplateConfigDefaults
     // 所以 default 直接写 "<Kind>"(<system_template_library_dir>/ComfyUI),**不**加
     // "envTemplates/" 前缀 — 加了会被 resolve 成 <system_template_library_dir>/envTemplates/ComfyUI
     // 多一层(用户 2026-08-26 反馈 git clone 创建了 nested envTemplate/envtemplate/ 子目录)。
-    // 3 个 image templates (ComfyUI/Forge/SwarmUI) 老 settings 里就是这个形式
+    // 2 个 image templates (ComfyUI/Forge) 老 settings 里就是这个形式
     // (LocalSourceDir = "<Kind>"),4 个 GitHub AI voice (OpenVoice/Whisper/CoquiTTS/Bark)
-    // 是新建,统一对齐。v1.0.0.x: A1111 模板已下线(Stability-AI/stablediffusion
-    // 仓库已从 github 移除,A1111 pre-flight + sdweb 启动都 fail paths.py:34),
-    // 不再 seed,Forge 替代 SD 角色。
+    // 是新建,统一对齐。v1.0.0.x: A1111 + SwarmUI 模板已下线 — A1111 因
+    // Stability-AI/stablediffusion 仓库已从 github 移除,SwarmUI 因 ProcessLauncher
+    // Python 假设 functional break(A1111 pre-flight + sdweb 启动都 fail paths.py:34;
+    // SwarmUI 是 .NET app,venv python 不存在)。Forge 替代 SD 角色。
     public static TemplateConfig ComfyUi(string projectRoot) => new()
     {
         Name = "ComfyUI",
@@ -66,24 +70,6 @@ public static class TemplateConfigDefaults
             ["author"] = "lllyasviel",
             ["repo"] = "https://github.com/lllyasviel/stable-diffusion-webui-forge",
         },
-    };
-
-    /// <summary>
-    /// v1.0.0.x: SwarmUI (StableSwarmUI) — Multi-platform launcher 脚本(.bat / .sh)。
-    /// Windows 用 Launch-windows.bat;macOS/Linux 用对应 .sh。这里 entry script
-    /// 留 Launch-windows.bat,跨平台启动由 EnvCreator / ProcessLauncher 根据 OS 决定
-    /// 实际执行哪个脚本(用户也可手动改 entry)。
-    /// </summary>
-    public static TemplateConfig SwarmUi(string projectRoot) => new()
-    {
-        Name = "SwarmUI",
-        Kind = "SwarmUI",
-        LocalSourceDir = "SwarmUI",
-        EntryScript = "Launch-windows.bat",
-        EntryArgs = "",
-        ModelsSubdir = "Models",
-        ExtraJunctionTargets = new(),
-        UserExtraArgs = "",
     };
 
     /// <summary>

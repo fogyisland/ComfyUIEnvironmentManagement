@@ -27,7 +27,7 @@ namespace ComfyUI.Manager.Services;
 ///   4. <c>git clone</c> 3 个 repos 到 <c>&lt;envRoot&gt;/repositories/</c>(已存在 skip)
 ///
 /// 触发入口:RequirementsInstaller.InstallAsync 头部按 <c>env.TemplateKind</c> dispatch
-/// (Forge → 走这里,ComfyUI / SwarmUI 走老 requirements.txt 路径)。
+/// (Forge → 走这里,ComfyUI 走老 requirements.txt 路径;SwarmUI 已下线)。
 /// 成功 marker:<see cref="ForgePreFlightConstants.MarkerFileName"/>。
 /// </summary>
 public class ForgePreFlightInstaller

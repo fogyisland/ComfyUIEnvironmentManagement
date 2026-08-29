@@ -69,8 +69,9 @@ public class EnvironmentListViewModel : ViewModelBase
 
     // v1.0.0.x:Forge BED inline 状态面板(env 行「安装基础环境」按钮触发后)。
     // 跟 RequirementsStatusViewModel / BaseEnvUninstallStatusViewModel 同模式 — 完成 →
-    // 2s 自动 Hide;失败 → 等用户关。ComfyUI / SwarmUI env 走老 OpenBaseEnvProgressForSingleEnvAsync
+    // 2s 自动 Hide;失败 → 等用户关。ComfyUI env 走老 OpenBaseEnvProgressForSingleEnvAsync
     // 路径(弹 dialog),只有 Forge env 才走这里(不弹框,inline panel 显示进度)。
+    // SwarmUI 已下线,不再引用。
     public BaseEnvStatusViewModel? BaseEnvStatus { get; private set; }
 
     /// <summary>

@@ -16,8 +16,8 @@ namespace ComfyUI.Manager.ViewModels;
 /// <summary>
 /// v1.0.0 multi-template: sidebar page VM. Lists + adds + edits + deletes templates.
 /// Built-in 7 个内置模板 are protected from delete (G13):
-    /// ComfyUI / Forge / SwarmUI / OpenVoice / Whisper / CoquiTTS / Bark。
-    /// v1.0.0.x: A1111 模板已下线,不再 seed。
+    /// ComfyUI / Forge / OpenVoice / Whisper / CoquiTTS / Bark。
+    /// v1.0.0.x: A1111 + SwarmUI 模板已下线,不再 seed。
 /// </summary>
 public class TemplateManagementViewModel : ViewModelBase
 {
@@ -292,8 +292,9 @@ public class TemplateManagementViewModel : ViewModelBase
         // v1.0.0.x: A1111 模板已下线,这里不再返回 AUTOMATIC1111 repo URL —
         // Stability-AI/stablediffusion 仓库已从 github 移除,即便本地有 A1111 env
         // 也无法 git clone 上游源码。Forge 用 huggingface_guess 替代 SD core,继续维护。
+        // v1.0.0.x (2026-08-29): SwarmUI 模板已下线 — ProcessLauncher Python 假设对
+        // SwarmUI functional break,这里不再返回 StableSwarmUI repo URL。
         "Forge" => "https://github.com/lllyasviel/stable-diffusion-webui-forge.git",
-        "SwarmUI" => "https://github.com/mcmonkeyprojects/StableSwarmUI.git",
         _ => "",
     };
 }

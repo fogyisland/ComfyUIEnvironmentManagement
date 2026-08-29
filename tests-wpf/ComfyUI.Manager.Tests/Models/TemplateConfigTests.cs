@@ -194,13 +194,6 @@ public class TemplateConfigTests
     }
 
     [Fact]
-    public void CanDelete_BuiltInSwarmUI_False()
-    {
-        var cfg = new TemplateConfig { Kind = "SwarmUI", SourceKind = TemplateSourceKind.Local };
-        Assert.False(cfg.CanDelete);
-    }
-
-    [Fact]
     public void CanDelete_BuiltInOpenVoice_False()
     {
         var cfg = new TemplateConfig { Kind = "OpenVoice", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
@@ -228,19 +221,12 @@ public class TemplateConfigTests
         Assert.False(cfg.CanDelete);
     }
 
-    // --- v1.0.0.x: Forge/SwarmUI 加 built-in repo URL,可走 UpdateAsync ---
+    // --- v1.0.0.x: Forge 加 built-in repo URL,可走 UpdateAsync ---
 
     [Fact]
     public void CanUpdateSource_BuiltInForge_True()
     {
         var cfg = new TemplateConfig { Kind = "Forge", SourceKind = TemplateSourceKind.Local };
-        Assert.True(cfg.CanUpdateSource);
-    }
-
-    [Fact]
-    public void CanUpdateSource_BuiltInSwarmUI_True()
-    {
-        var cfg = new TemplateConfig { Kind = "SwarmUI", SourceKind = TemplateSourceKind.Local };
         Assert.True(cfg.CanUpdateSource);
     }
 
@@ -290,8 +276,8 @@ public class TemplateConfigTests
     public void LocalDirExists_DirectoryWithGitSubdir_True()
     {
         // 标准 git clone 产物 → .git 子目录就足以判定就位(即使其它文件还没完全 clone,
-        // 因为 .git 是 clone 第一步产物)。这是 shipped ComfyUI/Forge/SwarmUI 等路径的典型形态。
-        // v1.0.0.x: A1111 模板已下线,不再列入典型形态。
+        // 因为 .git 是 clone 第一步产物)。这是 shipped ComfyUI/Forge 等路径的典型形态。
+        // v1.0.0.x: A1111 + SwarmUI 模板已下线,不再列入典型形态。
         var dir = Path.Combine(Path.GetTempPath(), "tmplcfg-git-" + Path.GetRandomFileName());
         Directory.CreateDirectory(dir);
         Directory.CreateDirectory(Path.Combine(dir, ".git"));

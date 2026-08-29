@@ -86,16 +86,16 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
         Assert.False(env.IsBaseEnvInstalled);
     }
 
-    // v1.0.0.x:ComfyUI-Manager 是 ComfyUI 专属 custom_nodes extension,SD Web(A1111 / Forge / SwarmUI)
+    // v1.0.0.x:ComfyUI-Manager 是 ComfyUI 专属 custom_nodes extension,SD Web(A1111 / Forge)
     // 用 extensions 体系,没 ComfyUI-Manager 概念。「安装 ComfyUI Manager」按钮在非 ComfyUI
     // kind 上不应出现(否则用户点了会 git clone ComfyUI-Manager 到 SD Web 的 custom_nodes,
     // 但 ComfyUI-Manager 只能装 ComfyUI 依赖,SD Web 用不上)。装依赖 按钮保留 —
     // SD Web 也有非 torch 依赖(xformers / clip / gradio / Pillow 等)要装。
+    // v1.0.0.x (2026-08-29): SwarmUI 模板已下线,从 InlineData 列表移除。
     [Theory]
     [InlineData("ComfyUI", true)]
     [InlineData("A1111", false)]
     [InlineData("Forge", false)]
-    [InlineData("SwarmUI", false)]
     public void Model_ComfyUiManagerButtonVisible_TrueOnlyForComfyUIKind(string kind, bool expected)
     {
         var env = new Environment
@@ -117,13 +117,13 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
     }
 
     // v1.0.0.x:「安装本地常用」是 ComfyUI custom_nodes 专属 — 用户预下载的节点包
-    // 逐个 copy 到 env/custom_nodes/。A1111 用 extensions/ 体系,SwarmUI 用自己的
-    // Modules 目录,跟 ComfyUI custom_nodes 不兼容。A1111/Forge/SwarmUI 不显示此按钮。
+    // 逐个 copy 到 env/custom_nodes/。A1111 用 extensions/ 体系,跟 ComfyUI
+    // custom_nodes 不兼容。A1111/Forge 不显示此按钮。
+    // v1.0.0.x (2026-08-29): SwarmUI 模板已下线,从 InlineData 列表移除。
     [Theory]
     [InlineData("ComfyUI", true)]
     [InlineData("A1111", false)]
     [InlineData("Forge", false)]
-    [InlineData("SwarmUI", false)]
     public void Model_LocalNodesButtonVisible_TrueOnlyForComfyUIKind(string kind, bool expected)
     {
         var env = new Environment
@@ -143,14 +143,13 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
     }
 
     // v1.0.0.x:「节点管理」打开 NodeManagementView,底层操作 custom_nodes/ 目录 +
-    // ScannedNode DB。A1111 / Forge 用 extensions/,SwarmUI 用 Modules 目录,节点
-    // 扫描 / 安装 / 升级无意义 — A1111 / Forge / SwarmUI 不显示此按钮。镜像
-    // LocalNodesButtonVisible 同模式。
+    // ScannedNode DB。A1111 / Forge 用 extensions/,节点扫描 / 安装 / 升级无意义 —
+    // A1111 / Forge 不显示此按钮。镜像 LocalNodesButtonVisible 同模式。
+    // v1.0.0.x (2026-08-29): SwarmUI 模板已下线,从 InlineData 列表移除。
     [Theory]
     [InlineData("ComfyUI", true)]
     [InlineData("A1111", false)]
     [InlineData("Forge", false)]
-    [InlineData("SwarmUI", false)]
     public void Model_NodeManagementButtonVisible_TrueOnlyForComfyUIKind(string kind, bool expected)
     {
         var env = new Environment

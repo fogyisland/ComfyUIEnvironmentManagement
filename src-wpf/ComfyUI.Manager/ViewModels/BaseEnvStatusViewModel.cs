@@ -25,8 +25,9 @@ namespace ComfyUI.Manager.ViewModels;
 /// - 成功 → StatusText 设"BED 完成",延迟 2s 自动 Hide
 /// - 失败/取消 → Error 设原因,IsVisible 保持,等用户手动关(由 UI 提供关闭按钮)
 ///
-/// ComfyUI / SwarmUI env 仍走老 OpenBaseEnvProgressForSingleEnvAsync 路径(走
+/// ComfyUI env 仍走老 OpenBaseEnvProgressForSingleEnvAsync 路径(走
 /// BaseEnvProfilePickerDialog + BaseEnvProgressDialog),只有 Forge env 才走这里。
+/// SwarmUI 已下线,不再引用。
 /// </summary>
 public sealed class BaseEnvStatusViewModel : ViewModelBase
 {

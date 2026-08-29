@@ -11,18 +11,19 @@ public class SettingsDefaultsTemplateSeedTests
         Path.Combine(Path.GetTempPath(), "cmgr-templates-test");
 
     [Fact]
-    public void Apply_EmptySettings_SeedsAllSevenBuiltInTemplates()
+    public void Apply_EmptySettings_SeedsAllSixBuiltInTemplates()
     {
-        // v1.0.0.x: 加 6 个 built-in(Forge/SwarmUI 是 shipped 但漏注册 → #497 修复;
+        // v1.0.0.x: 加 5 个 built-in(Forge 是 shipped 但漏注册 → #497 修复;
         // OpenVoice/Whisper/CoquiTTS/Bark 是 GitHub-cloned AI 语音 defaults)。
-        // v1.0.0.x:A1111 模板已下线,不再 seed(Stability-AI 仓库已从 github 移除)。
+        // v1.0.0.x:A1111 + SwarmUI 模板已下线,不再 seed(A1111 因 Stability-AI
+        // 仓库从 github 移除;SwarmUI 因 ProcessLauncher Python 假设 functional break)。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.True(s.Templates.ContainsKey("ComfyUI"));
         Assert.False(s.Templates.ContainsKey("A1111"));
         Assert.True(s.Templates.ContainsKey("Forge"));
-        Assert.True(s.Templates.ContainsKey("SwarmUI"));
+        Assert.False(s.Templates.ContainsKey("SwarmUI"));
         Assert.True(s.Templates.ContainsKey("OpenVoice"));
         Assert.True(s.Templates.ContainsKey("Whisper"));
         Assert.True(s.Templates.ContainsKey("CoquiTTS"));
@@ -56,7 +57,8 @@ public class SettingsDefaultsTemplateSeedTests
     [Fact]
     public void Apply_EmptySettings_LocalImageTemplates_AreLocalSourceKind()
     {
-        // v1.0.0.x: Forge/SwarmUI 是本地 shipped,SourceKind = Local,无 GitHubRepoUrl。
+        // v1.0.0.x (2026-08-29): Forge 是本地 shipped,SourceKind = Local,无 GitHubRepoUrl。
+        // SwarmUI 已下线,不再 seed。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -66,9 +68,7 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("webui.py", fg.EntryScript);
         Assert.Equal("--port {port} --api", fg.EntryArgs);
 
-        var sw = s.Templates["SwarmUI"];
-        Assert.Equal(TemplateSourceKind.Local, sw.SourceKind);
-        Assert.Equal("Launch-windows.bat", sw.EntryScript);
+        Assert.False(s.Templates.ContainsKey("SwarmUI"));
     }
 
     [Fact]
@@ -210,18 +210,18 @@ public class SettingsDefaultsTemplateSeedTests
     // --- v1.0.0.x bug #509: LocalSourceDir 嵌套 envTemplates/ 前缀 ---
 
     [Fact]
-    public void Apply_EmptySettings_AllEightBuiltInTemplates_HaveLocalSourceDirWithoutEnvTemplatesPrefix()
+    public void Apply_EmptySettings_AllSixBuiltInTemplates_HaveLocalSourceDirWithoutEnvTemplatesPrefix()
     {
         // v1.0.0.x bug #509: 旧 default 的 LocalSourceDir = "envTemplates\<Kind>",
         // 跟 Settings.SystemTemplateLibraryDir (= 用户配的 ENVTemplate/) 一拼 →
         // <system_template_library_dir>/envTemplates/<Kind> 多一层嵌套。修法:
         // default 直接写 "<Kind>",新装用户走这条路。
+        // v1.0.0.x (2026-08-29): SwarmUI 已下线,从 8 个 built-in 减到 6 个。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
         Assert.Equal("ComfyUI", s.Templates["ComfyUI"].LocalSourceDir);
         Assert.Equal("Forge", s.Templates["Forge"].LocalSourceDir);
-        Assert.Equal("SwarmUI", s.Templates["SwarmUI"].LocalSourceDir);
         Assert.Equal("OpenVoice", s.Templates["OpenVoice"].LocalSourceDir);
         Assert.Equal("Whisper", s.Templates["Whisper"].LocalSourceDir);
         Assert.Equal("CoquiTTS", s.Templates["CoquiTTS"].LocalSourceDir);
