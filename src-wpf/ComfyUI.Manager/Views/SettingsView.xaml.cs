@@ -183,6 +183,65 @@ public partial class SettingsView : UserControl
         }
     }
 
+    // ============ v1.0.0.x (2026-08-29):Forge 模型目录 6 个 per-type 浏览按钮 ============
+    // 镜像 BrowseDefaultModelsDirectory 模式:vm.PickFolder() 返 nullable string,
+    // 非空时写回对应 property(setter 内部 MarkDirty 自动触发 ⚠ 警告)。
+    // x:Name="ForgePathsGroupBox" 仍保留 — JumpToForgePaths.FindName 依赖。
+
+    private void BrowseForgeCheckpointsDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.CheckpointsDir = picked;
+        }
+    }
+
+    private void BrowseForgeLorasDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.LorasDir = picked;
+        }
+    }
+
+    private void BrowseForgeVaeDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.VaeDir = picked;
+        }
+    }
+
+    private void BrowseForgeEmbeddingsDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.EmbeddingsDir = picked;
+        }
+    }
+
+    private void BrowseForgeHypernetworksDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.HypernetworksDir = picked;
+        }
+    }
+
+    private void BrowseForgeControlnetDir(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (picked is not null) vm.ControlnetDir = picked;
+        }
+    }
+
     private void BrowsePythonVenvBaseline(object sender, RoutedEventArgs e)
     {
         if (DataContext is SettingsViewModel vm)
