@@ -605,11 +605,14 @@ public class EnvironmentListViewModel : ViewModelBase
                 var env = p as Environment ?? Selected;
                 if (env is null) return false;
                 if (IsEnvBusy(env)) return false;
-                // v1.0.0.x:Forge env 已装过(标记文件存在)→ 按钮禁用(由 Load 末尾的
-                // 单独列「安装基础环境」text + IsBaseEnvInstalled 决定;此处仅负责
-                // 阻止重复触发 inline panel)。
-                if (env.TemplateKind == "Forge"
-                    && ForgeBaseEnvInstaller.IsInstalled(env)) return false;
+                // v1.0.0.x (2026-08-29):删 #711 留下的 Forge 专用禁用 ——
+                // 旧逻辑("已装 BED → 按钮禁用" 防止重复触发 inline panel)在 Load
+                // 末尾已装时把 BaseEnvButtonText 设成"卸载基础环境",用户期望点
+                // 卸载重置 BedStatus,但按钮禁用 → 文字说卸载点不动。toggle 路由
+                // (ToggleBaseEnvAsync)已根据 IsBaseEnvInstalled 分流:已装 →
+                // UninstallBaseEnvAsync(不会重开 inline panel),未装 →
+                // OpenBaseEnvProgressAsync。busy 场景由 IsEnvBusy 覆盖(per-env
+                // mutex 拦并发 BED install/uninstall)。
                 return true;
             });
         // v1.0.0.x #577:env 行末位「安装本地常用」按钮 — 单向 install(不 toggle,没有
