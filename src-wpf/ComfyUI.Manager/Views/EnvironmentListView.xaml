@@ -482,13 +482,23 @@
                                             ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
                                     <!-- v0.6.11+ T1:Requirements toggle — 已装显"卸依赖",未装显"装依赖",
                                          busy 时按钮灰 + label 变"装依赖中..."/"卸依赖中..."。
-                                         复用现有 RequirementsStatus inline 面板显示进度。 -->
-                                    <Button Grid.Row="0" Grid.Column="2" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.ToggleRequirementsCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
+                                         复用现有 RequirementsStatus inline 面板显示进度。
+                                         v1.0.0.x (2026-08-29):Forge 不显示 ——
+                                         Forge pre-flight 由 launch_utils.py 在 launch.py 启动时自动
+                                         idempotent 跑,无需手动触发(launch_utils 检查
+                                         .forge_preflight_installed marker 决定 skip)。手动按钮反而
+                                         多此一举。同 Col 3 / Col 4 placeholder pattern 保持 Row 0 视觉密度。 -->
+                                    <Grid Grid.Row="0" Grid.Column="2" Margin="2">
+                                        <Button Content="{Binding RequirementsButtonText}" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Visibility="{Binding RequirementsButtonVisible, Converter={StaticResource BoolToVisibility}}"
+                                                Command="{Binding DataContext.ToggleRequirementsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
+                                        <Border Background="Transparent" CornerRadius="4"
+                                                Visibility="{Binding RequirementsButtonVisible, Converter={StaticResource InverseBoolToVisibility}}" />
+                                    </Grid>
                                     <!-- v0.6.11+ T4:ComfyUI Manager toggle — git clone 网络源 + 装 requirements.txt;
                                          跟「安装本地常用」并列,语义不同(后者走 Settings.LocalNodesDirectory 本地预装包)。
                                          v1.0.0.x:Forge 不显示(ComfyUI-Manager 是 ComfyUI 专属)。

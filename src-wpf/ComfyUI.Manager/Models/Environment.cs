@@ -92,6 +92,21 @@ public class Environment
     public bool ComfyUiManagerButtonVisible => TemplateKind == "ComfyUI";
 
     /// <summary>
+    /// v1.0.0.x (2026-08-29):Forge env 行不显示「装/卸依赖」按钮 ——
+    /// Forge 的 pre-flight(clip + open_clip zip + requirements_versions.txt + git clone 3 repos)
+    /// 由 lllyasviel/stable-diffusion-webui-forge launch_utils.py 在 launch.py 启动时 idempotent
+    /// 自动跑(检查 `.forge_preflight_installed` marker 决定 skip),不需要用户在 env-list 行
+    /// 手动触发。本工具手动「装依赖」按钮 = ForgePreFlightInstaller.InstallAsync ——
+    /// 跟 launch_utils.py 跑同一份代码,只是把 4 件事从「每次 launch」前置到「一次性」,
+    /// 用户体感反而多一个无意义按钮。
+    /// ComfyUI / OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX /
+    /// Fooocus 保留「装/卸依赖」按钮 — 它们有各自独立的 requirements.txt 要 pip install。
+    /// 镜像 <see cref="ComfyUiManagerButtonVisible"/> 同模式(inverse:对 ComfyUI 显示对 Forge 隐藏)。
+    /// </summary>
+    [JsonIgnore]
+    public bool RequirementsButtonVisible => TemplateKind != "Forge";
+
+    /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
     /// (Settings.LocalNodesDirectory 下每个子包都已在 env/custom_nodes/),false = 未装或不全。
     /// Load 末尾重新算(LocalNodeInstaller.IsInstalled),不持久化(同 IsComfyUiManagerInstalled pattern)。
