@@ -85,4 +85,33 @@ public static class ForgePreFlightConstants
             "https://github.com/mlfoundations/open_clip/archive/bb6e834e9c70d9c27d0dc3ecedeebeaeb1ffad6b.zip",
             "open_clip"),
     };
+
+    /// <summary>
+    /// extensions-builtin 子目录名(跟 Forge <c>modules/paths_internal.py</c>
+    /// <c>extensions_builtin_dir</c> 同步)。Forge pre-flight step 4.5 扫这个
+    /// 子目录下的 <c>requirements.txt</c> 合并装齐 extension 依赖。
+    /// </summary>
+    public const string ExtensionsBuiltinDir = "extensions-builtin";
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):Forge extensions-builtin 顶层 import 但**没**在 ext
+    /// 自己的 <c>requirements.txt</c> 声明的隐性依赖 hardcode list。Forge 启动
+    /// <c>webui.py</c> 时 <c>modules/scripts.py:load_scripts()</c> 遍历 ext 加载,
+    /// 顶层 <c>import X</c> 失败的 ext 会**整段 traceback 打印 + 该 ext 不挂载**,
+    /// 而 Forge 上游的 <c>prepare_environment()</c> 不会扫 ext 的 <c>requirements.txt</c>
+    /// — 只装顶层 <c>requirements_versions.txt</c>,所以 ext 自己漏声明的依赖
+    /// 必须由 pre-flight 提前装齐。
+    ///
+    /// 当前已知 hardcode 列表(用户 2026-08-29 soft-inpainting 启动 crash:
+    /// <c>ModuleNotFoundError: No module named 'joblib'</c>):
+    ///   - <c>joblib</c>:soft-inpainting/scripts/soft_inpainting.py:10 顶层
+    ///     <c>from joblib import Parallel, delayed, cpu_count</c>(加权直方图并行),
+    ///     该 ext 没 <c>requirements.txt</c>。
+    ///
+    /// 用户后续报告新隐性 dep → 加这里一行即可(centralized list 便于 review / test)。
+    /// </summary>
+    public static readonly IReadOnlyList<string> ExtensionsBuiltinImplicitDeps = new[]
+    {
+        "joblib",
+    };
 }

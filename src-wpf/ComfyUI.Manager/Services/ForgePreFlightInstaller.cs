@@ -19,7 +19,7 @@ namespace ComfyUI.Manager.Services;
 /// 那 2 个 sd core 已经被 Forge 注释掉了,因为 Stability-AI/stablediffusion 仓库
 /// 已从 github 移除)。
 ///
-/// 4 件事执行顺序:
+/// 5 件事执行顺序:
 ///   1. <c>pip install openai/CLIP/archive/{hash}.zip --no-build-isolation</c>
 ///   2. <c>pip install mlfoundations/open_clip/archive/{hash}.zip --no-build-isolation</c>
 ///   3a. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt</c>(过滤裸 torch 行 + pytorch_lightning,
@@ -27,6 +27,11 @@ namespace ComfyUI.Manager.Services;
 ///      fastapi → starlette、pydantic → typing-extensions 等)
 ///   3b. <c>pip install pytorch_lightning==1.9.4 --no-deps</c>(要求 torch&lt;2.0 与 BED 锁的
 ///      torch 2.4.0+cu121 冲突,必须 --no-deps 防止 pip 自动降级 torch 丢失 CUDA wheel)
+///   3c. <c>pip install &lt;pytorch_lightning 自己的 transitive deps&gt;</c>(从已装的
+///      <c>.dist-info/METADATA</c> parse 出来;补 lightning-utilities / torchmetrics 等)
+///   4.5. <c>pip install &lt;extensions-builtin 合并 deps&gt;</c>(扫所有 ext 自己的
+///      <c>requirements.txt</c> + hardcode 列表如 <c>joblib</c>;补 soft-inpainting
+///      这类没 <c>requirements.txt</c> 但顶层 import 失败导致 webui.py 启动 crash 的 ext)
 ///   4. <c>git clone</c> 3 个 repos 到 <c>&lt;envRoot&gt;/repositories/</c>(已存在 skip)
 ///
 /// 触发入口:RequirementsInstaller.InstallAsync 头部按 <c>env.TemplateKind</c> dispatch
@@ -76,7 +81,7 @@ public class ForgePreFlightInstaller
             throw new ArgumentException("env.RootPath 为空", nameof(env));
 
         _logger?.Info("forge-preflight",
-            $"env='{env.Name}' kind='{env.TemplateKind}' 开始 Forge pre-flight (4 步)");
+            $"env='{env.Name}' kind='{env.TemplateKind}' 开始 Forge pre-flight (5 步)");
         logProgress?.Report($"[forge-preflight] env='{env.Name}' 开始 pre-flight");
 
         var pythonExe = ResolveVenvPython(env);
@@ -211,6 +216,40 @@ public class ForgePreFlightInstaller
                     $"pip install pytorch_lightning transitive deps ({string.Join(",", ptlDeps)})");
         }
 
+        // 4.5. v1.0.0.x (2026-08-29):extensions-builtin implicit deps —
+        //     合并收集 ext 自己声明的(扫 <c>extensions-builtin/*/requirements.txt</c>)
+        //     + hardcode 的隐式依赖(<see cref="ForgePreFlightConstants.ExtensionsBuiltinImplicitDeps"/>,
+        //     例如 soft-inpainting 顶层 import joblib 但没 requirements.txt),
+        //     一次性 pip install。
+        //     跟 step 3a 一样**不**加 --no-deps,让 pip 自动拉 transitive deps
+        //     (joblib → loky / multiprocess 等),joblib 等大部分包 step 3a
+        //     装的 huggingface-hub/scipy 等会间接拉上,pip sees satisfied → no-op。
+        //     唯一真正生效的是 hardcode 列表 + ext 自家没被 step 3a 拉的 deps。
+        //     这是为 Forge 启动时 soft-inpainting 不再 ModuleNotFoundError crash
+        //     的修复(用户 2026-08-29 反馈)。空 list → skip,不阻断。
+        var extDeps = CollectExtensionsBuiltinDeps(env);
+        if (extDeps.Count > 0)
+        {
+            logProgress?.Report(
+                $"[forge-preflight] stage:extensions-builtin deps ({extDeps.Count} pkgs)");
+            var extDepsArgs = new List<string> { "install" };
+            extDepsArgs.AddRange(extDeps);
+            extDepsArgs.Add("--disable-pip-version-check");
+            var extDepsResult = await RunPipAsync(
+                pythonExe,
+                extDepsArgs,
+                line => logProgress?.Report(line),
+                ct);
+            if (!IsPipOk(extDepsResult))
+                return FailFrom(extDepsResult,
+                    $"pip install extensions-builtin deps ({string.Join(",", extDeps)})");
+        }
+        else
+        {
+            logProgress?.Report(
+                "[forge-preflight] stage:extensions-builtin deps (none)");
+        }
+
         // 4. git clone 3 repos(每个独立 try/catch + IsInstalled skip,失败不阻断后续 repo;
         //    最后整体成功判断,只要全部存在或 clone 成功 → success)
         logProgress?.Report("[forge-preflight] stage:git clone 3 repos");
@@ -237,8 +276,8 @@ public class ForgePreFlightInstaller
                 $"env='{env.Name}' marker 写失败(ex={ex.Message});下次装依赖会被短路");
         }
 
-        _logger?.Info("forge-preflight", $"env='{env.Name}' pre-flight 完成(3 pip + 3 repos)");
-        logProgress?.Report("[forge-preflight] ✓ 完成(3 pip + 3 repos)");
+        _logger?.Info("forge-preflight", $"env='{env.Name}' pre-flight 完成(4 pip + 3 repos)");
+        logProgress?.Report("[forge-preflight] ✓ 完成(4 pip + 3 repos)");
         return new RequirementsInstallResult(
             Success: true, Cancelled: false, Reason: null, InstalledCount: 0);
     }
@@ -614,5 +653,93 @@ public class ForgePreFlightInstaller
         string? ErrorMessage)
     {
         public bool Ok => ErrorMessage is null && (Result is null || Result.Ok);
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):step 4.5 — 合并收集 Forge extensions-builtin
+    /// 的 Python 依赖。来源 2 路:
+    ///   1) 扫 <c>&lt;envRoot&gt;/extensions-builtin/*/requirements.txt</c>
+    ///      (ext 自己声明的)→ 解析每行包名,合并去重。
+    ///   2) 加 <see cref="ForgePreFlightConstants.ExtensionsBuiltinImplicitDeps"/>
+    ///      (顶层 import 但 ext 漏声明的隐性依赖,例如 soft-inpainting 缺 joblib)。
+    ///
+    /// 不调用 pip(由 caller 在拿到结果后统一 RunPipAsync,镜像 step 3c 的 pattern)。
+    /// 过滤规则跟 <see cref="FilterConflictingLines"/> 对齐:ext req 里的
+    /// 裸 torch / pytorch_lightning 行跳过(BED 锁版本不能动),避免这里拼出来
+    /// 又触发 pip resolver 降级 BED torch。
+    ///
+    /// 返回空 list = env 无 extensions-builtin 子目录 / 全部 ext 都无
+    /// requirements.txt / 解析失败 —— caller 走 skip,视为成功(pre-flight 不阻断)。
+    ///
+    /// 用 <paramref name="envRoot"/> 显式传 env 根,避免依赖 Environment 实例
+    /// (跟 ParsePytorchLightningRequiresDist 保持一致传 env 风格)。
+    /// </summary>
+    internal static List<string> CollectExtensionsBuiltinDeps(Environment env)
+    {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 路 1:扫 extensions-builtin/<extName>/requirements.txt (仅顶层 ext 目录,
+        // 防止误吞 nested 副本 — 例如 forge_preprocessor_normalbae/annotator/.../
+        // efficientnet_repo/requirements.txt 是 sub-package 自己的依赖,
+        // 跟 ext 启动无关)。
+        var extBuiltinRoot = Path.Combine(env.RootPath,
+            ForgePreFlightConstants.ExtensionsBuiltinDir);
+        if (Directory.Exists(extBuiltinRoot))
+        {
+            foreach (var extDir in Directory.EnumerateDirectories(extBuiltinRoot))
+            {
+                var reqFile = Path.Combine(extDir, "requirements.txt");
+                if (!File.Exists(reqFile)) continue;
+                string[] lines;
+                try
+                {
+                    lines = File.ReadAllLines(reqFile);
+                }
+                catch
+                {
+                    continue;
+                }
+                foreach (var raw in lines)
+                {
+                    var pkg = ExtractReqPackageName(raw);
+                    if (pkg is null) continue;
+                    // 跳过 torch 系列(防 pip resolver 降级 BED 锁的 torch 2.4.0+cu121)
+                    if (pkg.Equals("torch", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (pkg.Equals("torchvision", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (pkg.Equals("torchaudio", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!seen.Add(pkg)) continue;
+                    result.Add(pkg);
+                }
+            }
+        }
+
+        // 路 2:hardcode 的 implicit deps(没声明但顶层 import 的)
+        foreach (var pkg in ForgePreFlightConstants.ExtensionsBuiltinImplicitDeps)
+        {
+            if (!seen.Add(pkg)) continue;
+            result.Add(pkg);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 从单行 requirements.txt 解析出首个包名 token。
+    /// 处理:leading whitespace / 注释 / `-r` / `-e` 等 marker / extras / 版本约束。
+    /// 失败 / 跳过 → 返 null(caller 跳过该行)。
+    /// </summary>
+    private static string? ExtractReqPackageName(string rawLine)
+    {
+        if (string.IsNullOrWhiteSpace(rawLine)) return null;
+        var s = rawLine.TrimStart();
+        // 注释 / pip options(`-r other.txt` / `-e .` / `--hash=...`)
+        if (s.Length == 0) return null;
+        if (s[0] == '#') return null;
+        if (s[0] == '-') return null;
+        var match = System.Text.RegularExpressions.Regex.Match(
+            s, @"^([A-Za-z0-9][A-Za-z0-9_.\-]*)");
+        if (!match.Success) return null;
+        return match.Groups[1].Value;
     }
 }

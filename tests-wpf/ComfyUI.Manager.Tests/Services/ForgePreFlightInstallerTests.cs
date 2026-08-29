@@ -117,6 +117,7 @@ public class ForgePreFlightInstallerTests : IDisposable
         public bool FailOnReq { get; set; }
         public bool FailOnPytorchLightning { get; set; }
         public bool FailOnPytorchLightningDeps { get; set; }
+        public bool FailOnExtensionsDeps { get; set; }
         public bool FailOnRepoClone { get; set; }
 
         public CapturingInstaller() : base() { }
@@ -149,11 +150,16 @@ public class ForgePreFlightInstallerTests : IDisposable
             // step 3c: 装 pytorch_lightning 的 transitive deps(多个包,不含 pytorch_lightning 前缀)
             var isPytorchLightningDeps = !isPytorchLightning && pipArgs.Any(a =>
                 a.Contains("lightning-utilities") || a.Contains("torchmetrics"));
+            // step 4.5: 装 extensions-builtin 合并 deps — 特征:装 joblib(隐式),
+            // 跟 step 3c 的 lightning-utilities/torchmetrics 不重合。
+            var isExtensionsDeps = !isPytorchLightning && !isPytorchLightningDeps &&
+                                   pipArgs.Any(a => a.Contains("joblib"));
             var result = (isClip && FailOnClip) ||
                          (isOpenClip && FailOnOpenClip) ||
                          (isReqFile && FailOnReq) ||
                          (isPytorchLightning && FailOnPytorchLightning) ||
-                         (isPytorchLightningDeps && FailOnPytorchLightningDeps)
+                         (isPytorchLightningDeps && FailOnPytorchLightningDeps) ||
+                         (isExtensionsDeps && FailOnExtensionsDeps)
                 ? new PipResult(1, WasCancelled: false)
                 : new PipResult(0, WasCancelled: false);
             return Task.FromResult(result);
@@ -463,5 +469,140 @@ public class ForgePreFlightInstallerTests : IDisposable
         var content = File.ReadAllLines(
             Path.Combine(env.RootPath, "requirements_versions.txt"));
         Assert.Contains(content, l => l.TrimStart().StartsWith("torch"));
+    }
+
+    // ====================================================================
+    // v1.0.0.x (2026-08-29):step 4.5 — extensions-builtin implicit deps
+    // 覆盖:扫 ext requirements.txt + hardcode list(soft-inpainting 的 joblib)
+    //      + dedup + 跳 torch 系列 + nested req 文件不误吞 + 空 dir 不报错
+    // ====================================================================
+
+    /// <summary>
+    /// fixture 写一个 extensions-builtin 子目录 + requirements.txt(模拟
+    /// sd_forge_controlnet 之类),验证 CollectExtensionsBuiltinDeps 把里面的
+    /// 包名解析出来。
+    /// </summary>
+    private static void SeedExtensionRequirements(Environment env, string extName, params string[] reqLines)
+    {
+        var dir = Path.Combine(env.RootPath,
+            ForgePreFlightConstants.ExtensionsBuiltinDir, extName);
+        Directory.CreateDirectory(dir);
+        File.WriteAllLines(Path.Combine(dir, "requirements.txt"), reqLines);
+    }
+
+    [Fact]
+    public void CollectExtensionsBuiltinDeps_ReadsDeclaredRequirementsFiles()
+    {
+        // ext 自己声明的 requirements.txt → 应进入合并列表
+        var env = SeedEnv();
+        SeedExtensionRequirements(env, "sd_forge_controlnet",
+            "fvcore", "mediapipe", "onnxruntime", "opencv-python>=4.8.0", "svglib");
+
+        var deps = ForgePreFlightInstaller.CollectExtensionsBuiltinDeps(env);
+
+        Assert.Contains("fvcore", deps);
+        Assert.Contains("mediapipe", deps);
+        Assert.Contains("onnxruntime", deps);
+        Assert.Contains("opencv-python", deps);
+        Assert.Contains("svglib", deps);
+    }
+
+    [Fact]
+    public void CollectExtensionsBuiltinDeps_AlwaysIncludesHardcodedImplicitList()
+    {
+        // 即使 env 里没有任何 ext 的 requirements.txt,hardcode 列表(joblib 等)
+        // 也要进入合并 — 这是 soft-inpainting 没 requirements.txt 但顶层
+        // import joblib 仍能装上的关键修复(用户 2026-08-29 反馈)。
+        var env = SeedEnv();
+        // 不 SeedExtensionRequirements — env 里没 extensions-builtin 子目录
+
+        var deps = ForgePreFlightInstaller.CollectExtensionsBuiltinDeps(env);
+
+        // hardcode 列表至少含 joblib;用户后续报告新隐性 dep → 加
+        // ForgePreFlightConstants.ExtensionsBuiltinImplicitDeps 即可。
+        Assert.Contains("joblib", deps);
+    }
+
+    [Fact]
+    public void CollectExtensionsBuiltinDeps_DedupAndStripsTorchSeries()
+    {
+        // dedup:多个 ext 声明同一个包,合并后只留 1 个(避免 pip 装两遍触发警告)
+        // + 跳 torch / torchvision / torchaudio(BED 锁版本,装它会降级)
+        var env = SeedEnv();
+        SeedExtensionRequirements(env, "ext_a", "fvcore", "torch", "numpy");
+        SeedExtensionRequirements(env, "ext_b", "fvcore", "torchvision", "torchaudio");
+
+        var deps = ForgePreFlightInstaller.CollectExtensionsBuiltinDeps(env);
+
+        // fvcore 出现一次(不是 2 次)
+        Assert.Single(deps, d => d.Equals("fvcore", StringComparison.OrdinalIgnoreCase));
+        // torch 系列被过滤
+        Assert.DoesNotContain(deps, d => d.Equals("torch", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(deps, d => d.Equals("torchvision", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(deps, d => d.Equals("torchaudio", StringComparison.OrdinalIgnoreCase));
+        // numpy 保留
+        Assert.Contains(deps, d => d.Equals("numpy", StringComparison.OrdinalIgnoreCase));
+        // hardcode 列表(joblib)仍出现
+        Assert.Contains("joblib", deps);
+    }
+
+    [Fact]
+    public void CollectExtensionsBuiltinDeps_IgnoresNestedSubPackageRequirementsFiles()
+    {
+        // 防误吞 nested 副本 — forge_preprocessor_normalbae/annotator/normalbae/
+        // models/submodules/efficientnet_repo/requirements.txt 是 sub-package 自己的
+        // 依赖(跟 ext 启动无关,跟 sub-package 的 setup.py 有关),CollectExtensionsBuiltinDeps
+        // 只看 extensions-builtin/<extName>/requirements.txt 这一层,跳过 deeper nest。
+        var env = SeedEnv();
+        SeedExtensionRequirements(env, "real_ext", "fvcore");
+        // 模拟 nested sub-package
+        var nestedReq = Path.Combine(env.RootPath,
+            ForgePreFlightConstants.ExtensionsBuiltinDir,
+            "real_ext", "annotator", "submodules", "efficientnet_repo");
+        Directory.CreateDirectory(nestedReq);
+        File.WriteAllText(Path.Combine(nestedReq, "requirements.txt"),
+            "this-should-be-ignored-package\n");
+
+        var deps = ForgePreFlightInstaller.CollectExtensionsBuiltinDeps(env);
+
+        Assert.Contains("fvcore", deps);
+        Assert.DoesNotContain(deps, d => d.Contains("this-should-be-ignored"));
+    }
+
+    [Fact]
+    public async Task InstallAsync_Step45ExtensionsDeps_RunsAndDoesNotWriteMarkerOnFail()
+    {
+        // 端到端:step 4.5 失败 → 整个 pre-flight fail,marker 不写。
+        // 这跟 step 3a/3b/3c 失败的契约一致 — 失败留给下次用户重跑 pre-flight 补做。
+        var env = SeedEnv();
+        SeedExtensionRequirements(env, "dummy_ext", "fake-pkg-a");
+        var installer = new CapturingInstaller { FailOnExtensionsDeps = true };
+
+        var result = await installer.InstallAsync(env);
+
+        Assert.False(result.Success);
+        Assert.Contains("extensions-builtin deps", result.Reason ?? "");
+        Assert.False(File.Exists(
+            Path.Combine(env.RootPath, ForgePreFlightConstants.MarkerFileName)));
+    }
+
+    [Fact]
+    public async Task InstallAsync_AllStepsSucceed_ExtensionsDepsIncludedInPipCalls()
+    {
+        // 端到端 sanity:整段 pre-flight success 时,AllPipCalls 包含 step 4.5
+        // 那次 pip install joblib。CapturingInstaller.isExtensionsDeps 识别
+        // 含 "joblib" 的 pip call(跟 step 3c 的 lightning-utilities/torchmetrics 区分)。
+        var env = SeedEnv();
+        var installer = new CapturingInstaller();
+
+        var result = await installer.InstallAsync(env);
+
+        Assert.True(result.Success, $"pre-flight fail: {result.Reason}");
+        var extCall = installer.AllPipCalls.FirstOrDefault(args =>
+            !args.Any(a => a.StartsWith("pytorch_lightning==")) &&
+            args.Any(a => a.Contains("joblib")));
+        Assert.NotNull(extCall);
+        Assert.Contains("install", extCall!);
+        Assert.Contains("--disable-pip-version-check", extCall!);
     }
 }
