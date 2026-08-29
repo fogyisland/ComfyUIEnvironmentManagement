@@ -155,6 +155,27 @@ public class ForgePreFlightInstaller
         if (!IsPipOk(reqResult))
             return FailFrom(reqResult, $"pip install -r requirements_versions.txt (filtered)");
 
+        // v1.0.0.x (2026-08-29):webui.py 启动 crash 修 —— --no-deps 跳过了所有
+        // transitive deps(包括 fastapi → starlette、pydantic → typing-extensions),
+        // 用户的 forge env 启动 webui.py 时 `from fastapi import Request` → fastapi
+        // 内部 `from starlette import status` → ModuleNotFoundError,launch.py 提前
+        // 退出(exit 1)。
+        // 修法:加 second pass 不带 --no-deps 装回 fastapi + pydantic,让 pip 解析
+        // 它们各自的 deps(主要是 starlette + typing-extensions)并装上。fastapi
+        // 和 pydantic 本身已装(pip sees satisfied version,skip 重新装),只补 deps。
+        // 这两个包不引入 torch 约束,不会触发 pytorch_lightning 把 torch 降到
+        // <2.0 —— BED 锁的 torch 2.4.0+cu121 保留。
+        // 镜像 launch.py 主启动期 `prepare_environment()` 末尾的额外 pip install 段
+        // (launch_utils.py 在主 install 之后补装 webui 必需 transitive deps)。
+        logProgress?.Report("[forge-preflight] stage:webui transitive deps (starlette/typing-extensions)");
+        var webuiDepsResult = await RunPipAsync(
+            pythonExe,
+            new[] { "install", "fastapi", "pydantic", "--disable-pip-version-check" },
+            line => logProgress?.Report(line),
+            ct);
+        if (!IsPipOk(webuiDepsResult))
+            return FailFrom(webuiDepsResult, "webui transitive deps (starlette/typing-extensions)");
+
         // 4. git clone 3 repos(每个独立 try/catch + IsInstalled skip,失败不阻断后续 repo;
         //    最后整体成功判断,只要全部存在或 clone 成功 → success)
         logProgress?.Report("[forge-preflight] stage:git clone 3 repos");
