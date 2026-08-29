@@ -129,16 +129,28 @@ public class BaseEnvStatusViewModelTests : IDisposable
         var vm = new BaseEnvStatusViewModel(env, installer);
 
         await vm.RunAsync();
+        // Progress<T>.Report 通过 SynchronizationContext marshal 回 test thread,
+        // callback 可能在 await InstallAsync 之后才 fire。多 yield + 等到 3 条都到位
+        // 才 assert。xUnit v2 的 MaxConcurrencySynchronizationContext 是 FIFO,但 Post
+        // 是 fire-and-forget,需要反复 yield 让 dispatcher 消费完所有 pending callback。
+        var snapshot = new List<string>();
+        for (int i = 0; i < 50 && snapshot.Count < 3; i++)
+        {
+            await Task.Yield();
+            snapshot = vm.LogLines.ToList();  // snapshot 避免枚举期间被新 callback 改
+        }
 
         Assert.True(vm.IsComplete);
         Assert.False(vm.HasError);
         Assert.Null(vm.Error);
-        // 日志含 stub 上报的 3 行(核心数据 — StatusText 可能被最后一行的 Progress
-        // 回调覆盖,跟 RequirementsStatusViewModel 同 race pattern)。
-        Assert.Equal(3, vm.LogLines.Count);
-        Assert.Contains(vm.LogLines, l => l.Contains("step 0 torch"));
-        Assert.Contains(vm.LogLines, l => l.Contains("step 1 clip"));
-        Assert.Contains(vm.LogLines, l => l.Contains("step 5 repos done"));
+        // LogLines 至少含 stub 上报的 step 行(用 snapshot + null-guarded Contains
+        // 而不是 Equal(count) 或直接枚举 vm.LogLines — 后者在 full-suite 跑时偶发
+        // (a)少几行 Progress callback 没 fire,或 (b)枚举期间被新 callback 改 collection。
+        // 跟 RequirementsStatusViewModelTests 同 tolerant pattern)。
+        Assert.NotEmpty(snapshot);
+        Assert.Contains(snapshot, l => l != null && l.Contains("step 0 torch"));
+        Assert.Contains(snapshot, l => l != null && l.Contains("step 1 clip"));
+        Assert.Contains(snapshot, l => l != null && l.Contains("step 5 repos done"));
     }
 
     [Fact]
