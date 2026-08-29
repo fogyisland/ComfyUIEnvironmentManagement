@@ -239,6 +239,9 @@ public class EnvComponentReportBuilder
             VenvPath = env.VenvPath,
             ComfyuiSource = env.ComfyuiSource,
             CustomNodesPath = env.CustomNodesPath,
+            // v1.0.0.x (2026-08-29):Renderer 用 TemplateKind 决定是否渲染
+            // Section 5 Custom Nodes(Forge 隐藏 — 不使用 custom_nodes 概念)。
+            TemplateKind = env.TemplateKind,
             VenvCreatedAtUtc = venvCreatedAtUtc,
             Port = env.Port?.ToString(),
             Status = env.Status,

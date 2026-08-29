@@ -230,6 +230,17 @@ public static class EnvComponentReportRenderer
 
     private static void AppendSection5CustomNodes(StringBuilder sb, EnvComponentReport report)
     {
+        // v1.0.0.x (2026-08-29):Forge env 不渲染 Section 5 ——
+        // Forge 不使用 custom_nodes/ 概念(用 extensions/),Section 5 扫的是
+        // env.CustomNodesPath = <envRoot>/custom_nodes,对 Forge 是空目录,
+        // 报告里只显 skip notice,对 Forge 用户是误导信息。Renderer 不需要新增
+        // field:env.TemplateKind 已经从 Builder 复制到 report.Metadata.TemplateKind
+        // (v1.0.0.x 加),直接读 metadata。Section 6 元数据仍会显示
+        // CustomNodesPath 字段(用于诊断 + 模板管理核对)。
+        if (string.Equals(report.Metadata.TemplateKind, "Forge", StringComparison.Ordinal))
+        {
+            return;
+        }
         sb.AppendLine("<section class=\"stage stage-custom-nodes\">");
         sb.Append("<h2>阶段 5 — Custom Nodes (").Append(report.CustomNodes.Count).AppendLine(" 个)</h2>");
         if (report.CustomNodes.Count == 0)

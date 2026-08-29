@@ -172,4 +172,11 @@ public sealed class EnvMetadata
 
     /// <summary>env.Status copy(stopped / running / ...)。</summary>
     public string? Status { get; init; }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):env.TemplateKind copy — Renderer 用它决定是否渲染
+    /// Section 5 Custom Nodes(Forge 不使用 custom_nodes/ 概念,用 extensions/;
+    /// Section 5 对 Forge 是误导信息,故隐藏)。镜像 Environment.TemplateKind 字段。
+    /// </summary>
+    public string? TemplateKind { get; init; }
 }

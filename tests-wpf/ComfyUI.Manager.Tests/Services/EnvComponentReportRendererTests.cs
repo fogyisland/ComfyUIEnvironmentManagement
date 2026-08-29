@@ -191,4 +191,103 @@ public sealed class EnvComponentReportRendererTests
 
         Assert.Contains($"阶段 4 — {expectedHeading}", html);
     }
+
+    // v1.0.0.x (2026-08-29):Forge env 不渲染 Section 5 Custom Nodes ——
+    // Forge 使用 extensions/ 不是 custom_nodes/,扫 custom_nodes/ 只产 skip notice,
+    // 对 Forge 用户是误导信息。TemplateKind 通过 Metadata.TemplateKind 字段传递。
+    [Fact]
+    public void Render_ForgeEnv_SkipsSection5CustomNodes()
+    {
+        var report = new EnvComponentReport
+        {
+            EnvName = "forge-test",
+            GeneratedAtUtc = DateTime.UtcNow,
+            AppVersion = "1.0.0.x",
+            Metadata = new EnvMetadata
+            {
+                TemplateKind = "Forge",
+                RootPath = "C:\\forge\\root",
+                CustomNodesPath = "C:\\forge\\root\\custom_nodes",
+            },
+            // 即使 CustomNodes 非空(理论场景)也被 Renderer 跳过
+            CustomNodes = new[]
+            {
+                new GitTargetStatus
+                {
+                    DisplayName = "should-not-appear",
+                    Path = "C:\\fake",
+                    State = GitTargetState.Ok,
+                    CommitHash = "deadbee",
+                    Branch = "main",
+                    LastCommitTimeUtc = DateTime.UtcNow,
+                },
+            },
+        };
+
+        var html = EnvComponentReportRenderer.Render(report);
+
+        Assert.DoesNotContain("阶段 5", html);
+        Assert.DoesNotContain("should-not-appear", html);
+        // Section 6 元数据仍显示 CustomNodesPath (诊断用)
+        Assert.Contains("CustomNodesPath", html);
+    }
+
+    [Fact]
+    public void Render_NonForgeEnv_RendersSection5CustomNodes()
+    {
+        // 反向测试:ComfyUI / OpenVoice 等其他模板仍渲染 Section 5
+        var report = new EnvComponentReport
+        {
+            EnvName = "comfyui-test",
+            GeneratedAtUtc = DateTime.UtcNow,
+            AppVersion = "1.0.0.x",
+            Metadata = new EnvMetadata
+            {
+                TemplateKind = "ComfyUI",
+                RootPath = "C:\\comfyui\\root",
+                CustomNodesPath = "C:\\comfyui\\root\\custom_nodes",
+            },
+            CustomNodes = new[]
+            {
+                new GitTargetStatus
+                {
+                    DisplayName = "ComfyUI-Manager",
+                    Path = "C:\\comfyui\\root\\custom_nodes\\ComfyUI-Manager",
+                    State = GitTargetState.Ok,
+                    CommitHash = "abc1234",
+                    Branch = "main",
+                    LastCommitTimeUtc = DateTime.UtcNow,
+                },
+            },
+        };
+
+        var html = EnvComponentReportRenderer.Render(report);
+
+        Assert.Contains("阶段 5 — Custom Nodes", html);
+        Assert.Contains("ComfyUI-Manager", html);
+    }
+
+    [Fact]
+    public void Render_EmptyTemplateKind_StillRendersSection5_ForBackwardCompatibility()
+    {
+        // 老 env 行 SQLite template_kind 列可能 null(Metadata.TemplateKind 空字符串),
+        // Renderer fallback 走默认渲染 Section 5(安全 — 老 env 走老行为)。
+        var report = new EnvComponentReport
+        {
+            EnvName = "old-env",
+            GeneratedAtUtc = DateTime.UtcNow,
+            AppVersion = "1.0.0.x",
+            Metadata = new EnvMetadata
+            {
+                TemplateKind = "",
+                RootPath = "C:\\old\\root",
+                CustomNodesPath = "C:\\old\\root\\custom_nodes",
+            },
+            CustomNodes = Array.Empty<GitTargetStatus>(),
+        };
+
+        var html = EnvComponentReportRenderer.Render(report);
+
+        Assert.Contains("阶段 5", html);
+    }
 }
