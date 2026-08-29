@@ -39,7 +39,12 @@ public class NodeRequirementsStatusViewModelAutoFadeTests
 
         await vm.RunAsync();
         Assert.True(vm.IsVisible);            // 刚跑完还在
-        await Task.Delay(200);                // 等 timer 触发
+        // v1.0.0.x #724 fix:同 RunAsync_Failure_HidesAfter5Seconds,polling 等
+        // IsVisible=false,避免 Task.Delay 时序 race。
+        for (int i = 0; i < 100 && vm.IsVisible; i++)
+        {
+            await Task.Delay(20);
+        }
         Assert.False(vm.IsVisible);           // 2s (测试用 50ms) 后 Hide
     }
 
@@ -61,7 +66,13 @@ public class NodeRequirementsStatusViewModelAutoFadeTests
 
         await vm.RunAsync();
         Assert.True(vm.HasError);
-        await Task.Delay(200);
+        // v1.0.0.x #724 fix:full-suite 跑时 Task.Delay(200) 在线程池繁忙时
+        // 不一定比 AutoHideAsync 内的 Task.Delay(50) 先 fire → IsVisible 还没
+        // 变 false。改 polling 等最多 2 秒。
+        for (int i = 0; i < 100 && vm.IsVisible; i++)
+        {
+            await Task.Delay(20);
+        }
         Assert.False(vm.IsVisible);
     }
 

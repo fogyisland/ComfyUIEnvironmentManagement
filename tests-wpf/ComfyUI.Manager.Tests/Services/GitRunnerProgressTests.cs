@@ -42,9 +42,11 @@ public class GitRunnerProgressTests : IDisposable
         Directory.CreateDirectory(srcDir);
         await _runner.RunAsync(srcDir, new[] { "init", "-q" }, ct: default);
 
+        // v1.0.0.x #724:timeout 拉到 180s,full-suite 跑时网络/CPU 繁忙下
+        // 实测偶发 60+s 跑不完。
         var result = await _runner.RunAsync(
             srcDir, new[] { "clone", "--progress", "https://github.com/octocat/Hello-World.git", "dest" },
-            timeout: TimeSpan.FromSeconds(60),
+            timeout: TimeSpan.FromSeconds(180),
             onStderrLine: progress);
 
         Assert.True(result.Ok, "clone should succeed");
@@ -65,7 +67,7 @@ public class GitRunnerProgressTests : IDisposable
 
         await _runner.RunAsync(
             srcDir, new[] { "clone", "--progress", "https://github.com/octocat/Hello-World.git", "dest" },
-            timeout: TimeSpan.FromSeconds(60),
+            timeout: TimeSpan.FromSeconds(180),
             onStderrLine: progress);
 
         await Task.Delay(200);
@@ -92,7 +94,7 @@ public class GitRunnerProgressTests : IDisposable
         // onStderrLine=null → 走 ReadToEndAsync() 现路径,stderr 全捕获在 result.Stderr
         var result = await _runner.RunAsync(
             srcDir, new[] { "clone", "--progress", "https://github.com/octocat/Hello-World.git", "dest" },
-            timeout: TimeSpan.FromSeconds(60),
+            timeout: TimeSpan.FromSeconds(180),
             onStderrLine: null);
 
         Assert.True(result.Ok);
@@ -106,9 +108,12 @@ public class GitRunnerProgressTests : IDisposable
         Directory.CreateDirectory(srcDir);
         await _runner.RunAsync(srcDir, new[] { "init", "-q" }, ct: default);
 
+        // v1.0.0.x #724 fix:full-suite 跑时网络/CPU 繁忙 + octocat/Hello-World
+        // 是 github 公开小 repo,clone 实测 isolated 3s,full-suite 偶发 60+s 才
+        // 完成或 timeout。把 timeout 拉到 180s 给足 buffer。
         var result = await _runner.RunAsync(
             srcDir, new[] { "clone", "--progress", "https://github.com/octocat/Hello-World.git", "dest" },
-            timeout: TimeSpan.FromSeconds(60),
+            timeout: TimeSpan.FromSeconds(180),
             onStderrLine: new Progress<string>(_ => { }));
 
         Assert.True(result.Ok);
