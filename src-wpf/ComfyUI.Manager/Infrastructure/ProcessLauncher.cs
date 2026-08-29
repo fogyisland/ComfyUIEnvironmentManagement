@@ -252,7 +252,7 @@ public sealed class ProcessLauncher : IDisposable
 
             stageProgress?.Report("stage:在环境中启用");
 
-            var entry = new ProcessEntry(process, env.Name, logPath);
+            var entry = new ProcessEntry(process, env.Name, logPath, env.TemplateKind);
             lock (_runningLock)
             {
                 _running[env.Id] = entry;
@@ -717,8 +717,13 @@ public sealed class ProcessLauncher : IDisposable
                 {
                     int? code = null;
                     try { code = entry.Process.ExitCode; } catch { }
+                    // v1.0.0.x (2026-08-29):错误信息按 env.TemplateKind 派生显示 —
+                    // 之前硬编码 "ComfyUI 进程",对 Forge/OpenVoice/HunyuanVideo 等模板
+                    // 用户报错看日志时容易混淆(forge env crash 也说 ComfyUI 进程)。
+                    // 空 / ComfyUI / 未识别 TemplateKind → fallback "ComfyUI 进程"
+                    // (向后兼容 — 老 env SQLite template_kind 列可能 null)。
                     throw new ServiceLaunchException(
-                        $"ComfyUI 进程提前退出(exit code {code}),查看日志: {entry.LogFilePath}");
+                        $"{entry.ProcessDisplayName} 进程提前退出(exit code {code}),查看日志: {entry.LogFilePath}");
                 }
 
                 if (ct.IsCancellationRequested)
@@ -874,6 +879,18 @@ public sealed class ProcessLauncher : IDisposable
         /// </summary>
         public string EnvName { get; }
         /// <summary>
+        /// v1.0.0.x (2026-08-29):env.TemplateKind copy — 错误信息按模板派生(Forge / OpenVoice
+        /// / HunyuanVideo / etc. 各自的进程名)而不硬编码 "ComfyUI"。空 / "ComfyUI" / 未识别
+        /// kind → <see cref="ProcessDisplayName"/> fallback "ComfyUI" 兼容老 env。
+        /// </summary>
+        public string TemplateKind { get; }
+        /// <summary>
+        /// v1.0.0.x (2026-08-29):错误信息用的进程显示名 — <c>{TemplateKind}</c> 不空且非
+        /// "ComfyUI" → "{Kind}"(如 "Forge" / "OpenVoice" / "HunyuanVideo");否则 fallback
+        /// "ComfyUI" 兼容老 env(模板为空 / SQLite template_kind 列 null)。
+        /// </summary>
+        public string ProcessDisplayName { get; }
+        /// <summary>
         /// v0.6.15.7: 启动期 stdout/stderr 行缓存,5s grace 后被 NodeStartupErrorDetector 扫描。
         /// AttachStdoutReader / AttachStderrReader 在 <c>lock (StartupLines)</c> 下 Add,
         /// grace 后 new List&lt;string&gt;(StartupLines) 拿快照。
@@ -885,11 +902,18 @@ public sealed class ProcessLauncher : IDisposable
         public TaskCompletionSource ReadySignal { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public ProcessEntry(Process process, string envName, string logFilePath)
+        public ProcessEntry(Process process, string envName, string logFilePath, string templateKind)
         {
             Process = process;
             EnvName = envName;
             LogFilePath = logFilePath;
+            TemplateKind = templateKind ?? "";
+            // ProcessDisplayName 派生规则:
+            // - 空 / "ComfyUI" → "ComfyUI" (向后兼容 — 老 env 无 template_kind 或 kind 是 ComfyUI)
+            // - 其他 kind(Forge / OpenVoice / HunyuanVideo / etc.) → 原样用作显示名
+            ProcessDisplayName = string.IsNullOrWhiteSpace(templateKind) || string.Equals(templateKind, "ComfyUI", StringComparison.Ordinal)
+                ? "ComfyUI"
+                : templateKind;
         }
     }
 
