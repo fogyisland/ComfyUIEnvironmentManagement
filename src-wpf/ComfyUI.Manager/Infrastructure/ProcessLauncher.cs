@@ -360,7 +360,11 @@ public sealed class ProcessLauncher : IDisposable
         }
         catch (Exception ex)
         {
-            stageProgress?.Report($"stage:激活本地环境");
+            // v1.0.0.x #711 followup:catch 块原 reuse stage 0 label "stage:激活本地环境"
+            // 导致 StartEnvAsync_WithStageProgress_ReportsAllStages test 看到 2x 同 label
+            // (1x 来自 line 169 try block + 1x 来自这里),失败路径没有专属 label。
+            // 改用 "stage:失败" 区分 happy-path stage 0/1/2。
+            stageProgress?.Report("stage:失败");
             logProgress?.Report($"[error] {ex.Message}");
             _logger?.Error("env-start", $"env='{env.Name}' 启动失败", ex);
             throw;
