@@ -15,9 +15,10 @@ namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
 /// v1.0.0.x #584 + #584.b:BED pre-install + extras 阶段测试 — 主 pip install 之前
-/// 跑 <c>pip install --upgrade pip</c>(pre-install),成功之后顺手装 gitpython + triton
-/// (extras)。两个阶段都「失败只 Warn 不阻塞 BED done」,分别由 <see cref="BaseEnvInstaller.PreInstallPipArgs"/>
-/// 和 <see cref="BaseEnvInstaller.ExtraPackages"/> 控制(测试可 override 返空跳过)。
+/// 跑 <c>pip install --upgrade pip wheel</c>(pre-install:升级 pip + seed wheel),
+/// 成功之后顺手装 gitpython (extras)。两个阶段都「失败只 Warn 不阻塞 BED done」,
+/// 分别由 <see cref="BaseEnvInstaller.PreInstallPipArgs"/> 和 <see cref="BaseEnvInstaller.ExtraPackages"/>
+/// 控制(测试可 override 返空跳过)。
 ///
 /// <para>
 /// 用 FakeBaseEnvInstaller override RunPipAsync + 记录 CallHistory;
@@ -28,6 +29,14 @@ namespace ComfyUI.Manager.Tests.Services;
 ///   <item>main: 其余(由 profile.BuildPipArgs() 拼出)</item>
 /// </list>
 /// 3 阶段独立返回 PreInstallResult / MainResult / ExtrasResult。
+/// </para>
+///
+/// <para>
+/// v1.0.0.x (2026-08-29) #754:pre-install 现在含 <c>wheel</c>(defense-in-depth)。
+/// env-create step 6.6 已经给新建 env seed wheel;老 env(2026-08-29 前创建的)
+/// 缺 wheel,Forge pre-flight 装 CLIP/open_clip 会 fail `bdist_wheel`。pre-install
+/// 阶段重复 seed wheel,覆盖老 env。`--upgrade wheel` 对已装 venv no-op,新 venv
+/// 装上 — 两种 OK。
 /// </para>
 /// </summary>
 public sealed class BaseEnvInstallerExtrasTests : IDisposable
@@ -292,12 +301,21 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
     // ───── 9. 契约:DefaultPreInstallPipArgs / DefaultExtraPackages 内容 ─────
 
     [Fact]
-    public void DefaultPreInstallPipArgs_UpgradesPip()
+    public void DefaultPreInstallPipArgs_UpgradesPipAndSeedsWheel()
     {
+        // v1.0.0.x (2026-08-29):pre-install 不仅升级 pip,还 seed wheel 包 ——
+        // defense-in-depth,覆盖 env-create step 6.6 wheel seed 之前创建的老 env
+        // (老 venv 缺 wheel,Forge pre-flight stage:clip 装 openai/CLIP 时报
+        // `error: invalid command 'bdist_wheel'`,因为 setuptools 63.2.0 不带
+        // bdist_wheel,需要 `wheel` 包补上)。新 venv(step 6.6 后)wheel 已装,
+        // `--upgrade wheel` no-op;老 venv 补上 wheel — 两种都 OK。
         var fake = new FakeBaseEnvInstaller(_envRepo);
         var pre = fake.GetPreInstallPublic();
         Assert.Contains("--upgrade", pre);
         Assert.Contains("pip", pre);
+        Assert.Contains("wheel", pre);
+        // 不应该拼 mirror 或 --index-url(主 install / extras 才拼)
+        Assert.DoesNotContain("--index-url", pre);
     }
 
     [Fact]
@@ -330,8 +348,10 @@ public sealed class BaseEnvInstallerExtrasTests : IDisposable
             new[] { "env-mt" }, DefaultProfile(), progress: null, CancellationToken.None);
 
         Assert.Equal(3, fake.CallHistory.Count);
-        // pre-install 不拼 mirror(只 `install --upgrade pip`)
+        // pre-install 不拼 mirror(只 `install --upgrade pip wheel`)
         Assert.DoesNotContain("--index-url", fake.CallHistory[0]);
+        // pre-install 现在 seed wheel(2026-08-29 #754 defense-in-depth)
+        Assert.Contains("wheel", fake.CallHistory[0]);
         // main 不拼 tuna mirror(走 profile 自带 download.pytorch.org)
         Assert.DoesNotContain(fake.CallHistory[1], a => a.Contains("pypi.tuna"));
         Assert.Contains("https://download.pytorch.org/whl/cu121", fake.CallHistory[1]);

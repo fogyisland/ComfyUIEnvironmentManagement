@@ -49,13 +49,22 @@ public class BaseEnvInstaller
     // 它自己的 launcher 会用 pytorch 源装 triton,BED 阶段不预装,避免 mirror 互斥。
     private static readonly string[] DefaultExtraPackages = new[] { "gitpython" };
 
-    // BED pre-install:主 pip install 之前跑 `pip install --upgrade pip`,把 venv
-    // 里的 pip 升级到最新版。后续装 torch / extras 时 pip 已是最新版,避免每次
-    // 都报 "WARNING: You are using pip version X, however version Y is available"
-    // 一堆 warning 用户反馈「每次一堆警告」。失败只 Warn log 不阻塞 — 老 pip
-    // 也能装包,只是会持续报 warning,用户继续点重装也会自动升级。
+    // BED pre-install:主 pip install 之前跑 `pip install --upgrade pip wheel` —
+    // 把 venv 里的 pip 升级到最新版 + seed wheel 包。后续装 torch / extras /
+    // forge-preflight (CLIP / open_clip 等 setup.py 包,`--no-build-isolation`
+    // 复用 main venv 的 setuptools/wheel) 时:
+    // - pip 已是最新版,避免每次都报 "WARNING: pip version X, Y available"
+    // - wheel 已就位,避免 CLIP install `error: invalid command 'bdist_wheel'`
+    //
+    // v1.0.0.x (2026-08-29): 加 wheel — defense-in-depth,覆盖 step 6.6 wheel seed
+    // 之前创建的 env(老 venv 没装 wheel)。step 6.6 (env-create 流程) 已经覆盖新
+    // env,这里 BED pre-install 重复一次是为兼容老 env。`--upgrade wheel` 对已
+    // 装的 venv 是 no-op,新装的 venv 装上 — 两种都 OK。
+    //
+    // 失败只 Warn log 不阻塞 — 老 pip 也能装包,只是会持续报 warning;缺 wheel
+    // 时 Forge pre-flight stage:clip 会 fail,但用户继续点重装也会自动补上。
     private static readonly string[] DefaultPreInstallPipArgs =
-        new[] { "install", "--upgrade", "pip" };
+        new[] { "install", "--upgrade", "pip", "wheel" };
 
     private readonly IEnvironmentRepository _envRepo;
     private readonly AppLogger? _logger;
