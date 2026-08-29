@@ -449,7 +449,13 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (env is null) return false;
                 if (env.Status != "stopped") return false;
                 // BED 未装 / 装中 → 禁用
-                if (env.BedStatus is null or "installing") return false;
+                // v1.0.0.x (2026-08-29):用 BaseEnvUninstaller.IsInstalled(env) 而不是
+                // 直查 env.BedStatus —— IsInstalled 对老 Forge env 有 marker file fallback
+                // (env.BedStatus=NULL 但 .forge_preflight_installed 存在 = BED 实际跑过),
+                // 让老 env 启动按钮可用。装中状态走 IsInstalled(覆盖) + raw "installing"
+                // 直查(BedStatus 是显式 DB 字段,IsInstalled 不读 "installing" 值,
+                // 必须 raw 检查避免 install 中双启动)。
+                if (!BaseEnvUninstaller.IsInstalled(env) || env.BedStatus == "installing") return false;
                 // per-env mutex:同 env 上已有 BED install/uninstall/req/start/stop/delete 在跑 → 禁用
                 if (IsEnvBusy(env)) return false;
                 return true;
@@ -485,7 +491,9 @@ public class EnvironmentListViewModel : ViewModelBase
                 if (env.Status == "stopped")
                 {
                     // 跟 StartCommand 一致:BED 未装 / 装中 → 禁用
-                    if (env.BedStatus is null or "installing") return false;
+                    // v1.0.0.x (2026-08-29):用 IsInstalled + raw "installing" 直查
+                    // (同 StartCommand 注释)—— 老 Forge env 有 marker file fallback。
+                    if (!BaseEnvUninstaller.IsInstalled(env) || env.BedStatus == "installing") return false;
                     return true;
                 }
                 if (env.Status == "running") return true;
@@ -727,6 +735,22 @@ public class EnvironmentListViewModel : ViewModelBase
             var bedInstalled = BaseEnvUninstaller.IsInstalled(env);
             env.IsBaseEnvInstalled = bedInstalled;
             env.BaseEnvButtonText = bedInstalled ? "卸载基础环境" : "安装基础环境";
+
+            // v1.0.0.x (2026-08-29):BED 老 env 回填 ——
+            // BaseEnvUninstaller.IsInstalled 对 Forge env 有 marker file fallback
+            // (.forge_base_env_installed 存在 = BED 实际跑过),但 env.BedStatus
+            // DB 字段还是 null(老 env 在 BedStatus 字段引入前创建)。回填一次让
+            // DB 状态一致(env-list 行 BED 显示「已装」绿 / 数据库查询正确),
+            // 并避免 StartCommand.CanExecute 之前直查 BedStatus 而禁用按钮。
+            // 幂等:第一次 Load 回填后 BedStatus="done",后续 Load IsInstalled 走第一分支
+            // (env.BedStatus=="done"),不再写 marker。只有 IsInstalled==true 且
+            // BedStatus!=done 才回填,避免每次 Load 写 DB。
+            if (bedInstalled && env.BedStatus != "done")
+            {
+                env.BedStatus = "done";
+                try { _repo.Upsert(env); }
+                catch { /* 回填失败不致命,IsInstalled 仍通过 marker 兜底 */ }
+            }
 
             // v1.0.0.x #577:本地常用节点装态 + 启停单按钮文字。
             var localInstalled = _localNodeBulkInstaller.IsInstalled(env);
