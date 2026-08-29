@@ -148,4 +148,88 @@ public static class TemplateConfigDefaults
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
     };
+
+    /// <summary>
+    /// v1.0.0.x: HunyuanVideo Native Gradio WebUI (Tencent-Hunyuan/HunyuanVideo)。
+    /// 腾讯混元视频生成模型的官方 Gradio WebUI。GitHub-clone source。
+    /// Entry: <c>gradio_webui.py</c>(仓库根目录),通过 <c>--port {port} --listen 0.0.0.0</c>
+    /// 监听所有接口,默认 Gradio 端口 7860(用户可在 Settings 改)。
+    /// </summary>
+    public static TemplateConfig HunyuanVideo(string projectRoot) => new()
+    {
+        Name = "HunyuanVideo",
+        Kind = "HunyuanVideo",
+        LocalSourceDir = "HunyuanVideo",
+        SourceKind = TemplateSourceKind.GitHub,
+        GitHubRepoUrl = "https://github.com/Tencent-Hunyuan/HunyuanVideo.git",
+        EntryScript = "gradio_webui.py",
+        EntryArgs = "--port {port} --listen 0.0.0.0",
+        ModelsSubdir = "models",
+        ExtraJunctionTargets = new(),
+        UserExtraArgs = "",
+    };
+
+    /// <summary>
+    /// v1.0.0.x: LTX-Video WebUI (Lightricks/LTX-Video)。
+    /// Lightricks 官方 LTX-Video 模型的 Gradio WebUI。GitHub-clone source。
+    /// Entry: <c>gradio_demo.py</c>(仓库根目录)。PR #72 后支持 <c>--server_port {port}</c>
+    /// CLI 参数(gradio demo 内置 demo.launch(server_port=args.server_port))。
+    /// 注:仓库主分支历史上有 <c>inference_gradio.py</c> 命名,现已统一为 <c>gradio_demo.py</c>。
+    /// </summary>
+    public static TemplateConfig LTXVideo(string projectRoot) => new()
+    {
+        Name = "LTXVideo",
+        Kind = "LTXVideo",
+        LocalSourceDir = "LTXVideo",
+        SourceKind = TemplateSourceKind.GitHub,
+        GitHubRepoUrl = "https://github.com/Lightricks/LTX-Video.git",
+        EntryScript = "gradio_demo.py",
+        EntryArgs = "--server_port {port}",
+        ModelsSubdir = "models",
+        ExtraJunctionTargets = new(),
+        UserExtraArgs = "",
+    };
+
+    /// <summary>
+    /// v1.0.0.x: CogVideoX WebUI (THUDM/CogVideo)。
+    /// 智谱 CogVideoX 模型的官方 Gradio WebUI。GitHub-clone source。
+    /// Entry: <c>inference/gradio_web_demo.py</c>(在 inference/ 子目录)。
+    /// 通过 <c>--server_port {port}</c> 设端口(Gradio demo 标准 CLI)。
+    /// 注意 entry script 含子目录 — env-create 复制源码后,env 根目录下
+    /// 有 <c>inference/gradio_web_demo.py</c>,ProcessLauncher 应支持路径相对解析。
+    /// </summary>
+    public static TemplateConfig CogVideoX(string projectRoot) => new()
+    {
+        Name = "CogVideoX",
+        Kind = "CogVideoX",
+        LocalSourceDir = "CogVideoX",
+        SourceKind = TemplateSourceKind.GitHub,
+        GitHubRepoUrl = "https://github.com/THUDM/CogVideo.git",
+        EntryScript = "inference/gradio_web_demo.py",
+        EntryArgs = "--server_port {port}",
+        ModelsSubdir = "models",
+        ExtraJunctionTargets = new(),
+        UserExtraArgs = "",
+    };
+
+    /// <summary>
+    /// v1.0.0.x: Fooocus (lllyasviel/Fooocus)。
+    /// lllyasviel 的图像生成 WebUI(Focus + SDXL 改良)。GitHub-clone source。
+    /// Entry: <c>entry_with_update.py</c>(带 auto-update 模式;无 update 模式是 <c>entry.py</c>)。
+    /// 通过 <c>--port {port} --listen</c> 设端口 + 监听所有接口;Fooocus 默认端口 7865,
+    /// 但用户可改 Settings 里的 {port} 占位跟其他模板对齐。
+    /// </summary>
+    public static TemplateConfig Fooocus(string projectRoot) => new()
+    {
+        Name = "Fooocus",
+        Kind = "Fooocus",
+        LocalSourceDir = "Fooocus",
+        SourceKind = TemplateSourceKind.GitHub,
+        GitHubRepoUrl = "https://github.com/lllyasviel/Fooocus.git",
+        EntryScript = "entry_with_update.py",
+        EntryArgs = "--port {port} --listen",
+        ModelsSubdir = "models",
+        ExtraJunctionTargets = new(),
+        UserExtraArgs = "",
+    };
 }

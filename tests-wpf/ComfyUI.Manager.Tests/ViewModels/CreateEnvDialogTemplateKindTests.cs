@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
@@ -11,6 +13,9 @@ namespace ComfyUI.Manager.Tests.ViewModels;
 
 public class CreateEnvDialogTemplateKindTests
 {
+    /// <summary>v1.0.0.x:step 6.6 wheel seed 的 no-op fake — 本测试不调用
+    /// CreateAsync,但 EnvCreatorService ctor 仍要求传入。</summary>
+    private static Task NoOpWheel(string venvPython, CancellationToken ct) => Task.CompletedTask;
     private static string TempDbPath() =>
         System.IO.Path.Combine(
             System.IO.Path.GetTempPath(),
@@ -53,7 +58,8 @@ public class CreateEnvDialogTemplateKindTests
         // LocalDataPaths is sealed — use SqliteConnectionFactory(string) test seam.
         var creator = new EnvCreatorService(
             new SqliteConnectionFactory(TempDbPath()),
-            new VenvCreator(), new JunctionLinker(), settings, "C:/fake-root");
+            new VenvCreator(), new JunctionLinker(), settings, "C:/fake-root",
+            pipInstallWheelAsync: NoOpWheel);
         var vm = new CreateEnvDialogViewModel(creator, settings, "C:/fake-root");
         return (vm, settings);
     }

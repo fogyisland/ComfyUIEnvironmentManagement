@@ -60,6 +60,10 @@ public class EnvCreatorServiceMultiTemplateTests : IDisposable
         _venvCreator = new FakeVenvCreator();
     }
 
+    /// <summary>v1.0.0.x:step 6.6 wheel seed 的 no-op fake — FakeVenvCreator
+    /// 没创建真 venv,跳过 step 6.6 避免 Process.Start 失败。</summary>
+    private static Task NoOpWheel(string venvPython, CancellationToken ct) => Task.CompletedTask;
+
     /// <summary>Fake python.exe absolute path — service validates File.Exists on it.</summary>
     private string PythonExe => Path.Combine(_workRoot, "python", "python.exe");
 
@@ -118,7 +122,8 @@ public class EnvCreatorServiceMultiTemplateTests : IDisposable
     {
         // G3: always copy, no junction
         var envRepo = new EnvironmentRepository(_factory);
-        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot);
+        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot,
+            pipInstallWheelAsync: NoOpWheel);
         var template = new TemplateConfig
         {
             Kind = "ComfyUI",
@@ -149,7 +154,8 @@ public class EnvCreatorServiceMultiTemplateTests : IDisposable
         // v1.0.0.x: A1111 已下线,Forge 沿用 webui.py 作 entry script + Stable-diffusion
         // models 子目录,跟 A1111 行为同。验证 env-create 能正确落 snapshot。
         File.WriteAllText(Path.Combine(_srcDir, "webui.py"), "print('forge')");
-        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot);
+        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot,
+            pipInstallWheelAsync: NoOpWheel);
         var template = new TemplateConfig
         {
             Kind = "Forge",
@@ -178,7 +184,8 @@ public class EnvCreatorServiceMultiTemplateTests : IDisposable
     {
         // G12: Custom kind uses user-defined entry script
         File.WriteAllText(Path.Combine(_srcDir, "my-entry.sh"), "echo custom");
-        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot);
+        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot,
+            pipInstallWheelAsync: NoOpWheel);
         var template = new TemplateConfig
         {
             Kind = "MySwarmUI",
@@ -204,7 +211,8 @@ public class EnvCreatorServiceMultiTemplateTests : IDisposable
     public void CreateAsync_SnapshotIsFrozen_NotAffectedBySettingsChanges()
     {
         // G2: snapshot is frozen at creation
-        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot);
+        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot,
+            pipInstallWheelAsync: NoOpWheel);
         var template = new TemplateConfig
         {
             Kind = "ComfyUI",
@@ -235,7 +243,8 @@ public class EnvCreatorServiceMultiTemplateTests : IDisposable
     public void CreateAsync_DoesNotJunction_ComfyUISourceEvenWhenCallerExpectedShared()
     {
         // G3: even if caller passes shared-layout-style params, no junction
-        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot);
+        var svc = new EnvCreatorService(_factory, _venvCreator, _linker, _settings, _workRoot,
+            pipInstallWheelAsync: NoOpWheel);
         var template = new TemplateConfig
         {
             Kind = "ComfyUI",

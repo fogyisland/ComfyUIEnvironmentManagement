@@ -29,6 +29,8 @@ namespace ComfyUI.Manager.Services;
 ///   5. **始终 copy** template source → env 根目录(不 junction)
 ///   5.5 链接默认 Models 目录(Settings.DefaultModelsDirectory 非空时,models → 该目录)
 ///   6. 创建 venv(VenvCreator)
+///   6.5 升级 venv 内的 pip(<c>python -m pip install --upgrade pip</c>,warn-only)
+///   6.6 seed wheel 包到 venv(<c>python -m pip install wheel</c>,required — fix Forge pre-flight CLIP `bdist_wheel` missing)
 ///   7. 插 SQLite 行(持久化 TemplateKind + TemplateConfigSnapshot JSON 克隆)
 ///
 /// v1.0.0.x: env-create 不再自动跑「安装常用节点」/「写 extra_model_paths.yaml」。
@@ -55,13 +57,32 @@ public sealed class EnvCreatorService
     /// </summary>
     private readonly Func<string, CancellationToken, Task>? _pipUpgradeAsync;
 
+    /// <summary>
+    /// v1.0.0.x:env-create step 6.6 — seed wheel 包到 venv。Python <c>venv</c> 模块默认
+    /// 装 pip + setuptools,但不装 <c>wheel</c>;而 <c>wheel</c> 提供 <c>bdist_wheel</c>
+    /// 命令。Forge pre-flight 跑 <c>pip install https://github.com/openai/CLIP/...
+    /// .zip --no-build-isolation</c> 时,CLIP 仓库的 pyproject.toml 声明
+    /// <c>[build-system] requires = ["setuptools", "wheel"]</c>,--no-build-isolation
+    /// 让 pip 直接用主 venv 的 setuptools/wheel 跑 metadata prep;缺 wheel →
+    /// <c>error: invalid command 'bdist_wheel'</c> → CLIP / open_clip 等所有 setup.py
+    /// 包 install fail。
+    ///
+    /// 失败行为 = **required**(跟 step 6.5 pip upgrade 的 warn-only 不同):没有 wheel,
+    /// 后续 env BED / pre-flight / 节点安装的 setup.py 包全部跑不通 → 整个 env-create
+    /// 失败比静默继续更明确。
+    ///
+    /// 测试可注入 fake(同 step 6.5),签名 = (venvPython, CancellationToken) → Task。
+    /// </summary>
+    private readonly Func<string, CancellationToken, Task>? _pipInstallWheelAsync;
+
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
         JunctionLinker linker,
         Models.Settings settings,
         string projectRoot,
-        Func<string, CancellationToken, Task>? pipUpgradeAsync = null)
+        Func<string, CancellationToken, Task>? pipUpgradeAsync = null,
+        Func<string, CancellationToken, Task>? pipInstallWheelAsync = null)
     {
         _dbFactory = dbFactory;
         _venvCreator = venvCreator;
@@ -69,6 +90,7 @@ public sealed class EnvCreatorService
         _settings = settings;
         _projectRoot = projectRoot;
         _pipUpgradeAsync = pipUpgradeAsync;
+        _pipInstallWheelAsync = pipInstallWheelAsync;
     }
 
     public sealed class CreateEnvException : Exception
@@ -237,6 +259,32 @@ public sealed class EnvCreatorService
                 ex.Message));
         }
 
+        // 6.6 seed wheel 包(v1.0.0.x 修复 Forge pre-flight CLIP install `bdist_wheel`
+        // missing:Python `venv` 模块默认装 pip + setuptools 但不装 wheel;
+        // CLIP / open_clip 等 setup.py 包需要 wheel 提供 bdist_wheel 命令)。
+        // required(不像 step 6.5 pip upgrade 是 warn-only)— 没有 wheel 后续所有
+        // setup.py 包 install 都跑不通(env 等于废)。
+        progress?.Report(new CreateStepReport("安装 wheel 包到 venv",
+            $"{venvPython} -m pip install wheel"));
+        try
+        {
+            var seedWheel = _pipInstallWheelAsync ?? RunPipInstallWheelAsync;
+            await seedWheel(venvPython, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户取消 → 上抛,caller 自己处理(env-create 整体取消 + 回滚)
+            try { Directory.Delete(rootPath, recursive: true); } catch { }
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // required:env-create 整体失败 — 回滚 env 根目录,跟 step 6 venv 创建失败同语义。
+            try { Directory.Delete(rootPath, recursive: true); } catch { }
+            throw new CreateEnvException("VENV_WHEEL_SEED_FAILED",
+                $"venv 内 wheel 包安装失败(后续 setup.py 包 install 必跑不通): {ex.Message}");
+        }
+
         // 7. 构造 Environment 写库
         // v1.0.0 T4 G2:TemplateConfigSnapshot 用 JSON round-trip 克隆,后续 settings
         // 编辑不会 mutate 已存在的 env snapshot(测试 `CreateAsync_SnapshotIsFrozen_*`)。
@@ -399,6 +447,67 @@ public sealed class EnvCreatorService
         {
             throw new InvalidOperationException(
                 $"venv pip upgrade exit={p.ExitCode}(venv 仍可用,只是 pip 没升级)");
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x:env-create step 6.6 默认实现 — 跑
+    /// <c>&lt;venvPython&gt; -m pip install wheel</c>,确保 venv 自带 <c>wheel</c> 包
+    /// (提供 <c>bdist_wheel</c> 命令,CLIP / open_clip 等 setup.py 包 install 必需)。
+    ///
+    /// 镜像 <see cref="RunPipUpgradeAsync"/> 模式:进程启动 → 并发读 stdout/stderr →
+    /// 等 exit → 非 0 exit code / 启动失败抛 <see cref="InvalidOperationException"/>。
+    /// ctor 注入 <c>_pipInstallWheelAsync</c> 替换为测试 fake。
+    ///
+    /// 抛异常的语义(由 step 6.6 catch 处理):
+    /// - <see cref="OperationCanceledException"/> → 上抛,走取消分支(回滚 env 根目录)
+    /// - 其他异常 → 包成 <see cref="CreateEnvException"/>(<c>VENV_WHEEL_SEED_FAILED</c>),env-create 整体失败
+    /// </summary>
+    internal static async Task RunPipInstallWheelAsync(string venvPython, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(venvPython))
+            throw new ArgumentException("venvPython 不能为空", nameof(venvPython));
+
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = venvPython,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("-m");
+        psi.ArgumentList.Add("pip");
+        psi.ArgumentList.Add("install");
+        psi.ArgumentList.Add("wheel");
+
+        using var p = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("pip install wheel 进程启动失败(Process.Start 返回 null)");
+
+        // stdout + stderr 并发读,免 pipe buffer 撑爆;读到的行直接丢(step 6.6 是
+        // env-create 内部动作,跟 step 6.5 同不把 pip 噪音往 UI 推)。
+        var stdoutDone = new TaskCompletionSource<bool>();
+        var stderrDone = new TaskCompletionSource<bool>();
+        _ = Task.Run(async () =>
+        {
+            try { while (await p.StandardOutput.ReadLineAsync().ConfigureAwait(false) is not null) { } }
+            catch { }
+            finally { stdoutDone.TrySetResult(true); }
+        });
+        _ = Task.Run(async () =>
+        {
+            try { while (await p.StandardError.ReadLineAsync().ConfigureAwait(false) is not null) { } }
+            catch { }
+            finally { stderrDone.TrySetResult(true); }
+        });
+
+        await p.WaitForExitAsync(ct).ConfigureAwait(false);
+        await Task.WhenAll(stdoutDone.Task, stderrDone.Task).ConfigureAwait(false);
+
+        if (p.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"venv pip install wheel exit={p.ExitCode}");
         }
     }
 }

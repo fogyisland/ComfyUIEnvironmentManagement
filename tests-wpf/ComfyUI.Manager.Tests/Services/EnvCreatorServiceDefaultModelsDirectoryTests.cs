@@ -66,8 +66,16 @@ public sealed class EnvCreatorServiceDefaultModelsDirectoryTests : IDisposable
         Directory.CreateDirectory(Path.Combine(comfyDir, "models"));
 
         _service = new EnvCreatorService(
-            _factory, new FakeVenvCreator(), _linker, _settings, _rootDir);
+            _factory, new FakeVenvCreator(), _linker, _settings, _rootDir,
+            // v1.0.0.x:env-create step 6.6 wheel seed 默认会跑真 `python -m pip
+            // install wheel`,FakeVenvCreator 没创建真 venv → Process.Start 失败。
+            // 注入 no-op 跳过 step 6.6(本测试不关心 wheel seed 行为)。
+            pipInstallWheelAsync: NoOpWheel);
     }
+
+    /// <summary>v1.0.0.x:step 6.6 wheel seed 的 no-op fake — 跟 EnvCreatorServiceTests
+    /// 共享模式,只为本测试避免 Process.Start。</summary>
+    private static Task NoOpWheel(string venvPython, CancellationToken ct) => Task.CompletedTask;
 
     public void Dispose()
     {

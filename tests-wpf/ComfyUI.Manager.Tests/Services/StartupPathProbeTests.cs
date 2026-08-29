@@ -32,13 +32,18 @@ public class StartupPathProbeTests
     }
 
     /// <summary>
-    /// Seed 6 个内置 built-in 模板(LocalSourceDir 用默认相对路径 = kind name)。
+    /// Seed 10 个内置 built-in 模板(LocalSourceDir 用默认相对路径 = kind name)。
     /// 模拟真实 SettingsDefaults.Apply 跑完后的状态。
+    /// v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX/Fooocus → 6 → 10。
     /// v1.0.0.x: A1111 + SwarmUI 从内置列表移除(模板已下线),剩 6 个。
     /// </summary>
     private static void SeedBuiltInTemplates(Settings s, params string[] kinds)
     {
-        var all = new[] { "ComfyUI", "Forge", "OpenVoice", "Whisper", "CoquiTTS", "Bark" };
+        var all = new[] {
+            "ComfyUI", "Forge",
+            "OpenVoice", "Whisper", "CoquiTTS", "Bark",
+            "HunyuanVideo", "LTXVideo", "CogVideoX", "Fooocus",
+        };
         foreach (var k in kinds.Length == 0 ? all : kinds)
         {
             if (!s.Templates.ContainsKey(k))

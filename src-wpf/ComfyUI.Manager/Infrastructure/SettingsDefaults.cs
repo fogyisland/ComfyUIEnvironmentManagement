@@ -453,14 +453,37 @@ public static class SettingsDefaults
         {
             s.Templates["Bark"] = TemplateConfigDefaults.Bark(projectRoot);
         }
+        // v1.0.0.x (2026-08-29): 加 4 个 Gradio Python webui built-in —
+        // HunyuanVideo / LTXVideo / CogVideoX / Fooocus。ProcessLauncher Python 假设
+        // 兼容(都是 python <entryScript>.py --port <port> 模式),所以归类为正常 built-in。
+        // 走 GitHub-clone 模式 — 仓库都 ~GB 级不 ship,TemplateSourceUpdater.UpdateAsync
+        // 首次创建 env 时 git clone。Built-in count 6 → 10。
+        if (!s.Templates.ContainsKey("HunyuanVideo"))
+        {
+            s.Templates["HunyuanVideo"] = TemplateConfigDefaults.HunyuanVideo(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("LTXVideo"))
+        {
+            s.Templates["LTXVideo"] = TemplateConfigDefaults.LTXVideo(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("CogVideoX"))
+        {
+            s.Templates["CogVideoX"] = TemplateConfigDefaults.CogVideoX(projectRoot);
+        }
+        if (!s.Templates.ContainsKey("Fooocus"))
+        {
+            s.Templates["Fooocus"] = TemplateConfigDefaults.Fooocus(projectRoot);
+        }
     }
 
-    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 7 个 built-in 同步。
+    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 10 个 built-in 同步。
     // v1.0.0.x:A1111 + SwarmUI 从 seed + BuiltInKinds 移除(模板已下线),剩 6 个。
+    // v1.0.0.x (2026-08-29): 加 HunyuanVideo/LTXVideo/CogVideoX/Fooocus → 6 → 10。
     private static readonly string[] BuiltInKinds =
     {
         "ComfyUI", "Forge",
         "OpenVoice", "Whisper", "CoquiTTS", "Bark",
+        "HunyuanVideo", "LTXVideo", "CogVideoX", "Fooocus",
     };
 
     /// <summary>

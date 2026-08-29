@@ -221,6 +221,36 @@ public class TemplateConfigTests
         Assert.False(cfg.CanDelete);
     }
 
+    // --- v1.0.0.x (2026-08-29): 4 new built-in video/image-gen kinds (G13 delete 保护) ---
+
+    [Fact]
+    public void CanDelete_BuiltInHunyuanVideo_False()
+    {
+        var cfg = new TemplateConfig { Kind = "HunyuanVideo", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInLTXVideo_False()
+    {
+        var cfg = new TemplateConfig { Kind = "LTXVideo", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInCogVideoX_False()
+    {
+        var cfg = new TemplateConfig { Kind = "CogVideoX", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
+    [Fact]
+    public void CanDelete_BuiltInFooocus_False()
+    {
+        var cfg = new TemplateConfig { Kind = "Fooocus", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
+        Assert.False(cfg.CanDelete);
+    }
+
     // --- v1.0.0.x: Forge 加 built-in repo URL,可走 UpdateAsync ---
 
     [Fact]

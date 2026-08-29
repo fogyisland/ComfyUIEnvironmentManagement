@@ -295,6 +295,14 @@ public class TemplateManagementViewModel : ViewModelBase
         // v1.0.0.x (2026-08-29): SwarmUI 模板已下线 — ProcessLauncher Python 假设对
         // SwarmUI functional break,这里不再返回 StableSwarmUI repo URL。
         "Forge" => "https://github.com/lllyasviel/stable-diffusion-webui-forge.git",
+        // v1.0.0.x (2026-08-29): 4 个 GitHub-clone 视频/图像生成模板 seed —
+        // HunyuanVideo (腾讯混元视频)、LTX-Video (Lightricks)、CogVideoX (智谱)、
+        // Fooocus (lllyasviel 的 Focus 改良 SDXL WebUI)。用户改 URL 后不会回退
+        // 到这里的 default(参考 TemplateConfigDefaults 的 seed-only 语义)。
+        "HunyuanVideo" => "https://github.com/Tencent-Hunyuan/HunyuanVideo.git",
+        "LTXVideo" => "https://github.com/Lightricks/LTX-Video.git",
+        "CogVideoX" => "https://github.com/THUDM/CogVideo.git",
+        "Fooocus" => "https://github.com/lllyasviel/Fooocus.git",
         _ => "",
     };
 }

@@ -69,8 +69,18 @@ public sealed class EnvCreatorServiceTests : IDisposable
         File.WriteAllText(Path.Combine(comfyDir, "main.py"), "");
 
         _service = new EnvCreatorService(
-            _factory, _venvCreator, _linker, _settings, _rootDir);
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            // v1.0.0.x:env-create step 6.6 wheel seed 默认实现会跑真 `python -m pip
+            // install wheel`,但 FakeVenvCreator 不创建真 venv → 撞 Process.Start
+            // 失败。所有共享 _service 的测试都需要 no-op wheel fake 避免碰 step 6.6。
+            pipInstallWheelAsync: NoOpWheel);
     }
+
+    /// <summary>
+    /// v1.0.0.x:step 6.6 wheel seed 的 no-op fake — 共享给所有不想测 wheel 行为的测试,
+    /// 避免默认 RunPipInstallWheelAsync 撞 Process.Start(FakeVenvCreator 没创建真 venv)。
+    /// </summary>
+    private static Task NoOpWheel(string venvPython, CancellationToken ct) => Task.CompletedTask;
 
     public void Dispose()
     {
@@ -215,7 +225,8 @@ public sealed class EnvCreatorServiceTests : IDisposable
         var fakeInstaller = BuildFakeCommonNodeInstaller(hookCalls);
 
         var service = new EnvCreatorService(
-            _factory, _venvCreator, _linker, _settings, _rootDir);
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            pipInstallWheelAsync: NoOpWheel);
 
         var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
         var env = await service.CreateAsync(
@@ -240,7 +251,8 @@ public sealed class EnvCreatorServiceTests : IDisposable
             {
                 pipCalls.Add(venvPython);
                 return Task.CompletedTask;
-            });
+            },
+            pipInstallWheelAsync: NoOpWheel);
 
         var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
         var env = await service.CreateAsync(
@@ -264,7 +276,8 @@ public sealed class EnvCreatorServiceTests : IDisposable
         var service = new EnvCreatorService(
             _factory, _venvCreator, _linker, _settings, _rootDir,
             pipUpgradeAsync: (venvPython, _) =>
-                throw new InvalidOperationException("simulated pip failure"));
+                throw new InvalidOperationException("simulated pip failure"),
+            pipInstallWheelAsync: NoOpWheel);
 
         var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
         var env = await service.CreateAsync(
@@ -286,7 +299,8 @@ public sealed class EnvCreatorServiceTests : IDisposable
             {
                 ct.ThrowIfCancellationRequested();
                 return Task.CompletedTask;
-            });
+            },
+            pipInstallWheelAsync: NoOpWheel);
 
         var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
         using var cts = new CancellationTokenSource();
@@ -301,5 +315,94 @@ public sealed class EnvCreatorServiceTests : IDisposable
         Assert.True(cts.IsCancellationRequested);
         // DB 不应写入(env 名字 pipcancel 不在表里)
         Assert.DoesNotContain(_repo.ListAll(), e => e.Name == "pipcancel");
+    }
+
+    // --- v1.0.0.x:env-create step 6.6 — seed wheel 包到 venv ---
+
+    [Fact]
+    public async Task CreateAsync_SeedsWheel_AfterVenvCreate()
+    {
+        // v1.0.0.x: env-create step 6.6 — `python -m pip install wheel` 让 venv 自带
+        // wheel 包,fix Forge pre-flight CLIP install `bdist_wheel` missing。
+        // wheel install 跟 pip upgrade 一样需要 venvPython 绝对路径;fake 记录被调用的
+        // venvPython,验证被调一次且路径正确。
+        var wheelCalls = new List<string>();
+        var service = new EnvCreatorService(
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            pipInstallWheelAsync: (venvPython, _) =>
+            {
+                wheelCalls.Add(venvPython);
+                return Task.CompletedTask;
+            });
+
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+        var env = await service.CreateAsync(
+            "wheelseed", MakeComfyUITemplate(), basePy,
+            port: null);
+
+        Assert.Single(wheelCalls);
+        var expected = Path.Combine(env.RootPath, "venv", "Scripts", "python.exe");
+        Assert.Equal(expected, wheelCalls[0]);
+        // env 创建成功 — step 6.6 成功 → step 7 写 DB 照常跑
+        Assert.Equal("wheelseed", env.Name);
+        Assert.NotNull(_repo.Get(env.Id));
+    }
+
+    [Fact]
+    public async Task CreateAsync_WheelInstallFailure_FailsCreate_AndRollsBack()
+    {
+        // v1.0.0.x: wheel install 是 required(跟 step 6.5 pip upgrade 的 warn-only
+        // 不同)— 没有 wheel 后续 CLIP / open_clip 等 setup.py 包 install 都跑不通,
+        // env 等于废。失败抛 CreateEnvException(VENV_WHEEL_SEED_FAILED)+ 回滚 env
+        // 根目录 + 不写 DB。
+        var service = new EnvCreatorService(
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            pipInstallWheelAsync: (venvPython, _) =>
+                throw new InvalidOperationException("simulated wheel install failure"));
+
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+
+        var ex = await Assert.ThrowsAsync<EnvCreatorService.CreateEnvException>(() =>
+            service.CreateAsync(
+                "wheelfail", MakeComfyUITemplate(), basePy,
+                port: null));
+
+        Assert.Equal("VENV_WHEEL_SEED_FAILED", ex.Code);
+        Assert.Contains("simulated wheel install failure", ex.Message);
+        // env 根目录应被回滚(env 名 "wheelfail" 的目录不应存在)
+        Assert.DoesNotContain(_repo.ListAll(), e => e.Name == "wheelfail");
+        var envsDir = Path.Combine(_rootDir, "envs");
+        Assert.False(Directory.Exists(Path.Combine(envsDir, "wheelfail")),
+            "wheel install 失败后 env 根目录应被回滚");
+    }
+
+    [Fact]
+    public async Task CreateAsync_WheelInstallCancellation_RollsBackEnvRoot()
+    {
+        // v1.0.0.x: 用户取消(env-create 整体取消)— step 6.6 走取消分支,
+        // 回滚 env 根目录 + 不写 DB(同 step 6.5 / step 6 取消语义)。
+        var service = new EnvCreatorService(
+            _factory, _venvCreator, _linker, _settings, _rootDir,
+            pipInstallWheelAsync: (venvPython, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            });
+
+        var basePy = Path.Combine(_rootDir, "python", "3.10", "python.exe");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            service.CreateAsync(
+                "wheelcancel", MakeComfyUITemplate(), basePy,
+                port: null,
+                ct: cts.Token));
+
+        Assert.True(cts.IsCancellationRequested);
+        // DB 不应写入(env 名 wheelcancel 不在表里)+ env 根目录应回滚
+        Assert.DoesNotContain(_repo.ListAll(), e => e.Name == "wheelcancel");
+        var envsDir = Path.Combine(_rootDir, "envs");
+        Assert.False(Directory.Exists(Path.Combine(envsDir, "wheelcancel")));
     }
 }

@@ -28,8 +28,9 @@ namespace ComfyUI.Manager.Services;
 /// - 9 个主路径字段:TemplatePythonDir / SystemTemplateLibraryDir / EnvsDir /
 ///   GlobalNodesDir / LocalNodeDirectory / LocalNodesDirectory /
 ///   DefaultModelsDirectory / WorkflowsDirectory / LogDirectory
-/// - 6 个 built-in TemplateConfig.LocalSourceDir(ComfyUI / Forge /
-///   OpenVoice / Whisper / CoquiTTS / Bark)—— 通过
+/// - 10 个 built-in TemplateConfig.LocalSourceDir(2 图像 + 4 语音 + 4 视频/图像生成:
+///   ComfyUI / Forge / OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo /
+///   LTXVideo / CogVideoX / Fooocus;A1111 + SwarmUI 已下线)—— 通过
 ///   <see cref="TemplatePathResolver.Resolve"/> 拼出绝对路径再判 exists。
 ///   **但** LocalSourceDir 仍是默认 seed 值(== kind 名,如 "Whisper")且目录不存在
 ///   时 → 跳过:用户压根没下载这个模板是正常状态,不是路径错位。
@@ -38,7 +39,9 @@ namespace ComfyUI.Manager.Services;
 /// GitExe 已 seed 在 bin/git-portable/cmd/git.exe 下;PythonInterpreter.Path
 /// Apply 已合成完整路径;ExtraPath 是用户主动加的额外路径,probe 阶段不一定存在。
 ///
-/// v1.0.0.x: A1111 + SwarmUI 从 8 个内置里移除(模板已下线),剩 6 个。
+/// v1.0.0.x (2026-08-29): A1111 + SwarmUI 从 8 个内置里移除(模板已下线),
+/// 剩 6 个;再 +4 个 GitHub-clone 视频/图像生成模板(HunyuanVideo / LTXVideo /
+/// CogVideoX / Fooocus),共 10 个 built-in。
 /// </summary>
 public static class StartupPathProbe
 {
@@ -50,6 +53,12 @@ public static class StartupPathProbe
         new("Whisper", "Whisper"),
         new("CoquiTTS", "CoquiTTS"),
         new("Bark", "Bark"),
+        // v1.0.0.x (2026-08-29): 4 个 GitHub-clone 视频/图像生成模板 — 跟
+        // OpenVoice/Whisper/CoquiTTS/Bark 一样的源模式,LocalSourceDir 默认 = kind 名。
+        new("HunyuanVideo", "HunyuanVideo"),
+        new("LTXVideo", "LTXVideo"),
+        new("CogVideoX", "CogVideoX"),
+        new("Fooocus", "Fooocus"),
     };
 
     public static IReadOnlyList<PathMigrationItem> Detect(Settings s, string projectRoot)
@@ -80,7 +89,7 @@ public static class StartupPathProbe
         TryAddIfMissing(items, "LogDirectory",
             s.LogDirectory, "Logs", projectRoot, isDirectory: true);
 
-        // 6 个 built-in TemplateConfig.LocalSourceDir —— 用 TemplatePathResolver 解析
+        // 10 个 built-in TemplateConfig.LocalSourceDir —— 用 TemplatePathResolver 解析
         // raw 是相对时锚到 SystemTemplateLibraryDir(SystemTemplateLibraryDir 自己可能是相对/绝对,
         // 先绝对化再喂给 Resolve,保证最终路径以 projectRoot 为根)。
         var systemLibraryAbs = string.IsNullOrWhiteSpace(s.SystemTemplateLibraryDir)

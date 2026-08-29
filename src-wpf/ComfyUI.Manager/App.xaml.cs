@@ -458,7 +458,11 @@ public partial class App : Application
             }),
             logger);
         var envCreator = new EnvCreatorService(
-            dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot);
+            dbFactory, new VenvCreator(), new JunctionLinker(), settings, projectRoot,
+            // v1.0.0.x:env-create step 6.6 — seed wheel 包(v1.0.0.x 加,fix Forge
+            // pre-flight CLIP install `bdist_wheel` missing)。默认实现跟 step 6.5
+            // pip upgrade 平行,EnvCreatorServiceTests 注入 fake 测试。
+            pipInstallWheelAsync: EnvCreatorService.RunPipInstallWheelAsync);
         // v1.0.0.x:Forge 「装依赖」pre-flight 走 ForgePreFlightInstaller
         // (镜像 lllyasviel/stable-diffusion-webui-forge modules/launch_utils.py
         // 启动期 4 步: clip + open_clip zip + requirements_versions.txt + git

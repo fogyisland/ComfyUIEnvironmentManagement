@@ -216,7 +216,9 @@ public class SettingsDefaultsTemplateSeedTests
         // 跟 Settings.SystemTemplateLibraryDir (= 用户配的 ENVTemplate/) 一拼 →
         // <system_template_library_dir>/envTemplates/<Kind> 多一层嵌套。修法:
         // default 直接写 "<Kind>",新装用户走这条路。
-        // v1.0.0.x (2026-08-29): SwarmUI 已下线,从 8 个 built-in 减到 6 个。
+        // v1.0.0.x (2026-08-29): SwarmUI 已下线,8 个 built-in 减到 6 个;
+        // +4 个 GitHub-clone 视频/图像生成模板(HunyuanVideo/LTXVideo/CogVideoX/Fooocus)
+        // 共 10 个。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -226,6 +228,10 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("Whisper", s.Templates["Whisper"].LocalSourceDir);
         Assert.Equal("CoquiTTS", s.Templates["CoquiTTS"].LocalSourceDir);
         Assert.Equal("Bark", s.Templates["Bark"].LocalSourceDir);
+        Assert.Equal("HunyuanVideo", s.Templates["HunyuanVideo"].LocalSourceDir);
+        Assert.Equal("LTXVideo", s.Templates["LTXVideo"].LocalSourceDir);
+        Assert.Equal("CogVideoX", s.Templates["CogVideoX"].LocalSourceDir);
+        Assert.Equal("Fooocus", s.Templates["Fooocus"].LocalSourceDir);
     }
 
     [Fact]
