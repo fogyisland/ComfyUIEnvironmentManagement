@@ -9,7 +9,10 @@ namespace ComfyUI.Manager.Services;
 /// v1.0.0.x (2026-08-29):Forge env 自动生成 <c>extra_model_paths.yaml</c>。
 ///
 /// 源 = <see cref="Settings.DefaultModelsDirectory"/>(用户在 Settings → 路径 配置的全局
-/// 默认 Models 目录,跟 LocalModels sidebar 同 source,没新增 Settings 字段)。
+/// 默认 Models 目录,跟 LocalModels sidebar 同 source)叠加
+/// <see cref="Settings.ForgePaths"/> 6 个 per-type 覆盖字段。任一覆盖字段非空 → 该
+/// sub-key 走绝对路径;空 → fallback 到 <c>&lt;DefaultModelsDirectory&gt;/&lt;子目录名&gt;</c>。
+///
 /// 派生 = 6 类子目录:<c>checkpoints / loras / vae / embeddings / hypernetworks /
 /// controlnet</c>(都是 ComfyUI 风格子目录名 — 用户共享盘实际是 ComfyUI 布局,
 /// webui.py 只看目录里的 <c>.safetensors</c> 不关心目录名)。
@@ -23,12 +26,12 @@ namespace ComfyUI.Manager.Services;
 ///
 /// 行为:
 /// - <see cref="BuildYamlContent"/> 纯函数 — Settings → YAML 字符串,可单元测试
-///   单独跑(不需要 IO)。空 / 全空白 <c>DefaultModelsDirectory</c> → 返 <c>""</c>。
+///   单独跑(不需要 IO)。DefaultModelsDirectory 空 + ForgePaths 全空 → 返 <c>""</c>。
 /// - <see cref="EnsureWritten"/> 副作用函数 — 写 <c>&lt;envRoot&gt;/extra_model_paths.yaml</c>。
 ///   原子写(tmp + File.Move overwrite),UTF-8 无 BOM。
 ///
-/// 错误策略:<see cref="EnsureWritten"/> DefaultModelsDirectory 为空 → 抛
-/// <see cref="InvalidOperationException"/>(caller 应自己预先 validate;这里 defense
+/// 错误策略:<see cref="EnsureWritten"/> DefaultModelsDirectory 空 + ForgePaths 全空 →
+/// 抛 <see cref="InvalidOperationException"/>(caller 应自己预先 validate;这里 defense
 /// in depth);磁盘满 / 权限不够等 IO 异常上抛,让 caller 决定 fail-fast 还是 warn-only。
 /// </summary>
 public static class ForgeExtraModelPathsYamlGenerator
@@ -57,42 +60,94 @@ public static class ForgeExtraModelPathsYamlGenerator
     /// 纯函数:把当前 <paramref name="settings"/> 渲染成 Forge 可读的
     /// <c>extra_model_paths.yaml</c> 内容。
     ///
-    /// 空 / 空白 <see cref="Settings.DefaultModelsDirectory"/> → 返 <c>""</c>
-    /// (caller 决定要不要跳过写入;这里不抛 — 空源 = 不写 yaml 是合法状态)。
+    /// <para>
+    /// 派生规则(每个 sub-key 独立判断):
+    /// - <see cref="ForgePaths"/> 对应字段非空 → 用该绝对路径(覆盖)
+    /// - 否则 <see cref="Settings.DefaultModelsDirectory"/> 非空 → 用 <c>&lt;base&gt;/&lt;sub&gt;</c>(派生)
+    /// - 两者皆空 → 该 sub-key 在 yaml 里跳过(同时整个 yaml 也无意义 → 整体返 "")
+    /// </para>
+    ///
+    /// 空 / 空白 <see cref="Settings.DefaultModelsDirectory"/> + <see cref="ForgePaths"/>
+    /// 6 字段全空 → 返 <c>""</c>(caller 决定要不要跳过写入;这里不抛 — 空源 = 不写 yaml 是合法状态)。
     ///
     /// 路径分隔符统一:Windows <c>\</c> → <c>/</c>(A1111/Forge yaml 惯例,跨平台
     /// yaml 解析器在 Windows 路径上经常不稳;Forge yaml loader 走 PyYAML,PyYAML
     /// 对 <c>\</c> 在 quoted context 里也认,但 forward slash 是 A1111/Forge
     /// 官方文档推荐的写法)。
     /// </summary>
-    /// <param name="settings">当前生效的 Settings(<c>DefaultModelsDirectory</c> 是 source of truth)。</param>
+    /// <param name="settings">当前生效的 Settings(<c>DefaultModelsDirectory</c> + <c>ForgePaths</c> 联合 source of truth)。</param>
     /// <returns>YAML 字符串;空 → 跳过写文件。</returns>
     public static string BuildYamlContent(Settings settings)
     {
         if (settings is null) throw new ArgumentNullException(nameof(settings));
-        if (string.IsNullOrWhiteSpace(settings.DefaultModelsDirectory))
-        {
-            return "";
-        }
 
         // GetFullPath 解析相对路径 + 去尾斜杠 — 用户在 Settings 配 "D:/models/" 或
         // "D:\models" 都能统一为 "D:\models"(不带尾斜杠)。后续 sub-path 派生
         // 一致性更好(避免 "D:\models" vs "D:\models\" 产生两种 base_path)。
-        var baseRaw = Path.GetFullPath(settings.DefaultModelsDirectory);
-        var basePath = ToForwardSlash(baseRaw);
+        var baseRaw = !string.IsNullOrWhiteSpace(settings.DefaultModelsDirectory)
+            ? Path.GetFullPath(settings.DefaultModelsDirectory)
+            : "";
+
+        // v1.0.0.x:ForgePaths 6 个 per-type 覆盖字段 — 跟 baseRaw 联合派生每个 sub-key。
+        // Subdirs 顺序固定(checkpoints → controlnet),保证 yaml 输出稳定以便测试断言。
+        var fp = settings.ForgePaths ?? new ForgePaths();
+        var resolved = new (string Field, string Value)[Subdirs.Length];
+        var anyResolved = false;
+        for (var i = 0; i < Subdirs.Length; i++)
+        {
+            var (field, subdir) = Subdirs[i];
+            var over = field switch
+            {
+                "checkpoints" => fp.CheckpointsDir,
+                "loras" => fp.LorasDir,
+                "vae" => fp.VaeDir,
+                "embeddings" => fp.EmbeddingsDir,
+                "hypernetworks" => fp.HypernetworksDir,
+                "controlnet" => fp.ControlnetDir,
+                _ => null,
+            };
+            var value = ResolveDir(over, baseRaw, subdir);
+            resolved[i] = (field, value);
+            if (!string.IsNullOrEmpty(value)) anyResolved = true;
+        }
+
+        // DefaultModelsDirectory 空 + ForgePaths 全空 → 整体返 "",跟之前语义一致。
+        if (!anyResolved)
+        {
+            return "";
+        }
 
         var sb = new System.Text.StringBuilder();
         sb.Append(SectionKey).Append(':').Append('\n');
         // base_path 字段 Forge 也认(A1111 风格),让用户在 webui UI 里看到这个
         // section 来自哪个根目录;不影响 file path 派生(每 subdir 字段独立指)。
-        sb.Append("  base_path: ").Append(basePath).Append('\n');
-        foreach (var (field, subdir) in Subdirs)
+        // DefaultModelsDirectory 空时跳过(没全局根目录)。
+        if (!string.IsNullOrEmpty(baseRaw))
         {
-            var subRaw = Path.Combine(baseRaw, subdir);
+            sb.Append("  base_path: ").Append(ToForwardSlash(baseRaw)).Append('\n');
+        }
+        foreach (var (field, value) in resolved)
+        {
+            if (string.IsNullOrEmpty(value)) continue;
             sb.Append("  ").Append(field).Append(": ")
-              .Append(ToForwardSlash(subRaw)).Append('\n');
+              .Append(ToForwardSlash(value)).Append('\n');
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// 解析单个 sub-key 的最终路径:<paramref name="overridePath"/> 非空 → 直接用;
+    /// 否则 <paramref name="defaultModelsDir"/> 非空 → <c>defaultModelsDir/subdir</c>;
+    /// 两者皆空 → ""(<see cref="BuildYamlContent"/> 整体返 "" 信号)。
+    ///
+    /// 不做 <see cref="Path.GetFullPath"/> normalization — override 由用户输入直接
+    /// 用,fallback 由 <see cref="BuildYamlContent"/> 的 baseRaw(normalized)拼。
+    /// </summary>
+    private static string ResolveDir(string? overridePath, string defaultModelsDir, string subdir)
+    {
+        if (!string.IsNullOrWhiteSpace(overridePath)) return overridePath!;
+        if (string.IsNullOrEmpty(defaultModelsDir)) return "";
+        return Path.Combine(defaultModelsDir, subdir);
     }
 
     /// <summary>
@@ -100,7 +155,8 @@ public static class ForgeExtraModelPathsYamlGenerator
     /// <c>&lt;envRootPath&gt;/extra_model_paths.yaml</c>。
     ///
     /// 失败行为:
-    /// - <see cref="Settings.DefaultModelsDirectory"/> 为空 → 抛
+    /// - <see cref="Settings.DefaultModelsDirectory"/> 空 + <see cref="Settings.ForgePaths"/>
+    ///   6 字段全空 → <see cref="BuildYamlContent"/> 返 "" → 抛
     ///   <see cref="InvalidOperationException"/>(defense in depth — caller 应该
     ///   预先 IsNullOrWhiteSpace 检查;这里抛出来让 bug 早期暴露而不是静默生成
     ///   一个空 base_path 的 yaml)。
@@ -123,7 +179,7 @@ public static class ForgeExtraModelPathsYamlGenerator
         if (string.IsNullOrEmpty(content))
         {
             throw new InvalidOperationException(
-                $"Settings.DefaultModelsDirectory 为空,无法生成 Forge extra_model_paths.yaml。");
+                $"Settings.DefaultModelsDirectory 与 Settings.ForgePaths.* 都为空,无法生成 Forge extra_model_paths.yaml。");
         }
 
         // 存在旧 yaml 文件且包含非 comfyui_manager_forge section → 警告一下(用户

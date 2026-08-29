@@ -131,6 +131,112 @@
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
+            <!-- v1.0.0.x: Forge env 模型目录 per-type 覆盖 ——
+                 留空时 yaml 派生自 DefaultModelsDirectory 的 <subdir>。
+                 ForgeExtraModelPathsYamlGenerator.BuildYamlContent 读这里。
+                 设置后下次 Forge env 启动生效(ProcessLauncher.EnsureWritten);
+                 在本 Settings 页点「保存」也会级联重写所有 Forge env 的 yaml。-->
+            <GroupBox x:Name="ForgePathsGroupBox" Header="Forge 模型目录" Margin="0,16,0,0" Padding="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Checkpoints -->
+                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,4,4,4">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="Checkpoints" VerticalAlignment="Center"/>
+                            <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       ToolTip="尚未保存"
+                                       Visibility="{Binding Dirty[CheckpointsDir], Converter={StaticResource BoolToVisibility}}"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding CheckpointsDir, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource MaterialTextBox}"/>
+                    </StackPanel>
+
+                    <!-- LoRA -->
+                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="4,4,0,4">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="LoRA" VerticalAlignment="Center"/>
+                            <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       ToolTip="尚未保存"
+                                       Visibility="{Binding Dirty[LorasDir], Converter={StaticResource BoolToVisibility}}"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding LorasDir, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource MaterialTextBox}"/>
+                    </StackPanel>
+
+                    <!-- VAE -->
+                    <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,4,4,4">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="VAE" VerticalAlignment="Center"/>
+                            <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       ToolTip="尚未保存"
+                                       Visibility="{Binding Dirty[VaeDir], Converter={StaticResource BoolToVisibility}}"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding VaeDir, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource MaterialTextBox}"/>
+                    </StackPanel>
+
+                    <!-- Embeddings -->
+                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="4,4,0,4">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="Embeddings" VerticalAlignment="Center"/>
+                            <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       ToolTip="尚未保存"
+                                       Visibility="{Binding Dirty[EmbeddingsDir], Converter={StaticResource BoolToVisibility}}"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding EmbeddingsDir, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource MaterialTextBox}"/>
+                    </StackPanel>
+
+                    <!-- Hypernetworks -->
+                    <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,4,4,4">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="Hypernetworks" VerticalAlignment="Center"/>
+                            <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       ToolTip="尚未保存"
+                                       Visibility="{Binding Dirty[HypernetworksDir], Converter={StaticResource BoolToVisibility}}"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding HypernetworksDir, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource MaterialTextBox}"/>
+                    </StackPanel>
+
+                    <!-- ControlNet -->
+                    <StackPanel Grid.Row="2" Grid.Column="1" Margin="4,4,0,4">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="ControlNet" VerticalAlignment="Center"/>
+                            <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       ToolTip="尚未保存"
+                                       Visibility="{Binding Dirty[ControlnetDir], Converter={StaticResource BoolToVisibility}}"/>
+                        </StackPanel>
+                        <TextBox Text="{Binding ControlnetDir, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource MaterialTextBox}"/>
+                    </StackPanel>
+                </Grid>
+            </GroupBox>
+            <TextBlock Text="留空则使用「全局默认 Models 目录」下的 checkpoints / loras / vae / embeddings / hypernetworks / controlnet 子目录;非空则该 sub-key 用绝对路径。"
+                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
+                       HorizontalAlignment="Left" />
+
             <!-- v0.6.12: 日志根目录(Logs/ 子目录的父目录)。空 = 默认 <安装目录>。
                  v0.6.12 hotfix:Browse 按钮补上(原 MVP 略去,见 SettingsViewModel.BrowseLogDirectoryCommand)。 -->
             <StackPanel Orientation="Horizontal" Margin="0,8,0,4">

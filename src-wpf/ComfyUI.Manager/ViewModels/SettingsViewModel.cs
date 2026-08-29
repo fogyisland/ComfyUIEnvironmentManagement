@@ -349,6 +349,16 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             {
                 var envsDirJustChanged = Dirty[nameof(EnvsDir)];
                 var envsDirValue = _settings.EnvsDir;
+                // v1.0.0.x:ForgePaths 6 个字段任一改了 → 级联重写所有 Forge env
+                // 的 extra_model_paths.yaml(ProcessLauncher.StartEnvAsync 启动前
+                // 会再写一次,这里属于「改 Settings 后立即生效」语义)。
+                var forgePathsChanged = Dirty[nameof(CheckpointsDir)]
+                    || Dirty[nameof(LorasDir)]
+                    || Dirty[nameof(VaeDir)]
+                    || Dirty[nameof(EmbeddingsDir)]
+                    || Dirty[nameof(HypernetworksDir)]
+                    || Dirty[nameof(ControlnetDir)]
+                    || Dirty[nameof(DefaultModelsDirectory)];
                 _repo.Save(_settings);
                 ClearDirty();
                 // v1.0.0.x: EnvsDir 改了 → 触发 EnvDirectoryScanner 扫新目录 auto-import
@@ -357,6 +367,42 @@ public class SettingsViewModel : ViewModelBase, IDisposable
                 {
                     try { await _onEnvsDirSaved(envsDirValue ?? ""); }
                     catch { /* scan 失败不阻塞 save 反馈 */ }
+                }
+                // v1.0.0.x:ForgePaths 改了 → 重写所有 Forge env yaml。空 env Repo
+                // 注入(测试路径)→ skip;每个 env 的 EnsureWritten 单独 try-catch,
+                // 单 env 失败不阻塞其它 env(并发 + 权限问题常见)。
+                // EnsureWritten 内部在 BuildYamlContent 返 "" 时抛
+                // InvalidOperationException(全空 Settings → 不写 yaml),这里也吞掉
+                // — 用户清空所有路径时旧 yaml 保留,用户手动删除或重启后 ProcessLauncher
+                // 跳过 Forge yaml 写入(改 DefaultModelsDirectory 非空后下次启动又写)。
+                if (forgePathsChanged && _envRepo is not null)
+                {
+                    try
+                    {
+                        foreach (var env in _envRepo.ListAll())
+                        {
+                            if (!string.Equals(env.TemplateKind, "Forge", StringComparison.Ordinal)) continue;
+                            if (string.IsNullOrWhiteSpace(env.RootPath)) continue;
+                            try
+                            {
+                                ForgeExtraModelPathsYamlGenerator.EnsureWritten(env.RootPath, _settings);
+                            }
+                            catch (InvalidOperationException)
+                            {
+                                // 全空 Settings → 跳过写 yaml(防用户清空所有路径误报)。
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"[SettingsViewModel] Forge env '{env.Name}' yaml 写入失败: {ex.Message}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SettingsViewModel] Forge env yaml 级联失败: {ex.Message}");
+                    }
                 }
             },
             _ => HasUnsavedChanges);
@@ -925,6 +971,76 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         get => _settings.DefaultModelsDirectory;
         set { _settings.DefaultModelsDirectory = value ?? ""; MarkDirty(nameof(DefaultModelsDirectory)); RaisePropertyChanged(); }
     }
+
+    // v1.0.0.x:Forge env 6 个 per-type 模型目录覆盖(checkpoints/loras/vae/
+    // embeddings/hypernetworks/controlnet)。空 → 走 DefaultModelsDirectory/<sub>
+    // 派生,非空 → 该 sub-key 用绝对路径(由 ForgeExtraModelPathsYamlGenerator
+    // BuildYamlContent 读)。用户原话 2026-08-29:"应用设置这里没有forge 的路径
+    // 设置呢?" —— 之前 yaml 只看 DefaultModelsDirectory 一个字段,用户看不到
+    // Forge 实际用的 6 个路径。改 Settings → 保存 → SaveCommand 级联重写所有
+    // Forge env 的 extra_model_paths.yaml。
+    // 6 getter 都把 null 暴露成 "" 供 XAML TextBox 绑定;setter 把 whitespace-only
+    // 归一为 null(让 BuildYamlContent 的 IsNullOrWhiteSpace check 走 fallback)。
+    public string CheckpointsDir
+    {
+        get => _settings.ForgePaths.CheckpointsDir ?? "";
+        set
+        {
+            _settings.ForgePaths.CheckpointsDir = string.IsNullOrWhiteSpace(value) ? null : value;
+            MarkDirty(nameof(CheckpointsDir));
+            RaisePropertyChanged();
+        }
+    }
+    public string LorasDir
+    {
+        get => _settings.ForgePaths.LorasDir ?? "";
+        set
+        {
+            _settings.ForgePaths.LorasDir = string.IsNullOrWhiteSpace(value) ? null : value;
+            MarkDirty(nameof(LorasDir));
+            RaisePropertyChanged();
+        }
+    }
+    public string VaeDir
+    {
+        get => _settings.ForgePaths.VaeDir ?? "";
+        set
+        {
+            _settings.ForgePaths.VaeDir = string.IsNullOrWhiteSpace(value) ? null : value;
+            MarkDirty(nameof(VaeDir));
+            RaisePropertyChanged();
+        }
+    }
+    public string EmbeddingsDir
+    {
+        get => _settings.ForgePaths.EmbeddingsDir ?? "";
+        set
+        {
+            _settings.ForgePaths.EmbeddingsDir = string.IsNullOrWhiteSpace(value) ? null : value;
+            MarkDirty(nameof(EmbeddingsDir));
+            RaisePropertyChanged();
+        }
+    }
+    public string HypernetworksDir
+    {
+        get => _settings.ForgePaths.HypernetworksDir ?? "";
+        set
+        {
+            _settings.ForgePaths.HypernetworksDir = string.IsNullOrWhiteSpace(value) ? null : value;
+            MarkDirty(nameof(HypernetworksDir));
+            RaisePropertyChanged();
+        }
+    }
+    public string ControlnetDir
+    {
+        get => _settings.ForgePaths.ControlnetDir ?? "";
+        set
+        {
+            _settings.ForgePaths.ControlnetDir = string.IsNullOrWhiteSpace(value) ? null : value;
+            MarkDirty(nameof(ControlnetDir));
+            RaisePropertyChanged();
+        }
+    }
     /// <summary>
     /// v0.6.12:日志根目录(Logs/ 子目录的父目录)。空 = 默认 &lt;projectRoot&gt;。
     /// 改后 Settings.Save() 持久化,App 启动时 AppLogger / ProcessLauncher 读这个字段。
@@ -1301,6 +1417,13 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(LocalNodeDirectory));
         RaisePropertyChanged(nameof(LocalNodesDirectory));
         RaisePropertyChanged(nameof(DefaultModelsDirectory));
+        // v1.0.0.x:Forge 模型目录 6 个 per-type 覆盖字段。
+        RaisePropertyChanged(nameof(CheckpointsDir));
+        RaisePropertyChanged(nameof(LorasDir));
+        RaisePropertyChanged(nameof(VaeDir));
+        RaisePropertyChanged(nameof(EmbeddingsDir));
+        RaisePropertyChanged(nameof(HypernetworksDir));
+        RaisePropertyChanged(nameof(ControlnetDir));
         RaisePropertyChanged(nameof(WorkflowsDirectory));
         RaisePropertyChanged(nameof(WorkflowSourceCommunityJsonEnabled));
         RaisePropertyChanged(nameof(WorkflowSourceCivitAiEnabled));

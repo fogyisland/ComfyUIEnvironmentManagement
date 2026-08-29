@@ -198,4 +198,119 @@ public class ForgeExtraModelPathsYamlGeneratorTests : IDisposable
         // 新生成的内容到位。
         Assert.Contains(ForgeExtraModelPathsYamlGenerator.SectionKey, content);
     }
+
+    // ===== v1.0.0.x:Settings.ForgePaths 6 个 per-type 覆盖字段 =====
+
+    [Fact]
+    public void Build_ForgePathsCheckpointsSet_UsesOverridePath()
+    {
+        // v1.0.0.x:Settings.ForgePaths.CheckpointsDir 非空 → 该 sub-key 用 override,
+        // 其余 5 个走 DefaultModelsDirectory 派生。锁住「override 命中,
+        // 其他字段不污染」行为。
+        var settings = new Settings { DefaultModelsDirectory = "D:/models" };
+        settings.ForgePaths.CheckpointsDir = "E:/my-ckpts";
+
+        var yaml = ForgeExtraModelPathsYamlGenerator.BuildYamlContent(settings);
+
+        Assert.Contains("checkpoints: E:/my-ckpts", yaml);
+        Assert.Contains("loras: D:/models/loras", yaml);
+        Assert.Contains("vae: D:/models/vae", yaml);
+        Assert.Contains("embeddings: D:/models/embeddings", yaml);
+        Assert.Contains("hypernetworks: D:/models/hypernetworks", yaml);
+        Assert.Contains("controlnet: D:/models/controlnet", yaml);
+    }
+
+    [Fact]
+    public void Build_AllForgePathsSet_AllOverridesUsed()
+    {
+        // v1.0.0.x:6 个 ForgePaths 字段全填 → 全部走 override,DefaultModelsDirectory
+        // 只用作 base_path(没派生任何 sub-path)。
+        var settings = new Settings { DefaultModelsDirectory = "D:/models" };
+        settings.ForgePaths.CheckpointsDir = "E:/ckpts";
+        settings.ForgePaths.LorasDir = "E:/loras";
+        settings.ForgePaths.VaeDir = "E:/vae";
+        settings.ForgePaths.EmbeddingsDir = "E:/emb";
+        settings.ForgePaths.HypernetworksDir = "E:/hyp";
+        settings.ForgePaths.ControlnetDir = "E:/ctrl";
+
+        var yaml = ForgeExtraModelPathsYamlGenerator.BuildYamlContent(settings);
+
+        Assert.Contains("base_path: D:/models", yaml);
+        Assert.Contains("checkpoints: E:/ckpts", yaml);
+        Assert.Contains("loras: E:/loras", yaml);
+        Assert.Contains("vae: E:/vae", yaml);
+        Assert.Contains("embeddings: E:/emb", yaml);
+        Assert.Contains("hypernetworks: E:/hyp", yaml);
+        Assert.Contains("controlnet: E:/ctrl", yaml);
+        // 没有 sub-path 派生残留 — 不能出现 D:/models/checkpoints 这种。
+        Assert.DoesNotContain("D:/models/checkpoints", yaml);
+    }
+
+    [Fact]
+    public void Build_ForgePathsSetButDefaultModelsDirEmpty_StillUsesOverrides()
+    {
+        // v1.0.0.x:DefaultModelsDirectory 空 + ForgePaths 全填 → 仍写 yaml(override 命中),
+        // 不再返 ""。base_path 字段在 base 空时跳过。
+        var settings = new Settings { DefaultModelsDirectory = "" };
+        settings.ForgePaths.CheckpointsDir = "E:/ckpts";
+        settings.ForgePaths.LorasDir = "E:/loras";
+        settings.ForgePaths.VaeDir = "E:/vae";
+        settings.ForgePaths.EmbeddingsDir = "E:/emb";
+        settings.ForgePaths.HypernetworksDir = "E:/hyp";
+        settings.ForgePaths.ControlnetDir = "E:/ctrl";
+
+        var yaml = ForgeExtraModelPathsYamlGenerator.BuildYamlContent(settings);
+
+        Assert.NotEmpty(yaml);
+        Assert.Contains($"{ForgeExtraModelPathsYamlGenerator.SectionKey}:", yaml);
+        Assert.Contains("checkpoints: E:/ckpts", yaml);
+        Assert.Contains("controlnet: E:/ctrl", yaml);
+        // 没有 base_path 字段(因为 DefaultModelsDirectory 空)。
+        Assert.DoesNotContain("base_path:", yaml);
+    }
+
+    [Fact]
+    public void Build_ForgePathsWhitespace_FallsBackToDefault()
+    {
+        // v1.0.0.x:ForgePaths 字段填 whitespace("   ")→ 跟 null 等价,走 fallback。
+        // 防止用户填了空格误以为配置生效(Forge yaml loader 会把 "   " 当目录)。
+        var settings = new Settings { DefaultModelsDirectory = "D:/models" };
+        settings.ForgePaths.CheckpointsDir = "   ";
+
+        var yaml = ForgeExtraModelPathsYamlGenerator.BuildYamlContent(settings);
+
+        Assert.Contains("checkpoints: D:/models/checkpoints", yaml);
+        Assert.DoesNotContain("checkpoints:    ", yaml);
+    }
+
+    [Fact]
+    public void Build_ForgePathsNull_FallsBackToDefault()
+    {
+        // v1.0.0.x:ForgePaths 字段 null → 走 fallback(DefaultModelsDirectory 派生)。
+        // Settings 初始化 ForgePaths = new() 时 6 字段都是 null,等价于此 case。
+        var settings = new Settings { DefaultModelsDirectory = "D:/models" };
+        settings.ForgePaths.CheckpointsDir = null;
+
+        var yaml = ForgeExtraModelPathsYamlGenerator.BuildYamlContent(settings);
+
+        Assert.Contains("checkpoints: D:/models/checkpoints", yaml);
+    }
+
+    [Fact]
+    public void Build_PartialForgePaths_MixedFallback()
+    {
+        // v1.0.0.x:只有 LorasDir 设 → 只 loras 用 override,其余 5 个走 fallback。
+        // 锁住「per-key 独立判断」行为,避免后续误改成 all-or-nothing 语义。
+        var settings = new Settings { DefaultModelsDirectory = "D:/models" };
+        settings.ForgePaths.LorasDir = "E:/my-loras";
+
+        var yaml = ForgeExtraModelPathsYamlGenerator.BuildYamlContent(settings);
+
+        Assert.Contains("loras: E:/my-loras", yaml);
+        Assert.Contains("checkpoints: D:/models/checkpoints", yaml);
+        Assert.Contains("vae: D:/models/vae", yaml);
+        Assert.Contains("embeddings: D:/models/embeddings", yaml);
+        Assert.Contains("hypernetworks: D:/models/hypernetworks", yaml);
+        Assert.Contains("controlnet: D:/models/controlnet", yaml);
+    }
 }

@@ -73,6 +73,20 @@ public class Settings
     [JsonPropertyName("default_models_directory")]
     public string DefaultModelsDirectory { get; set; } = "";
     /// <summary>
+    /// v1.0.0.x:Forge env 模型目录 per-type 覆盖(6 个 ComfyUI 风格子目录:
+    /// checkpoints / loras / vae / embeddings / hypernetworks / controlnet)。
+    /// 任意字段非空 → 该 sub-key 用对应绝对路径;<see cref="DefaultModelsDirectory"/>
+    /// 为空但 ForgePaths 全空 → ForgeExtraModelPathsYamlGenerator.BuildYamlContent
+    /// 返 ""(跟之前一样不写 yaml,Forge 走默认 a1111_home/models/ 行为);
+    /// 任一字段非空 → 写 yaml 且该 sub-key 用 override,其余 fallback 到
+    /// <c>&lt;DefaultModelsDirectory&gt;/&lt;默认子目录名&gt;</c>。
+    /// 改后下次 Forge env 启动生效(ProcessLauncher.EnsureWritten);
+    /// 用户在 Settings UI 点保存也会触发级联重写所有 Forge env 的
+    /// extra_model_paths.yaml(SettingsViewModel.SaveCommand)。
+    /// </summary>
+    [JsonPropertyName("forge_paths")]
+    public ForgePaths ForgePaths { get; set; } = new();
+    /// <summary>
     /// v0.6.12:日志根目录(Logs/ 子目录的父目录)。空 = 默认 &lt;projectRoot&gt;(Logs/ 创建在 projectRoot 下)。
     /// 设置后,AppLogger / ProcessLauncher / 各 subsystem 都从这个目录创建 Logs/ 子目录。
     /// 例如:设置为 "D:/my-logs" → 日志写到 D:/my-logs/Logs/。
@@ -229,6 +243,14 @@ public class Settings
         target.LocalNodeDirectory = source.LocalNodeDirectory;
         target.LocalNodesDirectory = source.LocalNodesDirectory;
         target.DefaultModelsDirectory = source.DefaultModelsDirectory;
+        // v1.0.0.x:ForgePaths 子对象 — 6 个 nullable string 字段就地复制
+        // (sub-object 引用共享,逐字段写更明确)。
+        target.ForgePaths.CheckpointsDir = source.ForgePaths.CheckpointsDir;
+        target.ForgePaths.LorasDir = source.ForgePaths.LorasDir;
+        target.ForgePaths.VaeDir = source.ForgePaths.VaeDir;
+        target.ForgePaths.EmbeddingsDir = source.ForgePaths.EmbeddingsDir;
+        target.ForgePaths.HypernetworksDir = source.ForgePaths.HypernetworksDir;
+        target.ForgePaths.ControlnetDir = source.ForgePaths.ControlnetDir;
         target.LogDirectory = source.LogDirectory;
         target.WorkflowsDirectory = source.WorkflowsDirectory;
         target.WorkflowSourceCommunityJsonEnabled = source.WorkflowSourceCommunityJsonEnabled;
@@ -314,5 +336,28 @@ public class ExtraPath
 {
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("path")] public string Path { get; set; } = "";
+}
+
+/// <summary>
+/// v1.0.0.x:Forge env extra_model_paths.yaml 的 per-type 模型目录覆盖。
+/// 6 个 ComfyUI 风格子目录(checkpoints / loras / vae / embeddings /
+/// hypernetworks / controlnet)各自的绝对路径;空 = 走
+/// <see cref="Settings.DefaultModelsDirectory"/>/&lt;子目录名&gt; 派生。
+/// <see cref="ForgeExtraModelPathsYamlGenerator"/> 读这里。
+/// </summary>
+public sealed class ForgePaths
+{
+    [JsonPropertyName("checkpoints_dir")]
+    public string? CheckpointsDir { get; set; }
+    [JsonPropertyName("loras_dir")]
+    public string? LorasDir { get; set; }
+    [JsonPropertyName("vae_dir")]
+    public string? VaeDir { get; set; }
+    [JsonPropertyName("embeddings_dir")]
+    public string? EmbeddingsDir { get; set; }
+    [JsonPropertyName("hypernetworks_dir")]
+    public string? HypernetworksDir { get; set; }
+    [JsonPropertyName("controlnet_dir")]
+    public string? ControlnetDir { get; set; }
 }
 
