@@ -321,6 +321,10 @@ public static class SettingsDefaults
         // AI voice 已经被种了 "envTemplates\<Kind>" → 在 seed 之后 normalize 一次,
         // 替换为 "<Kind>"。Custom template 不动。
         NormalizeBuiltInTemplatePaths(s);
+        // v1.0.0.x (2026-08-29):清掉 shipped 用户 settings.inf 残留的已下线模板条目
+        // (A1111 + SwarmUI) — Apply 只 if-not-exists seed 不删,需单独 prune 一次。
+        // 跟 NormalizeBuiltInTemplatePaths 同样在 seed 后跑;幂等,多次跑无副作用。
+        PruneDeprecatedBuiltInKinds(s);
 
         // v1.0.0 Phase 1:dev build 解锁所有 hidden feature flag — 用户原话
         // "开发阶段没有限制,所以在开发就不要限制了模型市场和工作流库了,
@@ -485,6 +489,35 @@ public static class SettingsDefaults
         "OpenVoice", "Whisper", "CoquiTTS", "Bark",
         "HunyuanVideo", "LTXVideo", "CogVideoX", "Fooocus",
     };
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29): 已下线模板的 deprecated kind 列表 — A1111 (仓库从 github
+    /// 移除) + SwarmUI (ProcessLauncher Python 假设 functional break)。
+    /// 已从 BuiltInKinds 移除(不会再 seed),但 shipped 用户 settings.inf 里仍可能 persist
+    /// 老条目。Apply 末尾调 PruneDeprecatedBuiltInKinds 一次性从 s.Templates dict 清掉,
+    /// 模板管理 UI(TemplateManagementViewModel 直接遍历 s.Templates)不再显示。
+    /// **不**碰 BuiltInKinds 当前的 10 个,**不**碰用户手填的 custom kind。
+    /// </summary>
+    private static readonly string[] DeprecatedBuiltInKinds =
+    {
+        "A1111", "SwarmUI",
+    };
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29): 从 <c>s.Templates</c> dict 移除 <see cref="DeprecatedBuiltInKinds"/>
+    /// 列出的已下线 kind。SettingsDefaults.Apply 末尾调一次 — shipped 用户的 settings.inf
+    /// 持久化了老条目(Apply 只 if-not-exists seed 不会动),下次启动时一次性清掉,模板管理 UI
+    /// 不再显示已下线模板。
+    /// </summary>
+    private static void PruneDeprecatedBuiltInKinds(Settings s)
+    {
+        foreach (var kind in DeprecatedBuiltInKinds)
+        {
+            // 跟 NormalizeBuiltInTemplatePaths 同样模式 — 用 Remove(TKey) 静默。
+            // 不存在(新装用户 / 已经清过的)→ no-op,跑多次幂等。
+            s.Templates.Remove(kind);
+        }
+    }
 
     /// <summary>
     /// v1.0.0.x bug #509:把 "envTemplates\&lt;Kind&gt;" 旧 default 残留改成

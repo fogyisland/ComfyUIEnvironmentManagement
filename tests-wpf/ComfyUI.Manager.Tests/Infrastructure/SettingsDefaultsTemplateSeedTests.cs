@@ -327,4 +327,124 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal(@"D:\my-software\stable-diffusion",
             s.Templates["ComfyUI"].LocalSourceDir);
     }
+
+    // --- v1.0.0.x (2026-08-29): PruneDeprecatedBuiltInKinds(A1111 + SwarmUI cleanup) ---
+
+    [Fact]
+    public void Apply_PreExistingA1111Entry_RemovedFromTemplatesDict()
+    {
+        // v1.0.0.x (2026-08-29): 用户 settings.inf persist 老 A1111 条目(已下线,
+        // Stability-AI/stablediffusion 仓库从 github 移除)。Apply 末尾调
+        // PruneDeprecatedBuiltInKinds 把 A1111 从 s.Templates dict 清掉 ——
+        // TemplateManagementViewModel 直接遍历 _settings.Templates,不清的话
+        // 模板管理 UI 仍会显示这个已下线的模板。
+        var s = new Settings();
+        s.Templates["A1111"] = new TemplateConfig
+        {
+            Name = "A1111", Kind = "A1111",
+            LocalSourceDir = "A1111",
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "webui.py",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.DoesNotContain(s.Templates, kvp => kvp.Key == "A1111");
+    }
+
+    [Fact]
+    public void Apply_PreExistingSwarmUIEntry_RemovedFromTemplatesDict()
+    {
+        // v1.0.0.x (2026-08-29): SwarmUI 已下线(commit 0845067 hard-remove ——
+        // ProcessLauncher Python 假设对 SwarmUI .NET app functional break)。
+        // 老 settings.inf 残留的 SwarmUI 条目 Apply 时清掉,模板管理 UI 不再显示。
+        var s = new Settings();
+        s.Templates["SwarmUI"] = new TemplateConfig
+        {
+            Name = "SwarmUI", Kind = "SwarmUI",
+            LocalSourceDir = "SwarmUI",
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "Launch-windows.bat",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.DoesNotContain(s.Templates, kvp => kvp.Key == "SwarmUI");
+    }
+
+    [Fact]
+    public void Apply_PreExistingDeprecatedAndCustomEntries_CustomKeptDeprecatedRemoved()
+    {
+        // v1.0.0.x (2026-08-29): PruneDeprecatedBuiltInKinds 只清 DeprecatedBuiltInKinds
+        // 列出的 kind,custom templates(用户手填的,kind 不在 deprecated 列表)一律不动。
+        var s = new Settings();
+        s.Templates["A1111"] = new TemplateConfig
+        {
+            Name = "A1111", Kind = "A1111",
+            LocalSourceDir = "A1111",
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "webui.py",
+        };
+        s.Templates["SwarmUI"] = new TemplateConfig
+        {
+            Name = "SwarmUI", Kind = "SwarmUI",
+            LocalSourceDir = "SwarmUI",
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "Launch-windows.bat",
+        };
+        s.Templates["MyCustomA1111Like"] = new TemplateConfig
+        {
+            Name = "MyCustomA1111Like", Kind = "MyCustomA1111Like",
+            LocalSourceDir = "MyCustomA1111Like",
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "main.py",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.DoesNotContain(s.Templates, kvp => kvp.Key == "A1111");
+        Assert.DoesNotContain(s.Templates, kvp => kvp.Key == "SwarmUI");
+        // user-named kind 即使跟 deprecated 撞名也不算 — 必须 kind 字符串精确等于才 prune
+        Assert.Contains(s.Templates, kvp => kvp.Key == "MyCustomA1111Like");
+    }
+
+    [Fact]
+    public void Apply_RunMultipleTimes_IdempotentDoesNotCorruptState()
+    {
+        // v1.0.0.x (2026-08-29): PruneDeprecatedBuiltInKinds 是幂等的 ——
+        // 多次跑(理论上不会发生,但 SettingsDefaults.Apply 会被同一 session 调多次)
+        // 不该触发异常、不该影响其他 built-in / custom 模板。
+        var s = new Settings();
+        s.Templates["A1111"] = new TemplateConfig
+        {
+            Name = "A1111", Kind = "A1111",
+            LocalSourceDir = "A1111",
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "webui.py",
+        };
+        s.Templates["ComfyUI"] = new TemplateConfig
+        {
+            Name = "ComfyUI", Kind = "ComfyUI",
+            LocalSourceDir = "CustomComfyuiDir",
+            SourceKind = TemplateSourceKind.Local,
+            EntryScript = "main.py",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+        var firstPass = new System.Collections.Generic.Dictionary<string, TemplateConfig>(
+            s.Templates, System.StringComparer.Ordinal);
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+        var secondPass = new System.Collections.Generic.Dictionary<string, TemplateConfig>(
+            s.Templates, System.StringComparer.Ordinal);
+
+        Assert.Equal(firstPass.Count, secondPass.Count);
+        foreach (var kvp in firstPass)
+        {
+            Assert.True(secondPass.ContainsKey(kvp.Key));
+            Assert.Equal(kvp.Value.Name, secondPass[kvp.Key].Name);
+        }
+        Assert.DoesNotContain(secondPass, kvp => kvp.Key == "A1111");
+        Assert.Contains(secondPass, kvp => kvp.Key == "ComfyUI");
+    }
 }
