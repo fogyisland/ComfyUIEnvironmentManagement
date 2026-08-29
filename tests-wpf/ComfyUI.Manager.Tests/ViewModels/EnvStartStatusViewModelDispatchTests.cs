@@ -169,14 +169,23 @@ public sealed class EnvStartStatusViewModelDispatchTests : IDisposable
         //   TestSyncContext,test method 的 continuation 永远不 pump → 死锁);
         // ② Task.Run 替代 QueueUserWorkItem,ThreadPool 饱和也能拿到线程;
         // ③ GetAwaiter().GetResult 隐含等待,避免 timeout-based race。
+        // v1.0.0.x followup #720:full-suite 跑时 Task.Run 复用了 calling thread
+        // (ThreadPool 看到 test thread blocked on GetResult 但 managed thread ID
+        // 已被 reuse)→ bgAddThreadId == uiThreadId → Assert.NotEqual fail。
+        // 换 new Thread(...) 强制 OS 新线程,managed thread ID 一定不同。
         var uiThreadId = Thread.CurrentThread.ManagedThreadId;
         var status = new EnvStartStatusViewModel();
         var bgAddThreadId = -1;
-        Task.Run(() =>
+        var bgDone = new ManualResetEventSlim(false);
+        var bgThread = new Thread(() =>
         {
             bgAddThreadId = Thread.CurrentThread.ManagedThreadId;
             status.Report("hello");
-        }).GetAwaiter().GetResult();
+            bgDone.Set();
+        }) { IsBackground = true, Name = "EnvStartStatusDispatchTest-Bg" };
+        bgThread.Start();
+        bgDone.Wait(TimeSpan.FromSeconds(5));
+        bgThread.Join();
         Assert.Single(status.LogLines);
         Assert.Equal("hello", status.LogLines[0]);
         Assert.NotEqual(uiThreadId, bgAddThreadId);
