@@ -84,16 +84,20 @@ public class ForgePreFlightInstallerTests : IDisposable
 
     /// <summary>
     /// Fake:不真跑 pip(只验 filtered 文件内容 + pip args)。强制所有
-    /// pip 调用都 success,捕获最后一次 pipArgs 跟 filtered 文件路径。
+    /// pip 调用都 success,捕获**所有** pipArgs 列表 + filtered 文件路径。
+    /// v1.0.0.x (2026-08-29)pre-flight 拆 step 3a (主 req install) + step 3b
+    /// (pytorch_lightning) 2 段 pip,所以捕获所有调用序列供 assert。
     /// </summary>
     private class CapturingInstaller : ForgePreFlightInstaller
     {
-        public List<string> LastPipArgs { get; } = new();
+        public List<string> LastPipArgs { get; private set; } = new();
         public string? LastFilteredFile { get; private set; }
         public List<string>? LastFilteredContent { get; private set; }
+        public List<List<string>> AllPipCalls { get; } = new();
         public bool FailOnClip { get; set; }
         public bool FailOnOpenClip { get; set; }
         public bool FailOnReq { get; set; }
+        public bool FailOnPytorchLightning { get; set; }
         public bool FailOnRepoClone { get; set; }
 
         public CapturingInstaller() : base() { }
@@ -104,8 +108,9 @@ public class ForgePreFlightInstallerTests : IDisposable
             Action<string> onLine,
             CancellationToken ct)
         {
-            LastPipArgs.Clear();
-            foreach (var a in pipArgs) LastPipArgs.Add(a);
+            var argsCopy = pipArgs.ToList();
+            AllPipCalls.Add(argsCopy);
+            LastPipArgs = argsCopy;
 
             // pip install -r <filteredFile>:读 filtered 内容供 assert
             for (int i = 0; i < pipArgs.Count - 1; i++)
@@ -121,9 +126,11 @@ public class ForgePreFlightInstallerTests : IDisposable
             var isClip = pipArgs.Any(a => a.Contains("CLIP/archive"));
             var isOpenClip = pipArgs.Any(a => a.Contains("open_clip/archive"));
             var isReqFile = pipArgs.Any(a => a.Contains(".requirements_filtered.txt"));
+            var isPytorchLightning = pipArgs.Any(a => a.StartsWith("pytorch_lightning"));
             var result = (isClip && FailOnClip) ||
                          (isOpenClip && FailOnOpenClip) ||
-                         (isReqFile && FailOnReq)
+                         (isReqFile && FailOnReq) ||
+                         (isPytorchLightning && FailOnPytorchLightning)
                 ? new PipResult(1, WasCancelled: false)
                 : new PipResult(0, WasCancelled: false);
             return Task.FromResult(result);
@@ -161,11 +168,16 @@ public class ForgePreFlightInstallerTests : IDisposable
     }
 
     [Fact]
-    public async Task InstallAsync_FiltersOnlyBareTorchLines_BeforePipInstallR()
+    public async Task InstallAsync_FiltersBareTorchAndPytorchLightning_BeforePipInstallR()
     {
-        // 关键:step 3 跑 pip install -r 前,filtered 文件**只**过滤裸 torch 行
-        // (用户确认 — 不动 torchvision / torchaudio 等其它 torch 系列,因为
-        // 它们不在 requirements_versions.txt 里,launch.py 自己装)。
+        // v1.0.0.x (2026-08-29)step 3a 主 install 拆冲突包策略:
+        //   - 裸 torch 行(防覆盖 BED 锁的 torch 2.4.0+cu121)
+        //   - pytorch_lightning 行(要求 torch<2.0,主 install 段必须过滤掉,
+        //     由 step 3b 单独 --no-deps 装 — 防 pip resolver 拉 pytorch_lightning
+        //     的 torch<2.0 约束把 BED torch 降到 1.x)
+        // 其余 torch 系列(torchvision / torchaudio / torchdiffeq / torchsde /
+        // open-clip-torch — 名字含 torch 但不是 torch 包,也不是 pytorch_lightning)
+        // 全部正常保留。
         var env = SeedEnv();
         var installer = new CapturingInstaller();
 
@@ -174,16 +186,18 @@ public class ForgePreFlightInstallerTests : IDisposable
         Assert.True(result.Success, $"pre-flight fail: {result.Reason}");
         Assert.NotNull(installer.LastFilteredContent);
         Assert.NotEmpty(installer.LastFilteredContent!);
-        // 裸 torch 形式被过滤(行首 "torch" 后跟空白 / 行尾 / 比较运算符)
+        // 裸 torch 行被过滤
         Assert.DoesNotContain(installer.LastFilteredContent!, line =>
             ForgePreFlightInstaller.IsBareTorchLine(line));
+        // pytorch_lightning 行被过滤(主 install 段)
+        Assert.DoesNotContain(installer.LastFilteredContent!, line =>
+            ForgePreFlightInstaller.IsPytorchLightningLine(line));
         // 保留的 torch 系列(launch.py 单独装,不在此过滤范围)
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchvision"));
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchaudio"));
-        // 含 torch 子串但不是 torch 包的也都保留
+        // 含 torch 子串但不是 torch 包、也不是 pytorch_lightning 的也都保留
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchdiffeq"));
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("torchsde"));
-        Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("pytorch_lightning"));
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("open-clip-torch"));
         // 普通行也保留
         Assert.Contains(installer.LastFilteredContent!, l => l.StartsWith("numpy"));
@@ -202,7 +216,7 @@ public class ForgePreFlightInstallerTests : IDisposable
     [InlineData("torch>=2.0,<3.0", true)]            // 范围
     [InlineData("torchvision==0.16.2", false)]      // NOT 过滤
     [InlineData("torchaudio", false)]                // NOT 过滤
-    [InlineData("pytorch_lightning==1.9.4", false)]  // 含 torch 子串但不是 torch
+    [InlineData("pytorch_lightning==1.9.4", false)]  // IsBareTorchLine 不匹配(非裸 torch)
     [InlineData("torchdiffeq==0.2.3", false)]        // 同
     [InlineData("torchsde==0.2.6", false)]           // 同
     [InlineData("open-clip-torch==2.20.0", false)]   // 同
@@ -212,22 +226,79 @@ public class ForgePreFlightInstallerTests : IDisposable
         Assert.Equal(expected, ForgePreFlightInstaller.IsBareTorchLine(line));
     }
 
+    // v1.0.0.x (2026-08-29):新加 IsPytorchLightningLine 测试 ——
+    // 行首匹配 pytorch_lightning(忽略大小写),后跟空白 / 行尾 / 比较运算符。
+    [Theory]
+    [InlineData("pytorch_lightning", true)]            // 裸名
+    [InlineData("pytorch_lightning==1.9.4", true)]     // 带版本(冲突行)
+    [InlineData("pytorch_lightning>=1.9,<2", true)]    // 范围
+    [InlineData("  pytorch_lightning  ", true)]        // leading/trailing whitespace
+    [InlineData("PYTORCH_LIGHTNING", true)]            // 大小写不敏感
+    [InlineData("pytorch_lightning_csrc", false)]      // 含子串但不是 pytorch_lightning
+    [InlineData("torch", false)]                       // 裸 torch(由 IsBareTorchLine 处理)
+    [InlineData("torchdiffeq==0.2.3", false)]          // 含 torch 但不是 pytorch_lightning
+    [InlineData("open-clip-torch==2.20.0", false)]     // 同
+    [InlineData("", false)]                            // 空
+    public void IsPytorchLightningLine_MatchesOnlyPytorchLightning(string line, bool expected)
+    {
+        Assert.Equal(expected, ForgePreFlightInstaller.IsPytorchLightningLine(line));
+    }
+
     [Fact]
     public async Task InstallAsync_DoesNotPassBuildIsolation_ForRequirementsTxt()
     {
         // requirements_versions.txt 都是预编译 wheel,不需要 --no-build-isolation
-        // (--no-build-isolation 只用于 CLIP / open_clip 老 setup.py)
+        // (--no-build-isolation 只用于 CLIP / open_clip 老 setup.py)。
+        // v1.0.0.x (2026-08-29)step 3a 主 install 段拆出后,LastPipArgs 是
+        // pytorch_lightning 那次,不是 req 那次 — 这里从 AllPipCalls 里
+        // 找到 -r .requirements_filtered.txt 那一段验证。
         var env = SeedEnv();
         var installer = new CapturingInstaller();
 
         await installer.InstallAsync(env);
 
-        // LastPipArgs 应该是最后一次 pip 调用(req install)。先验 clip/open_clip
-        // 用了 --no-build-isolation(在更早的调用),这里 LastPipArgs 是 req,
-        // 所以要 capture all calls 才验得到 — 简化:验 req 不含 isolation flag。
-        Assert.Contains("install", installer.LastPipArgs);
-        Assert.Contains(".requirements_filtered.txt", string.Join(" ", installer.LastPipArgs));
-        Assert.DoesNotContain("--no-build-isolation", installer.LastPipArgs);
+        var reqCall = installer.AllPipCalls
+            .FirstOrDefault(args => args.Any(a => a.Contains(".requirements_filtered.txt")));
+        Assert.NotNull(reqCall);
+        Assert.Contains("install", reqCall!);
+        Assert.Contains(".requirements_filtered.txt", string.Join(" ", reqCall!));
+        Assert.DoesNotContain("--no-build-isolation", reqCall!);
+    }
+
+    // v1.0.0.x (2026-08-29):step 3a 主 install **不再** 加 --no-deps,
+    // 让 pip 自动拉 transitive deps(gradio → gradio_client、fastapi →
+    // starlette、pydantic → typing-extensions 等)。这是 webui.py 启动
+    // 不再 ModuleNotFoundError 的关键修复。
+    [Fact]
+    public async Task InstallAsync_MainReqInstall_DoesNotUseNoDeps()
+    {
+        var env = SeedEnv();
+        var installer = new CapturingInstaller();
+
+        await installer.InstallAsync(env);
+
+        var reqCall = installer.AllPipCalls
+            .FirstOrDefault(args => args.Any(a => a.Contains(".requirements_filtered.txt")));
+        Assert.NotNull(reqCall);
+        Assert.DoesNotContain("--no-deps", reqCall!);
+    }
+
+    // v1.0.0.x (2026-08-29):step 3b pytorch_lightning 单独 --no-deps 装,
+    // 防止 pip resolver 看到 pytorch_lightning 的 torch<2.0 约束去降级 BED
+    // 锁的 torch 2.4.0+cu121(cu121 CUDA wheel 会丢失)。
+    [Fact]
+    public async Task InstallAsync_PytorchLightningInstall_AloneWithNoDeps()
+    {
+        var env = SeedEnv();
+        var installer = new CapturingInstaller();
+
+        await installer.InstallAsync(env);
+
+        var ptlCall = installer.AllPipCalls
+            .FirstOrDefault(args => args.Any(a => a.StartsWith("pytorch_lightning")));
+        Assert.NotNull(ptlCall);
+        Assert.Contains("pytorch_lightning==1.9.4", ptlCall!);
+        Assert.Contains("--no-deps", ptlCall!);
     }
 
     [Fact]

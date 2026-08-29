@@ -22,8 +22,11 @@ namespace ComfyUI.Manager.Services;
 /// 4 件事执行顺序:
 ///   1. <c>pip install openai/CLIP/archive/{hash}.zip --no-build-isolation</c>
 ///   2. <c>pip install mlfoundations/open_clip/archive/{hash}.zip --no-build-isolation</c>
-///   3. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt --no-deps</c>(过滤裸 torch 行,
-///      与 ComfyUI RequirementsInstaller 一致 — BED 已装 torch,装依赖不覆盖 profile 版本)
+///   3a. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt</c>(过滤裸 torch 行 + pytorch_lightning,
+///      无 <c>--no-deps</c> → pip 自动拉 transitive deps:gradio → gradio_client、
+///      fastapi → starlette、pydantic → typing-extensions 等)
+///   3b. <c>pip install pytorch_lightning==1.9.4 --no-deps</c>(要求 torch&lt;2.0 与 BED 锁的
+///      torch 2.4.0+cu121 冲突,必须 --no-deps 防止 pip 自动降级 torch 丢失 CUDA wheel)
 ///   4. <c>git clone</c> 3 个 repos 到 <c>&lt;envRoot&gt;/repositories/</c>(已存在 skip)
 ///
 /// 触发入口:RequirementsInstaller.InstallAsync 头部按 <c>env.TemplateKind</c> dispatch
@@ -88,16 +91,15 @@ public class ForgePreFlightInstaller
             ForgePreFlightConstants.Zips[1], pythonExe, logProgress, ct);
         if (!IsPipOk(ocResult)) return FailFrom(ocResult, "open_clip");
 
-        // 3. requirements_versions.txt — 只过滤裸 torch 行(launch.py 单独装
-        //    torchvision / torchaudio / xformers 等,不在这个文件里;forge
-        //    requirements_versions.txt 实际只有 1 行裸 torch)。不复用共享
-        //    RequirementsFileInstaller.FilterTorchLines — 那个 regex 过滤 5 个
-        //    标准 torch 系列(torch / torchvision / torchaudio / torchtext /
-        //    torchdata),被 ComfyUI/Manager/LocalNodeBulkInstaller 共用,改它会
-        //    影响其他 caller。这里用 inline 简化版,只匹配行首 "torch" 后跟
-        //    空白 / 行尾 / 比较运算符(裸名 / 带版本),不匹配 torchvision /
-        //    torchaudio / pytorch_lightning / torchdiffeq / torchsde /
-        //    open-clip-torch 等(名字含 torch 子串但不是 torch 包)。
+        // 3. requirements_versions.txt — 拆 2 步处理冲突包。
+        //    复用 ForgePreFlightConstants 同段注释(详细 rationale 在那)。
+        //    旧版整文件 --no-deps 跳过所有 transitive deps,导致 webui.py
+        //    启动期 fastapi → starlette、pydantic → typing-extensions、
+        //    gradio → gradio_client 等都 ModuleNotFoundError。
+        //    正确策略:过滤掉 pytorch_lightning==1.9.4(它要求 torch<2.0 与
+        //    BED 锁的 torch 2.4.0+cu121 冲突),其余包正常 pip install 让 pip
+        //    自动拉 transitive deps;然后 pytorch_lightning 单独 --no-deps 装。
+        //    镜像 Forge 自己的 launch_utils.py 主 install 段的整体策略。
         var reqPath = Path.Combine(env.RootPath, "requirements_versions.txt");
         if (!File.Exists(reqPath))
         {
@@ -124,7 +126,12 @@ public class ForgePreFlightInstaller
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
-        var filteredLines = FilterBareTorchLines(rawLines);
+        // 过滤 2 类冲突行:
+        //   1) 裸 torch 行(防覆盖 BED 锁的 torch 2.4.0+cu121)
+        //   2) pytorch_lightning 行(它要求 torch<2.0)
+        // torchvision / torchaudio / torchdiffeq / torchsde / open-clip-torch
+        // 名字含 torch 但不是 torch 包,正常保留。
+        var filteredLines = FilterConflictingLines(rawLines);
         try
         {
             await File.WriteAllLinesAsync(filteredReqPath, filteredLines, ct);
@@ -137,44 +144,39 @@ public class ForgePreFlightInstaller
             return new RequirementsInstallResult(
                 Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
         }
-        // requirements_versions.txt 都是预编译 wheel,不需要 --no-build-isolation
-        // (这是 InstallZipAsync 用的,因为 CLIP / open_clip 是源码 sdist 带 setup.py)。
-        // 加 --no-deps:不让 pip 自动卸载 BED 装的 torch 装旧版本(requirements_versions.txt
-        // 里的 pytorch_lightning==1.9.4 要 torch<2.0,pip resolve 会把 torch 2.13+cu126
-        // 卸了装 torch 2.12.1 —丢失 BED profile 锁的 CUDA wheel)。镜像 launch.py
-        // 装 xformers 的策略:run_pip(f"install -U -I --no-deps {xformers_package}").
-        // 用户后续若发现某些包启动缺 deps,这是 forge requirements 跟 torch 2.13 的
-        // 固有不兼容,需等 forge 升级 requirements_versions.txt。
+        // 3a. 主 install — 不用 --no-deps,让 pip 自动拉 transitive deps:
+        //     gradio → gradio_client,fastapi → starlette,pydantic →
+        //     typing-extensions,transformers → tokenizers + safetensors 等。
+        //     requirements_versions.txt 都是预编译 wheel,不需要 --no-build-isolation
+        //     (InstallZipAsync 用的,因为 CLIP / open_clip 是源码 sdist 带 setup.py)。
+        //     pytorch_lightning 已过滤掉 → pip resolver 看不到 torch<2.0 约束,
+        //     BED 锁的 torch 2.4.0+cu121 安全保留。
+        logProgress?.Report("[forge-preflight] stage:requirements_versions.txt (no pytorch_lightning, with deps)");
         var reqResult = await RunPipAsync(
             pythonExe,
-            new[] { "install", "-r", filteredReqPath, "--disable-pip-version-check", "--no-deps" },
+            new[] { "install", "-r", filteredReqPath, "--disable-pip-version-check" },
             line => logProgress?.Report(line),
             ct);
         // 成功失败都清理 filtered 文件(避免下次 install 看到 stale 文件)
         try { File.Delete(filteredReqPath); } catch { }
         if (!IsPipOk(reqResult))
-            return FailFrom(reqResult, $"pip install -r requirements_versions.txt (filtered)");
+            return FailFrom(reqResult, $"pip install -r requirements_versions.txt (no pytorch_lightning)");
 
-        // v1.0.0.x (2026-08-29):webui.py 启动 crash 修 —— --no-deps 跳过了所有
-        // transitive deps(包括 fastapi → starlette、pydantic → typing-extensions),
-        // 用户的 forge env 启动 webui.py 时 `from fastapi import Request` → fastapi
-        // 内部 `from starlette import status` → ModuleNotFoundError,launch.py 提前
-        // 退出(exit 1)。
-        // 修法:加 second pass 不带 --no-deps 装回 fastapi + pydantic,让 pip 解析
-        // 它们各自的 deps(主要是 starlette + typing-extensions)并装上。fastapi
-        // 和 pydantic 本身已装(pip sees satisfied version,skip 重新装),只补 deps。
-        // 这两个包不引入 torch 约束,不会触发 pytorch_lightning 把 torch 降到
-        // <2.0 —— BED 锁的 torch 2.4.0+cu121 保留。
-        // 镜像 launch.py 主启动期 `prepare_environment()` 末尾的额外 pip install 段
-        // (launch_utils.py 在主 install 之后补装 webui 必需 transitive deps)。
-        logProgress?.Report("[forge-preflight] stage:webui transitive deps (starlette/typing-extensions)");
-        var webuiDepsResult = await RunPipAsync(
+        // 3b. pytorch_lightning 单独装 + --no-deps:
+        //     它要求 torch<2.0 与 BED torch 2.4.0+cu121 冲突,必须 --no-deps 避免
+        //     pip 自动降级 torch(丢失 CUDA wheel + cu121 index)。pytorch_lightning
+        //     1.9.4 自己的 transitive deps(在 Forge webui.py 主启动期不一定都用到)
+        //     跳过不致命 — webui.py 真正 import 的只有 fastapi/starlette/pydantic/
+        //     gradio/gradio_client 等已装。镜像 Forge launch.py 装 xformers
+        //     的策略:run_pip(f"install -U -I --no-deps {xformers_package}").
+        logProgress?.Report("[forge-preflight] stage:pytorch_lightning --no-deps (avoid torch downgrade)");
+        var ptlResult = await RunPipAsync(
             pythonExe,
-            new[] { "install", "fastapi", "pydantic", "--disable-pip-version-check" },
+            new[] { "install", "pytorch_lightning==1.9.4", "--disable-pip-version-check", "--no-deps" },
             line => logProgress?.Report(line),
             ct);
-        if (!IsPipOk(webuiDepsResult))
-            return FailFrom(webuiDepsResult, "webui transitive deps (starlette/typing-extensions)");
+        if (!IsPipOk(ptlResult))
+            return FailFrom(ptlResult, $"pip install pytorch_lightning==1.9.4 --no-deps");
 
         // 4. git clone 3 repos(每个独立 try/catch + IsInstalled skip,失败不阻断后续 repo;
         //    最后整体成功判断,只要全部存在或 clone 成功 → success)
@@ -462,6 +464,45 @@ public class ForgePreFlightInstaller
             result.Add(raw ?? "");
         }
         return result;
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):step 3 主 install 用的综合过滤 —— 滤掉两类冲突行:
+    ///   1) 裸 torch 行(<see cref="IsBareTorchLine"/>)
+    ///   2) pytorch_lightning 行(<see cref="IsPytorchLightningLine"/>)
+    /// pytorch_lightning==1.9.4 要求 torch&lt;2.0,与 BED 锁的 torch 2.4.0+cu121 冲突;
+    /// 主 install 段要去掉它(后续 step 3b 单独 --no-deps 装),避免 pip resolver 把 torch
+    /// 降到 1.x 丢失 cu121 CUDA wheel。其他 torch 系列 / 含 torch 子串但不是 torch
+    /// 包的都正常保留。
+    /// </summary>
+    internal static List<string> FilterConflictingLines(IEnumerable<string> rawLines)
+    {
+        var result = new List<string>();
+        foreach (var raw in rawLines)
+        {
+            if (IsBareTorchLine(raw)) continue;
+            if (IsPytorchLightningLine(raw)) continue;
+            result.Add(raw ?? "");
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-29):行首匹配 pytorch_lightning(忽略大小写),后跟空白 /
+    /// 行尾 / 比较运算符。pytorch_lightning 1.9.4 是 requirements_versions.txt 里
+    /// 唯一对 torch 有版本约束的冲突行(torch&lt;2.0),必须从主 install 过滤掉,
+    /// step 3b 单独 --no-deps 处理。
+    /// </summary>
+    internal static bool IsPytorchLightningLine(string rawLine)
+    {
+        if (string.IsNullOrWhiteSpace(rawLine)) return false;
+        var s = rawLine.TrimStart();
+        if (!s.StartsWith("pytorch_lightning", StringComparison.OrdinalIgnoreCase)) return false;
+        if (s.Length == 17) return true;                 // 纯 "pytorch_lightning" 行
+        var next = s[17];
+        return char.IsWhiteSpace(next)
+            || next == '=' || next == '<' || next == '>'
+            || next == '!' || next == '~' || next == ';';
     }
 
     /// <summary>
