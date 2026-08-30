@@ -32,13 +32,10 @@ namespace ComfyUI.Manager.Services;
 ///   6.5 升级 venv 内的 pip(<c>python -m pip install --upgrade pip</c>,warn-only)
 ///   6.6 seed wheel 包到 venv(<c>python -m pip install wheel</c>,required — fix Forge pre-flight CLIP `bdist_wheel` missing)
 ///   7. 插 SQLite 行(持久化 TemplateKind + TemplateConfigSnapshot JSON 克隆)
-///   7.5 v1.0.0.x:Forge env 写初始 extra_model_paths.yaml(<see cref="ForgeExtraModelPathsYamlGenerator"/>),
-///       让 env-create 后 OpenExtraModelPathsYaml 立刻看到真实内容;启动时
-///       ProcessLauncher.StartEnvAsync 会再写一次(幂等)。
-///
-/// v1.0.0.x: env-create 不再自动跑「安装常用节点」(由 env 行按钮触发,RequirementsInstaller /
-/// env 行内按钮已存在,逻辑独立)。Forge env 的 extra_model_paths.yaml 由 step 7.5 自动写,
-/// Non-Forge kind 不写(yaml 是 Forge 专属 — ComfyUI 用 settings.models 目录约定 + junction)。
+///   7.5 (v1.0.0.x 2026-08-30) — 只对 LTXVideo 触发 uv sync(uv toolchain 由 step 6.7 装好)。
+///       其它模板的 requirements 由用户点 env 行「装依赖」按钮触发 RequirementsInstaller
+///       (env-create 不主动装 requirements — 跟 Global Constraint
+///       "其它 11 个内置模板 env-create 流程不能变" 对齐)。
 /// </summary>
 public sealed class EnvCreatorService
 {
@@ -99,22 +96,6 @@ public sealed class EnvCreatorService
     /// </summary>
     private readonly Func<string, ILtx2WrapperGenerator>? _wrapperGeneratorFactory;
 
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):env-create 模板源码 git clone 注入点(预留 — 当前
-    /// CreateAsync 仍走 <see cref="JunctionLinker.CopyDirectory"/> 复制已存在的本地源码)。
-    /// 签名 = <c>(gitExe, repoUrl, targetDir, ct) → Task</c>;默认 <c>null</c> 时走 real
-    /// <c>git clone</c> 进程(留给后续接 TemplateSourceUpdater 集成用,本任务仅占位)。
-    /// </summary>
-    private readonly Func<string, string, string, CancellationToken, Task>? _gitCloneAsync;
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):env-create step 7.5(Non-LTXVideo 路径)— 跑
-    /// <c>&lt;venvPython&gt; -m pip install -r &lt;envRoot&gt;/requirements.txt</c>。
-    /// 镜像 <see cref="_pipInstallWheelAsync"/> 模式:签名 =
-    /// <c>(venvPython, requirementsPath, ct) → Task</c>,默认 = <see cref="RunPipInstallRequirementsAsync"/>。
-    /// </summary>
-    private readonly Func<string, string, CancellationToken, Task>? _pipInstallRequirementsAsync;
-
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
@@ -125,8 +106,6 @@ public sealed class EnvCreatorService
         Func<string, CancellationToken, Task>? pipInstallWheelAsync = null,
         Func<string, IUvInstaller>? uvInstallerFactory = null,
         Func<string, ILtx2WrapperGenerator>? wrapperGeneratorFactory = null,
-        Func<string, string, string, CancellationToken, Task>? gitCloneAsync = null,
-        Func<string, string, CancellationToken, Task>? pipInstallRequirementsAsync = null,
         Func<string, CancellationToken, Task>? uvSyncAsync = null)
     {
         _dbFactory = dbFactory;
@@ -138,8 +117,6 @@ public sealed class EnvCreatorService
         _pipInstallWheelAsync = pipInstallWheelAsync;
         _uvInstallerFactory = uvInstallerFactory;
         _wrapperGeneratorFactory = wrapperGeneratorFactory;
-        _gitCloneAsync = gitCloneAsync;
-        _pipInstallRequirementsAsync = pipInstallRequirementsAsync;
         _uvSyncAsync = uvSyncAsync;
     }
 
@@ -448,10 +425,10 @@ public sealed class EnvCreatorService
             CreatedAt = DateTime.UtcNow.ToString("o"),
         });
 
-        // 7.5 (v1.0.0.x 2026-08-30 新增) — 装模板要求包:
-        //   - LTXVideo:跑 <c>env/tools/uv/uv.exe sync --extra natten</c>(monorepo 用 uv)
-        //   - 其它模板:跑 <c>&lt;venv&gt;/Scripts/python.exe -m pip install -r
-        //     &lt;envRoot&gt;/requirements.txt</c>(经典 venv + pip,venv 已建好直接走 venv pip)
+        // 7.5 (v1.0.0.x 2026-08-30) — 只对 LTXVideo 触发 uv sync。
+        // 其它模板的 requirements 由用户点 env 行「装依赖」按钮触发 RequirementsInstaller
+        // (env-create 不主动装 requirements,行为跟 v1.0.0.x T6 之前一致 — 跟 Global Constraint
+        // "其它 11 个内置模板 env-create 流程不能变" 对齐)。
         // 写在 SQLite 写入 + EnvMarker 之后 → env-create 主流程回滚触发时 env 已
         // 落 DB 但不影响 SQLite 一致性(整流程 catch 走 try Directory.Delete 回滚)。
         if (string.Equals(templateConfig.Kind, "LTXVideo", StringComparison.Ordinal))
@@ -475,38 +452,6 @@ public sealed class EnvCreatorService
                 try { Directory.Delete(rootPath, recursive: true); } catch { }
                 throw new CreateEnvException("UV_SYNC_FAILED",
                     $"uv sync 失败: {ex.Message}");
-            }
-        }
-        else
-        {
-            // Non-LTXVideo:pip install -r requirements.txt
-            var requirementsPath = Path.Combine(rootPath, "requirements.txt");
-            progress?.Report(new CreateStepReport("安装模板依赖(requirements.txt)",
-                $"{venvPython} -m pip install -r {requirementsPath}"));
-            try
-            {
-                if (!File.Exists(requirementsPath))
-                {
-                    // 没 requirements.txt = 模板不需要依赖安装(罕见但允许,跳过不报错)。
-                    progress?.Report(new CreateStepReport("安装模板依赖(无 requirements.txt,跳过)", requirementsPath));
-                }
-                else
-                {
-                    var installReqs = _pipInstallRequirementsAsync ?? RunPipInstallRequirementsAsync;
-                    await installReqs(venvPython, requirementsPath, ct);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // required:env-create 整体失败 — 回滚 env 根目录 + 包 CreateEnvException。
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw new CreateEnvException("REQUIREMENTS_INSTALL_FAILED",
-                    $"requirements.txt 安装失败: {ex.Message}");
             }
         }
 
@@ -717,76 +662,10 @@ public sealed class EnvCreatorService
     }
 
     /// <summary>
-    /// v1.0.0.x (2026-08-30):env-create step 7.5 默认实现 — 跑
-    /// <c>&lt;venvPython&gt; -m pip install -r &lt;requirementsPath&gt;</c>,装模板要求的包。
-    /// Non-LTXVideo 模板走这条;LTXVideo 走 uv sync 不来这里。
-    ///
-    /// 镜像 <see cref="RunPipInstallWheelAsync"/> 模式:进程启动 → 并发读 stdout/stderr →
-    /// 等 exit → 非 0 exit code / 启动失败抛 <see cref="InvalidOperationException"/>。
-    /// ctor 注入 <c>_pipInstallRequirementsAsync</c> 替换为测试 fake。
-    ///
-    /// 抛异常的语义(由 step 7.5 catch 处理):
-    /// - <see cref="OperationCanceledException"/> → 上抛,走取消分支(回滚 env 根目录)
-    /// - 其他异常 → 包成 <see cref="CreateEnvException"/>(<c>REQUIREMENTS_INSTALL_FAILED</c>),
-    ///   env-create 整体失败
-    /// </summary>
-    internal static async Task RunPipInstallRequirementsAsync(
-        string venvPython, string requirementsPath, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(venvPython))
-            throw new ArgumentException("venvPython 不能为空", nameof(venvPython));
-        if (string.IsNullOrWhiteSpace(requirementsPath))
-            throw new ArgumentException("requirementsPath 不能为空", nameof(requirementsPath));
-        if (!File.Exists(requirementsPath))
-            throw new InvalidOperationException($"requirements.txt 不存在: {requirementsPath}");
-
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = venvPython,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("-m");
-        psi.ArgumentList.Add("pip");
-        psi.ArgumentList.Add("install");
-        psi.ArgumentList.Add("-r");
-        psi.ArgumentList.Add(requirementsPath);
-
-        using var p = System.Diagnostics.Process.Start(psi)
-            ?? throw new InvalidOperationException("pip install -r 进程启动失败(Process.Start 返回 null)");
-
-        var stdoutDone = new TaskCompletionSource<bool>();
-        var stderrDone = new TaskCompletionSource<bool>();
-        _ = Task.Run(async () =>
-        {
-            try { while (await p.StandardOutput.ReadLineAsync().ConfigureAwait(false) is not null) { } }
-            catch { }
-            finally { stdoutDone.TrySetResult(true); }
-        });
-        _ = Task.Run(async () =>
-        {
-            try { while (await p.StandardError.ReadLineAsync().ConfigureAwait(false) is not null) { } }
-            catch { }
-            finally { stderrDone.TrySetResult(true); }
-        });
-
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
-        await Task.WhenAll(stdoutDone.Task, stderrDone.Task).ConfigureAwait(false);
-
-        if (p.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"pip install -r exit={p.ExitCode}(requirements.txt 装包失败)");
-        }
-    }
-
-    /// <summary>
     /// v1.0.0.x (2026-08-30):env-create step 7.5(LTXVideo 分支)默认实现 — 跑
     /// <c>&lt;uvExe&gt; sync --extra natten</c>。
     ///
-    /// 镜像 <see cref="RunPipInstallRequirementsAsync"/> 模式:进程启动 →
+    /// 镜像 <see cref="RunPipInstallWheelAsync"/> 模式:进程启动 →
     /// 等 exit → 非 0 exit code / 启动失败抛 <see cref="InvalidOperationException"/>。
     /// ctor 注入 <c>_uvSyncAsync</c> 替换为测试 fake。
     ///

@@ -96,10 +96,6 @@ public sealed class EnvCreatorServiceLtx2StepsTests : IDisposable
             pipInstallWheelAsync: (_, _) => Task.CompletedTask,
             uvInstallerFactory: envRoot => capturedInstaller = new RecordingUvInstaller(envRoot),
             wrapperGeneratorFactory: envRoot => wrapper,
-            gitCloneAsync: (_, _, _, _) => Task.CompletedTask,
-            // step 7.5 走 Non-LTX-2 路径不需要(fake 不触发,LTXVideo 走 uv sync 路径),
-            // 但为了一致性注入 no-op 防止 fallback default 跑真进程。
-            pipInstallRequirementsAsync: (_, _, _) => Task.CompletedTask,
             // step 7.5 uv sync:测试机一般没装 uv.exe,注入 no-op 跳过 Process.Start。
             uvSyncAsync: (_, _) => Task.CompletedTask);
 
@@ -133,8 +129,6 @@ public sealed class EnvCreatorServiceLtx2StepsTests : IDisposable
             pipInstallWheelAsync: (_, _) => Task.CompletedTask,
             uvInstallerFactory: envRoot => uv,
             wrapperGeneratorFactory: envRoot => wrapper,
-            gitCloneAsync: (_, _, _, _) => Task.CompletedTask,
-            pipInstallRequirementsAsync: (_, _, _) => Task.CompletedTask,
             uvSyncAsync: (_, _) => Task.CompletedTask);
 
         await svc.CreateAsync(
@@ -175,8 +169,6 @@ public sealed class EnvCreatorServiceLtx2StepsTests : IDisposable
             pipInstallWheelAsync: (_, _) => Task.CompletedTask,
             uvInstallerFactory: envRoot => uv,
             wrapperGeneratorFactory: envRoot => wrapper,
-            gitCloneAsync: (_, _, _, _) => Task.CompletedTask,
-            pipInstallRequirementsAsync: (_, _, _) => Task.CompletedTask,
             uvSyncAsync: (_, _) => Task.CompletedTask);
 
         await svc.CreateAsync(
