@@ -743,6 +743,11 @@ public class EnvironmentListViewModel : ViewModelBase
             env.IsBaseEnvInstalled = bedInstalled;
             env.BaseEnvButtonText = bedInstalled ? "卸载基础环境" : "安装基础环境";
 
+            // v1.0.0.x (2026-08-30):BED 已装时探测实际 torch 版本(<5ms 纯 file read,
+            // 不启动 python),让 meta 行 "未部署" 列显示 "torch 2.4.0+cu121" 替代抽象的 "✓ 已部署"。
+            // BED 未装也跑一次(返回 null) — 探测本身是兜底,失败 cost 0。
+            env.InstalledTorchVersion = TorchVersionDetector.TryDetect(env);
+
             // v1.0.0.x (2026-08-29):BED 老 env 回填 ——
             // BaseEnvUninstaller.IsInstalled 对 Forge env 有 marker file fallback
             // (.forge_base_env_installed 存在 = BED 实际跑过),但 env.BedStatus

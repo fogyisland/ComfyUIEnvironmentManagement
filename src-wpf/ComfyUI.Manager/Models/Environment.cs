@@ -187,16 +187,76 @@ public class Environment
     public string BaseEnvButtonText { get; set; } = "安装基础环境";
 
     /// <summary>
-    /// 行 BED 列展示文本:✓ profileId / ✗ 未装 / ⏳ 装中 / ❌ profileId (reason)。
-    /// WPF DataGridTextColumn 直接绑 BedDisplay;不需 INPC(env 一行 read-through)。
+    /// 行 BED 列徽章展示文本:✓ torch/version / ✗ 未装 / ⏳ 装中 / ❌ profileId (reason)。
+    /// v1.0.0.x (2026-08-30):"done" 分支优先 <see cref="InstalledTorchVersion"/>(实际部署版本),
+    /// fallback <see cref="BedProfileId"/>(SQLite 持久化 profile id)— 跟 <see cref="BedDisplayId"/>
+    /// meta 行 priority chain 对齐,避免 badge "✓ " 空内容(BED marker 在盘上但 DB 没回填
+    /// profile id 时,纯 ✓ 没信息量)。WPF Border 直接绑 BedDisplay;不需 INPC。
     /// </summary>
     public string BedDisplay => BedStatus switch
     {
-        "done" => $"✓ {BedProfileId}",
+        "done" => $"✓ {(InstalledTorchVersion is { } tv ? $"torch {tv}" : BedProfileId)}",
         "failed" => $"❌ {BedProfileId ?? "?"} ({BedFailedReason ?? "失败"})",
         "installing" => "⏳ 装中",
         _ => "✗ 未装",
     };
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-30):BED 未装时,该 env 即将装的 torch 版本提示文本。
+    /// 用于 env list meta 行(PythonVersion / BedProfileId 之后追加),让用户
+    /// 在「装 BED」前就能看到该 template 锁的 torch 版本号。
+    /// 当前只有 Forge 锁 torch==2.4.0(<c>ForgeBaseEnvConstants.TorchVersion</c>);
+    /// A1111 / ComfyUI / HunyuanVideo / 等用 BaseEnvProfile,TorchVersion 由
+    /// 用户在「装 BED」对话框里选,这里不强加 hint(留 null,UI 走 XAML 判定隐藏)。
+    /// 已装 BED(<see cref="BedProfileId"/> 非空 或 <see cref="IsBaseEnvInstalled"/> true)返 null —
+    /// BedDisplayId 列已显示实际状态,不重复。
+    /// </summary>
+    [JsonIgnore]
+    public string? PendingBedHint
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(BedProfileId)) return null;
+            if (IsBaseEnvInstalled) return null; // marker 文件存在但 SQLite bed_profile_id 未回填
+            return TemplateKind switch
+            {
+                "Forge" => $"torch {ForgeBaseEnvConstants.TorchVersion} 待装",
+                _ => null,
+            };
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-30):实际部署的 torch 版本(读 &lt;venv&gt;/Lib/site-packages/torch/version.py
+    /// 第一行)。BED 已装时由 <see cref="Services.TorchVersionDetector"/> 在 Load 末尾算出,
+    /// 用于 <see cref="BedDisplayId"/> 优先级最高一档,显示 "torch 2.4.0+cu121" 这样的实际版本。
+    /// 不可用(BED 未装 / venv 无 torch / 探测 IO 失败)时保持 null — BedDisplayId 走
+    /// BedProfileId / IsBaseEnvInstalled fallback。
+    /// </summary>
+    [JsonIgnore]
+    public string? InstalledTorchVersion { get; set; }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-30):meta 行第三段(BedProfileId 列)的展示文本 —
+    /// 四态 fallback,解决 state desync 老 env 显示「未部署」误导用户 + 让用户看到实际 torch:
+    /// <list type="number">
+    /// <item><see cref="InstalledTorchVersion"/> 非空(BED 已装且 venv torch 可读)→ "torch X.Y.Z+cuNNN"</item>
+    /// <item><see cref="BedProfileId"/> 非空(SQLite 已回填 profile id)→ 显示 profile id</item>
+    /// <item><see cref="BedProfileId"/> null 但 <see cref="IsBaseEnvInstalled"/> true(老 env BED 装好
+    ///       但 SQLite 没写 profile id 且 venv torch 探测失败)→ "✓ 已部署"</item>
+    /// <item>其它 → null,UI 端 <c>TargetNullValue="未部署"</c></item>
+    /// </list>
+    /// <see cref="IsBaseEnvInstalled"/> 由 <see cref="Services.BaseEnvUninstaller.IsInstalled"/> 在
+    /// EnvironmentListViewModel.Load 末尾算出(看 <c>.forge_base_env_installed</c> 等 marker),
+    /// 是 BED 是否真装的 runtime truth source(老 env / 不同步 SQLite 也准)。
+    /// </summary>
+    [JsonIgnore]
+    public string? BedDisplayId =>
+        !string.IsNullOrEmpty(InstalledTorchVersion)
+            ? $"torch {InstalledTorchVersion}"
+            : !string.IsNullOrEmpty(BedProfileId)
+                ? BedProfileId
+                : IsBaseEnvInstalled ? "✓ 已部署" : null;
 
     // ──────────────── v1.0.0.x:节点启动状态(供 ! 按钮 badge + dialog) ────────────────
     // EnvironmentListViewModel.Load() 末尾根据 nodeRepo.ListByEnv(env.Id) 重算;

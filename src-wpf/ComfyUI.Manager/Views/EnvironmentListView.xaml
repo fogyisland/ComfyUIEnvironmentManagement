@@ -434,7 +434,7 @@
                                     </Border>
                                 </Grid>
 
-                                <!-- Row 1: Meta — PID + Python/BED profile -->
+                                <!-- Row 1: Meta — PID + Python/BED profile + (Forge) 待装 torch hint -->
                                 <TextBlock Grid.Row="1" Margin="18,4,0,8" FontSize="11"
                                            Foreground="{DynamicResource OutlineBrush}">
                                     <Run Text="PID " />
@@ -442,141 +442,163 @@
                                     <Run Text="  ·  " />
                                     <Run Text="{Binding PythonVersion, Mode=OneWay, TargetNullValue='-'}" />
                                     <Run Text="  ·  " />
-                                    <Run Text="{Binding BedProfileId, Mode=OneWay, TargetNullValue='未部署'}" />
+                                    <Run Text="{Binding BedDisplayId, Mode=OneWay, TargetNullValue='未部署'}" />
+                                    <!-- v1.0.0.x (2026-08-30):Forge env 未装 BED 时,追加 "torch 2.4.0 待装" 提示,
+                                         让用户看到该 template 即将装的 torch 版本号。颜色走 WarningBrush 突出"待装"。
+                                         TargetNullValue="" 让已装 BED 或非 Forge env 自然不渲染 separator。 -->
+                                    <Run Text="{Binding PendingBedHint, Mode=OneWay, StringFormat='  ·  {0}', TargetNullValue=''}"
+                                         Foreground="{DynamicResource WarningBrush}" />
                                 </TextBlock>
 
-                                <!-- Row 2: Actions — 2 行 × 6 列 Grid(原 5 列,v1.0.0.x 在 Col 0 三角按钮右侧
-                                     加 ! 按钮 → 列数从 5 变 6,其余 4 列按钮(BED/Requirements/Manager/LocalNodes)
-                                     整体顺移到 Col 2-5。v0.6.22.x 删:"模板更新"按钮 — 移到 MainWindow 工具菜单,
-                                     操作对象是 <projectRoot>/ComfyUITemplate/ master template,与 per-env 无关。 -->
+<!-- Row 2: Actions — 两个互斥 Grid 按 TemplateKind 切换(2026-08-30 user 修正):
+                                     - Forge env  → 3 列 × 2 行 = 6 cells(启动 | 卸载基础环境 | 组件报告 / 查看日志 | 打开浏览器 | 删除)
+                                     - ComfyUI env → 5 列 × 2 行 = 10 cells(启动 | 卸载基础环境 | 卸依赖 | 卸 Manager | 重装本地 / 查看日志 | 打开浏览器 | 节点管理 | 组件报告 | 删除)
+                                     互斥通过外层 Grid.Style DataTrigger 控制:TemplateKind="Forge" → ForgeActions Visible,
+                                     TemplateKind="ComfyUI" → ComfyUIActions Visible,其它 Collapsed(0 高,不留空白)。
+                                     跟之前单一 Grid 不同,buttons 不再按 Visibility hidden 折叠,而是直接换一套 layout —
+                                     让用户看到 button 数 + 列数严格匹配 TemplateKind。 -->
                                 <Grid Grid.Row="2">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <!-- Row 0: 装卸链路 -->
-                                    <!-- v1.0.0.x #577:启停合按钮 — text = env.StartStopButtonText (Load 末尾重算,
-                                         Status==running → "停止",否则 "启动"),Command = StartStopCommand 根据
-                                         Status 调 StartEnvAsync / StopEnvAsync。mid-state(starting/stopping)按钮禁用。 -->
-                                    <Button Grid.Row="0" Grid.Column="0" Content="{Binding StartStopButtonText}" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            IsEnabled="{Binding StartStopButtonEnabled}"
-                                            Command="{Binding DataContext.StartStopCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <!-- v0.6.11+ T1:BED toggle — 已装显"卸载基础环境",未装显"安装基础环境",
-                                         busy 时按钮灰 + label 变"安装基础环境中..."/"卸载基础环境中..."。
-                                         复用 BaseEnvUninstallStatus inline 面板;BED picker dialog 走 OpenBaseEnvProgressAsync。 -->
-                                    <Button Grid.Row="0" Grid.Column="1" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.ToggleBaseEnvCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
-                                    <!-- v0.6.11+ T1:Requirements toggle — 已装显"卸依赖",未装显"装依赖",
-                                         busy 时按钮灰 + label 变"装依赖中..."/"卸依赖中..."。
-                                         复用现有 RequirementsStatus inline 面板显示进度。
-                                         v1.0.0.x (2026-08-29):Forge 不显示 ——
-                                         Forge pre-flight 由 launch_utils.py 在 launch.py 启动时自动
-                                         idempotent 跑,无需手动触发(launch_utils 检查
-                                         .forge_preflight_installed marker 决定 skip)。手动按钮反而
-                                         多此一举。同 Col 3 / Col 4 placeholder pattern 保持 Row 0 视觉密度。 -->
-                                    <Grid Grid.Row="0" Grid.Column="2" Margin="2">
-                                        <Button Content="{Binding RequirementsButtonText}" MinWidth="0"
+                                    <!-- Forge Actions:3 列 × 2 行,6 个有效 button(Requirements/Manager/LocalNodes/NodeManagement 都隐藏因为对 Forge 无意义) -->
+                                    <Grid>
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TemplateKind}" Value="Forge">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <!-- Row 0:装卸链路 (3 cells,2 button + 组件报告) -->
+                                        <Button Grid.Row="0" Grid.Column="0" Content="{Binding StartStopButtonText}" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
-                                                Visibility="{Binding RequirementsButtonVisible, Converter={StaticResource BoolToVisibility}}"
+                                                IsEnabled="{Binding StartStopButtonEnabled}"
+                                                Command="{Binding DataContext.StartStopCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Grid.Row="0" Grid.Column="1" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.ToggleBaseEnvCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
+                                        <Button Grid.Row="0" Grid.Column="2" Content="组件报告" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.ReportComponentsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
+                                        <!-- Row 1:调试/删除 (3 cells,3 button) -->
+                                        <Button Grid.Row="1" Grid.Column="0" Content="查看日志" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.ShowLogCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Grid.Row="1" Grid.Column="1" Content="打开浏览器" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.OpenBrowserCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
+                                        <Button Grid.Row="1" Grid.Column="2" Content="删除" Margin="2" MinWidth="0"
+                                                Style="{StaticResource DangerButton}"
+                                                Command="{Binding DataContext.DeleteCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </Grid>
+                                    <!-- ComfyUI Actions:5 列 × 2 行,10 个有效 button 全显 -->
+                                    <Grid>
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TemplateKind}" Value="ComfyUI">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <!-- Row 0:装卸链路 (5 cells) -->
+                                        <Button Grid.Row="0" Grid.Column="0" Content="{Binding StartStopButtonText}" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                IsEnabled="{Binding StartStopButtonEnabled}"
+                                                Command="{Binding DataContext.StartStopCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Grid.Row="0" Grid.Column="1" Content="{Binding BaseEnvButtonText}" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.ToggleBaseEnvCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="走 picker dialog 装 PyTorch+CUDA 组合;已装则重置 BedStatus 保留 venv。busy 时按钮禁用" />
+                                        <Button Grid.Row="0" Grid.Column="2" Content="{Binding RequirementsButtonText}" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.ToggleRequirementsCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="运行 pip install -r requirements.txt(过滤 torch 行);已装则卸载。busy 时按钮禁用" />
-                                        <Border Background="Transparent" CornerRadius="4"
-                                                Visibility="{Binding RequirementsButtonVisible, Converter={StaticResource InverseBoolToVisibility}}" />
-                                    </Grid>
-                                    <!-- v0.6.11+ T4:ComfyUI Manager toggle — git clone 网络源 + 装 requirements.txt;
-                                         跟「安装本地常用」并列,语义不同(后者走 Settings.LocalNodesDirectory 本地预装包)。
-                                         v1.0.0.x:Forge 不显示(ComfyUI-Manager 是 ComfyUI 专属)。
-                                         Cell 内嵌 Grid:ComfyUI 显示 button,其他模板显示 placeholder border(Visibility
-                                         互斥)— 让 Row 0 在所有模板都填满 5 列视觉密度,跟 Row 1 平衡。 -->
-                                    <Grid Grid.Row="0" Grid.Column="3" Margin="2">
-                                        <Button Content="{Binding ComfyUiManagerButtonText}" MinWidth="0"
+                                        <Button Grid.Row="0" Grid.Column="3" Content="{Binding ComfyUiManagerButtonText}" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
-                                                Visibility="{Binding ComfyUiManagerButtonVisible, Converter={StaticResource BoolToVisibility}}"
                                                 Command="{Binding DataContext.ToggleComfyUiManagerCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="git clone ltdrdata/ComfyUI-Manager 到 custom_nodes 并装 requirements.txt;已装则 rm -rf 整个目录" />
-                                        <Border Background="Transparent" CornerRadius="4"
-                                                Visibility="{Binding ComfyUiManagerButtonVisible, Converter={StaticResource InverseBoolToVisibility}}" />
-                                    </Grid>
-                                    <!-- v1.0.0.x #577:本地常用节点(末位) — 批量 copy Settings.LocalNodesDirectory
-                                         下子目录到 env/custom_nodes/,逐个 pip install -r requirements.txt(过滤 torch 行);
-                                         失败 skip 下一个。LocalNodeInstallStatus inline 面板显示进度 + 总结。
-                                         v1.0.0.x:Forge 不显示(本地常用是 ComfyUI custom_nodes
-                                         专用,Forge extensions 不兼容)。镜像 ComfyUiManagerButtonVisible。
-                                         同 Col 3 placeholder pattern:Row 0 视觉密度平衡。 -->
-                                    <Grid Grid.Row="0" Grid.Column="4" Margin="2">
-                                        <Button Content="{Binding LocalNodesButtonText}" MinWidth="0"
+                                        <Button Grid.Row="0" Grid.Column="4" Content="{Binding LocalNodesButtonText}" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
-                                                Visibility="{Binding LocalNodesButtonVisible, Converter={StaticResource BoolToVisibility}}"
                                                 Command="{Binding DataContext.InstallLocalNodesCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="批量装 Settings.LocalNodesDirectory 下的本地节点包(逐个 copy + pip install -r)。已装会重装(rm -rf 同名目录后重新 copy)。失败一个 skip 到下一个。" />
-                                        <Border Background="Transparent" CornerRadius="4"
-                                                Visibility="{Binding LocalNodesButtonVisible, Converter={StaticResource InverseBoolToVisibility}}" />
-                                    </Grid>
-                                    <!-- Row 1: 调试/删除链路 -->
-                                    <Button Grid.Row="1" Grid.Column="0" Content="查看日志" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.ShowLogCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <Button Grid.Row="1" Grid.Column="1" Content="打开浏览器" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.OpenBrowserCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
-                                    <!-- v0.6.15.8 T6 + v0.6.15.9:节点管理(原"安装节点"改名)。
-                                         升级节点 删除独立按钮 — 升级迁入节点管理面板行内(过时才显示)。
-                                         v1.0.0.x:节点管理只对 ComfyUI kind 有意义(Forge 用
-                                         extensions/,节点扫描装卸无意义)。
-                                         Forge 不显示按钮 — 用 placeholder 占位
-                                         保持 Row 1 5 列视觉密度。镜像 Col 3 / Col 4 placeholder
-                                         pattern(ComfyUiManagerButtonVisible + LocalNodesButtonVisible)。 -->
-                                    <Grid Grid.Row="1" Grid.Column="2" Margin="2">
-                                        <Button Content="节点管理" MinWidth="0"
+                                        <!-- Row 1:调试/删除 (5 cells) -->
+                                        <Button Grid.Row="1" Grid.Column="0" Content="查看日志" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
-                                                Visibility="{Binding NodeManagementButtonVisible, Converter={StaticResource BoolToVisibility}}"
+                                                Command="{Binding DataContext.ShowLogCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Grid.Row="1" Grid.Column="1" Content="打开浏览器" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.OpenBrowserCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="用 Chrome 打开该环境的 ComfyUI 页面(未装则用系统默认浏览器)。仅运行中可用。" />
+                                        <Button Grid.Row="1" Grid.Column="2" Content="节点管理" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.OpenNodeManagementCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
-                                        <Border Background="Transparent" CornerRadius="4"
-                                                Visibility="{Binding NodeManagementButtonVisible, Converter={StaticResource InverseBoolToVisibility}}" />
+                                        <Button Grid.Row="1" Grid.Column="3" Content="组件报告" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.ReportComponentsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
+                                        <Button Grid.Row="1" Grid.Column="4" Content="删除" Margin="2" MinWidth="0"
+                                                Style="{StaticResource DangerButton}"
+                                                Command="{Binding DataContext.DeleteCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
                                     </Grid>
-                                    <Button Grid.Row="1" Grid.Column="3" Content="组件报告" Margin="2" MinWidth="0"
-                                            Style="{StaticResource MaterialButton}"
-                                            Command="{Binding DataContext.ReportComponentsCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
-                                    <Button Grid.Row="1" Grid.Column="4" Content="删除" Margin="2" MinWidth="0"
-                                            Style="{StaticResource DangerButton}"
-                                            Command="{Binding DataContext.DeleteCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}" />
-                                    <!-- v0.6.22.x 删:模板更新按钮(env-list 移除 — 操作改到 MainWindow 工具菜单,
-                 目标 = <projectRoot>/ComfyUITemplate/ master template,与 per-env 无关)。 -->
-
-                                    <!-- v0.6.17.1:启动控制台入口移至 Row 0 col 2(port 旁小图标),
-                                         这里不再独立按钮,Row 2 actions Grid 收成 2 行 × 5 列。 -->
                                 </Grid>
                             </Grid>
                         </Border>
