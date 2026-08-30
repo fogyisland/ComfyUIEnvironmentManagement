@@ -171,6 +171,16 @@ public class EnvironmentListViewModel : ViewModelBase
     /// </summary>
     private CancellationTokenSource? _uninstallCts;
 
+    /// <summary>
+    /// v1.0.0.x (2026-08-30) Task 8:StartEnvAsync 抛 ModelsMissingException → 弹
+    /// MessageBox(HF URL + hf download 命令)。测试通过 ctor 注入 Func&lt;title,msg,Task&gt;
+    /// 录制调用(避免 STA 挂死);null fallback 走 System.Windows.MessageBox.Show(生产)。
+    /// 不抽 IMessageBoxService interface — Func delegate 足够覆盖 LTX-2 一个场景,
+    /// 后续如需多场景(Warning/Error/Info)再扩。镜像现有 PickerDialogOverride / OpenBrowserUrlOverride
+    /// 等 Func test seam pattern,生产 null fallback 走真 WPF MessageBox。
+    /// </summary>
+    private readonly Func<string, string, Task>? _messageBoxAsync;
+
     private bool IsEnvBusy(Environment env)
         => env is not null && _envBusy.ContainsKey(env.RootPath);
 
@@ -398,7 +408,12 @@ public class EnvironmentListViewModel : ViewModelBase
         // v1.0.0.x:Forge 「安装基础环境」installer — Forge env 行点按钮时跳过
         // BaseEnvProfilePickerDialog + BaseEnvProgressDialog,直接 dispatch ForgeBaseEnvInstaller
         // 跑 0-5 全套。可空保留测试 ctor 兼容(null → fallback new ForgeBaseEnvInstaller())。
-        ForgeBaseEnvInstaller? forgeBaseEnvInstaller = null)   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
+        ForgeBaseEnvInstaller? forgeBaseEnvInstaller = null,   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
+        // v1.0.0.x (2026-08-30) Task 8:ModelsMissingException MessageBox 注入 seam。
+        // 生产 DI 留 null(走 System.Windows.MessageBox.Show fallback);测试注入
+        // RecordingMessageBox.InvokeAsync 拦截避免 STA 挂死。放在 ctor 末尾保持旧
+        // 测试 ctor 兼容(默认 null)。
+        Func<string, string, Task>? messageBoxAsync = null)
     {
         _repo = repo;
         _launcher = launcher;
@@ -438,6 +453,8 @@ public class EnvironmentListViewModel : ViewModelBase
         _workflowSymlinker = workflowSymlinker;
         // v0.6.20 T9: env-start hook — fire-and-forget sync models 到 env。
         _modelSymlinker = modelSymlinker;
+        // v1.0.0.x (2026-08-30) Task 8:ModelsMissingException MessageBox 注入 — null fallback 走 System.Windows.MessageBox.Show。
+        _messageBoxAsync = messageBoxAsync;
         // v0.6.22.x:removed _templateUpdater assignment (moved to MainViewModel)
         RecentBasePythonPath = null;
         RefreshCommand = new RelayCommand(_ => Load());
@@ -893,6 +910,31 @@ public class EnvironmentListViewModel : ViewModelBase
                     }
                 });
             }
+        }
+        catch (ModelsMissingException ex)
+        {
+            // v1.0.0.x (2026-08-30) Task 8:LTX-2 5 个模型文件缺失 — 弹 MessageBox 告诉
+            // 用户怎么下载(不自动 download:gated 模型 + 66 GiB,需要用户先接受条款 +
+            // Read token)。env 保持 stopped,不当作 crash 算。env.Pid 清空避免下次 Load
+            // 复活状态。ModelsMissingException catch 必须在通用 Exception catch 之前
+            // (.NET 异常匹配顺序 — 优先匹配 first catch 命中)。
+            var msg = $"{ex.Message}\n\n" +
+                      $"HuggingFace repo: {ex.HuggingFaceRepoUrl}\n\n" +
+                      $"请先在 hf auth login 后执行:\n{ex.DownloadCommand}\n\n" +
+                      $"完成后再次点「启动」。";
+            if (_messageBoxAsync is not null)
+            {
+                await _messageBoxAsync("LTX-2 模型缺失", msg);
+            }
+            else
+            {
+                MessageBox.Show(
+                    msg, "LTX-2 模型缺失",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            env.Status = "stopped";
+            env.Pid = null;
+            return;  // skip generic catch + 跳 finally
         }
         catch (Exception ex)
         {
