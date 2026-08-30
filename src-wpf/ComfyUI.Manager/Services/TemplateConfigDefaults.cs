@@ -170,22 +170,28 @@ public static class TemplateConfigDefaults
     };
 
     /// <summary>
-    /// v1.0.0.x: LTX-Video WebUI (Lightricks/LTX-Video)。
-    /// Lightricks 官方 LTX-Video 模型的 Gradio WebUI。GitHub-clone source。
-    /// Entry: <c>gradio_demo.py</c>(仓库根目录)。PR #72 后支持 <c>--server_port {port}</c>
-    /// CLI 参数(gradio demo 内置 demo.launch(server_port=args.server_port))。
-    /// 注:仓库主分支历史上有 <c>inference_gradio.py</c> 命名,现已统一为 <c>gradio_demo.py</c>。
+    /// v1.0.0.x: LTX-2 video generator (Lightricks/LTX-2)。
+    /// Lightricks 官方 LTX-2 视频生成模型的 wrapper script。GitHub-clone source。
+    /// Entry: <c>run-ltx2-distilled.bat</c>(仓库根目录 wrapper,env-create 生成)。
+    /// 长串 CLI 参数显式指定 5 个 model weights + output path,无 <c>{port}</c>
+    /// (CLI 模式,不暴露 web 端口)。
     /// </summary>
     public static TemplateConfig LTXVideo(string projectRoot) => new()
     {
         Name = "LTXVideo",
         Kind = "LTXVideo",
-        LocalSourceDir = "LTXVideo",
+        LocalSourceDir = "LTX-Video",
         SourceKind = TemplateSourceKind.GitHub,
-        GitHubRepoUrl = "https://github.com/Lightricks/LTX-Video.git",
-        EntryScript = "gradio_demo.py",
-        EntryArgs = "--server_port {port}",
-        ModelsSubdir = "models",
+        GitHubRepoUrl = "https://github.com/Lightricks/LTX-2.git",
+        EntryScript = "run-ltx2-distilled.bat",
+        EntryArgs =
+            "--transformer-path {models}/ltx-2.5/diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors " +
+            "--text-encoder-path {models}/ltx-2.5/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors " +
+            "--video-vae-path {models}/ltx-2.5/vae/ltx-2.5-video-vae-bf16.safetensors " +
+            "--audio-vae-path {models}/ltx-2.5/vae/ltx-2.5-audio-vae-bf16.safetensors " +
+            "--spatial-upsampler-path {models}/ltx-2.5/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors " +
+            "--num-frames 121 --seed 42 --output-path {env}/outputs/output.mp4",
+        ModelsSubdir = "Models/ltx-2.5",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
     };

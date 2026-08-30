@@ -300,7 +300,10 @@ public class TemplateManagementViewModel : ViewModelBase
         // Fooocus (lllyasviel 的 Focus 改良 SDXL WebUI)。用户改 URL 后不会回退
         // 到这里的 default(参考 TemplateConfigDefaults 的 seed-only 语义)。
         "HunyuanVideo" => "https://github.com/Tencent-Hunyuan/HunyuanVideo.git",
-        "LTXVideo" => "https://github.com/Lightricks/LTX-Video.git",
+        // v1.0.0.x LTX-2 (T1):v1 Lightricks/LTX-Video repo 已弃用,默认 URL 指向
+        // v2 monorepo Lightricks/LTX-2。跟 TemplateConfigDefaults.LTXVideo.GitHubRepoUrl
+        // 对齐(用户首次创建 LTXVideo env / TemplateManagementView 点 Reset 时)。
+        "LTXVideo" => "https://github.com/Lightricks/LTX-2.git",
         "CogVideoX" => "https://github.com/THUDM/CogVideo.git",
         "Fooocus" => "https://github.com/lllyasviel/Fooocus.git",
         // v1.0.0.x (2026-08-29): HivisionIDPhotos(Zeyi-Lin) AI 证件照 Gradio app。

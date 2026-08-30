@@ -243,6 +243,44 @@ public class StartupPathProbeTests
     }
 
     [Fact]
+    public void Detect_LTXVideo_BrandNameDir_DefaultSeedMissing_NotFlagged()
+    {
+        // v1.0.0.x LTX-2 (T1):kind="LTXVideo" 但 LocalSourceDir default="LTX-Video"
+        // (品牌命名),不是 kind 名。SeedBuiltInTemplates 设 LocalSourceDir=kind 是测试
+        // 默认行为;这里覆盖 brand-name 特殊情况:raw="LTX-Video" + 目录不存在 =
+        // 用户没下载 = 正常状态(跟其他 10 个 kind 名默认 seed 等价)。
+        var root = MakeTempDir();
+        var s = NewBareSettings();
+        s.SystemTemplateLibraryDir = "ENVTemplate";
+        SeedBuiltInTemplates(s, "LTXVideo");
+        // 覆盖 LTXVideo 的 LocalSourceDir 为品牌名 "LTX-Video"(跟
+        // TemplateConfigDefaults.LTXVideo 工厂一致)。
+        s.Templates["LTXVideo"].LocalSourceDir = "LTX-Video";
+        // 不创建 ENVTemplate/LTX-Video 目录
+
+        var result = StartupPathProbe.Detect(s, root);
+        Assert.DoesNotContain(result, i => i.Label == "Template:LTXVideo.LocalSourceDir");
+    }
+
+    [Fact]
+    public void Detect_LTXVideo_BrandNameDir_DirExists_NotFlagged()
+    {
+        // v1.0.0.x LTX-2 (T1):用户已 git clone LTX-2 repo 到 ENVTemplate/LTX-Video/,
+        // probe 不应 flag 路径错位。
+        var root = MakeTempDir();
+        var ltxDir = Path.Combine(root, "ENVTemplate", "LTX-Video");
+        Directory.CreateDirectory(ltxDir);
+
+        var s = NewBareSettings();
+        s.SystemTemplateLibraryDir = "ENVTemplate";
+        SeedBuiltInTemplates(s, "LTXVideo");
+        s.Templates["LTXVideo"].LocalSourceDir = "LTX-Video";
+
+        var result = StartupPathProbe.Detect(s, root);
+        Assert.DoesNotContain(result, i => i.Label == "Template:LTXVideo.LocalSourceDir");
+    }
+
+    [Fact]
     public void Detect_LogDirectory_MissingRelative_Flagged()
     {
         // v1.0.0.x hotfix (2026-08-27):用户自定义相对路径(非默认 seed)才 flag。

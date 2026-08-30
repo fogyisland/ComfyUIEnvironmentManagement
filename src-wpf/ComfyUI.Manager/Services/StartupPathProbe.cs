@@ -56,7 +56,10 @@ public static class StartupPathProbe
         // v1.0.0.x (2026-08-29): 4 个 GitHub-clone 视频/图像生成模板 — 跟
         // OpenVoice/Whisper/CoquiTTS/Bark 一样的源模式,LocalSourceDir 默认 = kind 名。
         new("HunyuanVideo", "HunyuanVideo"),
-        new("LTXVideo", "LTXVideo"),
+        // v1.0.0.x LTX-2 (T1):kind="LTXVideo" 但 LocalSourceDir default="LTX-Video"
+        // (品牌命名,跟 Lightricks/LTX-Video 一致;repo Lightricks/LTX-2)。
+        // RecommendedValue 用 subdir 拼路径,所以 subdir 跟 LocalSourceDir 一致。
+        new("LTXVideo", "LTX-Video"),
         new("CogVideoX", "CogVideoX"),
         new("Fooocus", "Fooocus"),
         new("HivisionIDPhotos", "HivisionIDPhotos"),
@@ -114,7 +117,13 @@ public static class StartupPathProbe
             //
             // 但 raw != kind 的情况(用户主动改成别的相对 / 绝对路径)→ 仍按原规则
             // 检测:resolve 后不存在 = 用户配错了,提示迁移。
-            if (string.Equals(raw, kind.Kind, StringComparison.OrdinalIgnoreCase))
+            //
+            // v1.0.0.x LTX-2 (T1) 例外:kind="LTXVideo" 但 LocalSourceDir default=
+            // "LTX-Video"(品牌命名)。同样视为默认 seed 值,目录不存在 = 用户没下
+            // 载 = 正常状态。
+            if (string.Equals(raw, kind.Kind, StringComparison.OrdinalIgnoreCase)
+                || (kind.Kind == "LTXVideo"
+                    && string.Equals(raw, "LTX-Video", StringComparison.OrdinalIgnoreCase)))
             {
                 var defaultResolved = TemplatePathResolver.Resolve(raw, systemLibraryAbs);
                 if (!Directory.Exists(defaultResolved)) continue;
