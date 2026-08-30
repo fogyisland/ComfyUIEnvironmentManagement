@@ -167,6 +167,9 @@ public sealed class ProcessLauncher : IDisposable
         try
         {
             stageProgress?.Report("stage:激活本地环境");
+            // v1.0.0.x (2026-08-30):LTX-2 模型检查(缺失抛 ModelsMissingException → UI MessageBox)。
+            // 排在 BuildStartCommand 之前 —— 缺模型时不浪费一次 entry-script 存在性检查。
+            EnsureLtx2ModelsPresent(env);
             var settings = new SettingsRepository(new LocalDataPaths(_projectRoot)).Load();
             var (pythonExe, (entryFile, entryArgs)) = BuildStartCommand(env, settings, _projectRoot);
 
@@ -865,6 +868,18 @@ public sealed class ProcessLauncher : IDisposable
                 $"入口脚本不存在: {entryScript}");
         var port = env.Port?.ToString() ?? "8000";
         var entryArgs = snapshot.EntryArgs.Replace("{port}", port);
+        // v1.0.0.x (2026-08-30):新增 {models} / {env} 占位符 — LTX-2 走 CLI 模式,
+        // EntryArgs 要拼模型绝对路径 ({models}/ltx-2.5/<file>.safetensors) 和 env
+        // 根路径 (--output-path {env}/outputs/...)。空 ModelsDirectory → 替换为
+        // 空串(不抛,跟现有 {port} 空 → "8000" 风格一致 — EntryArgs 用了 {models}
+        // 但 env 没配 ModelsDirectory 的边界情况仍可启动,只是 CLI 拿不到模型会自
+        // 己报错,不在 StartEnvAsync 这层卡)。
+        entryArgs = entryArgs.Replace(
+            "{models}",
+            string.IsNullOrWhiteSpace(env.ModelsDirectory) ? "" : env.ModelsDirectory);
+        entryArgs = entryArgs.Replace(
+            "{env}",
+            string.IsNullOrWhiteSpace(envRoot) ? "" : envRoot);
         if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
             entryArgs += " " + snapshot.UserExtraArgs;
 
@@ -920,6 +935,49 @@ public sealed class ProcessLauncher : IDisposable
         // 详见 <see cref="ForgeExtraEnvironmentVariables"/>。
 
         return (venvPython, (entryScript, entryArgs));
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-30):LTX-2 env 启动前检查 5 个 <c>.safetensors</c> 是否存在。
+    /// 缺失抛 <see cref="ModelsMissingException"/>,UI 层(StartStopCommand 顶层 try/catch)
+    /// 接住后弹 MessageBox 展示 HF repo URL + 完整 <c>hf download</c> 命令。
+    ///
+    /// 不自动下载:LTX-2.5 是 gated repo + 66 GiB,需要用户先 <c>hf auth login</c>
+    /// 并在网页接受条款。
+    ///
+    /// 边界条件:
+    /// - <c>env.TemplateKind != "LTXVideo"</c> → 直接返回(其它模板不强制检模型)
+    /// - <see cref="Environment.Ltx2RequiredModels"/> 为空(ModelsDirectory 未配)→ 直接返回
+    /// </summary>
+    /// <remarks>
+    /// 单独抽 public static helper 让单元测试可直接调 —— 走整个 StartEnvAsync
+    /// 集成路径(要真 python + 真端口)成本太高。
+    /// </remarks>
+    public static void EnsureLtx2ModelsPresent(Environment env)
+    {
+        if (env is null) throw new ArgumentNullException(nameof(env));
+        if (!string.Equals(env.TemplateKind, "LTXVideo", StringComparison.Ordinal)) return;
+        var required = env.Ltx2RequiredModels;
+        if (required.Count == 0) return;
+
+        var missing = new List<string>();
+        foreach (var p in required)
+        {
+            if (!File.Exists(p)) missing.Add(p);
+        }
+        if (missing.Count == 0) return;
+
+        throw new ModelsMissingException(
+            $"缺少 LTX-2 模型文件({missing.Count} 个),请按弹窗提示下载后重试",
+            missing,
+            "https://huggingface.co/Lightricks/LTX-2.5",
+            "hf download Lightricks/LTX-2.5 " +
+            "diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors " +
+            "text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors " +
+            "vae/ltx-2.5-video-vae-bf16.safetensors " +
+            "vae/ltx-2.5-audio-vae-bf16.safetensors " +
+            "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors " +
+            $"--local-dir {env.ModelsDirectory}/ltx-2.5");
     }
 
     /// <summary>
