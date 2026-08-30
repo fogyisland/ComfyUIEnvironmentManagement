@@ -922,6 +922,7 @@ public class EnvironmentListViewModel : ViewModelBase
                       $"HuggingFace repo: {ex.HuggingFaceRepoUrl}\n\n" +
                       $"请先在 hf auth login 后执行:\n{ex.DownloadCommand}\n\n" +
                       $"完成后再次点「启动」。";
+            status?.Fail("LTX-2 模型缺失 — 见弹窗提示");
             if (_messageBoxAsync is not null)
             {
                 await _messageBoxAsync("LTX-2 模型缺失", msg);
@@ -934,7 +935,7 @@ public class EnvironmentListViewModel : ViewModelBase
             }
             env.Status = "stopped";
             env.Pid = null;
-            return;  // skip generic catch + 跳 finally
+            return;  // 跳过 generic catch;finally(UnmarkEnvBusy + Load)照常执行
         }
         catch (Exception ex)
         {

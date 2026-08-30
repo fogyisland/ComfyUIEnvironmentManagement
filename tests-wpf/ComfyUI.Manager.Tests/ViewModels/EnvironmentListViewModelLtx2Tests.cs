@@ -123,7 +123,8 @@ public sealed class EnvironmentListViewModelLtx2Tests : IDisposable
     [Fact]
     public async Task StartEnv_ModelsMissing_ShowsMessageBox_DoesNotRethrow()
     {
-        var env = SeedEnv("env-ltx-missing", "stopped");
+        var env = SeedEnv("env-ltx-missing", "starting");
+        env.Pid = 4242;  // 模拟正在启动被异常打断 — 让 stopped/Pid=null 断言有意义
         var msgbox = new RecordingMessageBox();
         var vm = NewVm(msgbox, (_, _, _, _) =>
         {
@@ -141,8 +142,10 @@ public sealed class EnvironmentListViewModelLtx2Tests : IDisposable
         Assert.Equal("LTX-2 模型缺失", msgbox.LastTitle);
         Assert.Contains("huggingface.co/Lightricks/LTX-2.5", msgbox.LastMessage);
         Assert.Contains("hf download", msgbox.LastMessage);
-        // env 保持 stopped(Pid 清空后下一次 Load 不复活)。
+        // env 回到 stopped(Pid 清空后下一次 Load 不复活) — 播种 starting + Pid=4242
+        // 才能真正断 catch 后清理生效,否则删生产两行也绿。
         Assert.Equal("stopped", env.Status);
+        Assert.Null(env.Pid);
     }
 
     [Fact]
@@ -162,6 +165,9 @@ public sealed class EnvironmentListViewModelLtx2Tests : IDisposable
         // 关键 invariant:MessageBox 内容不会污染成 ModelsMissingException 的 HF 信息。
         Assert.Equal(0, msgbox.ShowCalls);
         Assert.Null(msgbox.LastMessage);
-        Assert.DoesNotContain("huggingface.co", msgbox.LastMessage ?? "");
+        // 镜像 EnvironmentListViewModelReopenStartStatusTests:110-111 既有写法,
+        // StartStatus 面板上能看到错误文案。
+        Assert.NotNull(vm.StartStatus!.Error);
+        Assert.Contains("generic error", vm.StartStatus.Error);
     }
 }
