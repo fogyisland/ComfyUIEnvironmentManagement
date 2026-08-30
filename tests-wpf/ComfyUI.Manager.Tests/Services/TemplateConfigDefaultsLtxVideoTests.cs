@@ -52,9 +52,13 @@ public sealed class TemplateConfigDefaultsLtxVideoTests
     }
 
     [Fact]
-    public void LTXVideo_LocalSourceDir_IsLTX_Video()
+    public void LTXVideo_LocalSourceDir_IsLTXVideo()
     {
+        // v1.0.0.x LTX-2 (T1):LocalSourceDir 跟所有其它 10 个内置对齐 = kind 名
+        // (而不是品牌命名 "LTX-Video")。ENVTemplate 磁盘目录就叫 "LTXVideo/"(无连字符),
+        // 跟 kind 名一致 — 用 kind 名能复用 raw == kind.Kind 的 default-seed skip
+        // 逻辑,避免 StartupPathProbe / TemplateManagementSmokeTests 的 brand-name 旁路。
         var cfg = TemplateConfigDefaults.LTXVideo("D:/proj");
-        Assert.Equal("LTX-Video", cfg.LocalSourceDir);
+        Assert.Equal("LTXVideo", cfg.LocalSourceDir);
     }
 }

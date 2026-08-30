@@ -180,7 +180,7 @@ public static class TemplateConfigDefaults
     {
         Name = "LTXVideo",
         Kind = "LTXVideo",
-        LocalSourceDir = "LTX-Video",
+        LocalSourceDir = "LTXVideo",
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/Lightricks/LTX-2.git",
         EntryScript = "run-ltx2-distilled.bat",
