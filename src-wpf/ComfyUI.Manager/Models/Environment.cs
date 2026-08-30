@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace ComfyUI.Manager.Models;
@@ -67,6 +69,15 @@ public class Environment
     /// </summary>
     [JsonPropertyName("template_config_snapshot")]
     public TemplateConfig? TemplateConfigSnapshot { get; set; }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-30):env 的模型存放目录绝对路径(用户可在 Settings 改,
+    /// 持久化到 <c>environments.models_directory</c> SQLite 列)。
+    /// 用于派生 <see cref="Ltx2RequiredModels"/> 等模板特定模型路径。
+    /// 老行(无该列)反序列化后为空字符串 — UI 兜底走 Settings.DefaultModelsDirectory。
+    /// </summary>
+    [JsonPropertyName("models_directory")]
+    public string ModelsDirectory { get; set; } = "";
 
     /// <summary>
     /// v0.6.11+ T3:env-list 行 toggle 按钮用 — true = ComfyUI Manager 已装(显示"卸载"),
@@ -283,4 +294,34 @@ public class Environment
     /// </summary>
     [JsonIgnore]
     public bool HasFailedNodes => FailedNodeCount > 0;
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-30):LTX-2 env 启动前必检的 5 个 .safetensors 绝对路径 —
+    /// HF repo <c>Lightricks/LTX-2.5</c> quick start 命令列的 distilled transformer +
+    /// gemma4-12b 文本编码器 + video VAE + audio VAE + spatial upsampler。
+    /// 路径约定 <c>&lt;env.ModelsDirectory&gt;/ltx-2.5/&lt;HF 子目录&gt;/&lt;model&gt;.safetensors</c>
+    /// 跟 <c>hf download --local-dir &lt;ModelsDirectory&gt;</c> 一致(env.ModelsDirectory
+    /// 已有 SQLite 持久化字段)。
+    /// 非 LTXVideo kind / ModelsDirectory 空 → 返空(其它模板不强制)。
+    /// ProcessLauncher.StartEnvAsync 跑前检查 — 缺失抛 <see cref="ModelsMissingException"/>
+    /// → UI MessageBox。
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> Ltx2RequiredModels
+    {
+        get
+        {
+            if (TemplateKind != "LTXVideo") return Array.Empty<string>();
+            if (string.IsNullOrWhiteSpace(ModelsDirectory)) return Array.Empty<string>();
+            var root = Path.GetFullPath(Path.Combine(ModelsDirectory, "ltx-2.5"));
+            return new[]
+            {
+                Path.Combine(root, "diffusion_models", "ltx-2.5-22b-distilled-transformer-bf16.safetensors"),
+                Path.Combine(root, "text_encoders", "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"),
+                Path.Combine(root, "vae", "ltx-2.5-video-vae-bf16.safetensors"),
+                Path.Combine(root, "vae", "ltx-2.5-audio-vae-bf16.safetensors"),
+                Path.Combine(root, "latent_upscale_models", "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"),
+            };
+        }
+    }
 }
