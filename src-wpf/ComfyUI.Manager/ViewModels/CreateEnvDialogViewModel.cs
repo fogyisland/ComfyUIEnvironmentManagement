@@ -338,11 +338,11 @@ public class CreateEnvDialogViewModel : ViewModelBase
 
             var env = await _creator.CreateAsync(
                 Name, BuildTemplateConfig(),
-                PythonExe,
-                port,
-                string.IsNullOrWhiteSpace(Notes) ? null : Notes,
-                CancellationToken.None,
-                progress);
+                pythonExe: PythonExe,
+                port: port,
+                notes: string.IsNullOrWhiteSpace(Notes) ? null : Notes,
+                ct: CancellationToken.None,
+                progress: progress);
             Closed?.Invoke(env);
         }
         catch (EnvCreatorService.CreateEnvException ex)

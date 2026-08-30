@@ -17,7 +17,7 @@ namespace ComfyUI.Manager.Services;
 ///
 /// 测试可注入 downloader / versionProber;默认实现走 HttpClient。
 /// </summary>
-public sealed class UvInstaller
+public sealed class UvInstaller : EnvCreatorService.IUvInstaller
 {
     public const string DownloadUrl =
         "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip";

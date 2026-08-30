@@ -15,7 +15,7 @@ namespace ComfyUI.Manager.Services;
 /// - <c>run-ltx2-distilled.bat</c> → <c>python -m ltx_pipelines.distilled</c>(quick start 默认)
 /// - <c>run-ltx2-dfr.bat</c> → <c>python -m ltx_pipelines.dfr_pipeline</c>(生产质量)
 /// </summary>
-public sealed class Ltx2WrapperGenerator
+public sealed class Ltx2WrapperGenerator : EnvCreatorService.ILtx2WrapperGenerator
 {
     private const string WrapperTemplate = @"@echo off
 ""%~dp0tools\uv\uv.exe"" run python -m {0} %*
