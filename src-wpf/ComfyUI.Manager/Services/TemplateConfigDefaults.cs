@@ -237,6 +237,7 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        FooocusEntryMode = FooocusEntryMode.AutoUpdate,   // v1.0.0.x 默认 = 现状 (entry_with_update.py)
     };
 
     /// <summary>

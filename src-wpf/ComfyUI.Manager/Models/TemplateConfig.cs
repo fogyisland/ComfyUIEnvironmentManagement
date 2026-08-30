@@ -19,6 +19,18 @@ public enum TemplateSourceKind
 }
 
 /// <summary>
+/// Fooocus 模板 entry 模式:<see cref="AutoUpdate"/> = 跟上游同步(默认,现状,跟 v1.0.0 行为 100% 一致);
+/// <see cref="Stable"/> = 用 <c>entry.py</c> 不 auto-update,生产可预测。
+/// 镜像 <see cref="TemplateSourceKind"/> 的数字 fallback 模式 — 老 settings 缺字段 → 0 → AutoUpdate,
+/// 零迁移成本。JsonStringEnumConverter 把数字 / "AutoUpdate" / "Stable" 都接受为合法值。
+/// </summary>
+public enum FooocusEntryMode
+{
+    AutoUpdate = 0,
+    Stable = 1,
+}
+
+/// <summary>
 /// v1.0.0 multi-template: per-template configuration. String-keyed by Kind (no enum).
 /// Snapshot per env (Environment.TemplateConfigSnapshot) freezes at env creation time;
 /// updates to Settings.Templates do NOT affect existing envs.
@@ -54,6 +66,18 @@ public class TemplateConfig
 
     [JsonPropertyName("user_extra_args")]
     public string UserExtraArgs { get; set; } = "";
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-31):Fooocus entry 模式 — 仅 Kind=="Fooocus" 时由
+    /// <see cref="ComfyUI.Manager.Infrastructure.ProcessLauncher.BuildStartCommand"/> 读取。
+    /// <see cref="FooocusEntryMode.AutoUpdate"/> (默认) 用 entry_with_update.py;
+    /// <see cref="FooocusEntryMode.Stable"/> 用 entry.py。
+    /// 改 settings 不影响已存在 env(env.TemplateConfigSnapshot 冻结,ProcessLauncher.cs:843-846)。
+    /// 老 settings 缺字段 → JsonStringEnumConverter 数字 fallback → AutoUpdate。
+    /// </summary>
+    [JsonPropertyName("fooocus_entry_mode")]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public FooocusEntryMode FooocusEntryMode { get; set; } = FooocusEntryMode.AutoUpdate;
 
     /// <summary>
     /// v1.0.0.x: 用户/编辑器自由填的元数据(描述/作者/版本/分类/备注等)。

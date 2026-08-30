@@ -23,6 +23,7 @@ public class TemplateConfigTests
             ModelsSubdir = "models",
             ExtraJunctionTargets = new System.Collections.Generic.List<string> { "extra1", "extra2" },
             UserExtraArgs = "--preview-method auto",
+            FooocusEntryMode = FooocusEntryMode.Stable,   // v1.0.0.x 新字段,确保 round-trip
         };
 
         // Use JsonOptions.Default to mirror production serialization (includes JsonStringEnumConverter).
@@ -40,6 +41,7 @@ public class TemplateConfigTests
         Assert.Equal("models", restored.ModelsSubdir);
         Assert.Equal(2, restored.ExtraJunctionTargets.Count);
         Assert.Equal("--preview-method auto", restored.UserExtraArgs);
+        Assert.Equal(FooocusEntryMode.Stable, restored!.FooocusEntryMode);
     }
 
     [Fact]
