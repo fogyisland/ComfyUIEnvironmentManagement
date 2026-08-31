@@ -96,6 +96,15 @@ public sealed class EnvCreatorService
     /// </summary>
     private readonly Func<string, ILtx2WrapperGenerator>? _wrapperGeneratorFactory;
 
+    /// <summary>
+    /// v1.0.0.x (2026-08-31):env-create step 7.7(Whisper 分支)— 跑
+    /// <c>&lt;venvPython&gt; -m pip install openai-whisper</c>。Whisper 是 PyPI 包,没有
+    /// monorepo uv sync(LTXVideo 模式);不装包直接 <c>python -m whisper</c> → ImportError
+    /// → 启动 fail。签名 = <c>(venvPython, ct) → Task</c>。默认 <c>null</c> 走 real
+    /// <see cref="RunWhisperInstallAsync"/>,测试可注入 fake(避免真实网络 pip install)。
+    /// </summary>
+    private readonly Func<string, CancellationToken, Task>? _whisperInstallAsync;
+
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
@@ -106,7 +115,8 @@ public sealed class EnvCreatorService
         Func<string, CancellationToken, Task>? pipInstallWheelAsync = null,
         Func<string, IUvInstaller>? uvInstallerFactory = null,
         Func<string, ILtx2WrapperGenerator>? wrapperGeneratorFactory = null,
-        Func<string, CancellationToken, Task>? uvSyncAsync = null)
+        Func<string, CancellationToken, Task>? uvSyncAsync = null,
+        Func<string, CancellationToken, Task>? whisperInstallAsync = null)
     {
         _dbFactory = dbFactory;
         _venvCreator = venvCreator;
@@ -118,6 +128,7 @@ public sealed class EnvCreatorService
         _uvInstallerFactory = uvInstallerFactory;
         _wrapperGeneratorFactory = wrapperGeneratorFactory;
         _uvSyncAsync = uvSyncAsync;
+        _whisperInstallAsync = whisperInstallAsync;
     }
 
     /// <summary>
@@ -482,6 +493,33 @@ public sealed class EnvCreatorService
             }
         }
 
+        // 7.7 (Whisper only) — `pip install openai-whisper`。
+        // Whisper 是 PyPI 包,没有 monorepo uv sync(LTXVideo 模式)。不装包直接
+        // `python -m whisper` → ImportError → WaitForCliCompletionAsync 抛
+        // ServiceLaunchException("Whisper CLI 退出失败")。required(同 step 7.5 uv sync):
+        // 没装包 env 等于废。factory 模式同 step 6.6 wheel seed。
+        if (string.Equals(templateConfig.Kind, "Whisper", StringComparison.Ordinal))
+        {
+            progress?.Report(new CreateStepReport("安装 Whisper 包到 venv",
+                $"{venvPython} -m pip install openai-whisper"));
+            try
+            {
+                var install = _whisperInstallAsync ?? RunWhisperInstallAsync;
+                await install(venvPython, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                try { Directory.Delete(rootPath, recursive: true); } catch { }
+                throw;
+            }
+            catch (Exception ex)
+            {
+                try { Directory.Delete(rootPath, recursive: true); } catch { }
+                throw new CreateEnvException("WHISPER_INSTALL_FAILED",
+                    $"openai-whisper 安装失败: {ex.Message}");
+            }
+        }
+
         // v1.0.0.x: 常用节点安装不再在 env-create 末尾自动跑 — 用户在 env 行右侧
         // 按钮触发(RequirementsInstaller / 行内按钮已存在,逻辑独立)。env-create
         // 只做基础初始化,跟用户「创建 = 模板复制」语义一致。
@@ -700,6 +738,65 @@ public sealed class EnvCreatorService
         {
             throw new InvalidOperationException(
                 $"uv sync --extra natten exit={p.ExitCode}");
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-31):env-create step 7.7(Whisper 分支)默认实现 — 跑
+    /// <c>&lt;venvPython&gt; -m pip install openai-whisper</c>。
+    ///
+    /// 镜像 <see cref="RunPipInstallWheelAsync"/> 模式:进程启动 → 并发读 stdout/stderr →
+    /// 等 exit → 非 0 exit code / 启动失败抛 <see cref="InvalidOperationException"/>。
+    /// ctor 注入 <c>_whisperInstallAsync</c> 替换为测试 fake(避免真实网络 pip install)。
+    ///
+    /// 抛异常的语义(由 step 7.7 catch 处理):
+    /// - <see cref="OperationCanceledException"/> → 上抛,走取消分支(回滚 env 根目录)
+    /// - 其他异常 → 包成 <see cref="CreateEnvException"/>(<c>WHISPER_INSTALL_FAILED</c>),
+    ///   env-create 整体失败
+    /// </summary>
+    internal static async Task RunWhisperInstallAsync(string venvPython, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(venvPython))
+            throw new ArgumentException("venvPython 不能为空", nameof(venvPython));
+
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = venvPython,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("-m");
+        psi.ArgumentList.Add("pip");
+        psi.ArgumentList.Add("install");
+        psi.ArgumentList.Add("openai-whisper");
+
+        using var p = System.Diagnostics.Process.Start(psi)
+            ?? throw new InvalidOperationException("pip install openai-whisper 进程启动失败(Process.Start 返回 null)");
+
+        var stdoutDone = new TaskCompletionSource<bool>();
+        var stderrDone = new TaskCompletionSource<bool>();
+        _ = Task.Run(async () =>
+        {
+            try { while (await p.StandardOutput.ReadLineAsync().ConfigureAwait(false) is not null) { } }
+            catch { }
+            finally { stdoutDone.TrySetResult(true); }
+        });
+        _ = Task.Run(async () =>
+        {
+            try { while (await p.StandardError.ReadLineAsync().ConfigureAwait(false) is not null) { } }
+            catch { }
+            finally { stderrDone.TrySetResult(true); }
+        });
+
+        await p.WaitForExitAsync(ct).ConfigureAwait(false);
+        await Task.WhenAll(stdoutDone.Task, stderrDone.Task).ConfigureAwait(false);
+
+        if (p.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"pip install openai-whisper exit={p.ExitCode}");
         }
     }
 }
