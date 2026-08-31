@@ -420,6 +420,8 @@ public class ForgePreFlightInstaller
             CreateNoWindow = true,
         };
         _proxy?.ApplyTo(psi);
+        // v1.0.0.x (2026-09-01): PYTHONUTF8=1 — 见 PipProcessHelpers doc-comment。
+        PipProcessHelpers.ApplyUtf8Mode(psi);
         psi.ArgumentList.Add("-m");
         psi.ArgumentList.Add("pip");
         foreach (var a in pipArgs) psi.ArgumentList.Add(a);

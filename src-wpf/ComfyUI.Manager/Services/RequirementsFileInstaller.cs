@@ -173,6 +173,10 @@ public class RequirementsFileInstaller
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
+        // v1.0.0.x (2026-09-01): 设 PYTHONUTF8=1 修中文 Windows GBK locale
+        // 下 sdist setup.py 读 UTF-8 文件 fail(groundingdino-py 等)。见
+        // PipProcessHelpers.ApplyUtf8Mode doc-comment。
+        PipProcessHelpers.ApplyUtf8Mode(psi);
         psi.ArgumentList.Add("-m");
         psi.ArgumentList.Add("pip");
         foreach (var a in pipArgs) psi.ArgumentList.Add(a);
