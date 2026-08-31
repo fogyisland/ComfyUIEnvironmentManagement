@@ -46,7 +46,9 @@ public class SettingsDefaultsTemplateSeedTests
         var ov = s.Templates["OpenVoice"];
         Assert.Equal(TemplateSourceKind.GitHub, ov.SourceKind);
         Assert.Equal("https://github.com/myshell-ai/OpenVoice.git", ov.GitHubRepoUrl);
-        Assert.Equal("api.py", ov.EntryScript);
+        // v1.0.0.x (2026-08-31): api.py 是 library;真实 entry 是 openvoice/openvoice_app.py (Gradio UI)
+        Assert.Equal("openvoice/openvoice_app.py", ov.EntryScript);
+        Assert.Equal("--share", ov.EntryArgs);
 
         var wh = s.Templates["Whisper"];
         Assert.Equal(TemplateSourceKind.GitHub, wh.SourceKind);
@@ -257,7 +259,9 @@ public class SettingsDefaultsTemplateSeedTests
             LocalSourceDir = Path.Combine("envTemplates", "OpenVoice"),
             SourceKind = TemplateSourceKind.GitHub,
             GitHubRepoUrl = "https://github.com/myshell-ai/OpenVoice.git",
-            EntryScript = "api.py",
+            // v1.0.0.x (2026-08-31):真实 entry 是 openvoice/openvoice_app.py
+            EntryScript = "openvoice/openvoice_app.py",
+            EntryArgs = "--share",
         };
         s.Templates["MyCustom"] = new TemplateConfig
         {

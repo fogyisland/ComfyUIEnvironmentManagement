@@ -249,6 +249,10 @@ public sealed class ProcessLauncher : IDisposable
             {
                 psi.EnvironmentVariables[kvp.Key] = kvp.Value;
             }
+            foreach (var kvp in OpenVoiceExtraEnvironmentVariables(env))
+            {
+                psi.EnvironmentVariables[kvp.Key] = kvp.Value;
+            }
 
             Process? process = null;
             try
@@ -1014,6 +1018,26 @@ public sealed class ProcessLauncher : IDisposable
         if (string.Equals(env.TemplateKind, "Forge", StringComparison.Ordinal))
         {
             extras["SD_WEBUI_RESTARTING"] = "1";
+        }
+        return extras;
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-31):OpenVoice Gradio UI — <c>demo.launch()</c> 自动读
+    /// <c>GRADIO_SERVER_PORT</c> env var 设端口。openvoice_app.py argparse 只接受
+    /// <c>--share</c>,不接受 <c>--port</c>;env var 是 zero-modification 路径
+    /// (不动 <c>ENVTemplate/OpenVoice/openvoice/openvoice_app.py</c> 上游)。
+    /// 镜像 <see cref="ForgeExtraEnvironmentVariables"/> 模式。
+    /// </summary>
+    /// <remarks>
+    /// <c>env.Port == null</c> 兜底 "8000"(<see cref="BuildStartCommand"/> 同 fallback)。
+    /// </remarks>
+    public static IReadOnlyDictionary<string, string> OpenVoiceExtraEnvironmentVariables(Environment env)
+    {
+        var extras = new Dictionary<string, string>();
+        if (string.Equals(env.TemplateKind, "OpenVoice", StringComparison.Ordinal))
+        {
+            extras["GRADIO_SERVER_PORT"] = env.Port?.ToString() ?? "8000";
         }
         return extras;
     }

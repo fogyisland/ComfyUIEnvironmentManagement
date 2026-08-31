@@ -74,8 +74,12 @@ public static class TemplateConfigDefaults
 
     /// <summary>
     /// v1.0.0.x: AI 语音 — OpenVoice (myshell-ai/OpenVoice)。voice cloning TTS。
-    /// GitHub clone source。Python 入口 api.py (FastAPI server);空环境由
-    /// EnvCreator 装 venv + pip install -e .。
+    /// GitHub clone source。空环境由 EnvCreator 装 venv + pip install -e .。
+    /// v1.0.0.x (2026-08-31): entry script 从 api.py 改成 openvoice/openvoice_app.py —
+    /// api.py 是 library (BaseSpeakerTTS, ToneColorConverter),不是 server entry。
+    /// 真实 entry 是 openvoice_app.py (Gradio UI demo.launch()),argparse 只接受
+    /// --share;port 通过 GRADIO_SERVER_PORT env var 注入(ProcessLauncher 设,
+    /// 零 upstream 改动)。
     /// </summary>
     public static TemplateConfig OpenVoice(string projectRoot) => new()
     {
@@ -84,8 +88,8 @@ public static class TemplateConfigDefaults
         LocalSourceDir = "OpenVoice",
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/myshell-ai/OpenVoice.git",
-        EntryScript = "api.py",
-        EntryArgs = "--port {port}",
+        EntryScript = "openvoice/openvoice_app.py",
+        EntryArgs = "--share",
         ModelsSubdir = "outputs",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
