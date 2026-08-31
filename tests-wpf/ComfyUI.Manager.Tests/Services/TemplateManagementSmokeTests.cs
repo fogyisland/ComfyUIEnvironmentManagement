@@ -41,29 +41,29 @@ public sealed class TemplateManagementSmokeTests
         Path.Combine(RepoRoot, "ENVTemplate");
 
     /// <summary>
-    /// shipped 状态下 <c>ENVTemplate/</c> 实际有内容的 7 个内置模板(完整 git clone 产物)。
+    /// shipped 状态下 <c>ENVTemplate/</c> 实际有内容的内置模板(完整 git clone 产物)。
     /// 测试断言 LocalDirExists=true 且 badge=""(不显示)。
     /// v1.0.0.x (2026-08-29): 4 个新视频/图像生成模板(HunyuanVideo/LTXVideo/CogVideoX/Fooocus)
     /// 已 clone 到 ENVTemplate,从 PendingBuiltinKinds 移到 ClonedBuiltinKinds(3 → 7)。
     /// v1.0.0.x: 从 4 个减到 3 个 — SwarmUI 已下线 + 目录已删除。
     /// v1.0.0.x: 从 5 个减到 4 个 — A1111 已下线。
+    /// v1.0.0.x (2026-08-31): 7 → 11 — Whisper/CoquiTTS/Bark/HivisionIDPhotos 4 个语音/
+    /// 图像模板今天已陆续 clone 到 ENVTemplate/(用户 dev verify 通过)。
     /// </summary>
     private static readonly string[] ClonedBuiltinKinds =
     {
         "ComfyUI", "Forge", "OpenVoice",
         "HunyuanVideo", "LTXVideo", "CogVideoX", "Fooocus",
-    };
-
-    /// <summary>
-    /// shipped 状态下 <c>ENVTemplate/</c> 不存在的 4 个内置模板(待 clone)。
-    /// 测试断言 LocalDirExists=false 且 badge=<see cref="TemplateConfig.LocalDirBadgeHint"/>。
-    /// v1.0.0.x (2026-08-29): 4 个视频/图像生成已 clone,剩 3 个语音 + 1 个 AI 证件照共 4 个待 clone。
-    /// </summary>
-    private static readonly string[] PendingBuiltinKinds =
-    {
         "Whisper", "CoquiTTS", "Bark",
         "HivisionIDPhotos",
     };
+
+    /// <summary>
+    /// shipped 状态下 <c>ENVTemplate/</c> 不存在的内置模板(待 clone)。
+    /// 测试断言 LocalDirExists=false 且 badge=<see cref="TemplateConfig.LocalDirBadgeHint"/>。
+    /// v1.0.0.x (2026-08-31): 0 个 — 11 个 built-in 全部已 clone 到 ENVTemplate/。
+    /// </summary>
+    private static readonly string[] PendingBuiltinKinds = Array.Empty<string>();
 
     /// <summary>
     /// 一站式枚举 11 个内置模板 → 实际 TemplateConfig 实例,供 [Theory] / [Fact] 用。

@@ -599,6 +599,68 @@
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
                                     </Grid>
+                                    <!-- v1.0.0.x (2026-08-31): 通用 env Actions ——
+                                         9 个 non-ComfyUI/Forge built-in kind(Fooocus / OpenVoice /
+                                         Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo /
+                                         CogVideoX / HivisionIDPhotos)的 env 行用这套 5-button Grid。
+                                         1 行 × 5 列布局。
+                                         Command 复用 VM 现有 property(全是 template-kind-agnostic,
+                                         ProcessLauncher.BuildStartCommand 内部按 kind dispatch)——
+                                         不需要 EnvListViewModel 新加 command。
+                                         每个 button 的 enabled 状态由 Command.CanExecute 决定 —
+                                         已 running 时 StartStop 显示「停止」文本 + IsEnabled,
+                                         已 stopped 时 ShowLog/OpenBrowser 灰按钮(busy 时 Delete 也灰)。
+                                         跟 Forge(3×2)+ ComfyUI(5×2)Grid 完全互斥:
+                                         default Collapsed + 单 DataTrigger 切 Visible,
+                                         镜像 Forge line 466-468 / ComfyUI line 520-525 同款 pattern。-->
+                                    <Grid>
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding GenericActionsVisible}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Content="{Binding StartStopButtonText}"
+                                                Style="{StaticResource MaterialButton}"
+                                                IsEnabled="{Binding StartStopButtonEnabled}"
+                                                Command="{Binding DataContext.StartStopCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Margin="2" MinWidth="0" />
+                                        <Button Grid.Column="1" Content="查看日志" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.ShowLogCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Grid.Column="2" Content="打开浏览器" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.OpenBrowserCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="用 Chrome 打开该环境的 web 页面(未装则用系统默认浏览器)。仅运行中可用。" />
+                                        <Button Grid.Column="3" Content="组件报告" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Command="{Binding DataContext.ReportComponentsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
+                                        <Button Grid.Column="4" Content="删除" Margin="2" MinWidth="0"
+                                                Style="{StaticResource DangerButton}"
+                                                Command="{Binding DataContext.DeleteCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </Grid>
                                 </Grid>
                             </Grid>
                         </Border>

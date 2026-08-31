@@ -119,6 +119,23 @@ public class Environment
     public bool RequirementsButtonVisible => TemplateKind != "Forge";
 
     /// <summary>
+    /// v1.0.0.x (2026-08-31): 通用 env Actions Grid 显示条件 ——
+    /// TemplateKind 既不是 ComfyUI 也不是 Forge 的 env 才显示
+    /// (Fooocus / OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo /
+    /// LTXVideo / CogVideoX / HivisionIDPhotos — 9 个 built-in + 任何
+    /// custom kind)。
+    ///
+    /// 镜像 <see cref="RequirementsButtonVisible"/> pattern(单行 computed bool +
+    /// XAML DataTrigger Value="True" 触发 visible),不引入 MultiBinding 或新 converter。
+    /// 用于 EnvironmentListView Row 2 第 3 个 Grid `GenericActions` 1×5 布局
+    /// (启动 / 查看日志 / 打开浏览器 / 组件报告 / 删除) ——
+    /// 跟 Forge(3×2)+ ComfyUI(5×2)互斥。
+    /// </summary>
+    [JsonIgnore]
+    public bool GenericActionsVisible => TemplateKind != "ComfyUI"
+        && TemplateKind != "Forge";
+
+    /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
     /// (Settings.LocalNodesDirectory 下每个子包都已在 env/custom_nodes/),false = 未装或不全。
     /// Load 末尾重新算(LocalNodeInstaller.IsInstalled),不持久化(同 IsComfyUiManagerInstalled pattern)。
