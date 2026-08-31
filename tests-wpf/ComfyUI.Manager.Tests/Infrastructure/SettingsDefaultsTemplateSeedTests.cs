@@ -97,6 +97,135 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("main.py", c.EntryScript);
         Assert.Equal("--port {port} --listen 0.0.0.0", c.EntryArgs);
         Assert.Equal("models", c.ModelsSubdir);
+        // v1.0.0.x (2026-08-31): ComfyUI 项目方已 dev build 验证 → 默认 Verified=true
+        Assert.True(c.Verified);
+    }
+
+    [Fact]
+    public void Apply_EmptySettings_ForgeTemplateHasCorrectDefaults()
+    {
+        // v1.0.0.x (2026-08-31): Forge 项目方已 dev build 验证 → 默认 Verified=true
+        var s = new Settings();
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        var c = s.Templates["Forge"];
+        Assert.Equal("Forge", c.Name);
+        Assert.Equal("Forge", c.Kind);
+        Assert.Equal("webui.py", c.EntryScript);
+        Assert.Equal("--port {port} --api", c.EntryArgs);
+        Assert.Equal("models/Stable-diffusion", c.ModelsSubdir);
+        Assert.True(c.Verified);
+    }
+
+    [Theory]
+    [InlineData("OpenVoice")]
+    [InlineData("Whisper")]
+    [InlineData("CoquiTTS")]
+    [InlineData("Bark")]
+    [InlineData("HunyuanVideo")]
+    [InlineData("LTXVideo")]
+    [InlineData("CogVideoX")]
+    [InlineData("Fooocus")]
+    [InlineData("HivisionIDPhotos")]
+    public void Apply_EmptySettings_NonImageBuiltInTemplate_VerifiedDefaultsToFalse(string kind)
+    {
+        // v1.0.0.x (2026-08-31): 9 个非 ComfyUI/Forge built-in 默认 Verified=false ——
+        // 验证后逐个 ship 时由 TemplateConfigDefaults factory 改 true。
+        // 锁当前 default 防止后续手抖改默认值。
+        var s = new Settings();
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.Templates.ContainsKey(kind), $"built-in '{kind}' should be seeded");
+        Assert.False(s.Templates[kind].Verified);
+    }
+
+    [Fact]
+    public void Apply_ExistingSettings_ComfyUIWithoutVerifiedField_IsUpgradedToTrue()
+    {
+        // v1.0.0.x (2026-08-31): shipped 用户的 settings.inf 没 verified 字段
+        // (本轮新加的)→ Apply 末尾 MarkVerifiedBuiltIns 一次性 upgrade 到 true。
+        // 否则 dev build 模板管理卡片 ComfyUI / Forge 不显示绿色 ✓ badge。
+        // 项目方 only:用户不能通过 UI 设 false,严格 upgrade 安全。
+        var s = new Settings();
+        s.Templates["ComfyUI"] = new TemplateConfig
+        {
+            Name = "ComfyUI",
+            Kind = "ComfyUI",
+            LocalSourceDir = "ComfyUI",
+            EntryScript = "main.py",
+            EntryArgs = "--port {port} --listen 0.0.0.0",
+            ModelsSubdir = "models",
+            // Verified 字段未设 → JsonSerializer 反序列化默认 false
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.Templates["ComfyUI"].Verified);  // 升级到 true
+    }
+
+    [Fact]
+    public void Apply_ExistingSettings_ForgeWithoutVerifiedField_IsUpgradedToTrue()
+    {
+        // 同上 — Forge 项目方白名单第 2 项
+        var s = new Settings();
+        s.Templates["Forge"] = new TemplateConfig
+        {
+            Name = "Forge",
+            Kind = "Forge",
+            LocalSourceDir = "Forge",
+            EntryScript = "webui.py",
+            EntryArgs = "--port {port} --api",
+            ModelsSubdir = "models/Stable-diffusion",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.Templates["Forge"].Verified);
+    }
+
+    [Fact]
+    public void Apply_ExistingSettings_NonWhitelistedBuiltIn_StaysUnverified()
+    {
+        // v1.0.0.x (2026-08-31): 9 个非白名单 built-in(Whisper/OpenVoice/etc)即使
+        // 已在 settings.inf 里(seed 过),也不会被 upgrade 到 Verified=true。
+        // 等后续 wave 验证后 ship 时再加迁移。
+        var s = new Settings();
+        s.Templates["Whisper"] = new TemplateConfig
+        {
+            Name = "Whisper",
+            Kind = "Whisper",
+            LocalSourceDir = "Whisper",
+            SourceKind = TemplateSourceKind.GitHub,
+            GitHubRepoUrl = "https://github.com/openai/whisper.git",
+            EntryScript = "whisper",
+            EntryArgs = "",
+            ModelsSubdir = "",
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.False(s.Templates["Whisper"].Verified);
+    }
+
+    [Fact]
+    public void Apply_ExistingSettings_AlreadyVerified_StaysTrue()
+    {
+        // 幂等:已 Verified=true 的 entry 不会被改回 false
+        var s = new Settings();
+        s.Templates["ComfyUI"] = new TemplateConfig
+        {
+            Name = "ComfyUI",
+            Kind = "ComfyUI",
+            LocalSourceDir = "ComfyUI",
+            EntryScript = "main.py",
+            EntryArgs = "--port {port} --listen 0.0.0.0",
+            ModelsSubdir = "models",
+            Verified = true,
+        };
+
+        SettingsDefaults.Apply(s, ProjectRoot);
+
+        Assert.True(s.Templates["ComfyUI"].Verified);
     }
 
     [Fact]

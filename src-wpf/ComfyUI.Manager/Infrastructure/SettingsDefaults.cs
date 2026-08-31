@@ -325,6 +325,13 @@ public static class SettingsDefaults
         // (A1111 + SwarmUI) — Apply 只 if-not-exists seed 不删,需单独 prune 一次。
         // 跟 NormalizeBuiltInTemplatePaths 同样在 seed 后跑;幂等,多次跑无副作用。
         PruneDeprecatedBuiltInKinds(s);
+        // v1.0.0.x (2026-08-31):已 shipped 用户的 settings.inf 里 ComfyUI / Forge entry
+        // 缺 verified 字段(本轮新加)→ Apply 末尾一次性 upgrade 到 Verified=true。
+        // 项目方 only:用户不能通过 UI toggle,所以"覆盖"语义安全(用户没机会设 false)。
+        // 其它 9 个 built-in(OpenVoice/Whisper/.../HivisionIDPhotos)默认 false,验证后
+        // 由各自 wave ship 时再加迁移(本轮不动 — 等 Whisper dev verify 后再 ship 一波)。
+        // 幂等:已 Verified=true 的 entry 跳过。
+        MarkVerifiedBuiltIns(s);
 
         // v1.0.0 Phase 1:dev build 解锁所有 hidden feature flag — 用户原话
         // "开发阶段没有限制,所以在开发就不要限制了模型市场和工作流库了,
@@ -524,6 +531,32 @@ public static class SettingsDefaults
             // 跟 NormalizeBuiltInTemplatePaths 同样模式 — 用 Remove(TKey) 静默。
             // 不存在(新装用户 / 已经清过的)→ no-op,跑多次幂等。
             s.Templates.Remove(kind);
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-31): 「已验证 可运行」项目方标记白名单 ——
+    /// Apply 末尾一次性 upgrade 已 shipped 用户的 ComfyUI / Forge entry。
+    /// 老 settings.inf 没 <c>verified</c> 字段 → JsonSerializer 反序列化默认 false →
+    /// 模板管理卡片不显示绿色 ✓ badge。本方法只覆盖项目方白名单的 2 个模板,且只设
+    /// Verified=true(strict upgrade,用户没机会通过 UI 设 false ——
+    /// EditTemplateDialog 不暴露 Checkbox,用户决策 AskUserQuestion 2026-08-31)。
+    /// 其它 9 个 built-in 不在此白名单:验证后由各自 wave ship 时再加(Whisper dev 验证
+    /// 后 + OpenVoice 等)。幂等:已 true 的跳过。
+    /// </summary>
+    private static readonly string[] VerifiedBuiltInKinds =
+    {
+        "ComfyUI", "Forge",
+    };
+
+    private static void MarkVerifiedBuiltIns(Settings s)
+    {
+        foreach (var kind in VerifiedBuiltInKinds)
+        {
+            if (s.Templates.TryGetValue(kind, out var cfg) && !cfg.Verified)
+            {
+                cfg.Verified = true;
+            }
         }
     }
 

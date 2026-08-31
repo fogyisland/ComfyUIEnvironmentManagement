@@ -50,8 +50,22 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <!-- Row 0: Name + SourceKindBadge + LocalDirMissing badge (single line, full width) -->
+                                <!-- Row 0: Name + SourceKindBadge + LocalDirMissing badge + Verified badge (single line, full width) -->
                                 <DockPanel Grid.Row="0" Grid.Column="0">
+                                    <!-- v1.0.0.x (2026-08-31): 「已验证 可运行」绿色 ✓ badge ——
+                                         项目方 end-to-end 验证过的模板(目前只 ComfyUI / Forge)。
+                                         Verified=true 才显示;项目方 only,EditTemplateDialog 不暴露
+                                         Checkbox(用户决策 AskUserQuestion 2026-08-31)。
+                                         SuccessBrush 已在 Palette.Light.xaml #2E7D32 / Dark.xaml #4CAF50
+                                         主题感知(对比 amber #F59E0B 是硬编码)。DockPanel.Dock="Right"
+                                         第一个声明 → 最右边,跟 amber badge / "[GitHub]" 并排 -->
+                                    <Border DockPanel.Dock="Right" Margin="6,0,0,0"
+                                            Padding="6,2" CornerRadius="3"
+                                            Background="{DynamicResource SuccessBrush}"
+                                            Visibility="{Binding Verified, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                                            ToolTip="项目方已验证此模板可正常运行(env-create + 启动 + 接口可达)">
+                                        <TextBlock Text="✓ 已验证 可运行" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                    </Border>
                                     <!-- v1.0.0.x:本地目录状态 — GitHub 模板(Whisper / CoquiTTS / Bark)
                                          首次使用前没 git clone 时显琥珀色 badge 提醒用户点 「下载与更新」。
                                          SourceKindBadge 之前。v1.0.0.x #630: 颜色 #D32F2F 红 →

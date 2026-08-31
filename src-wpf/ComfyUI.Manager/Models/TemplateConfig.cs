@@ -90,6 +90,25 @@ public class TemplateConfig
     public Dictionary<string, string> Meta { get; set; } = new();
 
     /// <summary>
+    /// v1.0.0.x (2026-08-31):「已验证 可运行」项目方标记 — 区分项目方已 end-to-end 验证
+    /// 的 built-in 模板(ComfyUI / Forge 等)vs 用户自定义/社区模板。纯 UI 标记,
+    /// EnvCreatorService / ProcessLauncher 不读,仅 TemplateManagementView 显示绿色 ✓ badge。
+    ///
+    /// **项目方 only**(用户决策 2026-08-31 AskUserQuestion):EditTemplateDialog 不暴露
+    /// Checkbox,只能由 <see cref="Services.TemplateConfigDefaults"/> 工厂在 ship 时设置。
+    /// 用户手动编辑 settings.inf 设 true 仍生效(pure JSON 不防),但 UI 无入口 ——
+    /// 防止假阳性(用户勾了不工作的模板骗自己)。
+    ///
+    /// 老 settings.json 缺字段 → JsonSerializer 默认 false → 没 badge,**零迁移成本**
+    /// (跟 <see cref="FooocusEntryMode"/> 同模式)。
+    ///
+    /// Snapshot freeze:<see cref="Environment.TemplateConfigSnapshot"/> 用 JSON round-trip
+    /// clone,env 创建后改 settings 不影响已有 env(env 启动时的 Verified 状态冻结)。
+    /// </summary>
+    [JsonPropertyName("verified")]
+    public bool Verified { get; set; } = false;
+
+    /// <summary>
     /// Human-readable badge for the template kind. v1.0.0+: used by TemplateManagementView
     /// card to display "[GitHub]". Not serialized — derived from SourceKind.
     /// v1.0.0.x #630: "[本地]" → "[内置]" ——

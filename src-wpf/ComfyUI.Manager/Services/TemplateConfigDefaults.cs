@@ -36,6 +36,10 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        // v1.0.0.x (2026-08-31): 项目方已在 dev build 验证 env-create + 启动 + 接口可达,
+        // 标记 Verified=true 显示绿色 ✓ 「已验证 可运行」badge。其它 9 个 built-in
+        // 验证后逐个 ship 时再加。
+        Verified = true,
         // v1.0.0.x: 内置 Meta 元数据 — 描述/分类/作者/官方仓库,用户可在
         // EditTemplateDialog 自由修改;只读内置模板(seed 时填,SettingsDefaults
         // 不会重新覆盖 — 用户改了永远跟用户走)。
@@ -63,6 +67,9 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models/Stable-diffusion",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        // v1.0.0.x (2026-08-31): 项目方已在 dev build 验证 env-create + 启动 + 接口可达,
+        // 标记 Verified=true 显示绿色 ✓ 「已验证 可运行」badge。
+        Verified = true,
         Meta = new()
         {
             ["category"] = "图像生成",

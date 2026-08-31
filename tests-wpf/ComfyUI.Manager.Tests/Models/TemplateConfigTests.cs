@@ -24,6 +24,7 @@ public class TemplateConfigTests
             ExtraJunctionTargets = new System.Collections.Generic.List<string> { "extra1", "extra2" },
             UserExtraArgs = "--preview-method auto",
             FooocusEntryMode = FooocusEntryMode.Stable,   // v1.0.0.x 新字段,确保 round-trip
+            Verified = true,                              // v1.0.0.x (2026-08-31) 新字段,确保 round-trip
         };
 
         // Use JsonOptions.Default to mirror production serialization (includes JsonStringEnumConverter).
@@ -42,6 +43,7 @@ public class TemplateConfigTests
         Assert.Equal(2, restored.ExtraJunctionTargets.Count);
         Assert.Equal("--preview-method auto", restored.UserExtraArgs);
         Assert.Equal(FooocusEntryMode.Stable, restored!.FooocusEntryMode);
+        Assert.True(restored.Verified);  // v1.0.0.x Verified round-trip
     }
 
     [Fact]
@@ -58,6 +60,7 @@ public class TemplateConfigTests
         Assert.Equal("models", c.ModelsSubdir); // G5 default
         Assert.Empty(c.ExtraJunctionTargets);
         Assert.Equal("", c.UserExtraArgs);
+        Assert.False(c.Verified);  // v1.0.0.x Verified default = false(未验证模板)
     }
 
     [Fact]
@@ -79,6 +82,8 @@ public class TemplateConfigTests
         Assert.Contains("\"user_extra_args\":\"\"", json);
         // v1.0.0.x: meta 字典(空 dict 序列化为 {})
         Assert.Contains("\"meta\":{}", json);
+        // v1.0.0.x (2026-08-31): Verified 新字段 — snake_case "verified":false
+        Assert.Contains("\"verified\":false", json);
     }
 
     [Fact]
@@ -90,6 +95,17 @@ public class TemplateConfigTests
         var c = JsonSerializer.Deserialize<TemplateConfig>(oldJson, JsonOptions.Default)!;
         Assert.Equal(TemplateSourceKind.Local, c.SourceKind);
         Assert.Equal("", c.GitHubRepoUrl);
+    }
+
+    [Fact]
+    public void BackwardCompat_OldJson_NoVerified_DefaultsToFalse()
+    {
+        // v1.0.0.x (2026-08-31): 老 settings.inf 没 "verified" 字段 ——
+        // JsonSerializer 默认 false → 没绿色 badge,跟项目方 only 决策一致
+        // (新模板不自动升级到 verified=true,等项目方手动 ship 时再设)。
+        const string oldJson = """{"name":"ComfyUI","kind":"ComfyUI","local_source_dir":"ComfyUI","entry_script":"main.py","entry_args":"--port {port}","models_subdir":"models","extra_junction_targets":[],"user_extra_args":"","fooocus_entry_mode":"AutoUpdate"}""";
+        var c = JsonSerializer.Deserialize<TemplateConfig>(oldJson, JsonOptions.Default)!;
+        Assert.False(c.Verified);
     }
 
     [Fact]
