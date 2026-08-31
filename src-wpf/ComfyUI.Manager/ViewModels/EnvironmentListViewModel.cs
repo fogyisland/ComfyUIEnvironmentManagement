@@ -847,6 +847,18 @@ public class EnvironmentListViewModel : ViewModelBase
                 catch { /* 回填失败不致命,IsInstalled 仍通过 marker 兜底 */ }
             }
 
+            // v1.0.0.x (2026-09-01):RequirementsFile 老 env 回填 ——
+            // env-create 时 TemplateConfigDefaults.<Kind>() 没 RequirementsFile 字段
+            // (T19 新加),老 env 的 TemplateConfigSnapshot.RequirementsFile = ""
+            // → RequirementsFileButtonVisible = false → 「依赖」按钮隐藏
+            // (Fooocus / HunyuanVideo / CogVideoX 启不动因为 ResolveRequirementsCandidates
+            // 找不到 requirements_versions.txt / requirements.txt)。
+            // Migration:对 3 个 image/video kind,如果 snapshot.RequirementsFile 空
+            // + factory default 有 → 从 factory 拉新值 + 写 DB(幂等,只走一次)。
+            // RequirementsFile 不是用户可编辑字段(EditTemplateDialog 不暴露),
+            // 所以覆盖语义安全(factory 是 single source of truth)。
+            MigrateRequirementsFileFromFactory(env);
+
             // v1.0.0.x #577:本地常用节点装态 + 启停单按钮文字。
             var localInstalled = _localNodeBulkInstaller.IsInstalled(env);
             env.IsLocalNodesInstalled = localInstalled;
@@ -870,6 +882,55 @@ public class EnvironmentListViewModel : ViewModelBase
             }
         }
         RaiseCommandsChanged();
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01): 老 env 回填 RequirementsFile 字段 ——
+    /// 3 个 image/video kind(Fooocus / HunyuanVideo / CogVideoX)的 TemplateConfigSnapshot
+    /// 在 env-create 时如果早于 T19 commit `3bf87b08`,RequirementsFile 是空(老 factory
+    /// 没这字段)。本方法在 Load() 末尾调一次,从 <see cref="TemplateConfigDefaults"/>
+    /// factory 拉当前默认值 + 写 DB(跟 BED 老 env 回填同 pattern,line 834-848)。
+    ///
+    /// 安全:RequirementsFile 不是用户在 EditTemplateDialog 可编辑的字段
+    /// (T19 plan "用户决策:EditTemplateDialog 不暴露 Checkbox"),所以"覆盖"
+    /// 语义安全 —— factory 是 single source of truth。
+    ///
+    /// 幂等:第一次 Load 后 RequirementsFile != "",后续 Load 跳过;空 RequirementsFile
+    /// 才回填(factory 没配的 kind 也不回填,避免强制添加 LTXVideo 等不该有的字段)。
+    /// </summary>
+    private void MigrateRequirementsFileFromFactory(Environment env)
+    {
+        if (env is null || string.IsNullOrWhiteSpace(env.TemplateKind)) return;
+        // 已填好(用户手动设 / 老 wave 已迁移过)→ no-op
+        if (!string.IsNullOrWhiteSpace(env.TemplateConfigSnapshot?.RequirementsFile)) return;
+
+        // 3 个 image/video kind 才需要回填 — 其它 kind 不在本 wave 范围
+        TemplateConfig? factoryDefault = env.TemplateKind switch
+        {
+            "Fooocus" => TemplateConfigDefaults.Fooocus(_projectRoot),
+            "HunyuanVideo" => TemplateConfigDefaults.HunyuanVideo(_projectRoot),
+            "CogVideoX" => TemplateConfigDefaults.CogVideoX(_projectRoot),
+            _ => null,
+        };
+        if (factoryDefault is null || string.IsNullOrWhiteSpace(factoryDefault.RequirementsFile))
+            return;  // 其它 kind 或 factory 没配 → 不回填
+
+        // 写回 TemplateConfigSnapshot 字段(保留其它字段不变,只覆盖 RequirementsFile)
+        if (env.TemplateConfigSnapshot is null)
+        {
+            env.TemplateConfigSnapshot = factoryDefault;
+        }
+        else
+        {
+            // 用 JSON round-trip 改单字段(跟 EnvCreatorService.CloneTemplateConfig 同模式)
+            var json = System.Text.Json.JsonSerializer.Serialize(env.TemplateConfigSnapshot);
+            var updated = System.Text.Json.JsonSerializer.Deserialize<TemplateConfig>(json)
+                ?? throw new InvalidOperationException("TemplateConfig snapshot round-trip returned null");
+            updated.RequirementsFile = factoryDefault.RequirementsFile;
+            env.TemplateConfigSnapshot = updated;
+        }
+        try { _repo.Upsert(env); }
+        catch { /* 回填失败不致命 — 下次 Load 重试 */ }
     }
 
     private void RecomputeRecentBasePythonPath()
