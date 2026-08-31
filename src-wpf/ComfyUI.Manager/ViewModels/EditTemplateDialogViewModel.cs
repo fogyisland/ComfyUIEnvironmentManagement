@@ -246,6 +246,7 @@ public class EditTemplateDialogViewModel : ViewModelBase
             GitHubRepoUrl = existing.GitHubRepoUrl,
             // v1.0.0.x: Meta 字典 deep-copy,避免 Edit 修改直接影响原对象。
             Meta = new Dictionary<string, string>(existing.Meta),
+            FooocusEntryMode = existing.FooocusEntryMode,
         };
         RaisePropertyChanged(nameof(WorkingConfig));
         // Refresh proxy properties (they read WorkingConfig.X) and CanSave
