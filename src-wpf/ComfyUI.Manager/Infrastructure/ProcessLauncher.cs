@@ -861,6 +861,15 @@ public sealed class ProcessLauncher : IDisposable
             ? env.PythonExecutable
             : Path.Combine(envRoot, "venv", "Scripts", "python.exe");
         var entryScript = Path.Combine(envRoot, snapshot.EntryScript);
+        // v1.0.0.x (2026-08-31):Fooocus stable 模式 — 用 entry.py 替 entry_with_update.py,
+        // 生产可预测不 auto-update。镜像 Forge kind-special 分支(line 904 风格)。
+        // snapshot.EntryScript 仍记 entry_with_update.py,但 Stable mode override 替 entry.py。
+        // 其它 kind 跟其它 mode 完全不受影响(kind check 短路)。
+        if (string.Equals(snapshot.Kind, "Fooocus", StringComparison.Ordinal)
+            && snapshot.FooocusEntryMode == FooocusEntryMode.Stable)
+        {
+            entryScript = Path.Combine(envRoot, "entry.py");
+        }
         // Spec §9: 入口脚本不存在时 throw 清晰指示,而不是 spawn python 然后看到
         // "ModuleNotFoundError: No module named 'main.py'" 之类的晦涩错。
         if (!File.Exists(entryScript))
