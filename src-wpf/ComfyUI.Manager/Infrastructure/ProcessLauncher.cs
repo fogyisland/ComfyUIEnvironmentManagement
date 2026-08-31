@@ -289,7 +289,16 @@ public sealed class ProcessLauncher : IDisposable
             {
                 // v0.6.7.1: 就绪 = 端口 listen 或 stdout 出现就绪行,任一先到即可。
                 var timeout = TimeSpan.FromSeconds(_startupTimeoutSeconds);
-                await WaitForReadyAsync(entry, "127.0.0.1", port, timeout, ct);
+                // v1.0.0.x (2026-08-31):Whisper CLI 工具 one-shot transcribe → exit,
+                // 不 bind port,等 process 自然退出。其它 server template 走原 WaitForReadyAsync。
+                if (string.Equals(env.TemplateKind, "Whisper", StringComparison.Ordinal))
+                {
+                    await WaitForCliCompletionAsync(entry, timeout, ct);
+                }
+                else
+                {
+                    await WaitForReadyAsync(entry, "127.0.0.1", port, timeout, ct);
+                }
             }
             catch
             {
@@ -785,6 +794,66 @@ public sealed class ProcessLauncher : IDisposable
     }
 
     /// <summary>
+    /// v1.0.0.x (2026-08-31):Whisper CLI 工具 (one-shot `whisper` transcribe → exit)
+    /// 等 process 自然退出而非端口 listen — 镜像 <see cref="WaitForReadyAsync"/> 的
+    /// 500ms tick poll 模式,但检测 <c>Process.HasExited</c> 取代端口检查。
+    ///
+    /// 退出行为:
+    /// - exit code 0 → return(CLI 正常完成)
+    /// - exit code 非 0 → <see cref="ServiceLaunchException"/>(跟 WaitForReadyAsync
+    ///   进程提前退出语义一致 — Whisper CLI 报错也是用户可见的"未就绪")
+    /// - timeout → <see cref="TimeoutException"/>(跟 WaitForReadyAsync timeout 一致)
+    ///
+    /// 不主动 kill — 调用方 catch 块已经 TryKillProcessTree,这里只 wait + 报错。
+    /// </summary>
+    private static async Task WaitForCliCompletionAsync(
+        ProcessEntry entry, TimeSpan timeout, CancellationToken ct)
+    {
+        using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadlineCts.CancelAfter(timeout);
+
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            if (entry.Process.HasExited)
+            {
+                int? code = null;
+                try { code = entry.Process.ExitCode; } catch { }
+                if (code == 0)
+                {
+                    return;  // CLI 正常完成
+                }
+                throw new ServiceLaunchException(
+                    $"{entry.ProcessDisplayName} CLI 退出失败(exit code {code}),查看日志: {entry.LogFilePath}");
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(ct);
+            }
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new TimeoutException(
+                    $"{entry.ProcessDisplayName} CLI 在 {timeout.TotalSeconds:0}s 内未完成,可在设置中调大「ComfyUI 启动就绪超时」。");
+            }
+
+            try
+            {
+                await Task.Delay(500, deadlineCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                if (ct.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(ct);
+                }
+                throw new TimeoutException(
+                    $"{entry.ProcessDisplayName} CLI 在 {timeout.TotalSeconds:0}s 内未完成,可在设置中调大「ComfyUI 启动就绪超时」。");
+            }
+        }
+    }
+
+    /// <summary>
     /// 包 <see cref="WaitForPortAsync"/>:把 TimeoutException 吃掉,返回 bool
     /// 让 <see cref="WaitForReadyAsync"/> 统一决定报错文案。
     /// </summary>
@@ -865,6 +934,21 @@ public sealed class ProcessLauncher : IDisposable
             ? env.PythonExecutable
             : Path.Combine(envRoot, "venv", "Scripts", "python.exe");
         var entryScript = Path.Combine(envRoot, snapshot.EntryScript);
+        // v1.0.0.x (2026-08-31):Whisper CLI 工具 short-circuit —
+        // EntryScript="whisper" 是 console-script 名(PATH 上 whisper.exe,不是
+        // <envRoot>/whisper 文件),用 `python -m whisper <args>` 调起
+        // (whisper/__main__.py 支持 module invocation)。Skip Fooocus 分支 +
+        // {port}/{models}/{env} 替换 + File.Exists check(全部对 CLI 工具无意义)。
+        // UserExtraArgs 拼到 "whisper" 后(用户在 env-create dialog 填 audio + --model)。
+        if (string.Equals(snapshot.Kind, "Whisper", StringComparison.Ordinal))
+        {
+            var whisperArgs = "whisper";
+            if (!string.IsNullOrWhiteSpace(snapshot.EntryArgs))
+                whisperArgs += " " + snapshot.EntryArgs;
+            if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
+                whisperArgs += " " + snapshot.UserExtraArgs;
+            return (venvPython, ("-m", whisperArgs));
+        }
         // v1.0.0.x (2026-08-31):Fooocus stable 模式 — 用 entry.py 替 entry_with_update.py,
         // 生产可预测不 auto-update。镜像 Forge kind-special 分支(line 904 风格)。
         // snapshot.EntryScript 仍记 entry_with_update.py,但 Stable mode override 替 entry.py。

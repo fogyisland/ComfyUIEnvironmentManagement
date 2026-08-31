@@ -53,6 +53,10 @@ public class SettingsDefaultsTemplateSeedTests
         var wh = s.Templates["Whisper"];
         Assert.Equal(TemplateSourceKind.GitHub, wh.SourceKind);
         Assert.Equal("https://github.com/openai/whisper.git", wh.GitHubRepoUrl);
+        // v1.0.0.x (2026-08-31):Whisper CLI 工具,EntryArgs 默认空 —
+        // 必填 positional audio file + --model 在 UserExtraArgs 拼。
+        // ProcessLauncher.BuildStartCommand Whisper 分支 ignore EntryArgs。
+        Assert.Equal("", wh.EntryArgs);
 
         var co = s.Templates["CoquiTTS"];
         Assert.Equal(TemplateSourceKind.GitHub, co.SourceKind);

@@ -97,9 +97,22 @@ public static class TemplateConfigDefaults
 
     /// <summary>
     /// v1.0.0.x: AI 语音 — Whisper (openai/whisper)。OpenAI 官方 speech-to-text。
-    /// GitHub clone source。Whisper 是 CLI 工具,entry 用 whisper Python module
-    /// (执行 whisper transcribe <args>)。
-    /// 注意:Whisper 不是常驻 web server,port 参数无意义但保留 {port} 兼容模板结构。
+    /// GitHub clone source。Whisper 是 CLI 工具 (one-shot transcribe → exit),
+    /// ProcessLauncher.BuildStartCommand 在 Kind=="Whisper" 分支 short-circuit +
+    /// 用 <c>python -m whisper &lt;args&gt;</c> 调起,本 factory 的 EntryScript /
+    /// EntryArgs 字段被该分支忽略(EntryScript="whisper" 是 console-script 名而非
+    /// 文件路径,BuildStartCommand Whisper 分支完全跳过 File.Exists check + {port}
+    /// / {models} / {env} 占位符替换)。
+    ///
+    /// CLI 必填 positional <c>audio</c> 文件 + <c>--model</c>,用户在 env-create dialog
+    /// 用 <see cref="TemplateConfig.UserExtraArgs"/> 拼完整命令行,例如
+    /// <c>--model tiny C:/audio/sample.wav</c>。EntryArgs 默认空(模板级 default 不替用户
+    /// 选 audio 路径 — audio 是 env-specific 配置)。启动若 Whisper CLI 缺 audio
+    /// 报错 → WaitForCliCompletionAsync 抛 ServiceLaunchException("exit code != 0"),
+    /// 用户看日志看到 Whisper usage,知道在 UserExtraArgs 加 audio path。
+    ///
+    /// 注意:Whisper 不是常驻 web server,port 参数无意义但保留 {port} 占位符兼容
+    /// 模板结构(其它字段如 Settings.ForgePaths 等共享同一 TemplateConfig 序列化)。
     /// </summary>
     public static TemplateConfig Whisper(string projectRoot) => new()
     {
@@ -109,7 +122,7 @@ public static class TemplateConfigDefaults
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/openai/whisper.git",
         EntryScript = "whisper",
-        EntryArgs = "--model tiny",
+        EntryArgs = "",
         ModelsSubdir = "",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
