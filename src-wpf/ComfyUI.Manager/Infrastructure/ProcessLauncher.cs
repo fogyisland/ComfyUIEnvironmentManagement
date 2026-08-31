@@ -224,6 +224,14 @@ public sealed class ProcessLauncher : IDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
+                // v1.0.0.x (2026-09-01) T23a:中文 Windows sys.stdout encoding 默认 GBK,
+                // Python 错误消息 UTF-8 字符串 emit GBK bytes → .NET 端按 GBK 解码后写入
+                // UTF-8 日志文件 → mojibake。修法:Python 端用 UTF-8(stdout) + .NET 端按 UTF-8
+                // 解码(两路并修)。镜像 PythonInterpreterValidator.cs:39-40(已用此 pattern)。
+                // 跟 T21 PYTHONUTF8=1 互补 —— 后者修 file I/O(PEP 540),PYTHONIOENCODING
+                // 修 stdout/stderr。两 env var 都设 = 完整 UTF-8 chain。
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
             };
             psi.ArgumentList.Add(entryFile);
             // entryArgs 是一段命令行参数(包含 {port} 已替换的 --port / --listen / UserExtraArgs),
@@ -235,6 +243,13 @@ public sealed class ProcessLauncher : IDisposable
             }
             psi.EnvironmentVariables["PYTHONPATH"] =
                 $"{_projectRoot};{Path.Combine(_projectRoot, "src")}";
+            // v1.0.0.x (2026-09-01) T23a:PYTHONIOENCODING=utf-8 修 Python stdout/stderr
+            // 默认 GBK → UTF-8 编码,跟 .NET 端 StandardOutputEncoding=UTF8 配对。
+            // 镜像 Fooocus 上游 `python -X utf8` 行为,跟 T21 PYTHONUTF8=1 互补。
+            foreach (var kvp in PythonEncodingEnvironmentVariables())
+            {
+                psi.EnvironmentVariables[kvp.Key] = kvp.Value;
+            }
 
             // v1.0.0.x (2026-08-29):Forge env 启动时附加 env vars,目前只
             // SD_WEBUI_RESTARTING=1 禁用 webui.py 启动后自动打开浏览器 —
@@ -1124,6 +1139,34 @@ public sealed class ProcessLauncher : IDisposable
             extras["GRADIO_SERVER_PORT"] = env.Port?.ToString() ?? "8000";
         }
         return extras;
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T23a:Python 子进程 stdout/stderr encoding 修复 ——
+    /// 中文 Windows <c>sys.stdout.encoding</c> 默认 GBK,Python 错误消息 UTF-8
+    /// 字符串 emit GBK bytes,经 .NET <c>Process.StandardOutput.ReadLineAsync</c>
+    /// 按 GBK 解码后写入 UTF-8 日志文件 → mojibake。
+    /// <para>修法(两路并修,缺一不可):</para>
+    /// <list type="number">
+    ///   <item><c>PYTHONIOENCODING=utf-8</c> env var(本方法)—— Python 端
+    ///   stdout/stderr 用 UTF-8 编码。镜像 Fooocus 上游 <c>python -X utf8</c> 行为,
+    ///   跟 T21 <see cref="Services.PipProcessHelpers.ApplyUtf8Mode"/> 的
+    ///   <c>PYTHONUTF8=1</c>(PEP 540 file I/O)互补 —— 后者修文件读,
+    ///   本 env var 修 stdout/stderr。</item>
+    ///   <item><see cref="ProcessStartInfo.StandardOutputEncoding"/> =
+    ///   <see cref="System.Text.Encoding.UTF8"/> 同 <see cref="ProcessStartInfo.StandardErrorEncoding"/>
+    ///   —— .NET 端按 UTF-8 解码。镜像 <c>PythonInterpreterValidator.cs:39-40</c>
+    ///   (已用此 pattern)。</item>
+    /// </list>
+    /// <para>无条件对所有 env kind 生效(跟 TemplateKind 无关)—— encoding 是
+    /// 全局 Python concern,不分 kind。</para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> PythonEncodingEnvironmentVariables()
+    {
+        return new Dictionary<string, string>
+        {
+            ["PYTHONIOENCODING"] = "utf-8",
+        };
     }
 
     private static void TryKillProcessTree(Process process)
