@@ -301,6 +301,10 @@ public class RequirementsInstaller
     ///   <c>ComfyuiSource</c> 字段,但 env 根下确实有 ComfyUI 子目录。</item>
     /// <item><c>&lt;env-root&gt;/requirements.txt</c> — 老 env 把 requirements.txt
     ///   直接放在 env 根目录(v0.6.5.12 之前的 fallback)。</item>
+    /// <item>v1.0.0.x (2026-09-01):<c>&lt;env-root&gt;/&lt;TemplateConfigSnapshot.RequirementsFile&gt;</c> ——
+    ///   Fooocus 用 "requirements_versions.txt"(上游默认文件名),HunyuanVideo /
+    ///   CogVideoX 用 "requirements.txt"。RequirementsFile 为空(老 settings / 其它
+    ///   kind)→ 不加这个 candidate,行为跟之前一致。</item>
     /// </list>
     /// 返回的列表原样给调用方遍历,第一个存在的文件被选中;全部都不存在时
     /// 错误消息会列出全部尝试路径,方便用户诊断。
@@ -314,6 +318,13 @@ public class RequirementsInstaller
         }
         candidates.Add(Path.Combine(env.RootPath, "ComfyUI", "requirements.txt"));
         candidates.Add(Path.Combine(env.RootPath, "requirements.txt"));
+        // v1.0.0.x (2026-09-01): Fooocus/HunyuanVideo/CogVideoX 用
+        // TemplateConfig.RequirementsFile 配置 requirements 文件名(空时不加)
+        var reqFile = env.TemplateConfigSnapshot?.RequirementsFile;
+        if (!string.IsNullOrWhiteSpace(reqFile) && !string.IsNullOrWhiteSpace(env.RootPath))
+        {
+            candidates.Add(Path.Combine(env.RootPath, reqFile));
+        }
         return candidates;
     }
 

@@ -136,6 +136,34 @@ public class Environment
         && TemplateKind != "Forge";
 
     /// <summary>
+    /// v1.0.0.x (2026-09-01): BaseEnv 按钮显示条件 ——
+    /// TemplateKind 在 {Fooocus, HunyuanVideo, CogVideoX} 时显示(正向列举,
+    /// 比 negative enumeration 易读且不易漏)。
+    /// <list type="bullet">
+    ///   <item>Fooocus → FooocusBaseEnvInstaller 锁 torch 2.1.0+cu121(镜像 Forge 模式跳过 picker)</item>
+    ///   <item>HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 选 live defaults ≥2.5.1</item>
+    /// </list>
+    /// LTXVideo 用 uv sync 装 pyproject.toml 不需要按钮(显式排除);
+    /// OpenVoice / Whisper / CoquiTTS / Bark / HivisionIDPhotos 是 CLI / CPU / TF,
+    /// 也不在列举里(env-create 时 pip install -e . 已搞定依赖)。ComfyUI / Forge
+    /// 各自 Actions Grid 有自己的 BaseEnv 按钮。
+    /// </summary>
+    [JsonIgnore]
+    public bool BaseEnvButtonVisible => TemplateKind == "Fooocus"
+        || TemplateKind == "HunyuanVideo"
+        || TemplateKind == "CogVideoX";
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01): Requirements 按钮显示条件 ——
+    /// <see cref="BaseEnvButtonVisible"/> + TemplateConfigSnapshot.RequirementsFile 非空。
+    /// 空 RequirementsFile 自动隐藏(LTXVideo 默认空 → 不出按钮;
+    /// 老 settings.json 缺字段 → default "" → 不出按钮,零迁移成本)。
+    /// </summary>
+    [JsonIgnore]
+    public bool RequirementsFileButtonVisible => BaseEnvButtonVisible
+        && !string.IsNullOrWhiteSpace(TemplateConfigSnapshot?.RequirementsFile);
+
+    /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
     /// (Settings.LocalNodesDirectory 下每个子包都已在 env/custom_nodes/),false = 未装或不全。
     /// Load 末尾重新算(LocalNodeInstaller.IsInstalled),不持久化(同 IsComfyUiManagerInstalled pattern)。

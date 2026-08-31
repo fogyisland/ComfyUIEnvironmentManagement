@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ComfyUI.Manager.Infrastructure;
@@ -12,70 +11,68 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.Services;
 
 /// <summary>
-/// v1.0.0.x Forge BED installer:镜像 lllyasviel/stable-diffusion-webui-forge
-/// <c>modules/launch_utils.py:prepare_environment()</c> 在「安装基础环境」阶段
-/// 提前跑全套(0-5),让 <c>launch.py</c> 启动时 step 全部 idempotent 跳过。
+/// v1.0.0.x (2026-09-01) Fooocus BED installer:镜像 lllyasviel/Fooocus
+/// <c>launch.py</c> 默认 <c>TORCH_COMMAND</c>(<c>pip install torch==2.1.0
+/// torchvision==0.16.0 --extra-index-url cu121</c>),让 Fooocus launcher 启动时
+/// <c>is_installed("torch")</c> 直接返回 True 跳过重装。
 ///
-/// 用户原话 2026-08-29:
-/// "forge 不会弹框 直接点击按照上面的方式来进行安装,以log方式显示进度"
-/// + "pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 forge 在安装基础环境
-/// 记得是这个版本的torch"
+/// **锁版本 2.1.0+cu121**(用户决策 2026-09-01):Fooocus 上游 LTS 模式不修
+/// 破坏,pytorch_lightning 2.3.3 / torchsde 0.2.6 / gradio 3.41.2 都跟 torch 2.1
+/// 钉死。装 2.4 / 2.5+ 大概率坏 launcher(per memory "Fooocus README Project
+/// Status: Limited LTS with Bug Fixes Only")。跳过 BaseEnvProfilePickerDialog
+/// 直接装,跟 Forge 镜像(<see cref="ForgeBaseEnvInstaller"/>)。
 ///
-/// 6 件事执行顺序(跟 launch_utils.py:prepare_environment() 对齐):
-///   0. <c>pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0
-///        --extra-index-url {TORCH_INDEX_URL}</c>
-///   1. <c>pip install openai/CLIP/archive/{hash}.zip --no-build-isolation</c>
-///   2. <c>pip install mlfoundations/open_clip/archive/{hash}.zip --no-build-isolation</c>
-///   3. <c>pip install xformers==0.0.27 --no-deps</c>(Forge fork xformers=True 默认值)
-///   4. <c>pip install -r &lt;envRoot&gt;/requirements_versions.txt --no-deps</c>(过滤裸 torch 行)
-///   5. <c>git clone</c> 3 个 repos 到 <c>&lt;envRoot&gt;/repositories/</c>(已存在 skip)
+/// 触发入口:EnvironmentListViewModel.OpenBaseEnvProgressForSingleEnvAsync
+/// 在 <c>env.TemplateKind == "Fooocus"</c> 时跳过 PickerDialog +
+/// BaseEnvProgressDialog,直接 dispatch 到这里(inline panel 显示进度)。
 ///
-/// 触发入口:EnvironmentListViewModel.OpenBaseEnvProgressForSingleEnvAsync 在
-/// <c>env.TemplateKind is "Forge"</c> 时跳过 PickerDialog + BaseEnvProgressDialog,
-/// 直接 dispatch 到这里(inline panel 显示进度,镜像 RequirementsStatusViewModel 模式)。
-///
-/// 成功 marker:<see cref="ForgeBaseEnvConstants.MarkerFileName"/>。
+/// 成功 marker:<see cref="MarkerFileName"/>。
 /// </summary>
-public class ForgeBaseEnvInstaller
+public class FooocusBaseEnvInstaller
 {
+    /// <summary>
+    /// v1.0.0.x (2026-09-01): Fooocus 锁版 torch 配置常量。
+    /// 镜像 <see cref="ForgeBaseEnvConstants"/> pattern(锁版本硬编码
+    /// 在 source 而不是 settings,避免用户改坏 Fooocus launcher 期望)。
+    /// </summary>
+    public static class FooocusBaseEnvConstants
+    {
+        /// <summary>torch 主版本号,Fooocus 上游 launch.py 默认 TORCH_COMMAND 钉死。</summary>
+        public const string TorchVersion = "2.1.0";
+        public const string TorchVisionVersion = "0.16.0";
+
+        /// <summary>CUDA wheel index URL —— download.pytorch.org/whl/cu121(Python 镜像不镜像 CUDA wheel)。</summary>
+        public const string TorchIndexUrl = "https://download.pytorch.org/whl/cu121";
+
+        /// <summary>BED 完成 marker 文件名,跟 .forge_base_env_installed 同 pattern。</summary>
+        public const string MarkerFileName = ".fooocus_base_env_installed";
+    }
+
     private readonly AppLogger? _logger;
     private readonly HttpProxyConfig? _proxy;
-    private readonly string _gitExe;
-    private readonly ForgePreFlightInstaller _preFlightInstaller;
 
-    public ForgeBaseEnvInstaller(
-        AppLogger? logger = null,
-        HttpProxyConfig? proxy = null,
-        string? gitExe = null,
-        ForgePreFlightInstaller? preFlightInstaller = null)
+    public FooocusBaseEnvInstaller(AppLogger? logger = null, HttpProxyConfig? proxy = null)
     {
         _logger = logger;
         _proxy = proxy;
-        // null/空 fallback 到 "git"(PATH 查找 — App.xaml.cs:GitExe 在 settings 注入,
-        // 测试 ctor 不传也走得通)。
-        _gitExe = string.IsNullOrWhiteSpace(gitExe) ? "git" : gitExe;
-        _preFlightInstaller = preFlightInstaller ?? new ForgePreFlightInstaller(logger, proxy, gitExe);
     }
 
     /// <summary>
-    /// 检查 Forge BED 是否已完成(marker 文件存在)。
+    /// 检查 Fooocus BED 是否已完成(marker 文件存在)。
     /// 单一判定源:EnvironmentListViewModel ToggleBaseEnvCommand.CanExecute 也走这里。
     /// </summary>
     public static bool IsInstalled(Environment env)
     {
         if (env is null || string.IsNullOrWhiteSpace(env.RootPath)) return false;
-        return File.Exists(Path.Combine(env.RootPath, ForgeBaseEnvConstants.MarkerFileName));
+        return File.Exists(Path.Combine(env.RootPath, FooocusBaseEnvConstants.MarkerFileName));
     }
 
     /// <summary>
-    /// 跑 0-5 全套。任何一步失败 → 返回 ForgeBedInstallResult 描述失败原因;
-    /// 已成功的步骤不会回滚(launch.py 启动时 idempotent 跳过,用户可重新点补跑)。
-    ///
-    /// 跟 <see cref="ForgePreFlightInstaller.InstallAsync"/> 的差别:
-    /// - pre-flight 跑 1-5(假设 BED 已装过 torch + venv);
-    /// - BED 跑 0-5 全套(env-create 时只装 venv + pip upgrade,没 torch)。
+    /// 跑全套(只装 torch 2.1.0+cu121 + 写 marker)。失败 → 返回
+    /// <see cref="FooocusBedInstallResult"/> 描述失败原因;不会回滚已成功的步骤
+    /// (launch.py 启动时 idempotent 跳过,用户可重新点补跑)。
     /// </summary>
-    public virtual async Task<ForgeBedInstallResult> InstallAsync(
+    public virtual async Task<FooocusBedInstallResult> InstallAsync(
         Environment env,
         IProgress<string>? logProgress = null,
         CancellationToken ct = default)
@@ -84,61 +81,56 @@ public class ForgeBaseEnvInstaller
         if (string.IsNullOrWhiteSpace(env.RootPath))
             throw new ArgumentException("env.RootPath 为空", nameof(env));
 
-        _logger?.Info("forge-bed",
-            $"env='{env.Name}' kind='{env.TemplateKind}' 开始 Forge BED (6 步:torch + clip + open_clip + xformers + requirements + 3 repos)");
-        logProgress?.Report($"[forge-bed] env='{env.Name}' 开始 BED (torch+clip+open_clip+xformers+requirements+repos)");
+        _logger?.Info("fooocus-bed",
+            $"env='{env.Name}' kind='{env.TemplateKind}' 开始 Fooocus BED (1 步:torch=={FooocusBaseEnvConstants.TorchVersion}+cu121)");
+        logProgress?.Report($"[fooocus-bed] env='{env.Name}' 开始 BED (torch=={FooocusBaseEnvConstants.TorchVersion}+cu121)");
 
         var pythonExe = ResolveVenvPython(env);
 
-        // 0. torch==2.4.0 + torchvision==0.19.0 + torchaudio==2.4.0
-        // --extra-index-url 指向 download.pytorch.org/whl/cu121(国内 PyPI 镜像不镜像
-        // download.pytorch.org,pip 解析 CUDA wheel 时需要原站 index)。
+        // 0. pip install --upgrade pip wheel (ForgeBaseEnvInstaller 模式)
+        var preArgs = new[] { "install", "--upgrade", "pip", "wheel" };
+        logProgress?.Report("[fooocus-bed] $ pip install --upgrade pip wheel");
+        var preResult = await RunPipAsync(pythonExe, preArgs,
+            line => logProgress?.Report(line), ct);
+        if (!IsPipOk(preResult))
+            return FailFrom(preResult, "pip upgrade");
+
+        // 1. torch==2.1.0 + torchvision==0.16.0
+        // --extra-index-url 指向 download.pytorch.org/whl/cu121(国内 PyPI 镜像
+        // 不镜像 download.pytorch.org,pip 解析 CUDA wheel 时需要原站 index)。
         var torchArgs = new[]
         {
             "install",
-            $"torch=={ForgeBaseEnvConstants.TorchVersion}",
-            $"torchvision=={ForgeBaseEnvConstants.TorchVisionVersion}",
-            $"torchaudio=={ForgeBaseEnvConstants.TorchAudioVersion}",
+            $"torch=={FooocusBaseEnvConstants.TorchVersion}",
+            $"torchvision=={FooocusBaseEnvConstants.TorchVisionVersion}",
             "--disable-pip-version-check",
-            "--extra-index-url", ForgeBaseEnvConstants.TorchIndexUrl,
+            "--extra-index-url", FooocusBaseEnvConstants.TorchIndexUrl,
         };
         logProgress?.Report(
-            $"[forge-bed] $ pip install torch=={ForgeBaseEnvConstants.TorchVersion} "
-            + $"torchvision=={ForgeBaseEnvConstants.TorchVisionVersion} "
-            + $"torchaudio=={ForgeBaseEnvConstants.TorchAudioVersion} "
-            + $"--extra-index-url {ForgeBaseEnvConstants.TorchIndexUrl}");
+            $"[fooocus-bed] $ pip install torch=={FooocusBaseEnvConstants.TorchVersion} "
+            + $"torchvision=={FooocusBaseEnvConstants.TorchVisionVersion} "
+            + $"--extra-index-url {FooocusBaseEnvConstants.TorchIndexUrl}");
         var torchResult = await RunPipAsync(pythonExe, torchArgs,
             line => logProgress?.Report(line), ct);
         if (!IsPipOk(torchResult))
             return FailFrom(torchResult, "torch");
 
-        // 1-5 复用 ForgePreFlightInstaller(clip + open_clip + requirements + 3 repos)
-        var preFlightResult = await _preFlightInstaller.InstallAsync(env, logProgress, ct);
-        if (!preFlightResult.Success)
-        {
-            // pre-flight 内部已写 marker 失败的 path;透传其 Reason
-            return new ForgeBedInstallResult(
-                Success: false,
-                Cancelled: preFlightResult.Cancelled,
-                Reason: preFlightResult.Reason ?? "pre-flight 失败",
-                InstalledCount: 0);
-        }
-
         // 全部成功 → 写 marker
-        var markerPath = Path.Combine(env.RootPath, ForgeBaseEnvConstants.MarkerFileName);
+        var markerPath = Path.Combine(env.RootPath, FooocusBaseEnvConstants.MarkerFileName);
         try
         {
             File.WriteAllText(markerPath, DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
         }
         catch (Exception ex)
         {
-            _logger?.Warn("forge-bed",
+            _logger?.Warn("fooocus-bed",
                 $"env='{env.Name}' marker 写失败(ex={ex.Message});下次装基础环境会被短路");
         }
 
-        _logger?.Info("forge-bed", $"env='{env.Name}' BED 完成(1 torch + 2 zip + 1 xformers + 1 requirements + 3 repos)");
-        logProgress?.Report("[forge-bed] ✓ 完成(1 torch + 2 zip + 1 xformers + 1 requirements + 3 repos)");
-        return new ForgeBedInstallResult(
+        _logger?.Info("fooocus-bed",
+            $"env='{env.Name}' BED 完成(torch=={FooocusBaseEnvConstants.TorchVersion}+cu121)");
+        logProgress?.Report($"[fooocus-bed] ✓ 完成(torch=={FooocusBaseEnvConstants.TorchVersion}+cu121)");
+        return new FooocusBedInstallResult(
             Success: true, Cancelled: false, Reason: null, InstalledCount: 0);
     }
 
@@ -155,8 +147,8 @@ public class ForgeBaseEnvInstaller
 
     /// <summary>
     /// Run pip with stderr/stdout 实时通过 <paramref name="onLine"/> 报告,返
-    /// <see cref="PipResult"/>。镜像 ForgePreFlightInstaller 的 RunPipAsync 内部实现;
-    /// 不抽基类(避免过早抽象 — 两个 caller 各自独立,只有 RunPipAsync 重复 ~80 行)。
+    /// <see cref="PipResult"/>。镜像 <see cref="ForgeBaseEnvInstaller.RunPipAsync"/>
+    /// 实现(不抽基类 — 跟 Forge caller 各自独立,重复 ~80 行可接受)。
     /// 测试 seam:virtual 方法,子类可 override 拦截 pip 调用。
     /// </summary>
     protected virtual async Task<PipResult> RunPipAsync(
@@ -237,22 +229,22 @@ public class ForgeBaseEnvInstaller
         return new PipResult(process.ExitCode, WasCancelled: false);
     }
 
-    private ForgeBedInstallResult FailFrom(PipResult p, string stage)
+    private FooocusBedInstallResult FailFrom(PipResult p, string stage)
     {
         if (p.WasCancelled)
         {
-            return new ForgeBedInstallResult(
+            return new FooocusBedInstallResult(
                 Success: false, Cancelled: true, Reason: "用户取消", InstalledCount: 0);
         }
         var reason = $"pip {stage} 退出码 {p.ExitCode}";
-        return new ForgeBedInstallResult(
+        return new FooocusBedInstallResult(
             Success: false, Cancelled: false, Reason: reason, InstalledCount: 0);
     }
 
     private static bool IsPipOk(PipResult p) => p.ExitCode == 0 && !p.WasCancelled;
 }
 
-public record ForgeBedInstallResult(
+public record FooocusBedInstallResult(
     bool Success,
     bool Cancelled,
     string? Reason,

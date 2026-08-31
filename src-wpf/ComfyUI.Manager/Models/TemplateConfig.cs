@@ -90,6 +90,25 @@ public class TemplateConfig
     public Dictionary<string, string> Meta { get; set; } = new();
 
     /// <summary>
+    /// v1.0.0.x (2026-09-01): env 启动依赖 requirements 文件路径(相对 env.RootPath)。
+    /// 空 = 不显示「依赖」按钮 + <see cref="ComfyUI.Manager.Services.RequirementsInstaller.ResolveRequirementsCandidates"/>
+    /// 不尝试这个 candidate。
+    ///
+    /// 配置示例:
+    /// <list type="bullet">
+    ///   <item>Fooocus = "requirements_versions.txt"(上游默认文件名,23 non-torch deps)</item>
+    ///   <item>HunyuanVideo / CogVideoX = "requirements.txt"</item>
+    ///   <item>LTXVideo = ""(uv sync 装 pyproject.toml 全套依赖)</item>
+    ///   <item>ComfyUI / Forge = ""(走自己 Actions Grid 的 RequirementsInstaller 路径)</item>
+    /// </list>
+    ///
+    /// 跟 <see cref="UserExtraArgs"/> 同 pattern:<see cref="JsonPropertyNameAttribute"/>
+    /// "requirements_file",default "",老 settings.json 缺字段 → default → 无 button → 零迁移成本。
+    /// </summary>
+    [JsonPropertyName("requirements_file")]
+    public string RequirementsFile { get; set; } = "";
+
+    /// <summary>
     /// v1.0.0.x (2026-08-31):「已验证 可运行」项目方标记 — 区分项目方已 end-to-end 验证
     /// 的 built-in 模板(ComfyUI / Forge 等)vs 用户自定义/社区模板。纯 UI 标记,
     /// EnvCreatorService / ProcessLauncher 不读,仅 TemplateManagementView 显示绿色 ✓ badge。

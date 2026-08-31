@@ -9,41 +9,66 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.ViewModels;
 
 /// <summary>
-/// BaseEnvStatusViewModel:v1.0.0.x Forge env 行「安装基础环境」按钮触发后的
-/// inline 状态面板 VM。
+/// BaseEnvStatusViewModel:v1.0.0.x Forge / Fooocus env 行「安装基础环境」按钮
+/// 触发后的 inline 状态面板 VM。v1.0.0.x (2026-09-01) 重构成通用版本 —
+/// 接受任意 <see cref="IBedInstallResult"/> installer(Forge / Fooocus),不再
+/// hardcode Forge 字符串。
 ///
 /// 用户原话 2026-08-29:
 /// "forge 不会弹框 直接点击按照上面的方式来进行安装,以log方式显示进度"
-/// → Forge env 不弹 BaseEnvProfilePickerDialog + BaseEnvProgressDialog,直接 dispatch
-/// ForgeBaseEnvInstaller 跑 0-5 全套(0=torch2.4.0/torchvision0.19.0/torchaudio2.4.0
-/// + 1-2=clip/open_clip + 3=requirements_versions.txt + 4-5=3 个 repos),进度通过本面板
-/// 镜像 RequirementsStatusViewModel 模式显示(LogLines 滚 pip stdout/stderr,StatusText
-/// 显示当前阶段)。
+/// → Forge / Fooocus env 不弹 BaseEnvProfilePickerDialog + BaseEnvProgressDialog,
+/// 直接 dispatch 各自的 installer(FooocusBaseEnvInstaller 锁 torch 2.1.0+cu121),
+/// 进度通过本面板镜像 RequirementsStatusViewModel 模式显示。
 ///
 /// 行为:
 /// - RunAsync() 后 IsVisible=true,挂 Progress&lt;string&gt; 自动 marshal 回 UI 线程
 /// - 成功 → StatusText 设"BED 完成",延迟 2s 自动 Hide
 /// - 失败/取消 → Error 设原因,IsVisible 保持,等用户手动关(由 UI 提供关闭按钮)
 ///
-/// ComfyUI env 仍走老 OpenBaseEnvProgressForSingleEnvAsync 路径(走
-/// BaseEnvProfilePickerDialog + BaseEnvProgressDialog),只有 Forge env 才走这里。
-/// SwarmUI 已下线,不再引用。
+/// ComfyUI / HunyuanVideo / CogVideoX env 仍走老 OpenBaseEnvProgressForSingleEnvAsync
+/// 路径(走 BaseEnvProfilePickerDialog + BaseEnvProgressDialog),只有 Forge /
+/// Fooocus 才走这里。
 /// </summary>
 public sealed class BaseEnvStatusViewModel : ViewModelBase
 {
     private const int MaxLogLines = 200;
     private readonly Environment _env;
-    private readonly ForgeBaseEnvInstaller _installer;
+    private readonly string _kindLabel;
+    private readonly string _installSummary;
+    private readonly Func<Environment, IProgress<string>?, CancellationToken, Task<IBedInstallResult>> _installFn;
     private CancellationTokenSource? _cts;
 
-    public BaseEnvStatusViewModel(Environment env, ForgeBaseEnvInstaller installer)
+    /// <summary>
+    /// v1.0.0.x (2026-09-01):通用 ctor —— 接受任意 IBedInstallResult installer
+    /// + kindLabel(Forge / Fooocus)+ installSummary(成功后状态文案)。
+    /// 镜像原 Forge ctor 行为,只是把硬编码字符串换成参数。
+    /// </summary>
+    public BaseEnvStatusViewModel(
+        Environment env,
+        string kindLabel,
+        string installSummary,
+        Func<Environment, IProgress<string>?, CancellationToken, Task<IBedInstallResult>> installFn)
     {
         _env = env;
-        _installer = installer;
+        _kindLabel = kindLabel;
+        _installSummary = installSummary;
+        _installFn = installFn;
         StatusText = "准备开始...";
         CancelCommand = new RelayCommand(
             _ => _cts?.Cancel(),
             _ => _cts is { IsCancellationRequested: false });
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) 兼容 overload:旧 <see cref="ForgeBaseEnvInstaller"/>
+    /// 单一 ctor 签名,BaseEnvStatusViewModelTests 用旧 stub 直接传
+    /// ForgeBaseEnvInstaller。新 ctor 已支持 IBedInstallResult,但保留旧
+    /// overload 避免大改 20+ 现有 test callsite。
+    /// </summary>
+    public BaseEnvStatusViewModel(Environment env, ForgeBaseEnvInstaller installer)
+        : this(env, "Forge", "Forge 基础环境安装完成(1 torch + 2 zip + 1 xformers + 1 requirements + 3 repos)",
+              async (e, p, ct) => await installer.InstallAsync(e, p, ct))
+    {
     }
 
     public string EnvName => _env.Name;
@@ -73,8 +98,8 @@ public sealed class BaseEnvStatusViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 触发整个 BED install 流程(0-5 全套)。InstallAsync 失败 / 取消 / 成功都通过
-    /// 返回值 / Error 反映,不抛异常给调用方。
+    /// 触发整个 BED install 流程。失败 / 取消 / 成功都通过返回值 / Error 反映,
+    /// 不抛异常给调用方。
     /// </summary>
     public async Task RunAsync()
     {
@@ -87,7 +112,7 @@ public sealed class BaseEnvStatusViewModel : ViewModelBase
         var progress = new Progress<string>(OnLogLine);
         try
         {
-            var result = await _installer.InstallAsync(_env, progress, _cts.Token);
+            var result = await _installFn(_env, progress, _cts.Token);
             ApplyResult(result);
         }
         catch (Exception ex)
@@ -109,7 +134,7 @@ public sealed class BaseEnvStatusViewModel : ViewModelBase
         RaisePropertyChanged(nameof(StatusText));
     }
 
-    private void ApplyResult(ForgeBedInstallResult result)
+    private void ApplyResult(IBedInstallResult result)
     {
         IsComplete = true;
         if (result.Cancelled)
@@ -119,7 +144,7 @@ public sealed class BaseEnvStatusViewModel : ViewModelBase
         }
         else if (result.Success)
         {
-            StatusText = $"{_env.Name} — Forge 基础环境安装完成(1 torch + 2 zip + 1 xformers + 1 requirements + 3 repos)";
+            StatusText = $"{_env.Name} — {_installSummary}";
         }
         else
         {
@@ -158,15 +183,15 @@ public sealed class BaseEnvStatusViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 已装过(marker 文件存在)→ 直接显示"已安装 BED(timestamp)"状态,不重跑 pip。
-    /// 镜像 RequirementsStatusViewModel.MarkAlreadyInstalled pattern。
+    /// 已装过(marker 文件存在)→ 直接显示"已安装 {kindLabel} 基础环境(timestamp)"
+    /// 状态,不重跑 pip。镜像 RequirementsStatusViewModel.MarkAlreadyInstalled pattern。
     /// </summary>
     public void MarkAlreadyInstalled(string timestamp)
     {
         IsVisible = true;
         IsComplete = true;
         Error = null;
-        StatusText = $"{_env.Name} — 已安装 Forge 基础环境({timestamp})";
+        StatusText = $"{_env.Name} — 已安装 {_kindLabel} 基础环境({timestamp})";
         RaisePropertyChanged(nameof(IsVisible));
         RaisePropertyChanged(nameof(IsComplete));
         RaisePropertyChanged(nameof(Error));

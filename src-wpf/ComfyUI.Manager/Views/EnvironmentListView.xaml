@@ -630,6 +630,8 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Button Grid.Column="0" Content="{Binding StartStopButtonText}"
                                                 Style="{StaticResource MaterialButton}"
@@ -638,24 +640,52 @@
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 Margin="2" MinWidth="0" />
-                                        <Button Grid.Column="1" Content="查看日志" Margin="2" MinWidth="0"
+                                        <!-- v1.0.0.x (2026-09-01): 「基础环境」按钮 ——
+                                             显示条件 = Environment.BaseEnvButtonVisible
+                                             (TemplateKind in {Fooocus, HunyuanVideo, CogVideoX})。
+                                             Fooocus → FooocusBaseEnvInstaller 锁 torch 2.1.0+cu121(跳过 picker);
+                                             HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 让用户选 ≥2.5.1 live defaults。
+                                             ToggleBaseEnvCommand 内部 CanExecute 看 env.Status / busy 灰按钮。-->
+                                        <Button Grid.Column="1" Content="{Binding BaseEnvButtonText}"
+                                                Style="{StaticResource MaterialButton}"
+                                                IsEnabled="{Binding BaseEnvButtonEnabled}"
+                                                Visibility="{Binding BaseEnvButtonVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                                                Command="{Binding DataContext.ToggleBaseEnvCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Margin="2" MinWidth="0"
+                                                ToolTip="安装 torch+CUDA:Fooocus 锁 2.1.0+cu121;其它类型从 picker 选 ≥2.5.1" />
+                                        <!-- v1.0.0.x (2026-09-01): 「依赖」按钮 ——
+                                             显示条件 = Environment.RequirementsFileButtonVisible
+                                             (BaseEnvButtonVisible && TemplateConfigSnapshot.RequirementsFile 非空)。
+                                             装/卸 RequirementsFile 指向的 requirements_versions.txt (Fooocus) /
+                                             requirements.txt (HunyuanVideo / CogVideoX)。LTXVideo 无按钮(uv sync 已搞定)。-->
+                                        <Button Grid.Column="2" Content="{Binding RequirementsButtonText}"
+                                                Style="{StaticResource MaterialButton}"
+                                                Visibility="{Binding RequirementsFileButtonVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                                                Command="{Binding DataContext.ToggleRequirementsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Margin="2" MinWidth="0"
+                                                ToolTip="pip install -r &lt;RequirementsFile&gt;(自动过滤 torch 行避免冲突)" />
+                                        <Button Grid.Column="3" Content="查看日志" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.ShowLogCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
-                                        <Button Grid.Column="2" Content="打开浏览器" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="4" Content="打开浏览器" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.OpenBrowserCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="用 Chrome 打开该环境的 web 页面(未装则用系统默认浏览器)。仅运行中可用。" />
-                                        <Button Grid.Column="3" Content="组件报告" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="5" Content="组件报告" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.ReportComponentsCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
-                                        <Button Grid.Column="4" Content="删除" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="6" Content="删除" Margin="2" MinWidth="0"
                                                 Style="{StaticResource DangerButton}"
                                                 Command="{Binding DataContext.DeleteCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"

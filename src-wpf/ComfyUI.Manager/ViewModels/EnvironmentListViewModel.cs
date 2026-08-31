@@ -62,6 +62,10 @@ public class EnvironmentListViewModel : ViewModelBase
     // 跑 0-5 全套(0=torch2.4.0 + 1-5=pre-flight)。null 兜底 new 默认实现(测试 ctor 不传也能
     // 构造;生产 DI 在 App.xaml.cs 注入)。
     private readonly ForgeBaseEnvInstaller _forgeBaseEnvInstaller;
+    // v1.0.0.x (2026-09-01):Fooocus 「安装基础环境」installer —— 镜像 Forge 模式
+    // 跳过 picker,锁 torch 2.1.0+cu121(Fooocus 上游 launcher 期望)。null 兜底 new
+    // 默认实现(测试 ctor 不传也能构造;生产 DI 在 App.xaml.cs 注入)。
+    private readonly FooocusBaseEnvInstaller _fooocusBaseEnvInstaller;
     // v0.6.22 T5:ComfyUI template update service(wipe env.ComfyuiSource 内容
     // + git clone comfyanonymous/ComfyUI --depth=1)。可空保留旧测试 ctor
     // 兼容;生产 DI 在 App.xaml.cs 注入。
@@ -79,6 +83,59 @@ public class EnvironmentListViewModel : ViewModelBase
     /// 状态;未装 → 跑 0-5 全套并显示进度。镜像 RequirementsStatusViewModel.MarkAlreadyInstalled
     /// + RunAsync 模式。
     /// </summary>
+    /// <summary>
+    /// v1.0.0.x (2026-09-01):镜像 <see cref="ToggleForgeBaseEnvAsync"/> 模式 —
+    /// Fooocus env 点「基础环境」按钮时跳过 picker dialog,直接 dispatch
+    /// <see cref="FooocusBaseEnvInstaller"/> 装 torch 2.1.0+cu121(锁版本,
+    /// 不让用户选 — Fooocus 上游 LTS 模式不修破坏,pytorch_lightning 2.3.3
+    /// / torchsde 0.2.6 / gradio 3.41.2 都跟 torch 2.1 钉死)。
+    /// BaseEnvStatusViewModel inline 面板显示进度,跟 Forge 完全一致。
+    /// v1.0.0.x (2026-09-01):用通用 BaseEnvStatusViewModel ctor
+    /// (kindLabel="Fooocus" + installSummary + installFn delegate)。
+    /// </summary>
+    private async System.Threading.Tasks.Task ToggleFooocusBaseEnvAsync(Environment env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;  // T4:per-env mutex
+
+        if (FooocusBaseEnvInstaller.IsInstalled(env))
+        {
+            var timestamp = await ReadMarkerTimestampAsync(env, FooocusBaseEnvInstaller.FooocusBaseEnvConstants.MarkerFileName);
+            var alreadyInstalled = new BaseEnvStatusViewModel(
+                env, "Fooocus", "Fooocus 基础环境安装完成(torch 2.1.0+cu121)",
+                async (e, p, ct) => await _fooocusBaseEnvInstaller.InstallAsync(e, p, ct));
+            BaseEnvStatus = alreadyInstalled;
+            RaisePropertyChanged(nameof(BaseEnvStatus));
+            alreadyInstalled.MarkAlreadyInstalled(timestamp);
+            return;
+        }
+
+        var status = new BaseEnvStatusViewModel(
+            env, "Fooocus", "Fooocus 基础环境安装完成(torch 2.1.0+cu121)",
+            async (e, p, ct) => await _fooocusBaseEnvInstaller.InstallAsync(e, p, ct));
+        BaseEnvStatus = status;
+        RaisePropertyChanged(nameof(BaseEnvStatus));
+        env.BaseEnvButtonText = "安装基础环境中...";
+        MarkEnvBusy(env, BusyKind.BEDInstall);
+        try
+        {
+            await status.RunAsync();
+            if (status.IsComplete && !status.HasError)
+            {
+                env.IsBaseEnvInstalled = true;
+                env.BaseEnvButtonText = "卸载基础环境";
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                status.Hide();
+            }
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
+
     private async System.Threading.Tasks.Task ToggleForgeBaseEnvAsync(Environment env)
     {
         if (env is null) return;
@@ -87,14 +144,18 @@ public class EnvironmentListViewModel : ViewModelBase
         if (ForgeBaseEnvInstaller.IsInstalled(env))
         {
             var timestamp = await ReadMarkerTimestampAsync(env, ForgeBaseEnvConstants.MarkerFileName);
-            var alreadyInstalled = new BaseEnvStatusViewModel(env, _forgeBaseEnvInstaller);
+            var alreadyInstalled = new BaseEnvStatusViewModel(
+                env, "Forge", "Forge 基础环境安装完成(1 torch + 2 zip + 1 xformers + 1 requirements + 3 repos)",
+                async (e, p, ct) => await _forgeBaseEnvInstaller.InstallAsync(e, p, ct));
             BaseEnvStatus = alreadyInstalled;
             RaisePropertyChanged(nameof(BaseEnvStatus));
             alreadyInstalled.MarkAlreadyInstalled(timestamp);
             return;
         }
 
-        var status = new BaseEnvStatusViewModel(env, _forgeBaseEnvInstaller);
+        var status = new BaseEnvStatusViewModel(
+            env, "Forge", "Forge 基础环境安装完成(1 torch + 2 zip + 1 xformers + 1 requirements + 3 repos)",
+            async (e, p, ct) => await _forgeBaseEnvInstaller.InstallAsync(e, p, ct));
         BaseEnvStatus = status;
         RaisePropertyChanged(nameof(BaseEnvStatus));
         env.BaseEnvButtonText = "安装基础环境中...";
@@ -409,6 +470,9 @@ public class EnvironmentListViewModel : ViewModelBase
         // BaseEnvProfilePickerDialog + BaseEnvProgressDialog,直接 dispatch ForgeBaseEnvInstaller
         // 跑 0-5 全套。可空保留测试 ctor 兼容(null → fallback new ForgeBaseEnvInstaller())。
         ForgeBaseEnvInstaller? forgeBaseEnvInstaller = null,   // v0.6.22.x: removed ComfyUITemplateUpdater? templateUpdater (moved to MainViewModel)
+        // v1.0.0.x (2026-09-01):Fooocus 「安装基础环境」installer —— 镜像 Forge 模式
+        // 跳过 picker,锁 torch 2.1.0+cu121。null fallback 让旧测试 ctor 不传也能构造。
+        FooocusBaseEnvInstaller? fooocusBaseEnvInstaller = null,
         // v1.0.0.x (2026-08-30) Task 8:ModelsMissingException MessageBox 注入 seam。
         // 生产 DI 留 null(走 System.Windows.MessageBox.Show fallback);测试注入
         // RecordingMessageBox.InvokeAsync 拦截避免 STA 挂死。放在 ctor 末尾保持旧
@@ -441,6 +505,8 @@ public class EnvironmentListViewModel : ViewModelBase
         // v1.0.0.x:Forge 「安装基础环境」installer — 透传 App.xaml.cs 共享实例;
         // null fallback 让旧测试 ctor 不传也能构造。
         _forgeBaseEnvInstaller = forgeBaseEnvInstaller ?? new ForgeBaseEnvInstaller();
+        // v1.0.0.x (2026-09-01):Fooocus installer 同 Forge 模式 — 透传或 null fallback。
+        _fooocusBaseEnvInstaller = fooocusBaseEnvInstaller ?? new FooocusBaseEnvInstaller();
         // v0.6.11+ SDD D1:AppLogger — 自动重启诊断日志(nullable ctor param)。
         _logger = logger;
         // v0.6.14 picker redesign:catalog + node + version repo(默认 null,测试 ctor
@@ -1341,6 +1407,14 @@ public class EnvironmentListViewModel : ViewModelBase
         if (env.TemplateKind == "Forge")
         {
             await ToggleForgeBaseEnvAsync(env);
+            return;
+        }
+        // v1.0.0.x (2026-09-01):Fooocus env 镜像 Forge 模式 —— 跳过 picker,锁 torch 2.1.0+cu121
+        // (Fooocus 上游 LTS 模式不修破坏,pytorch_lightning 2.3.3 + torchsde 0.2.6 + gradio 3.41.2 都跟
+        // torch 2.1 钉死)。BaseEnvStatusViewModel inline 面板显示。
+        if (env.TemplateKind == "Fooocus")
+        {
+            await ToggleFooocusBaseEnvAsync(env);
             return;
         }
         var profiles = await _profileLoader.LoadAsync();

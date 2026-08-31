@@ -191,6 +191,10 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        // v1.0.0.x (2026-09-01): HunyuanVideo 仓库有 requirements.txt,pyproject.toml 要求 torch ≥2.5.1。
+        // BaseEnv 按钮 → BaseEnvProfilePickerDialog 让用户选 ≥2.5.1 live defaults;
+        // 依赖按钮 → pip install requirements.txt
+        RequirementsFile = "requirements.txt",
     };
 
     /// <summary>
@@ -218,6 +222,10 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "Models/ltx-2.5",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        // v1.0.0.x (2026-09-01): LTX-2 uv sync 在 env-create step 7.5 已装 pyproject.toml 全套依赖
+        // (含 torch ≥2.1.0 + LTX-2 自定义 deps),不需要额外 BaseEnv 或 Requirements 按钮。
+        // RequirementsFile 显式空(跟 default "" 一致) + 注释说明 uv sync 路径
+        RequirementsFile = "",
     };
 
     /// <summary>
@@ -240,6 +248,11 @@ public static class TemplateConfigDefaults
         ModelsSubdir = "models",
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
+        // v1.0.0.x (2026-09-01): CogVideoX 仓库有 requirements.txt + pyproject.toml,
+        // pyproject.toml 要求 torch ≥2.5.1。
+        // BaseEnv 按钮 → BaseEnvProfilePickerDialog 让用户选 ≥2.5.1 live defaults;
+        // 依赖按钮 → pip install requirements.txt
+        RequirementsFile = "requirements.txt",
     };
 
     /// <summary>
@@ -262,6 +275,11 @@ public static class TemplateConfigDefaults
         ExtraJunctionTargets = new(),
         UserExtraArgs = "",
         FooocusEntryMode = FooocusEntryMode.AutoUpdate,   // v1.0.0.x 默认 = 现状 (entry_with_update.py)
+        // v1.0.0.x (2026-09-01): Fooocus 上游默认 TORCH_COMMAND 装 torch 2.1.0 + torchvision 0.16.0,
+        // 但 requirements_versions.txt 仍含 23 non-torch deps(torchsde/pytorch_lightning/transformers/...)。
+        // BaseEnv 按钮 → FooocusBaseEnvInstaller 装 torch 2.1.0+cu121(锁版本,镜像 Forge 模式跳过 picker);
+        // 依赖按钮 → pip install requirements_versions.txt(torch 行已被 FilterTorchLines 自动过滤)
+        RequirementsFile = "requirements_versions.txt",
     };
 
     /// <summary>

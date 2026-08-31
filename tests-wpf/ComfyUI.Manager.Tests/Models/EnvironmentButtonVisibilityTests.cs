@@ -86,4 +86,115 @@ public sealed class EnvironmentButtonVisibilityTests
         Assert.False(fooocus.ComfyUiManagerButtonVisible);   // Fooocus 无 ComfyUI Manager
         Assert.True(fooocus.GenericActionsVisible);           // Fooocus 用通用 5-button Grid
     }
+
+    // --- v1.0.0.x (2026-09-01): BaseEnv / Requirements 按钮显示条件 ---
+
+    [Theory]
+    [InlineData("Fooocus")]          // 正向列举 — 3 个需 torch 的 image/video kind
+    [InlineData("HunyuanVideo")]
+    [InlineData("CogVideoX")]
+    public void BaseEnvButtonVisible_TrueForFooocusHunyuanVideoCogVideoX(string kind)
+    {
+        // v1.0.0.x (2026-09-01): BaseEnv 按钮显示 ——
+        // Fooocus → FooocusBaseEnvInstaller 锁 torch 2.1.0+cu121;
+        // HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 选 ≥2.5.1
+        var env = new Environment { TemplateKind = kind };
+        Assert.True(env.BaseEnvButtonVisible);
+    }
+
+    [Theory]
+    [InlineData("ComfyUI")]   // 回归 — ComfyUI 走自己 5×2 Grid(有自己 BaseEnv 按钮)
+    [InlineData("Forge")]     // 回归 — Forge 走自己 3×2 Grid(有自己 BaseEnv 按钮)
+    [InlineData("LTXVideo")]  // uv sync 处理依赖,不需要 BaseEnv 按钮
+    [InlineData("OpenVoice")]
+    [InlineData("Whisper")]
+    [InlineData("CoquiTTS")]
+    [InlineData("Bark")]
+    [InlineData("HivisionIDPhotos")]
+    public void BaseEnvButtonVisible_FalseForNonImageVideoKinds(string kind)
+    {
+        var env = new Environment { TemplateKind = kind };
+        Assert.False(env.BaseEnvButtonVisible);
+    }
+
+    [Fact]
+    public void BaseEnvButtonVisible_EmptyTemplateKind_FalseByDefault()
+    {
+        // 空 kind(env 未初始化)→ 不显示 BaseEnv 按钮,跟 RequirementsButtonVisible 同 pattern
+        var env = new Environment { TemplateKind = "" };
+        Assert.False(env.BaseEnvButtonVisible);
+    }
+
+    [Theory]
+    [InlineData("Fooocus")]      // 有 RequirementsFile = requirements_versions.txt
+    [InlineData("HunyuanVideo")] // requirements.txt
+    [InlineData("CogVideoX")]    // requirements.txt
+    public void RequirementsFileButtonVisible_TrueWhenBothBaseEnvAndRequirementsFileSet(string kind)
+    {
+        // v1.0.0.x (2026-09-01): Requirements 按钮 = BaseEnv 可见 + RequirementsFile 非空。
+        // 双锁:Fooocus / HunyuanVideo / CogVideoX factory 都配了 RequirementsFile,
+        // 所以 BaseEnv 可见时 Requirements 一定可见。
+        var env = new Environment
+        {
+            TemplateKind = kind,
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = kind,
+                Name = kind,
+                LocalSourceDir = kind,
+                RequirementsFile = kind == "Fooocus" ? "requirements_versions.txt" : "requirements.txt",
+            },
+        };
+        Assert.True(env.BaseEnvButtonVisible);
+        Assert.True(env.RequirementsFileButtonVisible);
+    }
+
+    [Fact]
+    public void RequirementsFileButtonVisible_LTXVideo_False_NoRequirementsFile()
+    {
+        // LTXVideo uv sync 装依赖,RequirementsFile = "" → RequirementsFileButtonVisible = false
+        var env = new Environment
+        {
+            TemplateKind = "LTXVideo",
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "LTXVideo",
+                Name = "LTXVideo",
+                LocalSourceDir = "LTXVideo",
+                RequirementsFile = "",  // 显式空(uv sync 处理)
+            },
+        };
+        Assert.False(env.BaseEnvButtonVisible);          // LTXVideo 不在正向列举
+        Assert.False(env.RequirementsFileButtonVisible); // 链式 false
+    }
+
+    [Fact]
+    public void RequirementsFileButtonVisible_BaseEnvVisibleButRequirementsFileEmpty_False()
+    {
+        // 双锁验证:BaseEnv 可见但 RequirementsFile 空 → Requirements 按钮隐藏
+        // (e.g. 未来用户手动编辑 settings.inf 加了 Fooocus entry 但没配 RequirementsFile)
+        var env = new Environment
+        {
+            TemplateKind = "Fooocus",
+            TemplateConfigSnapshot = new TemplateConfig
+            {
+                Kind = "Fooocus",
+                Name = "Fooocus",
+                LocalSourceDir = "Fooocus",
+                RequirementsFile = "",  // 用户手动清空
+            },
+        };
+        Assert.True(env.BaseEnvButtonVisible);
+        Assert.False(env.RequirementsFileButtonVisible);
+    }
+
+    [Fact]
+    public void RequirementsFileButtonVisible_NoTemplateConfigSnapshot_False()
+    {
+        // 老 env 没有 TemplateConfigSnapshot(env 是 env-create 前)→ RequirementsFile 链 = null
+        // → RequirementsFileButtonVisible 防御性 false
+        var env = new Environment { TemplateKind = "Fooocus" };
+        Assert.True(env.BaseEnvButtonVisible);
+        Assert.False(env.RequirementsFileButtonVisible);  // null safe
+    }
 }

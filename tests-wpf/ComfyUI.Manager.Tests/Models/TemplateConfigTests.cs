@@ -25,6 +25,7 @@ public class TemplateConfigTests
             UserExtraArgs = "--preview-method auto",
             FooocusEntryMode = FooocusEntryMode.Stable,   // v1.0.0.x 新字段,确保 round-trip
             Verified = true,                              // v1.0.0.x (2026-08-31) 新字段,确保 round-trip
+            RequirementsFile = "requirements_versions.txt", // v1.0.0.x (2026-09-01) 新字段,确保 round-trip
         };
 
         // Use JsonOptions.Default to mirror production serialization (includes JsonStringEnumConverter).
@@ -43,7 +44,8 @@ public class TemplateConfigTests
         Assert.Equal(2, restored.ExtraJunctionTargets.Count);
         Assert.Equal("--preview-method auto", restored.UserExtraArgs);
         Assert.Equal(FooocusEntryMode.Stable, restored!.FooocusEntryMode);
-        Assert.True(restored.Verified);  // v1.0.0.x Verified round-trip
+        Assert.True(restored.Verified);
+        Assert.Equal("requirements_versions.txt", restored!.RequirementsFile);
     }
 
     [Fact]
@@ -60,7 +62,8 @@ public class TemplateConfigTests
         Assert.Equal("models", c.ModelsSubdir); // G5 default
         Assert.Empty(c.ExtraJunctionTargets);
         Assert.Equal("", c.UserExtraArgs);
-        Assert.False(c.Verified);  // v1.0.0.x Verified default = false(未验证模板)
+        Assert.False(c.Verified);
+        Assert.Equal("", c.RequirementsFile);  // v1.0.0.x (2026-09-01) RequirementsFile default = ""
     }
 
     [Fact]
@@ -80,10 +83,21 @@ public class TemplateConfigTests
         Assert.Contains("\"models_subdir\":\"models\"", json);
         Assert.Contains("\"extra_junction_targets\":[]", json);
         Assert.Contains("\"user_extra_args\":\"\"", json);
-        // v1.0.0.x: meta 字典(空 dict 序列化为 {})
         Assert.Contains("\"meta\":{}", json);
-        // v1.0.0.x (2026-08-31): Verified 新字段 — snake_case "verified":false
         Assert.Contains("\"verified\":false", json);
+        // v1.0.0.x (2026-09-01): RequirementsFile 新字段 — snake_case "requirements_file":""
+        Assert.Contains("\"requirements_file\":\"\"", json);
+    }
+
+    [Fact]
+    public void BackwardCompat_OldJson_NoRequirementsFile_DefaultsToEmpty()
+    {
+        // v1.0.0.x (2026-09-01): 老 settings.inf 没 "requirements_file" 字段 ——
+        // JsonSerializer 默认 "" → 没 button → 零迁移成本(跟 Verified /
+        // FooocusEntryMode 同 pattern)。
+        const string oldJson = """{"name":"ComfyUI","kind":"ComfyUI","local_source_dir":"ComfyUI","entry_script":"main.py","entry_args":"--port {port}","models_subdir":"models","extra_junction_targets":[],"user_extra_args":"","fooocus_entry_mode":"AutoUpdate","verified":false}""";
+        var c = JsonSerializer.Deserialize<TemplateConfig>(oldJson, JsonOptions.Default)!;
+        Assert.Equal("", c.RequirementsFile);
     }
 
     [Fact]

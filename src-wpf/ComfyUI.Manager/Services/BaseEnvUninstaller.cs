@@ -51,6 +51,12 @@ public class BaseEnvUninstaller
         // Forge env 走 BED marker,跟 RequirementsInstaller 的 pre-flight marker 区分
         if (env.TemplateKind is "Forge")
             return ForgeBaseEnvInstaller.IsInstalled(env);
+        // v1.0.0.x (2026-09-01): Fooocus BED marker fallback —— 镜像 Forge 模式。
+        // FooocusBaseEnvInstaller 写 .fooocus_base_env_installed marker,
+        // 老 Fooocus env 在 BedStatus 字段引入前创建(同 Forge 老 env 场景),
+        // 用 marker fallback 识别 BED 实际跑过。
+        if (env.TemplateKind is "Fooocus")
+            return FooocusBaseEnvInstaller.IsInstalled(env);
         return false;
     }
 
@@ -92,18 +98,36 @@ public class BaseEnvUninstaller
         // 不删 marker → 下次 Load 时 IsInstalled 走 fallback 又会判定"已装",
         // 触发回填把 BedStatus 写回 done,UI 无法重新装。镜像
         // RequirementsUninstaller 在 marker 删除时的同样 pattern。
-        if (env.TemplateKind is "Forge" && !string.IsNullOrWhiteSpace(env.RootPath))
+        // v1.0.0.x (2026-09-01):+Fooocus marker 删除,镜像 Forge。
+        if (!string.IsNullOrWhiteSpace(env.RootPath))
         {
-            var markerPath = Path.Combine(env.RootPath,
-                ForgeBaseEnvConstants.MarkerFileName);
-            try
+            if (env.TemplateKind is "Forge")
             {
-                if (File.Exists(markerPath)) File.Delete(markerPath);
+                var markerPath = Path.Combine(env.RootPath,
+                    ForgeBaseEnvConstants.MarkerFileName);
+                try
+                {
+                    if (File.Exists(markerPath)) File.Delete(markerPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("bed-uninstall",
+                        $"env='{env.Name}' 删 Forge BED marker 失败(继续):{ex.Message}");
+                }
             }
-            catch (Exception ex)
+            else if (env.TemplateKind is "Fooocus")
             {
-                _logger?.Warn("bed-uninstall",
-                    $"env='{env.Name}' 删 BED marker 失败(继续):{ex.Message}");
+                var markerPath = Path.Combine(env.RootPath,
+                    FooocusBaseEnvInstaller.FooocusBaseEnvConstants.MarkerFileName);
+                try
+                {
+                    if (File.Exists(markerPath)) File.Delete(markerPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn("bed-uninstall",
+                        $"env='{env.Name}' 删 Fooocus BED marker 失败(继续):{ex.Message}");
+                }
             }
         }
         _logger?.Info("bed-uninstall", $"env='{env.Name}' 重置完成");
