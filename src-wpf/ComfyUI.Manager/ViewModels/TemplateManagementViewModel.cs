@@ -228,6 +228,12 @@ public class TemplateManagementViewModel : ViewModelBase
             {
                 ConsoleLog.Add($"[{kind}] ✓ 更新完成");
                 _logger?.Info("template-mgmt", $"更新源码 完成: kind='{kind}'");
+                // v1.0.0.x (2026-08-31): 重新计算 LocalDirMissing + 替换 Templates 中的项
+                // —— 触发 ObservableCollection.Replace → WPF 重新评估该 card 的 binding,
+                // 「源码未下载」amber badge 在 git pull 完成后自动消失。TemplateConfig
+                // 是 POCO 无 INPC,直接改 t.LocalDirMissing 不会触发 PropertyChanged;
+                // 必须替换项才能让 XAML 重新渲染(跟 AddTemplate/EditTemplate 同 pattern)。
+                RefreshLocalDirMissing(t);
             }
             else
             {
@@ -272,6 +278,10 @@ public class TemplateManagementViewModel : ViewModelBase
             {
                 ConsoleLog.Add($"[{kind}] ✓ 完成");
                 _logger?.Info("template-mgmt", $"下载与更新 完成: kind='{kind}'");
+                // v1.0.0.x (2026-08-31): 跟 UpdateTemplateSource 同 — git clone 完成后
+                // 重新评估本地目录状态 + 触发 ObservableCollection.Replace 让 XAML 重新
+                // 渲染该 card(amber「源码未下载」badge 自动消失)。
+                RefreshLocalDirMissing(t);
             }
             else
             {
@@ -283,6 +293,29 @@ public class TemplateManagementViewModel : ViewModelBase
         {
             ConsoleLog.Add($"[{kind}] ✗ 异常: {ex.Message}");
             _logger?.Error("template-mgmt", $"下载与更新 异常: kind='{kind}'", ex);
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-08-31): 重新计算 <see cref="TemplateConfig.LocalDirMissing"/> 并
+    /// 替换 <see cref="Templates"/> 中的项 ——
+    /// <list type="number">
+    ///   <item>UpdateSourceCommand / DownloadOrUpdateCommand 完成后,本地目录可能已 clone
+    ///     出来(之前是 LocalDirMissing=true),需要刷新成 false</item>
+    ///   <item>TemplateConfig 是 POCO 无 INPC,改字段不触发 PropertyChanged;
+    ///     ObservableCollection 替换项触发 Replace 事件 → WPF 重新评估该 card 的所有 binding,
+    ///     amber「源码未下载」badge Visibility 跟着 LocalDirMissing 重新求值自动消失</item>
+    ///   <item>如果 Template 不在 Templates 集合(例如 ctor 之前调)— 静默 no-op</item>
+    /// </list>
+    /// 跟 AddTemplate / EditTemplate 中 line 148 / 171 的模式完全一致。
+    /// </summary>
+    private void RefreshLocalDirMissing(TemplateConfig t)
+    {
+        t.LocalDirMissing = !t.LocalDirExists(_settings.SystemTemplateLibraryDir);
+        var idx = Templates.IndexOf(t);
+        if (idx >= 0)
+        {
+            Templates[idx] = t;  // ObservableCollection.Replace → WPF re-render card
         }
     }
 

@@ -197,6 +197,144 @@ public class TemplateManagementViewModelTests
         Assert.Null(ex);
     }
 
+    // --- v1.0.0.x (2026-08-31) T16: 完成后刷新 LocalDirMissing + 触发 ObservableCollection.Replace ---
+
+    [Fact]
+    public async Task DownloadOrUpdateCommand_Success_LocalDirMissingBecomesFalse()
+    {
+        // 1) 起临时 anchor 目录 + 设 systemTemplateLibraryDir
+        // 2) Pre-state: template LocalDirMissing = true(目录还不存在)
+        // 3) FakeUpdater.CreateTargetOnSuccess=true → 模拟 git clone 完成
+        // 4) 跑 command + 等 async
+        // 5) 断言 t.LocalDirMissing == false + Templates[idx] 替换(同 reference,INPC 不可靠)
+        var anchor = Path.Combine(Path.GetTempPath(), "T16-download-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(anchor);
+        try
+        {
+            var s = new Settings
+            {
+                SystemTemplateLibraryDir = anchor,
+                Templates = new Dictionary<string, TemplateConfig>
+                {
+                    ["Whisper"] = new TemplateConfig
+                    {
+                        Name = "Whisper", Kind = "Whisper",
+                        LocalSourceDir = "Whisper",
+                        SourceKind = TemplateSourceKind.GitHub,
+                        GitHubRepoUrl = "https://github.com/openai/whisper.git",
+                        EntryScript = "whisper",
+                    },
+                },
+            };
+
+            var fakeUpdater = new FakeUpdater { CreateTargetOnSuccess = true, CreateTargetAnchor = anchor };
+            var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
+            var t = vm.Templates.First(x => x.Kind == "Whisper");
+
+            // ctor 跑过 LocalDirMissing = !LocalDirExists — 目录不存在 → true
+            Assert.True(t.LocalDirMissing);
+
+            vm.DownloadOrUpdateCommand.Execute(t);
+
+            // async void — Yield + Delay 等 SynchronizationContext 跑完
+            await Task.Yield();
+            await Task.Delay(100);
+
+            // 修复验证:成功后 LocalDirMissing 自动从 true → false
+            // FakeUpdater.CreateTargetOnSuccess 真创建了 <anchor>/Whisper 目录
+            Assert.False(t.LocalDirMissing);
+        }
+        finally
+        {
+            try { Directory.Delete(anchor, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task UpdateSourceCommand_Success_LocalDirMissingBecomesFalse()
+    {
+        // 同 DownloadOrUpdateCommand — UpdateSourceCommand 也走 RefreshLocalDirMissing
+        var anchor = Path.Combine(Path.GetTempPath(), "T16-update-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(anchor);
+        try
+        {
+            var s = new Settings
+            {
+                SystemTemplateLibraryDir = anchor,
+                Templates = new Dictionary<string, TemplateConfig>
+                {
+                    ["Whisper"] = new TemplateConfig
+                    {
+                        Name = "Whisper", Kind = "Whisper",
+                        LocalSourceDir = "Whisper",
+                        SourceKind = TemplateSourceKind.GitHub,
+                        GitHubRepoUrl = "https://github.com/openai/whisper.git",
+                        EntryScript = "whisper",
+                    },
+                },
+            };
+
+            var fakeUpdater = new FakeUpdater { CreateTargetOnSuccess = true, CreateTargetAnchor = anchor };
+            var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
+            var t = vm.Templates.First(x => x.Kind == "Whisper");
+            Assert.True(t.LocalDirMissing);
+
+            vm.UpdateSourceCommand.Execute(t);
+            await Task.Yield();
+            await Task.Delay(100);
+
+            Assert.False(t.LocalDirMissing);
+        }
+        finally
+        {
+            try { Directory.Delete(anchor, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadOrUpdateCommand_Failure_LocalDirMissingStaysUnchanged()
+    {
+        // 失败分支不动 LocalDirMissing ——
+        // FakeUpdater.ForceFailure=true → result.Success=false → RefreshLocalDirMissing 不调
+        // amber badge 维持"源码未下载"状态,符合用户预期(失败不算下载成功)
+        var anchor = Path.Combine(Path.GetTempPath(), "T16-fail-anchor-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(anchor);
+        try
+        {
+            var s = new Settings
+            {
+                SystemTemplateLibraryDir = anchor,
+                Templates = new Dictionary<string, TemplateConfig>
+                {
+                    ["Whisper"] = new TemplateConfig
+                    {
+                        Name = "Whisper", Kind = "Whisper",
+                        LocalSourceDir = "Whisper",
+                        SourceKind = TemplateSourceKind.GitHub,
+                        GitHubRepoUrl = "https://github.com/openai/whisper.git",
+                        EntryScript = "whisper",
+                    },
+                },
+            };
+
+            var fakeUpdater = new FakeUpdater { ForceFailure = true, FailureReason = "网络超时" };
+            var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
+            var t = vm.Templates.First(x => x.Kind == "Whisper");
+            Assert.True(t.LocalDirMissing);
+
+            vm.DownloadOrUpdateCommand.Execute(t);
+            await Task.Yield();
+            await Task.Delay(100);
+
+            // 失败分支:LocalDirMissing 应仍为 true(目录没真创建,refresh 没调)
+            Assert.True(t.LocalDirMissing);
+        }
+        finally
+        {
+            try { Directory.Delete(anchor, recursive: true); } catch { }
+        }
+    }
+
     // --- v1.0.0 hotfix: ShowEditDialogRequested event wiring ---
 
     [Fact]
@@ -406,7 +544,37 @@ public class TemplateManagementViewModelTests
         public string? LastDownloadUrl { get; private set; }
         public string? LastDownloadTarget { get; private set; }
 
+        // v1.0.0.x (2026-08-31): 测试用 — 让 fake 在 success 时真创建 targetDir,
+        // 模拟 git clone 后本地目录存在的状态。RefreshLocalDirMissing 依赖
+        // TemplatePathResolver.Resolve 解析 + Directory.EnumerateFileSystemEntries
+        // 判断 — 真创建目录才能让 LocalDirMissing 变 false。
+        // 生产代码传 targetDir = t.LocalSourceDir(相对路径),VM 端用
+        // TemplatePathResolver.Resolve(t.LocalSourceDir, anchor) 转绝对路径。Fake 不知道
+        // anchor,需要 test 显式提供。
+        public bool CreateTargetOnSuccess { get; set; }
+        public string? CreateTargetAnchor { get; set; }   // T16:模拟 Resolve(targetDir, anchor)
+
+        // v1.0.0.x (2026-08-31): 测试用 — 强制返回失败路径,验证失败分支不刷新 badge
+        public bool ForceFailure { get; set; }
+        public string FailureReason { get; set; } = "fake failure";
+
         public FakeUpdater() : base("git") { }
+
+        private void MaybeCreate(string targetDir)
+        {
+            if (!CreateTargetOnSuccess) return;
+            var abs = string.IsNullOrEmpty(CreateTargetAnchor)
+                ? Path.GetFullPath(targetDir)
+                : Path.Combine(CreateTargetAnchor, targetDir);
+            // v1.0.0.x (2026-08-31): 真创建 .git 子目录 ——
+            // TemplateConfig.LocalDirExists 判断规则:
+            //   1. .git 子目录存在 → true(标准 git clone 产物)
+            //   2. 否则只要目录非空 → true
+            //   3. 空目录 → false(用户手建空目录 / clone 中途中断)
+            // FakeUpdater 模拟真实 git clone 必须建 .git,否则 LocalDirMissing
+            // 永远 false → RefreshLocalDirMissing 测试 fail。
+            Directory.CreateDirectory(Path.Combine(abs, ".git"));
+        }
 
         public override Task<NodeOperationResult> UpdateAsync(
             string targetDir, string repoUrl,
@@ -418,6 +586,9 @@ public class TemplateManagementViewModelTests
             LastProgress = progress;
             progress?.Report("Cloning into 'target'...");
             progress?.Report("Receiving objects: 50% (100/200)");
+            if (ForceFailure)
+                return Task.FromResult(NodeOperationResult.Fail(FailureReason));
+            MaybeCreate(targetDir);
             return Task.FromResult(NodeOperationResult.Ok(null));
         }
 
@@ -430,6 +601,9 @@ public class TemplateManagementViewModelTests
             LastDownloadTarget = targetDir;
             progress?.Report("Cloning into 'target'...");
             progress?.Report("Receiving objects: 50% (100/200)");
+            if (ForceFailure)
+                return Task.FromResult(NodeOperationResult.Fail(FailureReason));
+            MaybeCreate(targetDir);
             return Task.FromResult(NodeOperationResult.Ok(null));
         }
     }
