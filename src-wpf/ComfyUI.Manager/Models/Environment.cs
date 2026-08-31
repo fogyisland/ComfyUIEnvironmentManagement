@@ -164,6 +164,16 @@ public class Environment
         && !string.IsNullOrWhiteSpace(TemplateConfigSnapshot?.RequirementsFile);
 
     /// <summary>
+    /// v1.0.0.x (2026-09-01) T22: 下载默认模型按钮显示条件 ——
+    /// 只对 Fooocus kind 可见(其它 kind launcher 不自动下模型)。
+    /// Fooocus 启动 launch.py line 145 自动从 huggingface.co 下载 4 个 vae_approx
+    /// + fooocus_expansion 模型,网络超时直接 crash env;本按钮让用户启动前
+    /// 手动下载避免。镜像 <see cref="BaseEnvButtonVisible"/> 单 kind 正向列举 pattern。
+    /// </summary>
+    [JsonIgnore]
+    public bool FooocusModelsDownloadButtonVisible => TemplateKind == "Fooocus";
+
+    /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
     /// (Settings.LocalNodesDirectory 下每个子包都已在 env/custom_nodes/),false = 未装或不全。
     /// Load 末尾重新算(LocalNodeInstaller.IsInstalled),不持久化(同 IsComfyUiManagerInstalled pattern)。

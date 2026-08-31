@@ -126,6 +126,29 @@
                 </StackPanel>
             </Border>
 
+            <!-- v1.0.0.x (2026-09-01) T22: Fooocus 默认模型下载 inline 状态面板 ——
+                 跟 BaseEnvStatus 同样 pattern(独立 Border,只对 Fooocus kind 实际触发,
+                 其它 kind FooocusModelsDownloadStatus 永远 null → IsVisible 永远 false 不显示)。
+                 4 个 vae_approx + fooocus_expansion 模型下载进度,通过 LogLines 滚
+                 "↓ xlvaeapp.pth <- https://hf-mirror.com/..." / "[50.0%] 256MB / 512MB" / "✓ xxx" 等。 -->
+            <Border Margin="0,6,0,0" Padding="12"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1"
+                    CornerRadius="6"
+                    Visibility="{Binding FooocusModelsDownloadStatus.IsVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                <StackPanel DataContext="{Binding FooocusModelsDownloadStatus}">
+                    <TextBlock Text="{Binding StatusText}" FontSize="14" Margin="0,4"
+                               Foreground="{DynamicResource OnSurfaceBrush}" TextWrapping="Wrap" />
+                    <controls:ConsolePanel Title="Fooocus 默认模型下载进度"
+                                           Lines="{Binding LogLines}"
+                                           ConsoleCloseRequested="OnFooocusModelsDownloadCloseClicked"
+                                           Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding Error}" Foreground="{DynamicResource ErrorBrush}"
+                               Margin="0,4,0,0" FontWeight="Bold" TextWrapping="Wrap"
+                               Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}" />
+                </StackPanel>
+            </Border>
+
             <!-- v0.6.11+ T4:ComfyUI Manager 状态 — 镜像 RequirementsStatus 单阶段
             inline 面板(同 SurfaceBrush / OutlineBrush / CornerRadius + BoolToVisibility
             converter),✕ 按钮走 ConsolePanel 内部 ConsoleCloseRequested → code-behind
@@ -632,6 +655,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Button Grid.Column="0" Content="{Binding StartStopButtonText}"
                                                 Style="{StaticResource MaterialButton}"
@@ -668,24 +692,38 @@
                                                 CommandParameter="{Binding}"
                                                 Margin="2" MinWidth="0"
                                                 ToolTip="pip install -r &lt;RequirementsFile&gt;(自动过滤 torch 行避免冲突)" />
-                                        <Button Grid.Column="3" Content="查看日志" Margin="2" MinWidth="0"
+                                        <!-- v1.0.0.x (2026-09-01) T22: 「下载默认模型」按钮 ——
+                                             显示条件 = Environment.FooocusModelsDownloadButtonVisible
+                                             (TemplateKind == "Fooocus")。Fooocus 启动 launch.py line 145
+                                             自动从 huggingface.co 下载 4 个 vae_approx + fooocus_expansion 模型,
+                                             网络超时直接 crash env。本按钮让用户启动前手动下载避免。
+                                             Mirror URL 走 Settings.ModelSourceHuggingFaceUseMirror + MirrorUrl。
+                                             HF 镜像替换 "https://huggingface.co" → "https://hf-mirror.com"。-->
+                                        <Button Grid.Column="3" Content="下载默认模型" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Visibility="{Binding FooocusModelsDownloadButtonVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                                                Command="{Binding DataContext.DownloadFooocusModelsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="下载 Fooocus 启动必需的 4 个默认模型(vae_approx + fooocus_expansion),避免 launch.py 启动时网络超时" />
+                                        <Button Grid.Column="4" Content="查看日志" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.ShowLogCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
-                                        <Button Grid.Column="4" Content="打开浏览器" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="5" Content="打开浏览器" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.OpenBrowserCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="用 Chrome 打开该环境的 web 页面(未装则用系统默认浏览器)。仅运行中可用。" />
-                                        <Button Grid.Column="5" Content="组件报告" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="6" Content="组件报告" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.ReportComponentsCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
-                                        <Button Grid.Column="6" Content="删除" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="7" Content="删除" Margin="2" MinWidth="0"
                                                 Style="{StaticResource DangerButton}"
                                                 Command="{Binding DataContext.DeleteCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"

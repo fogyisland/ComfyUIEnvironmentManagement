@@ -102,6 +102,18 @@ public partial class EnvironmentListView : UserControl
     }
 
     /// <summary>
+    /// v1.0.0.x (2026-09-01) T22: Fooocus 默认模型下载 inline 状态面板 ✕ 关闭 handler ——
+    /// 镜像 OnBaseEnvStatusCloseClicked,关掉 FooocusModelsDownloadStatus panel。
+    /// </summary>
+    private void OnFooocusModelsDownloadCloseClicked(object sender, EventArgs e)
+    {
+        if (DataContext is ViewModels.EnvironmentListViewModel vm)
+        {
+            vm.FooocusModelsDownloadStatus?.Hide();
+        }
+    }
+
+    /// <summary>
     /// v0.6.22.x 删:OnTemplateUpdateStatusCloseClicked handler — 模板更新状态面板
     /// 跟 UpdateTemplateCommand 一起移走至 MainViewModel,env-list 不再展示模板更新。
     /// </summary>

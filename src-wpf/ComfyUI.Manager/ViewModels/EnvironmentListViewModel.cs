@@ -66,6 +66,11 @@ public class EnvironmentListViewModel : ViewModelBase
     // 跳过 picker,锁 torch 2.1.0+cu121(Fooocus 上游 launcher 期望)。null 兜底 new
     // 默认实现(测试 ctor 不传也能构造;生产 DI 在 App.xaml.cs 注入)。
     private readonly FooocusBaseEnvInstaller _fooocusBaseEnvInstaller;
+    // v1.0.0.x (2026-09-01) T22:Fooocus 「下载默认模型」installer —— 镜像
+    // BaseEnvInstaller 流式下载 pattern(SemaphoreSlim(4) + HttpClient + .partial → final),
+    // 装 Fooocus 启动必需的 4 个 vae_approx + fooocus_expansion 模型。null 兜底 new
+    // 默认实现。
+    private readonly FooocusDefaultModelsInstaller _fooocusDefaultModelsInstaller;
     // v0.6.22 T5:ComfyUI template update service(wipe env.ComfyuiSource 内容
     // + git clone comfyanonymous/ComfyUI --depth=1)。可空保留旧测试 ctor
     // 兼容;生产 DI 在 App.xaml.cs 注入。
@@ -77,6 +82,13 @@ public class EnvironmentListViewModel : ViewModelBase
     // 路径(弹 dialog),只有 Forge env 才走这里(不弹框,inline panel 显示进度)。
     // SwarmUI 已下线,不再引用。
     public BaseEnvStatusViewModel? BaseEnvStatus { get; private set; }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T22:Fooocus 默认模型下载 inline 状态面板 ——
+    /// 跟 <see cref="BaseEnvStatus"/> 并列(各自独立 Border 显示),用同
+    /// <see cref="BaseEnvStatusViewModel"/> 类型但不同 marker file + installFn。
+    /// </summary>
+    public BaseEnvStatusViewModel? FooocusModelsDownloadStatus { get; private set; }
 
     /// <summary>
     /// v1.0.0.x:Forge BED inline 面板 toggle。已装过(marker 文件存在)→ 显示"已安装"
@@ -124,6 +136,58 @@ public class EnvironmentListViewModel : ViewModelBase
             {
                 env.IsBaseEnvInstalled = true;
                 env.BaseEnvButtonText = "卸载基础环境";
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                status.Hide();
+            }
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T22:镜像 <see cref="ToggleFooocusBaseEnvAsync"/> 模式 —
+    /// Fooocus env 点「下载默认模型」按钮时调 <see cref="FooocusDefaultModelsInstaller.InstallAsync"/>,
+    /// 装 4 个 vae_approx + fooocus_expansion 模型,inline 面板显示进度。失败任一 → 返 Fail,
+    /// 已成功的文件保留,用户可重试按钮(剩余失败会重下)。
+    /// </summary>
+    private async System.Threading.Tasks.Task DownloadFooocusModelsAsync(Environment? env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;
+
+        // 已装过(marker 文件存在)→ 显示"已下载"状态,不重下(用户可重下走 marker 删除逻辑)
+        if (FooocusDefaultModelsInstaller.IsInstalled(env))
+        {
+            var timestamp = await ReadMarkerTimestampAsync(env, FooocusDefaultModelsConstants.MarkerFileName);
+            var alreadyDownloaded = new BaseEnvStatusViewModel(
+                env, "Fooocus", "Fooocus 默认模型已下载(4 个文件)",
+                async (e, p, ct) => new FooocusModelsDownloadResult(
+                    Success: true, Cancelled: false, Reason: null,
+                    DownloadedCount: FooocusDefaultModelsConstants.DefaultModels.Count,
+                    FailedCount: 0, TotalBytes: 0));
+            FooocusModelsDownloadStatus = alreadyDownloaded;
+            RaisePropertyChanged(nameof(FooocusModelsDownloadStatus));
+            alreadyDownloaded.MarkAlreadyInstalled(timestamp);
+            return;
+        }
+
+        var status = new BaseEnvStatusViewModel(
+            env, "Fooocus", "Fooocus 默认模型下载完成(4 个文件,total ~2GB)",
+            async (e, p, ct) => await _fooocusDefaultModelsInstaller.InstallAsync(e, p, ct));
+        FooocusModelsDownloadStatus = status;
+        RaisePropertyChanged(nameof(FooocusModelsDownloadStatus));
+        MarkEnvBusy(env, BusyKind.BEDInstall);  // 复用 BEDInstall busy kind — 都是长操作
+        try
+        {
+            await status.RunAsync();
+            if (status.IsComplete && !status.HasError)
+            {
+                // 成功 → 不复用 IsBaseEnvInstalled(语义不同 — 模型已下载 ≠ BED 装好)
+                // 用 IsFooocusModelsInstalled(暂未加 bool,简化为 2s 后 Hide 面板即可)
                 await Task.Delay(TimeSpan.FromSeconds(2));
                 status.Hide();
             }
@@ -368,6 +432,12 @@ public class EnvironmentListViewModel : ViewModelBase
 
     public RelayCommand ToggleBaseEnvCommand { get; }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T22:Fooocus 「下载默认模型」按钮绑定 ——
+    /// 镜像 ToggleBaseEnvCommand,只对 Fooocus kind 可用。
+    /// </summary>
+    public RelayCommand DownloadFooocusModelsCommand { get; }
+
     public string? RecentBasePythonPath { get; private set; }
 
     /// <summary>
@@ -473,6 +543,12 @@ public class EnvironmentListViewModel : ViewModelBase
         // v1.0.0.x (2026-09-01):Fooocus 「安装基础环境」installer —— 镜像 Forge 模式
         // 跳过 picker,锁 torch 2.1.0+cu121。null fallback 让旧测试 ctor 不传也能构造。
         FooocusBaseEnvInstaller? fooocusBaseEnvInstaller = null,
+        // v1.0.0.x (2026-09-01) T22:Fooocus 「下载默认模型」installer —— 用户 dev build
+        // Fooocus env 启动 launch.py line 145 自动下 4 个 huggingface.co 模型超时
+        // crash env,本 installer 提前下载让 env 启动时 is_installed 检查通过。
+        // 镜像 FooocusBaseEnvInstaller 模式,镜像 BaseEnvStatusViewModel 通用 ctor 接。
+        // null fallback 让旧测试 ctor 不传也能构造。
+        FooocusDefaultModelsInstaller? fooocusDefaultModelsInstaller = null,
         // v1.0.0.x (2026-08-30) Task 8:ModelsMissingException MessageBox 注入 seam。
         // 生产 DI 留 null(走 System.Windows.MessageBox.Show fallback);测试注入
         // RecordingMessageBox.InvokeAsync 拦截避免 STA 挂死。放在 ctor 末尾保持旧
@@ -507,6 +583,8 @@ public class EnvironmentListViewModel : ViewModelBase
         _forgeBaseEnvInstaller = forgeBaseEnvInstaller ?? new ForgeBaseEnvInstaller();
         // v1.0.0.x (2026-09-01):Fooocus installer 同 Forge 模式 — 透传或 null fallback。
         _fooocusBaseEnvInstaller = fooocusBaseEnvInstaller ?? new FooocusBaseEnvInstaller();
+        // v1.0.0.x (2026-09-01) T22:Fooocus 默认模型 installer 同上(null fallback)。
+        _fooocusDefaultModelsInstaller = fooocusDefaultModelsInstaller ?? new FooocusDefaultModelsInstaller();
         // v0.6.11+ SDD D1:AppLogger — 自动重启诊断日志(nullable ctor param)。
         _logger = logger;
         // v0.6.14 picker redesign:catalog + node + version repo(默认 null,测试 ctor
@@ -700,6 +778,19 @@ public class EnvironmentListViewModel : ViewModelBase
                 // UninstallBaseEnvAsync(不会重开 inline panel),未装 →
                 // OpenBaseEnvProgressAsync。busy 场景由 IsEnvBusy 覆盖(per-env
                 // mutex 拦并发 BED install/uninstall)。
+                return true;
+            });
+        // v1.0.0.x (2026-09-01) T22:Fooocus 「下载默认模型」按钮 ——
+        // 只对 Fooocus kind 启用,busy 时禁用。镜像 ToggleBaseEnvCommand CanExecute pattern
+        // 但不需要 IsBaseEnvInstalled 判断(重复下载无害 — 已存在的文件跳过)。
+        DownloadFooocusModelsCommand = new RelayCommand(
+            async p => await DownloadFooocusModelsAsync(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (env.TemplateKind != "Fooocus") return false;
+                if (IsEnvBusy(env)) return false;
                 return true;
             });
         // v1.0.0.x #577:env 行末位「安装本地常用」按钮 — 单向 install(不 toggle,没有
@@ -2325,6 +2416,8 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.11+ T1:toggle 命令也要 refresh,否则 busy 切换后按钮不会自动 enable/disable
         ToggleRequirementsCommand.RaiseCanExecuteChanged();
         ToggleBaseEnvCommand.RaiseCanExecuteChanged();
+        // v1.0.0.x (2026-09-01) T22:同 ToggleBaseEnvCommand,busy 切换也要 refresh。
+        DownloadFooocusModelsCommand.RaiseCanExecuteChanged();
         // v0.6.15.8 T5:NodeManagement open 命令的 CanExecute 依赖 IsEnvBusy(env),
         // busy 状态变化要 refresh 让按钮 enable/disable。
         OpenNodeManagementCommand.RaiseCanExecuteChanged();

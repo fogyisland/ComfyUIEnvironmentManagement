@@ -477,6 +477,20 @@ public partial class App : Application
         // 后第一次「安装基础环境」直接走这里 — 跳过 BaseEnvProfilePickerDialog + BaseEnvProgressDialog,
         // 改 inline panel,用户原话 2026-08-29:"forge 不会弹框 直接点击按照上面的方式来进行安装")。
         var forgeBaseEnvInstaller = new ForgeBaseEnvInstaller(logger, gitProxy, gitExe, forgePreFlightInstaller);
+        // v1.0.0.x (2026-09-01) T19 + T22 partial ship 修复:FooocusBaseEnvInstaller
+        // 之前没 wire,env 行「基础环境」按钮调 installer 但走 null fallback new 默认
+        // 实现(没真注入 proxy + logger + PreFlightInstaller)。这里补全 wire:
+        var fooocusBaseEnvInstaller = new FooocusBaseEnvInstaller(logger, gitProxy);
+        // v1.0.0.x (2026-09-01) T22:Fooocus 「下载默认模型」installer —— 4 个
+        // vae_approx + fooocus_expansion 模型,镜像 BaseEnvInstaller 流式下载
+        // pattern(SemaphoreSlim(4) + HttpClient + .partial → final)。Wire HttpClient
+        // 走 gitProxy 复用全局代理 + User-Agent(走 App.BuildHttpClient)。
+        var fooocusModelsHttpClient = BuildHttpClient(gitProxy);
+        var fooocusModelsInstaller = new FooocusDefaultModelsInstaller(
+            http: fooocusModelsHttpClient,
+            logger: logger,
+            proxy: gitProxy,
+            settings: settings);
         var requirementsInstaller = new RequirementsInstaller(
             logger, reqFileInstaller, comfyUiManagerInstaller, commonNodeInstaller,
             forgePreFlightInstaller);
