@@ -656,6 +656,7 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Button Grid.Column="0" Content="{Binding StartStopButtonText}"
                                                 Style="{StaticResource MaterialButton}"
@@ -706,24 +707,38 @@
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="下载 Fooocus 启动必需的 4 个默认模型(vae_approx + fooocus_expansion),避免 launch.py 启动时网络超时" />
-                                        <Button Grid.Column="4" Content="查看日志" Margin="2" MinWidth="0"
+                                        <!-- v1.0.0.x (2026-09-01) T23b: 「下载 launcher 默认」按钮 ——
+                                             显示条件 = Environment.FooocusModelsDownloadButtonVisible(只 Fooocus kind)。
+                                             装 launcher 启动时自动下载的 4 dict(checkpoint_downloads + lora_downloads +
+                                             embeddings_downloads + vae_downloads)所有 entry,可能含 SDXL 5GB checkpoint。
+                                             通过 FooocusConfigProbe 读 modules/config.py 拿 4 dict + 5 path,
+                                             复用 T22 FooocusDefaultModelsInstaller 流式下载基础设施
+                                             (HttpClient + SemaphoreSlim(4) + 原子 .partial→final + HF 镜像)。-->
+                                        <Button Grid.Column="4" Content="下载 launcher 默认" Margin="2" MinWidth="0"
+                                                Style="{StaticResource MaterialButton}"
+                                                Visibility="{Binding FooocusModelsDownloadButtonVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                                                Command="{Binding DataContext.DownloadFooocusLauncherDefaultsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="下载 Fooocus launcher 启动时自动下的所有模型(SDXL checkpoint ~5GB + LoRA + embedding + VAE),从 modules/config.py 读 dict" />
+                                        <Button Grid.Column="5" Content="查看日志" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.ShowLogCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
-                                        <Button Grid.Column="5" Content="打开浏览器" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="6" Content="打开浏览器" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.OpenBrowserCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="用 Chrome 打开该环境的 web 页面(未装则用系统默认浏览器)。仅运行中可用。" />
-                                        <Button Grid.Column="6" Content="组件报告" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="7" Content="组件报告" Margin="2" MinWidth="0"
                                                 Style="{StaticResource MaterialButton}"
                                                 Command="{Binding DataContext.ReportComponentsCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="生成该环境的组件版本报告(基础环境要求 vs 实际已装)并在浏览器中打开" />
-                                        <Button Grid.Column="7" Content="删除" Margin="2" MinWidth="0"
+                                        <Button Grid.Column="8" Content="删除" Margin="2" MinWidth="0"
                                                 Style="{StaticResource DangerButton}"
                                                 Command="{Binding DataContext.DeleteCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"

@@ -257,6 +257,138 @@ public class FooocusDefaultModelsInstaller
         return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T23b:Fooocus launcher 全部 5 类 dict 下载 ——
+    /// 镜像 <see cref="InstallAsync"/> 模式但下 launcher 启动时自动下载的
+    /// checkpoint_downloads + lora_downloads + embeddings_downloads + vae_downloads
+    /// 4 dict 的所有 entry(可能含 SDXL 5GB checkpoint)。<see cref="FooocusConfigProbe"/>
+    /// 读 Fooocus config.py 拿 4 dict + 5 path,WPF 端预下避免 launch.py line 131-140
+    /// 网络超时 crash env。
+    /// </summary>
+    public virtual async Task<FooocusModelsDownloadResult> DownloadLauncherDefaultsAsync(
+        Environment env,
+        IProgress<string>? logProgress = null,
+        CancellationToken ct = default)
+    {
+        if (env is null) throw new ArgumentNullException(nameof(env));
+        if (string.IsNullOrWhiteSpace(env.RootPath))
+            throw new ArgumentException("env.RootPath 为空", nameof(env));
+
+        var sw = Stopwatch.StartNew();
+        logProgress?.Report("[fooocus-launcher-models] env='{env.Name}' probe Fooocus config.py...");
+
+        var config = await FooocusConfigProbe.ProbeAsync(env, logProgress, ct).ConfigureAwait(false);
+        if (config is null)
+        {
+            return new FooocusModelsDownloadResult(
+                Success: false, Cancelled: false, Reason: "Fooocus config probe 失败",
+                DownloadedCount: 0, FailedCount: 0, TotalBytes: 0);
+        }
+
+        // 5 类条目 → 统一 (file_name, url, sub_dir) 喂现有 DownloadSingleAsync
+        var entries = new List<(string FileName, string Url, string SubDir)>();
+        AddDictEntries(entries, config.CheckpointDownloads, config.Paths.GetValueOrDefault("checkpoints", "models/checkpoints"));
+        AddDictEntries(entries, config.LoraDownloads, config.Paths.GetValueOrDefault("loras", "models/loras"));
+        AddDictEntries(entries, config.EmbeddingsDownloads, config.Paths.GetValueOrDefault("embeddings", "models/embeddings"));
+        AddDictEntries(entries, config.VaeDownloads, config.Paths.GetValueOrDefault("vae", "models/vae"));
+
+        if (entries.Count == 0)
+        {
+            logProgress?.Report("[fooocus-launcher-models] 4 dict 都是空(preset 干净),无需下载");
+            // 写 marker 标记"检查过不需要下"—— 跟 InstallAsync success 行为对齐
+            WriteMarker(env);
+            return new FooocusModelsDownloadResult(
+                Success: true, Cancelled: false, Reason: null,
+                DownloadedCount: 0, FailedCount: 0, TotalBytes: 0);
+        }
+
+        logProgress?.Report($"[fooocus-launcher-models] 共 {entries.Count} 个 launcher 默认模型待下载");
+        var sem = new SemaphoreSlim(ConcurrentDownloads);
+        var successes = 0;
+        var failures = 0;
+        var totalBytes = 0L;
+        var errors = new List<string>();
+        var tasks = new List<Task>();
+
+        foreach (var entry in entries)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                await sem.WaitAsync(ct);
+                try
+                {
+                    var result = await DownloadSingleAsync(
+                        env,
+                        new FooocusModelEntry(entry.FileName, entry.Url, entry.SubDir),
+                        logProgress, ct);
+                    if (result.Success)
+                    {
+                        Interlocked.Increment(ref successes);
+                        Interlocked.Add(ref totalBytes, result.SizeBytes);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref failures);
+                        lock (errors) errors.Add($"{entry.FileName}: {result.FailureReason}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref failures);
+                    lock (errors) errors.Add($"{entry.FileName}: {ex.Message}");
+                }
+                finally
+                {
+                    sem.Release();
+                }
+            }, ct));
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        if (failures == 0)
+        {
+            WriteMarker(env);
+            _logger?.Info("fooocus-launcher-models",
+                $"env='{env.Name}' launcher 默认模型下载完成(success={successes}/{entries.Count} bytes={FormatBytes(totalBytes)} elapsed={sw.Elapsed})");
+            logProgress?.Report($"[fooocus-launcher-models] ✓ 完成({successes}/{entries.Count},total {FormatBytes(totalBytes)})");
+            return new FooocusModelsDownloadResult(
+                Success: true, Cancelled: false, Reason: null,
+                DownloadedCount: successes, FailedCount: failures, TotalBytes: totalBytes);
+        }
+
+        var reason = $"下载失败 {failures}/{entries.Count}:" + string.Join("; ", errors);
+        logProgress?.Report($"[fooocus-launcher-models] ✗ {reason}");
+        return new FooocusModelsDownloadResult(
+            Success: false, Cancelled: false, Reason: reason,
+            DownloadedCount: successes, FailedCount: failures, TotalBytes: totalBytes);
+    }
+
+    private static void AddDictEntries(
+        List<(string FileName, string Url, string SubDir)> sink,
+        IReadOnlyDictionary<string, string> dict,
+        string subDir)
+    {
+        foreach (var kvp in dict)
+        {
+            if (string.IsNullOrWhiteSpace(kvp.Key) || string.IsNullOrWhiteSpace(kvp.Value)) continue;
+            sink.Add((kvp.Key, kvp.Value, subDir));
+        }
+    }
+
+    private void WriteMarker(Environment env)
+    {
+        var markerPath = Path.Combine(env.RootPath, FooocusDefaultModelsConstants.MarkerFileName);
+        try
+        {
+            File.WriteAllText(markerPath, DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("fooocus-launcher-models", $"env='{env.Name}' marker 写失败:{ex.Message}");
+        }
+    }
+
     private record SingleDownloadResult(bool Success, long SizeBytes, string? FailureReason = null);
 }
 

@@ -200,6 +200,41 @@ public class EnvironmentListViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T23b:Fooocus 「下载 launcher 默认」按钮处理 ——
+    /// 调 <see cref="FooocusDefaultModelsInstaller.DownloadLauncherDefaultsAsync"/> 装
+    /// 4 dict(checkpoint + lora + embedding + vae)所有 entry,inline 面板显示进度
+    /// (复用 <see cref="FooocusModelsDownloadStatus"/> 面板,跟 T22 一样的
+    /// <see cref="BaseEnvStatusViewModel"/> 通用 ctor)。
+    /// </summary>
+    private async System.Threading.Tasks.Task DownloadFooocusLauncherDefaultsAsync(Environment? env)
+    {
+        if (env is null) return;
+        if (IsEnvBusy(env)) return;
+
+        var status = new BaseEnvStatusViewModel(
+            env, "Fooocus", "Fooocus launcher 默认模型下载完成(checkpoint/lora/embedding/vae)",
+            async (e, p, ct) => await _fooocusDefaultModelsInstaller.DownloadLauncherDefaultsAsync(e, p, ct));
+        FooocusModelsDownloadStatus = status;
+        RaisePropertyChanged(nameof(FooocusModelsDownloadStatus));
+        MarkEnvBusy(env, BusyKind.BEDInstall);
+        try
+        {
+            await status.RunAsync();
+            if (status.IsComplete && !status.HasError)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                status.Hide();
+            }
+        }
+        finally
+        {
+            UnmarkEnvBusy(env);
+            Load();
+            RaiseCommandsChanged();
+        }
+    }
+
     private async System.Threading.Tasks.Task ToggleForgeBaseEnvAsync(Environment env)
     {
         if (env is null) return;
@@ -437,6 +472,14 @@ public class EnvironmentListViewModel : ViewModelBase
     /// 镜像 ToggleBaseEnvCommand,只对 Fooocus kind 可用。
     /// </summary>
     public RelayCommand DownloadFooocusModelsCommand { get; }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T23b:Fooocus 「下载 launcher 默认」按钮绑定 ——
+    /// 镜像 DownloadFooocusModelsCommand,只对 Fooocus kind 可用。
+    /// 装 4 dict(checkpoint + lora + embedding + vae)的所有 entry,
+    /// 避免 launch.py line 131-140 启动时网络超时 crash env。
+    /// </summary>
+    public RelayCommand DownloadFooocusLauncherDefaultsCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
 
@@ -785,6 +828,18 @@ public class EnvironmentListViewModel : ViewModelBase
         // 但不需要 IsBaseEnvInstalled 判断(重复下载无害 — 已存在的文件跳过)。
         DownloadFooocusModelsCommand = new RelayCommand(
             async p => await DownloadFooocusModelsAsync(p as Environment ?? Selected),
+            p =>
+            {
+                var env = p as Environment ?? Selected;
+                if (env is null) return false;
+                if (env.TemplateKind != "Fooocus") return false;
+                if (IsEnvBusy(env)) return false;
+                return true;
+            });
+        // v1.0.0.x (2026-09-01) T23b:Fooocus 「下载 launcher 默认」按钮 ——
+        // 镜像 DownloadFooocusModelsCommand pattern,只对 Fooocus kind 启用,busy 禁用。
+        DownloadFooocusLauncherDefaultsCommand = new RelayCommand(
+            async p => await DownloadFooocusLauncherDefaultsAsync(p as Environment ?? Selected),
             p =>
             {
                 var env = p as Environment ?? Selected;
@@ -2418,6 +2473,8 @@ public class EnvironmentListViewModel : ViewModelBase
         ToggleBaseEnvCommand.RaiseCanExecuteChanged();
         // v1.0.0.x (2026-09-01) T22:同 ToggleBaseEnvCommand,busy 切换也要 refresh。
         DownloadFooocusModelsCommand.RaiseCanExecuteChanged();
+        // v1.0.0.x (2026-09-01) T23b:同 T22。
+        DownloadFooocusLauncherDefaultsCommand.RaiseCanExecuteChanged();
         // v0.6.15.8 T5:NodeManagement open 命令的 CanExecute 依赖 IsEnvBusy(env),
         // busy 状态变化要 refresh 让按钮 enable/disable。
         OpenNodeManagementCommand.RaiseCanExecuteChanged();

@@ -128,4 +128,36 @@ public class EnvironmentListViewModelFooocusModelsTests : IDisposable
         // 空 kind → false(防御)
         Assert.False(new Environment { TemplateKind = "" }.FooocusModelsDownloadButtonVisible);
     }
+
+    // ----- T23b DownloadFooocusLauncherDefaultsCommand -----
+
+    [Fact]
+    public void DownloadFooocusLauncherDefaultsCommand_FooocusEnv_CanExecuteTrue()
+    {
+        // 镜像 T22 模式:CanExecute 在 Fooocus env + !busy 时返 true
+        var env = SeedEnv("Fooocus");
+        var vm = NewSut();
+
+        Assert.True(vm.DownloadFooocusLauncherDefaultsCommand.CanExecute(env));
+    }
+
+    [Theory]
+    [InlineData("ComfyUI")]
+    [InlineData("Forge")]
+    [InlineData("OpenVoice")]
+    [InlineData("Whisper")]
+    [InlineData("CoquiTTS")]
+    [InlineData("Bark")]
+    [InlineData("HunyuanVideo")]
+    [InlineData("LTXVideo")]
+    [InlineData("CogVideoX")]
+    [InlineData("HivisionIDPhotos")]
+    public void DownloadFooocusLauncherDefaultsCommand_NonFooocusKind_CanExecuteFalse(string kind)
+    {
+        // 回归保护:同 T22 模式,只 Fooocus kind 启用
+        var env = SeedEnv(kind);
+        var vm = NewSut();
+
+        Assert.False(vm.DownloadFooocusLauncherDefaultsCommand.CanExecute(env));
+    }
 }
