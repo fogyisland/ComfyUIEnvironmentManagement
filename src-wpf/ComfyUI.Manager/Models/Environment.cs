@@ -1,15 +1,35 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 
 namespace ComfyUI.Manager.Models;
 
 /// <summary>
 /// Environment:row of the <c>environments</c> table.
+///
+/// v1.0.0.x (2026-09-01) T25:实现 <see cref="INotifyPropertyChanged"/> ——
+/// T25 启停按钮 ready gate 需要在 probe 完后从 disabled → enabled 切换
+/// (FooocusConfigProbe.ProbeAsync ~1-2s 后才知 3 件套齐),普通 POCO property
+/// 设值不通知 UI,XAML 看不到变化。JsonIgnore 的 UI-only 字段
+/// (<see cref="FooocusAllDefaultModelsDownloaded"/> / <see cref="StartStopButtonEnabled"/>
+/// / <see cref="StartStopButtonTooltip"/>)用 backed property + setter raise
+/// 通知。持久化字段(<see cref="Id"/> / <see cref="Name"/> / <see cref="RootPath"/>
+/// 等)仍 plain auto-property —— DB 写入由 VM 显式 _repo.Upsert 触发,不需要 INPC。
 /// </summary>
-public class Environment
+public class Environment : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>UI-only 字段 setter 通知 helper(持久化字段不走这条路径)</summary>
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
     [JsonPropertyName("name")]
@@ -183,7 +203,13 @@ public class Environment
     /// 30s TTL 内不再重复 probe。
     /// </summary>
     [JsonIgnore]
-    public bool FooocusAllDefaultModelsDownloaded { get; set; }
+    private bool _fooocusAllDefaultModelsDownloaded;
+    [JsonIgnore]
+    public bool FooocusAllDefaultModelsDownloaded
+    {
+        get => _fooocusAllDefaultModelsDownloaded;
+        set => SetField(ref _fooocusAllDefaultModelsDownloaded, value);
+    }
 
     /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
@@ -236,7 +262,13 @@ public class Environment
     /// running 状态(FooocusStop)不受 ready gate 影响(用户随时想停)。
     /// </summary>
     [JsonIgnore]
-    public bool StartStopButtonEnabled { get; set; } = true;
+    private bool _startStopButtonEnabled = true;
+    [JsonIgnore]
+    public bool StartStopButtonEnabled
+    {
+        get => _startStopButtonEnabled;
+        set => SetField(ref _startStopButtonEnabled, value);
+    }
 
     /// <summary>
     /// v1.0.0.x (2026-09-01) T25:启停按钮 ToolTip 文本 — 不 ready 时列出缺哪个
@@ -244,7 +276,13 @@ public class Environment
     /// 用户鼠标悬停能看到原因(避免点不动按钮不知道为啥)。
     /// </summary>
     [JsonIgnore]
-    public string StartStopButtonTooltip { get; set; } = "";
+    private string _startStopButtonTooltip = "";
+    [JsonIgnore]
+    public string StartStopButtonTooltip
+    {
+        get => _startStopButtonTooltip;
+        set => SetField(ref _startStopButtonTooltip, value);
+    }
 
     /// <summary>
     /// v1.0.0.x (2026-09-01) T25:Fooocus kind 启停 ready gate —
