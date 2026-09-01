@@ -170,7 +170,28 @@ public sealed class ProcessLauncher : IDisposable
             // v1.0.0.x (2026-08-30):LTX-2 模型检查(缺失抛 ModelsMissingException → UI MessageBox)。
             // 排在 BuildStartCommand 之前 —— 缺模型时不浪费一次 entry-script 存在性检查。
             EnsureLtx2ModelsPresent(env);
+
+            // v1.0.0.x (2026-09-01) T27 + T28:Fooocus launch pre-step ——
+            // T27:patch ui_gradio_extensions.py 修 gradio 3.41.2 + starlette 1.6.0
+            //     signature mismatch(避免 HTTP 请求全炸 TypeError unhashable dict);
+            // T28:补下 fooocus_expansion HF 元数据(6 个文件,extras/expansion.py
+            //     AutoTokenizer.from_pretrained 需要)。
+            // 两步都是 best-effort:失败仅 log,launch 继续 — 用户可手动跑 T22 按钮重下。
+            // Settings 提前到这(load 一次,Forge / OpenVoice / Fooocus expansion 共享)。
             var settings = new SettingsRepository(new LocalDataPaths(_projectRoot)).Load();
+            if (string.Equals(env.TemplateKind, "Fooocus", StringComparison.Ordinal))
+            {
+                FooocusCompatPatcher.PatchIfNeeded(env, logProgress);
+                try
+                {
+                    _ = await FooocusDefaultModelsInstaller.EnsureExpansionMetadataAsync(
+                        env, settings, logProgress, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    logProgress?.Report($"[fooocus-expansion-meta] pre-step 异常(继续 launch):{ex.Message}");
+                }
+            }
             var (pythonExe, (entryFile, entryArgs)) = BuildStartCommand(env, settings, _projectRoot);
 
             var port = env.Port

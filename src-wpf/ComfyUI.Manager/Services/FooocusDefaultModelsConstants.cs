@@ -66,3 +66,45 @@ public static class FooocusDefaultModelsConstants
 /// 源 URL,<see cref="SubDir"/> 是 env.RootPath 下的相对目录。
 /// </summary>
 public record FooocusModelEntry(string FileName, string Url, string SubDir);
+
+/// <summary>
+/// v1.0.0.x (2026-09-01) T28:Fooocus <c>fooocus_expansion</c> 模型元数据文件清单
+/// —— T22 只下了 <c>pytorch_model.bin</c>,但 <c>extras/expansion.py</c> line 39
+/// <c>AutoTokenizer.from_pretrained(path_fooocus_expansion)</c> 需要 HF repo 的
+/// <c>config.json</c> / <c>tokenizer_config.json</c> / <c>special_tokens_map.json</c>
+/// / <c>vocab.json</c> / <c>merges.txt</c>,line 41 还要 <c>positive.txt</c> 词表
+/// (Fooocus 上游独有 GPT-2 prompt expansion 词表)。
+///
+/// <para>HF repo:<c>https://huggingface.co/lllyasviel/fooocus_expansion</c></para>
+///
+/// <para>本常量是**纯文件名列表**(基 URL 由 <see cref="ExpansionBaseUrl"/> 提供),
+/// <see cref="FooocusDefaultModelsInstaller.EnsureExpansionMetadataAsync"/>
+/// 在 launch pre-step 跑 — 缺哪个装哪个,失败 best-effort warn。</para>
+/// </summary>
+public static class FooocusExpansionMetadataConstants
+{
+    /// <summary>
+    /// 6 个 fooocus_expansion 元数据文件(纯文件名列表)。本 installer 跳过
+    /// <c>pytorch_model.bin</c>(T22 已下 351MB,不需要重下)。
+    /// </summary>
+    public static readonly IReadOnlyList<string> MetadataFileNames = new[]
+    {
+        "config.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "vocab.json",
+        "merges.txt",
+        "positive.txt",
+    };
+
+    /// <summary>
+    /// HF repo 基 URL(<c>{baseUrl}/{file_name}</c> 拼)。镜像 <see cref="FooocusDefaultModelsConstants.DefaultModels"/>
+    /// 第 4 项的 URL pattern。
+    /// </summary>
+    public const string ExpansionBaseUrl = "https://huggingface.co/lllyasviel/fooocus_expansion/resolve/main";
+
+    /// <summary>
+    /// 相对 env.RootPath 的目标子目录(跟 T22 <see cref="FooocusDefaultModelsConstants.FooocusExpansionRelativeDir"/> 同)。
+    /// </summary>
+    public const string TargetSubDir = FooocusDefaultModelsConstants.FooocusExpansionRelativeDir;
+}

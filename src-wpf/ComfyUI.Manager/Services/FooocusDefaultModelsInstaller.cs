@@ -463,6 +463,180 @@ public class FooocusDefaultModelsInstaller
         }
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T28:Fooocus <c>fooocus_expansion</c> 元数据文件
+    /// pre-step download —— T22 只下了 <c>pytorch_model.bin</c>(351MB),
+    /// 但 <c>extras/expansion.py</c> line 39 <c>AutoTokenizer.from_pretrained()</c>
+    /// + line 62 <c>AutoModelForCausalLM.from_pretrained()</c> 需要 HF repo 的
+    /// 6 个元数据文件(<c>config.json</c> / <c>tokenizer_config.json</c> /
+    /// <c>special_tokens_map.json</c> / <c>vocab.json</c> / <c>merges.txt</c>
+    /// / <c>positive.txt</c>)。否则 pipeline init 抛
+    /// <c>OSError: ... does not appear to have a file named config.json</c> →
+    /// async_worker thread crash → Fooocus 启动后所有 prompt 都没 prompt expansion。
+    ///
+    /// <para><b>调用入口</b>:ProcessLauncher.StartEnvAsync Fooocus kind env 启动前
+    /// pre-step,idempotent — 文件已存在则跳过,best-effort(fail 不阻塞 launch,
+    /// 只 logProgress warn)。镜像 <see cref="CheckAllDefaultModelsDownloadedAsync"/>
+    /// 的 static pattern + Settings 模型镜像 URL 复用
+    /// <see cref="ResolveMirror"/>。</para>
+    /// </summary>
+    /// <returns>true = 全部 6 个文件都在(可能本次下完 或 之前已下);false = 有缺失或失败</returns>
+    public static Task<bool> EnsureExpansionMetadataAsync(
+        Environment env,
+        Settings? settings,
+        IProgress<string>? logProgress = null,
+        CancellationToken ct = default)
+        => EnsureExpansionMetadataAsync(env, settings, http: null, logProgress, ct);
+
+    /// <summary>
+    /// 重载:测试可注入 <paramref name="http"/> 用 stub handler(测试 seam,
+    /// 镜像 <see cref="InstallAsync"/> line 58 的 <c>http ?? new HttpClient { ... }</c> pattern)。
+    /// </summary>
+    public static async Task<bool> EnsureExpansionMetadataAsync(
+        Environment env,
+        Settings? settings,
+        HttpClient? http,
+        IProgress<string>? logProgress = null,
+        CancellationToken ct = default)
+    {
+        if (env is null || string.IsNullOrWhiteSpace(env.RootPath))
+        {
+            logProgress?.Report("[fooocus-expansion-meta] ✗ env / RootPath 为空");
+            return false;
+        }
+
+        var targetDir = Path.Combine(env.RootPath,
+            FooocusExpansionMetadataConstants.TargetSubDir);
+        Directory.CreateDirectory(targetDir);
+
+        var fileNames = FooocusExpansionMetadataConstants.MetadataFileNames;
+
+        // Step 1: 快速探测 — 全部已存在就直接返 true,不浪费 HttpClient
+        var missing = new List<string>();
+        foreach (var name in fileNames)
+        {
+            if (!File.Exists(Path.Combine(targetDir, name))) missing.Add(name);
+        }
+        if (missing.Count == 0)
+        {
+            logProgress?.Report($"[fooocus-expansion-meta] ✓ 全部 {fileNames.Count} 个元数据已就位(跳过 download)");
+            return true;
+        }
+        logProgress?.Report($"[fooocus-expansion-meta] 缺 {missing.Count}/{fileNames.Count} 个元数据:{string.Join(", ", missing)}");
+
+        // Step 2: 并发下缺失的文件(镜像 InstallAsync SemaphoreSlim(4) + .partial pattern)
+        // 测试可注入 stub http;否则 new 内部短 timeout 5min HttpClient
+        var ownsHttp = http is null;
+        var httpToUse = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        var sem = new SemaphoreSlim(ConcurrentDownloads);
+        var successes = 0;
+        var failures = 0;
+        var tasks = new List<Task>();
+
+        try
+        {
+            foreach (var fileName in missing)
+            {
+                tasks.Add(Task.Run(async () =>
+                {
+                    await sem.WaitAsync(ct);
+                    try
+                    {
+                        var ok = await DownloadExpansionMetadataSingleAsync(
+                            httpToUse, targetDir, fileName, settings, logProgress, ct);
+                        if (ok) Interlocked.Increment(ref successes);
+                        else Interlocked.Increment(ref failures);
+                    }
+                    catch
+                    {
+                        Interlocked.Increment(ref failures);
+                    }
+                    finally
+                    {
+                        sem.Release();
+                    }
+                }, ct));
+            }
+
+            try
+            {
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            catch
+            {
+                // best-effort:个别文件失败 → successes 已 count,下面按 successes 判断
+            }
+        }
+        finally
+        {
+            if (ownsHttp) httpToUse.Dispose();
+        }
+
+        var allOk = failures == 0;
+        if (allOk)
+        {
+            logProgress?.Report($"[fooocus-expansion-meta] ✓ 完成({successes}/{missing.Count})");
+        }
+        else
+        {
+            logProgress?.Report($"[fooocus-expansion-meta] ⚠ 部分失败({successes}/{missing.Count}),Fooocus 启动后 prompt expansion 仍可能 fail");
+        }
+        return allOk;
+    }
+
+    /// <summary>
+    /// 单文件下 expansion 元数据 ——
+    /// 镜像 <see cref="DownloadSingleAsync"/> 的 .partial → final atomic rename
+    /// pattern,但 stateless(不需要 instance state,HttpClient 由 caller 注入)。
+    /// </summary>
+    private static async Task<bool> DownloadExpansionMetadataSingleAsync(
+        HttpClient http,
+        string targetDir,
+        string fileName,
+        Settings? settings,
+        IProgress<string>? logProgress,
+        CancellationToken ct)
+    {
+        var finalPath = Path.Combine(targetDir, fileName);
+        var partialPath = finalPath + ".partial";
+
+        var rawUrl = $"{FooocusExpansionMetadataConstants.ExpansionBaseUrl}/{fileName}";
+        var resolvedUrl = ResolveMirror(rawUrl, settings);
+
+        logProgress?.Report($"[fooocus-expansion-meta] ↓ {fileName} <- {resolvedUrl}");
+
+        try
+        {
+            using var resp = await http.GetAsync(resolvedUrl,
+                HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
+
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            await using var fileStream = new FileStream(partialPath,
+                FileMode.Create, FileAccess.Write, FileShare.None);
+
+            var buffer = new byte[DownloadBufferSize];
+            int read;
+            while ((read = await stream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+            {
+                await fileStream.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            }
+
+            fileStream.Flush();
+            fileStream.Close();
+            File.Move(partialPath, finalPath, overwrite: true);
+
+            logProgress?.Report($"[fooocus-expansion-meta] ✓ {fileName}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(partialPath)) File.Delete(partialPath); } catch { }
+            logProgress?.Report($"[fooocus-expansion-meta] ✗ {fileName}:{ex.Message}");
+            return false;
+        }
+    }
+
     private void WriteMarker(Environment env)
     {
         var markerPath = Path.Combine(env.RootPath, FooocusDefaultModelsConstants.MarkerFileName);
