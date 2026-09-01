@@ -588,6 +588,11 @@ public class FooocusDefaultModelsInstaller
     /// 单文件下 expansion 元数据 ——
     /// 镜像 <see cref="DownloadSingleAsync"/> 的 .partial → final atomic rename
     /// pattern,但 stateless(不需要 instance state,HttpClient 由 caller 注入)。
+    ///
+    /// **fallback chain**:1) Settings 配的 HF mirror(如果配置) → 2) HF 官方 ——
+    /// 镜像的 repo 不一定全(尤其小元数据文件可能被 sync 漏),404 时 retry 官方。
+    /// 用户 dev build 实测 hf-mirror.com 缺 <c>fooocus_expansion</c> 6 个元数据
+    /// 文件(只 mirror 了 351MB pytorch_model.bin);fallback 后从 huggingface.co 拿到。
     /// </summary>
     private static async Task<bool> DownloadExpansionMetadataSingleAsync(
         HttpClient http,
@@ -601,13 +606,51 @@ public class FooocusDefaultModelsInstaller
         var partialPath = finalPath + ".partial";
 
         var rawUrl = $"{FooocusExpansionMetadataConstants.ExpansionBaseUrl}/{fileName}";
-        var resolvedUrl = ResolveMirror(rawUrl, settings);
+        var mirrorUrl = ResolveMirror(rawUrl, settings);
+        var useMirror = !string.Equals(mirrorUrl, rawUrl, StringComparison.OrdinalIgnoreCase);
 
-        logProgress?.Report($"[fooocus-expansion-meta] ↓ {fileName} <- {resolvedUrl}");
+        // Attempt 1: mirror(如果配了)
+        if (await TryDownloadAsync(http, mirrorUrl, partialPath, logProgress, ct))
+        {
+            CommitPartialToFinal(partialPath, finalPath);
+            logProgress?.Report($"[fooocus-expansion-meta] ✓ {fileName}");
+            return true;
+        }
 
+        // Attempt 2: HF official(仅在配了 mirror 且 mirror 失败时 fallback;mirror 未配
+        // 就直接 retry raw URL,避免重复)
+        if (useMirror)
+        {
+            logProgress?.Report($"[fooocus-expansion-meta] ⚠ mirror 失败,fallback 到 HF 官方:{rawUrl}");
+            if (await TryDownloadAsync(http, rawUrl, partialPath, logProgress, ct))
+            {
+                CommitPartialToFinal(partialPath, finalPath);
+                logProgress?.Report($"[fooocus-expansion-meta] ✓ {fileName} (官方源)");
+                return true;
+            }
+        }
+
+        // 全失败
+        try { if (File.Exists(partialPath)) File.Delete(partialPath); } catch { }
+        logProgress?.Report($"[fooocus-expansion-meta] ✗ {fileName}:mirror + 官方 都 fail");
+        return false;
+    }
+
+    /// <summary>
+    /// 单 URL 下载尝试 —— 返 true = 成功写到 partialPath;返 false = 失败(404/网络/异常)。
+    /// 失败时不删 partialPath(留给 caller 决定)。
+    /// </summary>
+    private static async Task<bool> TryDownloadAsync(
+        HttpClient http,
+        string url,
+        string partialPath,
+        IProgress<string>? logProgress,
+        CancellationToken ct)
+    {
+        logProgress?.Report($"[fooocus-expansion-meta] ↓ {url}");
         try
         {
-            using var resp = await http.GetAsync(resolvedUrl,
+            using var resp = await http.GetAsync(url,
                 HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             resp.EnsureSuccessStatusCode();
 
@@ -624,17 +667,21 @@ public class FooocusDefaultModelsInstaller
 
             fileStream.Flush();
             fileStream.Close();
-            File.Move(partialPath, finalPath, overwrite: true);
-
-            logProgress?.Report($"[fooocus-expansion-meta] ✓ {fileName}");
             return true;
         }
-        catch (Exception ex)
+        catch
         {
-            try { if (File.Exists(partialPath)) File.Delete(partialPath); } catch { }
-            logProgress?.Report($"[fooocus-expansion-meta] ✗ {fileName}:{ex.Message}");
+            // swallow — caller decides retry vs give up
             return false;
         }
+    }
+
+    /// <summary>
+    /// Atomic .partial → final rename(跟 <see cref="DownloadSingleAsync"/> line 307 一致)。
+    /// </summary>
+    private static void CommitPartialToFinal(string partialPath, string finalPath)
+    {
+        File.Move(partialPath, finalPath, overwrite: true);
     }
 
     private void WriteMarker(Environment env)

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -171,6 +172,64 @@ public sealed class FooocusExpansionMetadataTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureExpansionMetadata_Mirror404_FallsBackToOfficial_Hf()
+    {
+        // T28b:hf-mirror.com 缺 6 个小元数据(dev 实测 0/6 404),需 fallback 到
+        // huggingface.co 官方 —— 用户 http_proxy 10808 直连官方。
+        var env = MakeFooocusEnv();
+        var settings = new Settings
+        {
+            ModelSourceHuggingFaceUseMirror = true,
+            ModelSourceHuggingFaceMirrorUrl = "https://hf-mirror.com",
+        };
+        // route:mirror URL → 404,official URL → OK + stub content
+        _handler.RouteByUrl = url =>
+            url.StartsWith("https://hf-mirror.com/", StringComparison.OrdinalIgnoreCase)
+                ? HttpStatusCode.NotFound
+                : HttpStatusCode.OK;
+
+        var result = await FooocusDefaultModelsInstaller.EnsureExpansionMetadataAsync(
+            env, settings, http: new HttpClient(_handler));
+
+        // DEBUG: print all URLs to diagnose
+        var dbg = string.Join("\n  ", _handler.RequestedUrls);
+        Assert.True(result, $"result false. URLs:\n  {dbg}");
+        var expansionDir = Path.Combine(env.RootPath, "models", "prompt_expansion", "fooocus_expansion");
+        foreach (var name in FooocusExpansionMetadataConstants.MetadataFileNames)
+        {
+            Assert.True(File.Exists(Path.Combine(expansionDir, name)),
+                $"missing file after fallback: {name}. URLs:\n  {dbg}");
+        }
+        // 关键 invariant:6 mirror + 6 official = 12 URL requests
+        Assert.Equal(6, _handler.RequestedUrls.Count(u => u.StartsWith("https://hf-mirror.com/")));
+        Assert.Equal(6, _handler.RequestedUrls.Count(u => u.StartsWith("https://huggingface.co/")));
+    }
+
+    [Fact]
+    public async Task EnsureExpansionMetadata_MirrorAndOfficialBothFail_ReturnsFalse()
+    {
+        // T28b:fallback 链全 fail (mirror 404 + official 网络 fail) → 返 false + log warn
+        var env = MakeFooocusEnv();
+        var settings = new Settings
+        {
+            ModelSourceHuggingFaceUseMirror = true,
+            ModelSourceHuggingFaceMirrorUrl = "https://hf-mirror.com",
+        };
+        var progressMessages = new System.Collections.Generic.List<string>();
+        var progress = new Progress<string>(m => progressMessages.Add(m));
+        // 全 fail
+        _handler.SimulateFailure = true;
+
+        var result = await FooocusDefaultModelsInstaller.EnsureExpansionMetadataAsync(
+            env, settings, http: new HttpClient(_handler), logProgress: progress);
+
+        Assert.False(result);
+        // 6 个文件各 2 次尝试 (mirror 404 + fallback official) = 12 个请求
+        Assert.Equal(12, _handler.RequestCount);
+        Assert.Contains(progressMessages, m => m.Contains("✗"));
+    }
+
+    [Fact]
     public async Task EnsureExpansionMetadata_EmptyRootPath_ReturnsFalse()
     {
         // 防御性:env.RootPath 空 → 不抛,返 false
@@ -201,20 +260,30 @@ public sealed class FooocusExpansionMetadataTests : IDisposable
 
     private sealed class StubHttpHandler : HttpMessageHandler
     {
-        public int RequestCount { get; private set; }
         public bool SimulateFailure { get; set; }
         public Action<string>? OnRequest { get; set; }
+        // T28b:per-URL 状态码路由(测试 mirror 404 + official 200 场景)
+        public Func<string, HttpStatusCode>? RouteByUrl { get; set; }
+        // T28b:用 ConcurrentBag 防 SemaphoreSlim(4) 并发 RequestedUrls.Add race
+        // (原 List<string> 非线程安全,4 个 Task.Run 并发 Add 会丢请求 → count 不准)
+        public System.Collections.Concurrent.ConcurrentBag<string> RequestedUrls { get; } = new();
+
+        private int _requestCount;
+        public int RequestCount => _requestCount;
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            RequestCount++;
-            OnRequest?.Invoke(request.RequestUri?.ToString() ?? "");
+            Interlocked.Increment(ref _requestCount);
+            var url = request.RequestUri?.ToString() ?? "";
+            OnRequest?.Invoke(url);
+            RequestedUrls.Add(url);
             if (SimulateFailure)
             {
                 throw new HttpRequestException("simulated network failure");
             }
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            var statusCode = RouteByUrl?.Invoke(url) ?? HttpStatusCode.OK;
+            var response = new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent("{\"stub\": true}", System.Text.Encoding.UTF8, "application/json"),
             };
