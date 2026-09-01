@@ -231,9 +231,33 @@ public class Environment
 
     /// <summary>
     /// v1.0.0.x #577:启停单按钮 CanExecute — true 表示当前可点(根据 env.Status + busy)。
+    /// v1.0.0.x (2026-09-01) T25:Fooocus env stopped 状态额外要求 3 件套齐
+    /// (BED + Requirements + 默认模型)— FooocusReadyToStart = false 时按钮 enabled=false。
+    /// running 状态(FooocusStop)不受 ready gate 影响(用户随时想停)。
     /// </summary>
     [JsonIgnore]
     public bool StartStopButtonEnabled { get; set; } = true;
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T25:启停按钮 ToolTip 文本 — 不 ready 时列出缺哪个
+    /// ("缺:基础环境 / 依赖 / 默认模型"),其它情况空串。StartStopButtonEnabled 灰按钮时
+    /// 用户鼠标悬停能看到原因(避免点不动按钮不知道为啥)。
+    /// </summary>
+    [JsonIgnore]
+    public string StartStopButtonTooltip { get; set; } = "";
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T25:Fooocus kind 启停 ready gate —
+    /// true = 3 件套都装好(BED + Requirements + 默认模型全装齐),可以启动 env。
+    /// 其它 9 个 non-ComfyUI/Forge kind 永远 true(因为它们的 StartStopButtonEnabled
+    /// 不依赖这个字段;T25 用户决策"只 Fooocus kind 加 ready gate")。
+    /// 单独放 computed bool 而不内联在 StartStopButtonEnabled setter,是为了让 unit test
+    /// 可以直接断 env.FooocusReadyToStart 而不构造 VM。
+    /// </summary>
+    [JsonIgnore]
+    public bool FooocusReadyToStart =>
+        TemplateKind != "Fooocus"
+        || (IsBaseEnvInstalled && IsRequirementsInstalled && FooocusAllDefaultModelsDownloaded);
 
     /// <summary>
     /// v0.6.11+ T1:env-list 行 toggle 按钮用 — true = Requirements 已装(marker 文件存在),

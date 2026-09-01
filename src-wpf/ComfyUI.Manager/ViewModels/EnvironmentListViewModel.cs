@@ -177,12 +177,50 @@ public class EnvironmentListViewModel : ViewModelBase
                 _fooocusAllModelsCheckedAt[env.Id] = DateTime.UtcNow;
                 _fooocusAllModelsResult[env.Id] = result;
                 RaisePropertyChanged(nameof(env.FooocusAllDefaultModelsDownloaded));
+                // v1.0.0.x (2026-09-01) T25:probe 完 FooocusAllDefaultModelsDownloaded
+                // 可能从 false → true,触发 FooocusReadyToStart computed 变化 →
+                // 重算 StartStopButtonEnabled + Tooltip + RaiseCommandsChanged 通知 UI。
+                RecomputeFooocusReadyGatedProperties(env);
             }
+            // 全部 Fooocus env probe 完后统一 RaiseCommandsChanged(启停按钮 CanExecute 重新查)
+            RaiseCommandsChanged();
         }
         catch
         {
             // probe 失败静默(默认 false,按钮 enabled 提示用户重试)
         }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-01) T25:重算 Fooocus env 启停按钮 gating +
+    /// tooltip。Read(单 env)被 RefreshFooocusAllModelsStatusAsync (probe 完调用)
+    /// 和 Load() 末尾(FooocusAllDefaultModelsDownloaded 已是稳定值)共享。
+    /// </summary>
+    private void RecomputeFooocusReadyGatedProperties(Environment env)
+    {
+        if (env is null || env.TemplateKind != "Fooocus") return;
+
+        // StartStopButtonEnabled — running 不变,stopped 多一项 FooocusReadyToStart gate
+        var wasEnabled = env.StartStopButtonEnabled;
+        env.StartStopButtonEnabled = !IsEnvBusy(env) && env.Status is "stopped" or "running"
+            && (env.Status != "stopped" || env.FooocusReadyToStart);
+        if (wasEnabled != env.StartStopButtonEnabled)
+            RaisePropertyChanged(nameof(env.StartStopButtonEnabled));
+
+        // Tooltip — 只 Fooocus + !ready + stopped 时有内容
+        if (env.FooocusReadyToStart || env.Status != "stopped")
+        {
+            env.StartStopButtonTooltip = "";
+        }
+        else
+        {
+            var missing = new List<string>();
+            if (!env.IsBaseEnvInstalled) missing.Add("基础环境");
+            if (!env.IsRequirementsInstalled) missing.Add("依赖");
+            if (!env.FooocusAllDefaultModelsDownloaded) missing.Add("默认模型");
+            env.StartStopButtonTooltip = missing.Count > 0 ? $"缺:{string.Join(" / ", missing)}" : "";
+        }
+        RaisePropertyChanged(nameof(env.StartStopButtonTooltip));
     }
 
     /// <summary>
@@ -996,7 +1034,19 @@ public class EnvironmentListViewModel : ViewModelBase
             env.IsLocalNodesInstalled = localInstalled;
             env.LocalNodesButtonText = localInstalled ? "重装本地常用" : "安装本地常用";
             env.StartStopButtonText = env.Status == "running" ? "停止" : "启动";
-            env.StartStopButtonEnabled = !IsEnvBusy(env) && env.Status is "stopped" or "running";
+            // v1.0.0.x (2026-09-01) T25:Fooocus kind 启停按钮额外需要
+            // FooocusReadyToStart (3 件套齐)。其它 9 个 non-ComfyUI/Forge kind 走原逻辑。
+            // 委托给 RecomputeFooocusReadyGatedProperties 共享同一条计算路径
+            // (RefreshFooocusAllModelsStatusAsync probe 完后也调它)。
+            if (env.TemplateKind == "Fooocus")
+            {
+                RecomputeFooocusReadyGatedProperties(env);
+            }
+            else
+            {
+                env.StartStopButtonEnabled = !IsEnvBusy(env) && env.Status is "stopped" or "running";
+                env.StartStopButtonTooltip = "";
+            }
 
             // v1.0.0.x:节点启动状态计数 — env 行 ! 按钮 badge 用。env 启动期 5s 后
             // ProcessLauncher NodeStartupErrorDetector 会写 load_error,用户重开 dialog

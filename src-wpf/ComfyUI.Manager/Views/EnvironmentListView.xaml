@@ -663,6 +663,7 @@
                                                 Command="{Binding DataContext.StartStopCommand,
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
+                                                ToolTip="{Binding StartStopButtonTooltip}"
                                                 Margin="2" MinWidth="0" />
                                         <!-- v1.0.0.x (2026-09-01): 「基础环境」按钮 ——
                                              显示条件 = Environment.BaseEnvButtonVisible
