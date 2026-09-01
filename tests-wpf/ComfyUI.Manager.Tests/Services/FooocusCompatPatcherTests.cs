@@ -87,27 +87,39 @@ public sealed class FooocusCompatPatcherTests : IDisposable
     }
 
     [Fact]
-    public void NeedsPatch_AlreadyPatchedMarkerExists_ReturnsFalse()
+    public void NeedsPatch_FreshEnvWithoutMarker_ReturnsTrue()
     {
+        // T27b:NeedsPatch 不再依赖 marker file 做 fast path — 改用 source content 判定
+        // (让老 T27 patch 的 env 能升级到 T27b)。本测试验 fresh env 含 unpatched signature → True。
         var env = MakeFooocusEnv();
-        // 写 marker → 已 patched,不需要再 patch
-        File.WriteAllText(
-            Path.Combine(env.RootPath, FooocusCompatPatcher.MarkerFileName),
-            DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+
+        Assert.True(FooocusCompatPatcher.NeedsPatch(env));
+    }
+
+    [Fact]
+    public void NeedsPatch_SourceContainsLatestT27bMarker_ReturnsFalse()
+    {
+        // T27b:source 含最新 marker (`... T27b hotfix: request=None):`) → 已 patch,跳过
+        var env = MakeFooocusEnv();
+        var sourcePath = Path.Combine(env.RootPath, "modules", "ui_gradio_extensions.py");
+        var original = File.ReadAllText(sourcePath);
+        File.WriteAllText(sourcePath,
+            original + "\n    # WPF T27 compat patch (T27b hotfix: request=None): dummy\n");
 
         Assert.False(FooocusCompatPatcher.NeedsPatch(env));
     }
 
     [Fact]
-    public void NeedsPatch_SourceContainsPatchedMarkerLine_ReturnsFalse()
+    public void NeedsPatch_SourceContainsOldT27Marker_ReturnsTrue_ForUpgrade()
     {
-        // 边界:marker 文件丢了但 source 已被 patch(罕见 race / 用户手改)→ 不重 patch
+        // T27b:dev 已跑过 T27 老 patch,但没 T27b hotfix(`request=None` 修 UnboundLocalError)。
+        // 这种情况 NeedsPatch 必须返 True(否则 dev 启动 Fooocus 仍会 UnboundLocalError)。
         var env = MakeFooocusEnv();
         var sourcePath = Path.Combine(env.RootPath, "modules", "ui_gradio_extensions.py");
         var original = File.ReadAllText(sourcePath);
         File.WriteAllText(sourcePath, original + "\n    # WPF T27 compat patch: dummy\n");
 
-        Assert.False(FooocusCompatPatcher.NeedsPatch(env));
+        Assert.True(FooocusCompatPatcher.NeedsPatch(env));
     }
 
     [Fact]
@@ -119,15 +131,69 @@ public sealed class FooocusCompatPatcherTests : IDisposable
         FooocusCompatPatcher.Patch(env);
 
         var patched = File.ReadAllText(sourcePath);
-        Assert.Contains("WPF T27 compat patch:", patched);
+        Assert.Contains("WPF T27 compat patch (T27b hotfix: request=None):", patched);
         Assert.Contains("def template_response(*args, **kwargs):", patched);
         Assert.Contains("if args and isinstance(args[0], str):", patched);
+        // T27b hotfix:函数顶部必须赋 request = None,否则 gradio 3.x (name, context)
+        // 分支后续 `request or context["request"]` 会抛 UnboundLocalError
+        Assert.Contains("request = None", patched);
         // unpatched 的 GradioTemplateResponseOriginal(*args, **kwargs) 不应再出现
         Assert.DoesNotContain("res = GradioTemplateResponseOriginal(*args, **kwargs)",
             patched);
 
         var markerPath = Path.Combine(env.RootPath, FooocusCompatPatcher.MarkerFileName);
         Assert.True(File.Exists(markerPath));
+    }
+
+    [Fact]
+    public void Patch_UpgradeFromOldT27Patch_ReplacesBlockWithT27bHotfix()
+    {
+        // T27b hotfix 关键场景:dev 已经跑过老 T27 patch(有老 marker,缺 T27b hotfix),
+        // NeedsPatch 必须识别为需要升级 → Patch 替换整个老 block 为 T27b 新 block。
+        // 否则 dev 启动 Fooocus 会 UnboundLocalError。
+        var env = MakeFooocusEnv();
+        var sourcePath = Path.Combine(env.RootPath, "modules", "ui_gradio_extensions.py");
+
+        // Step 1:模拟 dev 跑过老 T27 patch
+        var original = File.ReadAllText(sourcePath);
+        var oldT27Block =
+            "    # WPF T27 compat patch: old version missing request=None\n"
+            + "    def template_response(*args, **kwargs):\n"
+            + "        if args and isinstance(args[0], str):\n"
+            + "            name = args[0]\n"
+            + "            context = args[1] if len(args) > 1 else kwargs.get(\"context\") or {}\n"
+            + "        else:\n"
+            + "            request = args[0] if args else kwargs.get(\"request\")\n"
+            + "            name = args[1] if len(args) > 1 else kwargs.get(\"name\", \"\")\n"
+            + "            context = args[2] if len(args) > 2 else kwargs.get(\"context\") or {}\n"
+            + "        if isinstance(context, dict) and \"request\" in context:\n"
+            + "            request = request or context[\"request\"]\n"
+            + "        res = GradioTemplateResponseOriginal(request=request, name=name, context=context)\n"
+            + "        res.body = res.body.replace(b'</head>', f'{js}</head>'.encode(\"utf8\"))\n"
+            + "        res.body = res.body.replace(b'</body>', f'{css}</body>'.encode(\"utf8\"))\n"
+            + "        res.init_headers()\n"
+            + "        return res\n"
+            + "\n"
+            + "                gr.routes.templates.TemplateResponse = template_response\n";
+        // 用 old T27 block 替换原 unpatched signature 那段(保留原文件前后)
+        var unpatchedSignature = "                def template_response(*args, **kwargs):";
+        var replaced = original.Replace(unpatchedSignature, oldT27Block.TrimStart());
+        File.WriteAllText(sourcePath, replaced);
+
+        // Step 2:验证 NeedsPatch 检测到需要升级
+        Assert.True(FooocusCompatPatcher.NeedsPatch(env));
+
+        // Step 3:跑 Patch 升级
+        FooocusCompatPatcher.Patch(env);
+
+        var patched = File.ReadAllText(sourcePath);
+        // 老 T27 marker 没了
+        Assert.DoesNotContain("# WPF T27 compat patch: old version missing request=None",
+            patched);
+        // 新 T27b marker 出现
+        Assert.Contains("# WPF T27 compat patch (T27b hotfix: request=None):", patched);
+        // T27b hotfix `request = None` 出现
+        Assert.Contains("request = None", patched);
     }
 
     [Fact]

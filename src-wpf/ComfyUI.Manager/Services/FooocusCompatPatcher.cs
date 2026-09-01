@@ -48,19 +48,36 @@ public static class FooocusCompatPatcher
     private const string UnpatchedMarkerLine = "def template_response(*args, **kwargs):";
 
     /// <summary>
-    /// 我们 patch 后注入的 normalize 注释 —— grep 检测标志位。
+    /// 老 T27 patch 注入的 marker(没有 T27b hotfix)。用于检测已 patch 的老版本
+    /// Fooocus env(dev 跑过 T27 但还没升级到 T27b),<see cref="Patch"/> 会
+    /// re-patch 升级到 T27b。
     /// </summary>
-    private const string PatchedMarkerLine = "# WPF T27 compat patch:";
+    private const string OldPatchedMarkerLine = "# WPF T27 compat patch:";
+
+    /// <summary>
+    /// 我们 patch 后注入的 normalize 注释 —— grep 检测标志位。
+    /// **T27b hotfix**:marker 文本必须与 <see cref="OldPatchedMarkerLine"/> 不同,
+    /// 否则 <see cref="NeedsPatch"/> 无法区分老 T27 patch 和新版,会漏掉 hotfix 升级。
+    /// </summary>
+    private const string PatchedMarkerLine = "# WPF T27 compat patch (T27b hotfix: request=None):";
 
     /// <summary>
     /// v1.0.0.x (2026-09-01) T27:Patch 过的 <c>template_response</c> 实现 ——
     /// 显式 normalize 老 gradio (name, context) + 新 starlette (request, name, context)
     /// 两个 signature,再调原版 <c>GradioTemplateResponseOriginal</c>。
     /// 保留 Fooocus 原版的 css/js 注入逻辑。Indentation = 4(嵌套在 reload_javascript 内)。
+    ///
+    /// **T27b hotfix**(2026-09-01):函数顶部加 <c>request = None</c> 初始化。
+    /// 原因:gradio 3.x 调 <c>template_response(name, context)</c> 时走第一个 if 分支,
+    /// 该分支只赋值 <c>name</c> + <c>context</c> 不赋 <c>request</c>;后续
+    /// <c>request = request or context["request"]</c> 时 Python 抛 <c>UnboundLocalError:
+    /// local variable 'request' referenced before assignment</c>。
+    /// 加 <c>request = None</c> 让 <c>or</c> 短路回退到 <c>context["request"]</c>。
     /// </summary>
     private const string PatchedTemplateResponseBlock =
-        "    # WPF T27 compat patch: normalize gradio 3.x (name, context) + starlette 1.x (request, name, context) signatures\n"
+        "    # WPF T27 compat patch (T27b hotfix: request=None): normalize gradio 3.x (name, context) + starlette 1.x (request, name, context) signatures\n"
         + "    def template_response(*args, **kwargs):\n"
+        + "        request = None  # T27b hotfix: gradio 3.x (name, context) 分支不赋 request,默认 None 防 UnboundLocalError\n"
         + "        if args and isinstance(args[0], str):\n"
         + "            name = args[0]\n"
         + "            context = args[1] if len(args) > 1 else kwargs.get(\"context\") or {}\n"
@@ -77,18 +94,25 @@ public static class FooocusCompatPatcher
         + "        return res\n";
 
     /// <summary>
-    /// 检测 Fooocus env 是否需要 T27 patch(<see cref="MarkerFileName"/> 不存在 +
-    /// source file 含 unpatched signature)。返回 true 表示需要 patch。
+    /// 检测 Fooocus env 是否需要 patch(返回 true = 需要)。
+    /// **T27b 升级语义**:source 含最新 <see cref="PatchedMarkerLine"/> → 跳过;
+    /// 否则看是否含老 <see cref="OldPatchedMarkerLine"/>(老 T27 patch)→
+    /// 也需要 patch(re-patch 升级);都没有 → 看原版 <see cref="UnpatchedMarkerLine"/>
+    /// 还在不在(决定是 fresh Fooocus 还是上游已修)。
+    ///
+    /// 不再依赖 <see cref="MarkerFileName"/> 做 fast path——source content 是 source of truth,
+    /// marker file 仅作 diagnostic/debug 用。这样老 T27 patch 的 env 升级到 T27b 时
+    /// 不会被 marker 漏掉。
     /// </summary>
     public static bool NeedsPatch(Environment env)
     {
         if (env is null || string.IsNullOrWhiteSpace(env.RootPath)) return false;
-        var markerPath = Path.Combine(env.RootPath, MarkerFileName);
-        if (File.Exists(markerPath)) return false;
         var sourcePath = Path.Combine(env.RootPath, UiGradioExtensionsRelativePath);
         if (!File.Exists(sourcePath)) return false;
         var source = File.ReadAllText(sourcePath);
-        return source.Contains(UnpatchedMarkerLine) && !source.Contains(PatchedMarkerLine);
+        if (source.Contains(PatchedMarkerLine)) return false;  // 已 patch 到最新版
+        if (source.Contains(OldPatchedMarkerLine)) return true;  // 老 T27 patch,需升级
+        return source.Contains(UnpatchedMarkerLine);             // 原版 broken,需 patch
     }
 
     /// <summary>
@@ -116,15 +140,15 @@ public static class FooocusCompatPatcher
         }
 
         var source = File.ReadAllText(sourcePath);
-        if (!source.Contains(UnpatchedMarkerLine))
+        if (source.Contains(PatchedMarkerLine))
         {
-            logProgress?.Report("[fooocus-compat] ✓ source 已不含 broken signature(可能上游已修或 Fooocus 升级),跳过 patch");
+            logProgress?.Report("[fooocus-compat] ✓ source 已含最新 T27b patch marker,跳过(写 marker 保险)");
             WriteMarker(env);
             return;
         }
-        if (source.Contains(PatchedMarkerLine))
+        if (!source.Contains(UnpatchedMarkerLine) && !source.Contains(OldPatchedMarkerLine))
         {
-            logProgress?.Report("[fooocus-compat] ✓ 已 patch 过(marker 丢了但 source 含 patched marker),补写 marker");
+            logProgress?.Report("[fooocus-compat] ✓ source 已不含 broken signature(可能上游已修或 Fooocus 升级),跳过 patch");
             WriteMarker(env);
             return;
         }
@@ -141,37 +165,41 @@ public static class FooocusCompatPatcher
             logProgress?.Report($"[fooocus-compat] ⚠ 备份失败(继续 patch):{ex.Message}");
         }
 
-        // 替换整个 unpatched block(从 "    def template_response" 行到下一个
-        // "    gr.routes.templates.TemplateResponse = template_response" 行,即 reload_javascript
-        // 函数内 template_response 内嵌函数结束)。
-        // 注意:用 System.Environment.NewLine(本文件 alias 了 Environment = Models.Environment)
-        var blockStartMarker = "    " + UnpatchedMarkerLine;
+        // 定位 block 起点:优先老 T27 patch(升级场景),fallback 原版 broken signature
+        // (fresh Fooocus)。block 终点统一是 `gr.routes.templates.TemplateResponse = template_response`
+        // 行(无论起点是哪种,block 内部结构一致,直接替换就行)。
         var blockEndMarker = "    gr.routes.templates.TemplateResponse = template_response";
-
-        var blockStart = source.IndexOf(blockStartMarker, StringComparison.Ordinal);
-        if (blockStart < 0)
+        int blockStart;
+        if (source.Contains(OldPatchedMarkerLine))
         {
-            throw new InvalidOperationException(
-                $"无法定位 unpatched signature line in {sourcePath}");
+            blockStart = source.IndexOf(OldPatchedMarkerLine, StringComparison.Ordinal);
+            logProgress?.Report("[fooocus-compat] 检测到老 T27 patch,升级到 T27b hotfix(request=None)");
         }
-        var blockEndSearch = source.IndexOf(blockEndMarker, blockStart, StringComparison.Ordinal);
-        if (blockEndSearch < 0)
+        else
+        {
+            var unpatchedLine = "    " + UnpatchedMarkerLine;
+            blockStart = source.IndexOf(unpatchedLine, StringComparison.Ordinal);
+            if (blockStart < 0)
+            {
+                throw new InvalidOperationException(
+                    $"无法定位 unpatched signature line in {sourcePath}");
+            }
+        }
+
+        var blockEnd = source.IndexOf(blockEndMarker, blockStart, StringComparison.Ordinal);
+        if (blockEnd < 0)
         {
             throw new InvalidOperationException(
                 $"无法定位 block end in {sourcePath}");
         }
-        // 往前回溯到块之前最近的 \n(去掉 blockEndMarker 前的 trailing newline)
-        var beforeBlockEnd = blockEndSearch;
-        // blockEndMarker 之前可能有空行(整个 inner def 后的 blank line),保留那个 blank line 作为外层 reload_javascript 函数体内分隔
-        var insertPoint = beforeBlockEnd;
 
         var patched = source.Substring(0, blockStart)
             + PatchedTemplateResponseBlock.Replace("\n", System.Environment.NewLine)
-            + source.Substring(insertPoint);
+            + source.Substring(blockEnd);
 
         File.WriteAllText(sourcePath, patched);
         WriteMarker(env);
-        logProgress?.Report("[fooocus-compat] ✓ patch 完成(template_response normalize)");
+        logProgress?.Report("[fooocus-compat] ✓ patch 完成(template_response normalize + T27b request=None hotfix)");
     }
 
     /// <summary>
