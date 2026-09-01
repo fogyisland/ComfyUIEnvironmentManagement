@@ -59,16 +59,16 @@ public record PipResult(int ExitCode, bool WasCancelled);
 /// EUC-KR(不是 UTF-8)。某些 Python 包(sdist 形式)的 <c>setup.py</c> 读
 /// UTF-8 编码的源文件时,会用 <c>open(path).read()</c>(无 encoding 参数),
 /// 触发 <c>UnicodeDecodeError: 'gbk' codec can't decode byte 0xa4</c> ———
-/// 代表:Fooocus <c>requirements_versions.txt</c> line 23
+/// 代表:line 23
 /// <c>groundingdino-py==0.4.0</c> 在中文 Windows 上 build fail。
 ///
 /// **fix**:`PYTHONUTF8=1` 让 Python 子进程无视系统 locale,统一 UTF-8 解码
 /// 文件(Python 3.7+ PEP 540 支持,Windows 注册表 / 组策略可能覆盖但
 /// 90% 情况下有效)。其它 pip 调用不依赖此 var,无害。
 ///
-/// 调用方:6 个 RunPipAsync 实现(RequirementsFileInstaller /
+/// 调用方:5 个 RunPipAsync 实现(RequirementsFileInstaller /
 /// RequirementsUninstaller / BaseEnvInstaller / ForgeBaseEnvInstaller /
-/// FooocusBaseEnvInstaller / ForgePreFlightInstaller)在
+/// ForgePreFlightInstaller)在
 /// <see cref="ProcessStartInfo"/> 构造后立即调 <see cref="ApplyUtf8Mode"/>。
 /// </summary>
 public static class PipProcessHelpers

@@ -262,7 +262,6 @@ public class CreateEnvDialogViewModel : ViewModelBase
             ModelsSubdir = template.ModelsSubdir,
             ExtraJunctionTargets = new(template.ExtraJunctionTargets),
             UserExtraArgs = template.UserExtraArgs,
-            FooocusEntryMode = template.FooocusEntryMode,
         };
     }
 

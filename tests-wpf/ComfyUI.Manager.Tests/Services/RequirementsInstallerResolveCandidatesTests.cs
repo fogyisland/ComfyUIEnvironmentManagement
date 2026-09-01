@@ -10,7 +10,7 @@ namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
 /// v1.0.0.x (2026-09-01): 验证 <see cref="RequirementsInstaller.ResolveRequirementsCandidates"/>
-/// 在 TemplateConfigSnapshot.RequirementsFile 配置 Fooocus / HunyuanVideo / CogVideoX
+/// 在 TemplateConfigSnapshot.RequirementsFile 配置 HunyuanVideo / CogVideoX
 /// 后返回正确 candidate path。
 ///
 /// ResolveRequirementsCandidates 是 internal static,同 assembly 可访问。
@@ -75,22 +75,11 @@ public sealed class RequirementsInstallerResolveCandidatesTests : IDisposable
     }
 
     [Fact]
-    public void Fooocus_TemplateConfigRequirementsFile_AddsFourthCandidate()
-    {
-        // v1.0.0.x (2026-09-01): Fooocus factory RequirementsFile = "requirements_versions.txt"
-        // → ResolveRequirementsCandidates 返 3 个 candidates(2 fallback paths +
-        // 1 RequirementsFile 路径;ComfyuiSource 留空)
-        var env = SeedEnv("Fooocus", "requirements_versions.txt");
-
-        var candidates = InvokeResolveCandidates(env);
-
-        Assert.Equal(3, candidates.Count);
-        Assert.Contains(Path.Combine(env.RootPath, "requirements_versions.txt"), candidates);
-    }
-
-    [Fact]
     public void HunyuanVideo_RequirementsFile_Txt_AddsFourthCandidate()
     {
+        // v1.0.0.x (2026-09-01): HunyuanVideo factory RequirementsFile = "requirements.txt"
+        // → ResolveRequirementsCandidates 返 3 个 candidates(2 fallback paths +
+        // 1 RequirementsFile 路径;ComfyuiSource 留空)
         var env = SeedEnv("HunyuanVideo", "requirements.txt");
 
         var candidates = InvokeResolveCandidates(env);
@@ -121,7 +110,7 @@ public sealed class RequirementsInstallerResolveCandidatesTests : IDisposable
 
         Assert.Equal(2, candidates.Count);  // 只 2 fallback paths(无 ComfyuiSource,无 RequirementsFile)
         // 2 个 candidates 都是 <RootPath>/ComfyUI/requirements.txt + <RootPath>/requirements.txt
-        // 这两条 fallback path 本来就跟 TemplateKind 无关 — LTXVideo / Fooocus 等都会
+        // 这两条 fallback path 本来就跟 TemplateKind 无关 — LTXVideo / OpenVoice 等都会
         // 出现。DoesNotContain 检查没有意义,只验 count 就够。
     }
 
@@ -133,10 +122,10 @@ public sealed class RequirementsInstallerResolveCandidatesTests : IDisposable
         // → 总共 2 个 candidates(只 2 fallback paths,没 ComfyuiSource,没 RequirementsFile)。
         var env = new Environment
         {
-            Id = "Fooocus",
-            Name = "Fooocus",
-            RootPath = Path.Combine(_envRoot, "Fooocus"),
-            TemplateKind = "Fooocus",
+            Id = "CogVideoX",
+            Name = "CogVideoX",
+            RootPath = Path.Combine(_envRoot, "CogVideoX"),
+            TemplateKind = "CogVideoX",
             TemplateConfigSnapshot = null,
         };
 

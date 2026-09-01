@@ -23,7 +23,6 @@ public class TemplateConfigTests
             ModelsSubdir = "models",
             ExtraJunctionTargets = new System.Collections.Generic.List<string> { "extra1", "extra2" },
             UserExtraArgs = "--preview-method auto",
-            FooocusEntryMode = FooocusEntryMode.Stable,   // v1.0.0.x 新字段,确保 round-trip
             Verified = true,                              // v1.0.0.x (2026-08-31) 新字段,确保 round-trip
             RequirementsFile = "requirements_versions.txt", // v1.0.0.x (2026-09-01) 新字段,确保 round-trip
         };
@@ -43,7 +42,6 @@ public class TemplateConfigTests
         Assert.Equal("models", restored.ModelsSubdir);
         Assert.Equal(2, restored.ExtraJunctionTargets.Count);
         Assert.Equal("--preview-method auto", restored.UserExtraArgs);
-        Assert.Equal(FooocusEntryMode.Stable, restored!.FooocusEntryMode);
         Assert.True(restored.Verified);
         Assert.Equal("requirements_versions.txt", restored!.RequirementsFile);
     }
@@ -93,9 +91,8 @@ public class TemplateConfigTests
     public void BackwardCompat_OldJson_NoRequirementsFile_DefaultsToEmpty()
     {
         // v1.0.0.x (2026-09-01): 老 settings.inf 没 "requirements_file" 字段 ——
-        // JsonSerializer 默认 "" → 没 button → 零迁移成本(跟 Verified /
-        // FooocusEntryMode 同 pattern)。
-        const string oldJson = """{"name":"ComfyUI","kind":"ComfyUI","local_source_dir":"ComfyUI","entry_script":"main.py","entry_args":"--port {port}","models_subdir":"models","extra_junction_targets":[],"user_extra_args":"","fooocus_entry_mode":"AutoUpdate","verified":false}""";
+        // JsonSerializer 默认 "" → 没 button → 零迁移成本(跟 Verified 同 pattern)。
+        const string oldJson = """{"name":"ComfyUI","kind":"ComfyUI","local_source_dir":"ComfyUI","entry_script":"main.py","entry_args":"--port {port}","models_subdir":"models","extra_junction_targets":[],"user_extra_args":"","verified":false}""";
         var c = JsonSerializer.Deserialize<TemplateConfig>(oldJson, JsonOptions.Default)!;
         Assert.Equal("", c.RequirementsFile);
     }
@@ -117,7 +114,9 @@ public class TemplateConfigTests
         // v1.0.0.x (2026-08-31): 老 settings.inf 没 "verified" 字段 ——
         // JsonSerializer 默认 false → 没绿色 badge,跟项目方 only 决策一致
         // (新模板不自动升级到 verified=true,等项目方手动 ship 时再设)。
-        const string oldJson = """{"name":"ComfyUI","kind":"ComfyUI","local_source_dir":"ComfyUI","entry_script":"main.py","entry_args":"--port {port}","models_subdir":"models","extra_junction_targets":[],"user_extra_args":"","fooocus_entry_mode":"AutoUpdate"}""";
+        // 还测了 "source_kind" 是 T29 之前老 JSON 里没有的字段(T29+ default Local=0,
+        // 缺字段 → default → 零迁移成本)。
+        const string oldJson = """{"name":"ComfyUI","kind":"ComfyUI","local_source_dir":"ComfyUI","entry_script":"main.py","entry_args":"--port {port}","models_subdir":"models","extra_junction_targets":[],"user_extra_args":""}""";
         var c = JsonSerializer.Deserialize<TemplateConfig>(oldJson, JsonOptions.Default)!;
         Assert.False(c.Verified);
     }
@@ -277,20 +276,14 @@ public class TemplateConfigTests
     }
 
     [Fact]
-    public void CanDelete_BuiltInFooocus_False()
-    {
-        var cfg = new TemplateConfig { Kind = "Fooocus", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
-        Assert.False(cfg.CanDelete);
-    }
-
-    // --- v1.0.0.x (2026-08-29): HivisionIDPhotos built-in (G13 delete 保护) ---
-
-    [Fact]
     public void CanDelete_BuiltInHivisionIDPhotos_False()
     {
         var cfg = new TemplateConfig { Kind = "HivisionIDPhotos", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
         Assert.False(cfg.CanDelete);
     }
+
+    // --- v1.0.0.x (2026-08-29): HivisionIDPhotos built-in (G13 delete 保护) ---
+    // (Fooocus CanDelete_BuiltInFooocus_False 已删 — T29 2026-09-01)
 
     // --- v1.0.0.x: Forge 加 built-in repo URL,可走 UpdateAsync ---
 

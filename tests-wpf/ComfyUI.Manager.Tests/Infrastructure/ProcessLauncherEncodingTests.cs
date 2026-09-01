@@ -40,7 +40,7 @@ public sealed class ProcessLauncherEncodingTests
         // 本方法对所有 kind 返同一 dict(不 gated)。
         var allKinds = new[]
         {
-            "ComfyUI", "Forge", "Fooocus", "OpenVoice", "Whisper",
+            "ComfyUI", "Forge", "OpenVoice", "Whisper",
             "CoquiTTS", "Bark", "HunyuanVideo", "LTXVideo",
             "CogVideoX", "HivisionIDPhotos", "MyCustomKind"
         };

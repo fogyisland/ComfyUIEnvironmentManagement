@@ -12,9 +12,9 @@ namespace ComfyUI.Manager.Tests.ViewModels;
 /// <c>EntryArgs=""</c>(CLI 必填 audio file + --model 在 UserExtraArgs 拼)、
 /// <c>ModelsSubdir=""</c>(Whisper 自己管 ~/.cache/whisper)。
 ///
-/// Whisper 不需要 Fix wave 1 那种新加 field propagation(对比 Fooocus 的 FooocusEntryMode
-/// 是新增字段)— BuildTemplateConfig 已 propagate EntryScript / EntryArgs / UserExtraArgs /
-/// ModelsSubdir 等既有字段,Whisper factory 改 EntryArgs 不会让 BuildTemplateConfig 丢。
+/// Whisper 不需要 Fix wave 1 那种新加 field propagation(BuildTemplateConfig 已 propagate
+/// EntryScript / EntryArgs / UserExtraArgs / ModelsSubdir 等既有字段,Whisper factory 改
+/// EntryArgs 不会让 BuildTemplateConfig 丢)。
 ///
 /// 主要防 regression:Settings.Templates["Whisper"] 的 factory defaults 不被未来手抖改,
 /// 防止 TemplateConfigDefaultsOpenVoiceTests 类似 pattern lock 住 field propagation。
@@ -23,9 +23,9 @@ public sealed class CreateEnvDialogViewModelWhisperTests
 {
     private static Settings BuildSettingsWithWhisper(TemplateConfig whisperTemplate)
     {
-        // anchor + .git 跟 FooocusPropagationTests 同 pattern — BuildTemplateConfig 不
-        // 走 TemplateOptions,但 ctor 里的 ApplyTemplate() 会读 LocalSourceDir 安全起见
-        // 仍 seed 锚点。
+        // anchor + .git 提供 ApplyTemplate() 读 LocalSourceDir 的安全锚点。
+        // BuildTemplateConfig 不走 TemplateOptions,但 ctor 里的 ApplyTemplate() 会读
+        // LocalSourceDir,安全起见仍 seed 锚点。
         var anchor = Path.Combine(Path.GetTempPath(), "T-whisper-anchor-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(anchor);
         var dir = Path.Combine(anchor, "WhisperTemplate");

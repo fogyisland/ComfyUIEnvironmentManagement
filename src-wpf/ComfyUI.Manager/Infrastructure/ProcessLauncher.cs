@@ -171,27 +171,8 @@ public sealed class ProcessLauncher : IDisposable
             // 排在 BuildStartCommand 之前 —— 缺模型时不浪费一次 entry-script 存在性检查。
             EnsureLtx2ModelsPresent(env);
 
-            // v1.0.0.x (2026-09-01) T27 + T28:Fooocus launch pre-step ——
-            // T27:patch ui_gradio_extensions.py 修 gradio 3.41.2 + starlette 1.6.0
-            //     signature mismatch(避免 HTTP 请求全炸 TypeError unhashable dict);
-            // T28:补下 fooocus_expansion HF 元数据(6 个文件,extras/expansion.py
-            //     AutoTokenizer.from_pretrained 需要)。
-            // 两步都是 best-effort:失败仅 log,launch 继续 — 用户可手动跑 T22 按钮重下。
-            // Settings 提前到这(load 一次,Forge / OpenVoice / Fooocus expansion 共享)。
+            // Settings 提前到这(load 一次,Forge / OpenVoice 共享)。
             var settings = new SettingsRepository(new LocalDataPaths(_projectRoot)).Load();
-            if (string.Equals(env.TemplateKind, "Fooocus", StringComparison.Ordinal))
-            {
-                FooocusCompatPatcher.PatchIfNeeded(env, logProgress);
-                try
-                {
-                    _ = await FooocusDefaultModelsInstaller.EnsureExpansionMetadataAsync(
-                        env, settings, logProgress, ct).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    logProgress?.Report($"[fooocus-expansion-meta] pre-step 异常(继续 launch):{ex.Message}");
-                }
-            }
             var (pythonExe, (entryFile, entryArgs)) = BuildStartCommand(env, settings, _projectRoot);
 
             var port = env.Port
@@ -266,7 +247,7 @@ public sealed class ProcessLauncher : IDisposable
                 $"{_projectRoot};{Path.Combine(_projectRoot, "src")}";
             // v1.0.0.x (2026-09-01) T23a:PYTHONIOENCODING=utf-8 修 Python stdout/stderr
             // 默认 GBK → UTF-8 编码,跟 .NET 端 StandardOutputEncoding=UTF8 配对。
-            // 镜像 Fooocus 上游 `python -X utf8` 行为,跟 T21 PYTHONUTF8=1 互补。
+            // 跟 T21 PYTHONUTF8=1 互补。
             foreach (var kvp in PythonEncodingEnvironmentVariables())
             {
                 psi.EnvironmentVariables[kvp.Key] = kvp.Value;
@@ -973,7 +954,7 @@ public sealed class ProcessLauncher : IDisposable
         // v1.0.0.x (2026-08-31):Whisper CLI 工具 short-circuit —
         // EntryScript="whisper" 是 console-script 名(PATH 上 whisper.exe,不是
         // <envRoot>/whisper 文件),用 `python -m whisper <args>` 调起
-        // (whisper/__main__.py 支持 module invocation)。Skip Fooocus 分支 +
+        // (whisper/__main__.py 支持 module invocation)。
         // {port}/{models}/{env} 替换 + File.Exists check(全部对 CLI 工具无意义)。
         // UserExtraArgs 拼到 "whisper" 后(用户在 env-create dialog 填 audio + --model)。
         if (string.Equals(snapshot.Kind, "Whisper", StringComparison.Ordinal))
@@ -984,15 +965,6 @@ public sealed class ProcessLauncher : IDisposable
             if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
                 whisperArgs += " " + snapshot.UserExtraArgs;
             return (venvPython, ("-m", whisperArgs));
-        }
-        // v1.0.0.x (2026-08-31):Fooocus stable 模式 — 用 entry.py 替 entry_with_update.py,
-        // 生产可预测不 auto-update。镜像 Forge kind-special 分支(line 904 风格)。
-        // snapshot.EntryScript 仍记 entry_with_update.py,但 Stable mode override 替 entry.py。
-        // 其它 kind 跟其它 mode 完全不受影响(kind check 短路)。
-        if (string.Equals(snapshot.Kind, "Fooocus", StringComparison.Ordinal)
-            && snapshot.FooocusEntryMode == FooocusEntryMode.Stable)
-        {
-            entryScript = Path.Combine(envRoot, "entry.py");
         }
         // Spec §9: 入口脚本不存在时 throw 清晰指示,而不是 spawn python 然后看到
         // "ModuleNotFoundError: No module named 'main.py'" 之类的晦涩错。
@@ -1049,21 +1021,6 @@ public sealed class ProcessLauncher : IDisposable
                 entryArgs += $" --hypernetwork-dir {fp.HypernetworksDir}";
             if (!string.IsNullOrWhiteSpace(fp.ControlnetDir))
                 entryArgs += $" --controlnet-dir {fp.ControlnetDir}";
-        }
-
-        // v1.0.0.x (2026-09-01) T26:Fooocus 默认加 --share ——
-        // entry_with_update.py / entry.py 启动 gradio 时 args_manager.args.share=False;
-        // 用户 settings.inf 设了 http_proxy (e.g. 127.0.0.1:10808) 时 localhost 不可访问
-        // → gradio_root.launch() 抛 ValueError("shareable link required") → python exit
-        // → env.Status 回 stopped,用户看到按钮能点但启动失败。
-        // Fooocus 上游 args_manager.args.share 已支持(Envs/Fooocus*/webui.py:1124 读它),
-        // --share 让 gradio 创建临时公网 tunnel 绕开 localhost 限制(72h 自动过期)。
-        // 镜像 Forge kind-special 分支(line 1016-1031)。
-        // 防重复:用户手动 EntryArgs 已含 --share → 跳过(避免命令行双 flag 触发 argparse 错)。
-        if (string.Equals(snapshot.Kind, "Fooocus", StringComparison.Ordinal)
-            && !entryArgs.Contains("--share"))
-        {
-            entryArgs += " --share";
         }
 
         // v1.0.0.x (2026-08-29):Forge 启动禁用 webui.py 自动开浏览器 —
@@ -1185,8 +1142,7 @@ public sealed class ProcessLauncher : IDisposable
     /// <para>修法(两路并修,缺一不可):</para>
     /// <list type="number">
     ///   <item><c>PYTHONIOENCODING=utf-8</c> env var(本方法)—— Python 端
-    ///   stdout/stderr 用 UTF-8 编码。镜像 Fooocus 上游 <c>python -X utf8</c> 行为,
-    ///   跟 T21 <see cref="Services.PipProcessHelpers.ApplyUtf8Mode"/> 的
+    ///   stdout/stderr 用 UTF-8 编码。跟 T21 <see cref="Services.PipProcessHelpers.ApplyUtf8Mode"/> 的
     ///   <c>PYTHONUTF8=1</c>(PEP 540 file I/O)互补 —— 后者修文件读,
     ///   本 env var 修 stdout/stderr。</item>
     ///   <item><see cref="ProcessStartInfo.StandardOutputEncoding"/> =

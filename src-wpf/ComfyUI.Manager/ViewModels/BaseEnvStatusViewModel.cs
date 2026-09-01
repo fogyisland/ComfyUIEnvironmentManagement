@@ -9,16 +9,16 @@ using Environment = ComfyUI.Manager.Models.Environment;
 namespace ComfyUI.Manager.ViewModels;
 
 /// <summary>
-/// BaseEnvStatusViewModel:v1.0.0.x Forge / Fooocus env 行「安装基础环境」按钮
+/// BaseEnvStatusViewModel:v1.0.0.x Forge env 行「安装基础环境」按钮
 /// 触发后的 inline 状态面板 VM。v1.0.0.x (2026-09-01) 重构成通用版本 —
-/// 接受任意 <see cref="IBedInstallResult"/> installer(Forge / Fooocus),不再
+/// 接受任意 <see cref="IBedInstallResult"/> installer(Forge),不再
 /// hardcode Forge 字符串。
 ///
 /// 用户原话 2026-08-29:
 /// "forge 不会弹框 直接点击按照上面的方式来进行安装,以log方式显示进度"
-/// → Forge / Fooocus env 不弹 BaseEnvProfilePickerDialog + BaseEnvProgressDialog,
-/// 直接 dispatch 各自的 installer(FooocusBaseEnvInstaller 锁 torch 2.1.0+cu121),
-/// 进度通过本面板镜像 RequirementsStatusViewModel 模式显示。
+/// → Forge env 不弹 BaseEnvProfilePickerDialog + BaseEnvProgressDialog,
+/// 直接 dispatch ForgeBaseEnvInstaller 跑 0-5 全套,进度通过本面板镜像
+/// RequirementsStatusViewModel 模式显示。
 ///
 /// 行为:
 /// - RunAsync() 后 IsVisible=true,挂 Progress&lt;string&gt; 自动 marshal 回 UI 线程
@@ -26,8 +26,7 @@ namespace ComfyUI.Manager.ViewModels;
 /// - 失败/取消 → Error 设原因,IsVisible 保持,等用户手动关(由 UI 提供关闭按钮)
 ///
 /// ComfyUI / HunyuanVideo / CogVideoX env 仍走老 OpenBaseEnvProgressForSingleEnvAsync
-/// 路径(走 BaseEnvProfilePickerDialog + BaseEnvProgressDialog),只有 Forge /
-/// Fooocus 才走这里。
+/// 路径(走 BaseEnvProfilePickerDialog + BaseEnvProgressDialog),只有 Forge 才走这里。
 /// </summary>
 public sealed class BaseEnvStatusViewModel : ViewModelBase
 {
@@ -40,7 +39,7 @@ public sealed class BaseEnvStatusViewModel : ViewModelBase
 
     /// <summary>
     /// v1.0.0.x (2026-09-01):通用 ctor —— 接受任意 IBedInstallResult installer
-    /// + kindLabel(Forge / Fooocus)+ installSummary(成功后状态文案)。
+    /// + kindLabel(Forge)+ installSummary(成功后状态文案)。
     /// 镜像原 Forge ctor 行为,只是把硬编码字符串换成参数。
     /// </summary>
     public BaseEnvStatusViewModel(

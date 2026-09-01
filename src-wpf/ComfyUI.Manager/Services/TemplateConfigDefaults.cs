@@ -256,33 +256,6 @@ public static class TemplateConfigDefaults
     };
 
     /// <summary>
-    /// v1.0.0.x: Fooocus (lllyasviel/Fooocus)。
-    /// lllyasviel 的图像生成 WebUI(Focus + SDXL 改良)。GitHub-clone source。
-    /// Entry: <c>entry_with_update.py</c>(带 auto-update 模式;无 update 模式是 <c>entry.py</c>)。
-    /// 通过 <c>--port {port} --listen</c> 设端口 + 监听所有接口;Fooocus 默认端口 7865,
-    /// 但用户可改 Settings 里的 {port} 占位跟其他模板对齐。
-    /// </summary>
-    public static TemplateConfig Fooocus(string projectRoot) => new()
-    {
-        Name = "Fooocus",
-        Kind = "Fooocus",
-        LocalSourceDir = "Fooocus",
-        SourceKind = TemplateSourceKind.GitHub,
-        GitHubRepoUrl = "https://github.com/lllyasviel/Fooocus.git",
-        EntryScript = "entry_with_update.py",
-        EntryArgs = "--port {port} --listen",
-        ModelsSubdir = "models",
-        ExtraJunctionTargets = new(),
-        UserExtraArgs = "",
-        FooocusEntryMode = FooocusEntryMode.AutoUpdate,   // v1.0.0.x 默认 = 现状 (entry_with_update.py)
-        // v1.0.0.x (2026-09-01): Fooocus 上游默认 TORCH_COMMAND 装 torch 2.1.0 + torchvision 0.16.0,
-        // 但 requirements_versions.txt 仍含 23 non-torch deps(torchsde/pytorch_lightning/transformers/...)。
-        // BaseEnv 按钮 → FooocusBaseEnvInstaller 装 torch 2.1.0+cu121(锁版本,镜像 Forge 模式跳过 picker);
-        // 依赖按钮 → pip install requirements_versions.txt(torch 行已被 FilterTorchLines 自动过滤)
-        RequirementsFile = "requirements_versions.txt",
-    };
-
-    /// <summary>
     /// v1.0.0.x: HivisionIDPhotos (Zeyi-Lin/HivisionIDPhotos)。
     /// AI 身份证 / 护照照片生成 Gradio app ——
     /// 用 CNN 检测人像 + 生成符合规格的标准证件照(支持自定义背景色 / 尺寸 / 美颜)。

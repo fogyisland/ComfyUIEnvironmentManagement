@@ -7,7 +7,7 @@ namespace ComfyUI.Manager.Tests.Models;
 /// v1.0.0.x (2026-08-31): 锁 <see cref="Environment.GenericActionsVisible"/> 行为 ——
 /// Row 2 第 3 个 Grid `GenericActions` 显示条件:
 /// <list type="bullet">
-///   <item>9 个 non-ComfyUI/Forge built-in kind = true(Fooocus / OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos)</item>
+///   <item>8 个 non-ComfyUI/Forge built-in kind = true(OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos)</item>
 ///   <item>ComfyUI + Forge = false(各自走自己的 5×2 / 3×2 Grid)</item>
 ///   <item>空 / 未知 kind = false(default)</item>
 /// </list>
@@ -18,7 +18,6 @@ namespace ComfyUI.Manager.Tests.Models;
 public sealed class EnvironmentButtonVisibilityTests
 {
     [Theory]
-    [InlineData("Fooocus")]
     [InlineData("OpenVoice")]
     [InlineData("Whisper")]
     [InlineData("CoquiTTS")]
@@ -27,9 +26,9 @@ public sealed class EnvironmentButtonVisibilityTests
     [InlineData("LTXVideo")]
     [InlineData("CogVideoX")]
     [InlineData("HivisionIDPhotos")]
-    public void GenericActionsVisible_TrueForNineNonComfyUiForgeBuiltInKinds(string kind)
+    public void GenericActionsVisible_TrueForEightNonComfyUiForgeBuiltInKinds(string kind)
     {
-        // v1.0.0.x:9 个 built-in 用通用 5-button Grid(start/log/browser/report/delete)
+        // v1.0.0.x:8 个 built-in 用通用 5-button Grid(start/log/browser/report/delete)
         var env = new Environment { TemplateKind = kind };
         Assert.True(env.GenericActionsVisible);
     }
@@ -76,28 +75,27 @@ public sealed class EnvironmentButtonVisibilityTests
     }
 
     [Fact]
-    public void FooocusEnv_GenericActionsVisible_True_ComfyUiManagerVisible_False()
+    public void OpenVoiceEnv_GenericActionsVisible_True_ComfyUiManagerVisible_False()
     {
-        // v1.0.0.x (2026-08-31) 正交验证:Fooocus env 走通用 Grid(5 buttons:
+        // v1.0.0.x (2026-08-31) 正交验证:OpenVoice env 走通用 Grid(5 buttons:
         // 启动 / 查看日志 / 打开浏览器 / 组件报告 / 删除),不显示 ComfyUI Manager
         // 按钮(ComfyUiManagerButtonVisible = false,因为 Kind != "ComfyUI")。
         // 两个属性各管各的 button visibility,不互相影响。
-        var fooocus = new Environment { TemplateKind = "Fooocus" };
-        Assert.False(fooocus.ComfyUiManagerButtonVisible);   // Fooocus 无 ComfyUI Manager
-        Assert.True(fooocus.GenericActionsVisible);           // Fooocus 用通用 5-button Grid
+        var openvoice = new Environment { TemplateKind = "OpenVoice" };
+        Assert.False(openvoice.ComfyUiManagerButtonVisible);   // OpenVoice 无 ComfyUI Manager
+        Assert.True(openvoice.GenericActionsVisible);           // OpenVoice 用通用 5-button Grid
     }
 
     // --- v1.0.0.x (2026-09-01): BaseEnv / Requirements 按钮显示条件 ---
 
     [Theory]
-    [InlineData("Fooocus")]          // 正向列举 — 3 个需 torch 的 image/video kind
     [InlineData("HunyuanVideo")]
     [InlineData("CogVideoX")]
-    public void BaseEnvButtonVisible_TrueForFooocusHunyuanVideoCogVideoX(string kind)
+    public void BaseEnvButtonVisible_TrueForHunyuanVideoAndCogVideoX(string kind)
     {
         // v1.0.0.x (2026-09-01): BaseEnv 按钮显示 ——
-        // Fooocus → FooocusBaseEnvInstaller 锁 torch 2.1.0+cu121;
-        // HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 选 ≥2.5.1
+        // HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 选 ≥2.5.1。
+        // (T29 Fooocus 已下线,锁版 torch 路径删除)
         var env = new Environment { TemplateKind = kind };
         Assert.True(env.BaseEnvButtonVisible);
     }
@@ -126,13 +124,12 @@ public sealed class EnvironmentButtonVisibilityTests
     }
 
     [Theory]
-    [InlineData("Fooocus")]      // 有 RequirementsFile = requirements_versions.txt
     [InlineData("HunyuanVideo")] // requirements.txt
     [InlineData("CogVideoX")]    // requirements.txt
     public void RequirementsFileButtonVisible_TrueWhenBothBaseEnvAndRequirementsFileSet(string kind)
     {
         // v1.0.0.x (2026-09-01): Requirements 按钮 = BaseEnv 可见 + RequirementsFile 非空。
-        // 双锁:Fooocus / HunyuanVideo / CogVideoX factory 都配了 RequirementsFile,
+        // 双锁:HunyuanVideo / CogVideoX factory 都配了 RequirementsFile = "requirements.txt",
         // 所以 BaseEnv 可见时 Requirements 一定可见。
         var env = new Environment
         {
@@ -142,7 +139,7 @@ public sealed class EnvironmentButtonVisibilityTests
                 Kind = kind,
                 Name = kind,
                 LocalSourceDir = kind,
-                RequirementsFile = kind == "Fooocus" ? "requirements_versions.txt" : "requirements.txt",
+                RequirementsFile = "requirements.txt",
             },
         };
         Assert.True(env.BaseEnvButtonVisible);
@@ -172,15 +169,15 @@ public sealed class EnvironmentButtonVisibilityTests
     public void RequirementsFileButtonVisible_BaseEnvVisibleButRequirementsFileEmpty_False()
     {
         // 双锁验证:BaseEnv 可见但 RequirementsFile 空 → Requirements 按钮隐藏
-        // (e.g. 未来用户手动编辑 settings.inf 加了 Fooocus entry 但没配 RequirementsFile)
+        // (e.g. 未来用户手动编辑 settings.inf 加了 CogVideoX entry 但没配 RequirementsFile)
         var env = new Environment
         {
-            TemplateKind = "Fooocus",
+            TemplateKind = "CogVideoX",
             TemplateConfigSnapshot = new TemplateConfig
             {
-                Kind = "Fooocus",
-                Name = "Fooocus",
-                LocalSourceDir = "Fooocus",
+                Kind = "CogVideoX",
+                Name = "CogVideoX",
+                LocalSourceDir = "CogVideoX",
                 RequirementsFile = "",  // 用户手动清空
             },
         };
@@ -193,7 +190,7 @@ public sealed class EnvironmentButtonVisibilityTests
     {
         // 老 env 没有 TemplateConfigSnapshot(env 是 env-create 前)→ RequirementsFile 链 = null
         // → RequirementsFileButtonVisible 防御性 false
-        var env = new Environment { TemplateKind = "Fooocus" };
+        var env = new Environment { TemplateKind = "CogVideoX" };
         Assert.True(env.BaseEnvButtonVisible);
         Assert.False(env.RequirementsFileButtonVisible);  // null safe
     }

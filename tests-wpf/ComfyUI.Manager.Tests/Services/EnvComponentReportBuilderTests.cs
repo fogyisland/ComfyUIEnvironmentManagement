@@ -318,7 +318,6 @@ public sealed class EnvComponentReportBuilderTests : IDisposable
     [InlineData("Whisper", "Whisper 源码")]
     [InlineData("HunyuanVideo", "HunyuanVideo 源码")]
     [InlineData("LTXVideo", "LTXVideo 源码")]
-    [InlineData("Fooocus", "Fooocus 源码")]
     [InlineData("HivisionIDPhotos", "HivisionIDPhotos 源码")]
     public async Task BuildAsync_SourceDisplayName_DerivedFromTemplateKind(
         string templateKind, string expectedDisplayName)

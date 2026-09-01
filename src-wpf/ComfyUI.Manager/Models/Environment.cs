@@ -11,13 +11,12 @@ namespace ComfyUI.Manager.Models;
 /// Environment:row of the <c>environments</c> table.
 ///
 /// v1.0.0.x (2026-09-01) T25:实现 <see cref="INotifyPropertyChanged"/> ——
-/// T25 启停按钮 ready gate 需要在 probe 完后从 disabled → enabled 切换
-/// (FooocusConfigProbe.ProbeAsync ~1-2s 后才知 3 件套齐),普通 POCO property
-/// 设值不通知 UI,XAML 看不到变化。JsonIgnore 的 UI-only 字段
-/// (<see cref="FooocusAllDefaultModelsDownloaded"/> / <see cref="StartStopButtonEnabled"/>
-/// / <see cref="StartStopButtonTooltip"/>)用 backed property + setter raise
-/// 通知。持久化字段(<see cref="Id"/> / <see cref="Name"/> / <see cref="RootPath"/>
-/// 等)仍 plain auto-property —— DB 写入由 VM 显式 _repo.Upsert 触发,不需要 INPC。
+/// T25 启停按钮 ready gate 需要在 probe 完后从 disabled → enabled 切换,
+/// 普通 POCO property 设值不通知 UI,XAML 看不到变化。JsonIgnore 的 UI-only 字段
+/// (<see cref="StartStopButtonEnabled"/> / <see cref="StartStopButtonTooltip"/>)
+/// 用 backed property + setter raise 通知。持久化字段(<see cref="Id"/> /
+/// <see cref="Name"/> / <see cref="RootPath"/> 等)仍 plain auto-property —— DB 写入
+/// 由 VM 显式 _repo.Upsert 触发,不需要 INPC。
 /// </summary>
 public class Environment : INotifyPropertyChanged
 {
@@ -131,7 +130,7 @@ public class Environment : INotifyPropertyChanged
     /// 跟 launch_utils.py 跑同一份代码,只是把 4 件事从「每次 launch」前置到「一次性」,
     /// 用户体感反而多一个无意义按钮。
     /// ComfyUI / OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX /
-    /// Fooocus / HivisionIDPhotos 保留「装/卸依赖」按钮 — 它们有各自独立的
+    /// HivisionIDPhotos 保留「装/卸依赖」按钮 — 它们有各自独立的
     /// requirements.txt 要 pip install。
     /// 镜像 <see cref="ComfyUiManagerButtonVisible"/> 同模式(inverse:对 ComfyUI 显示对 Forge 隐藏)。
     /// </summary>
@@ -141,8 +140,8 @@ public class Environment : INotifyPropertyChanged
     /// <summary>
     /// v1.0.0.x (2026-08-31): 通用 env Actions Grid 显示条件 ——
     /// TemplateKind 既不是 ComfyUI 也不是 Forge 的 env 才显示
-    /// (Fooocus / OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo /
-    /// LTXVideo / CogVideoX / HivisionIDPhotos — 9 个 built-in + 任何
+    /// (OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo /
+    /// LTXVideo / CogVideoX / HivisionIDPhotos — 8 个 built-in + 任何
     /// custom kind)。
     ///
     /// 镜像 <see cref="RequirementsButtonVisible"/> pattern(单行 computed bool +
@@ -157,20 +156,16 @@ public class Environment : INotifyPropertyChanged
 
     /// <summary>
     /// v1.0.0.x (2026-09-01): BaseEnv 按钮显示条件 ——
-    /// TemplateKind 在 {Fooocus, HunyuanVideo, CogVideoX} 时显示(正向列举,
+    /// TemplateKind 在 {HunyuanVideo, CogVideoX} 时显示(正向列举,
     /// 比 negative enumeration 易读且不易漏)。
-    /// <list type="bullet">
-    ///   <item>Fooocus → FooocusBaseEnvInstaller 锁 torch 2.1.0+cu121(镜像 Forge 模式跳过 picker)</item>
-    ///   <item>HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 选 live defaults ≥2.5.1</item>
-    /// </list>
+    /// HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 选 live defaults ≥2.5.1。
     /// LTXVideo 用 uv sync 装 pyproject.toml 不需要按钮(显式排除);
     /// OpenVoice / Whisper / CoquiTTS / Bark / HivisionIDPhotos 是 CLI / CPU / TF,
     /// 也不在列举里(env-create 时 pip install -e . 已搞定依赖)。ComfyUI / Forge
     /// 各自 Actions Grid 有自己的 BaseEnv 按钮。
     /// </summary>
     [JsonIgnore]
-    public bool BaseEnvButtonVisible => TemplateKind == "Fooocus"
-        || TemplateKind == "HunyuanVideo"
+    public bool BaseEnvButtonVisible => TemplateKind == "HunyuanVideo"
         || TemplateKind == "CogVideoX";
 
     /// <summary>
@@ -182,34 +177,6 @@ public class Environment : INotifyPropertyChanged
     [JsonIgnore]
     public bool RequirementsFileButtonVisible => BaseEnvButtonVisible
         && !string.IsNullOrWhiteSpace(TemplateConfigSnapshot?.RequirementsFile);
-
-    /// <summary>
-    /// v1.0.0.x (2026-09-01) T22: 下载默认模型按钮显示条件 ——
-    /// 只对 Fooocus kind 可见(其它 kind launcher 不自动下模型)。
-    /// Fooocus 启动 launch.py line 145 自动从 huggingface.co 下载 4 个 vae_approx
-    /// + fooocus_expansion 模型,网络超时直接 crash env;本按钮让用户启动前
-    /// 手动下载避免。镜像 <see cref="BaseEnvButtonVisible"/> 单 kind 正向列举 pattern。
-    /// </summary>
-    [JsonIgnore]
-    public bool FooocusModelsDownloadButtonVisible => TemplateKind == "Fooocus";
-
-    /// <summary>
-    /// v1.0.0.x (2026-09-01) T24:Fooocus 「下载默认模型」按钮 disabled 判定 ——
-    /// true = T22 4 vae_approx 文件 + T23b probe 4 dict(checkpoint / lora /
-    /// embedding / vae)所有 entry 全部就位。VM 在 Load() 末尾 async 调
-    /// <see cref="Services.FooocusDefaultModelsInstaller.CheckAllDefaultModelsDownloadedAsync"/>
-    /// 填充这个字段;XAML 绑 <c>IsEnabled="{Binding !FooocusAllDefaultModelsDownloaded}"</c>
-    /// 决定按钮 enabled / disabled。默认 false(初始 enabled)— 首次 Load() 后
-    /// 30s TTL 内不再重复 probe。
-    /// </summary>
-    [JsonIgnore]
-    private bool _fooocusAllDefaultModelsDownloaded;
-    [JsonIgnore]
-    public bool FooocusAllDefaultModelsDownloaded
-    {
-        get => _fooocusAllDefaultModelsDownloaded;
-        set => SetField(ref _fooocusAllDefaultModelsDownloaded, value);
-    }
 
     /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
@@ -257,9 +224,6 @@ public class Environment : INotifyPropertyChanged
 
     /// <summary>
     /// v1.0.0.x #577:启停单按钮 CanExecute — true 表示当前可点(根据 env.Status + busy)。
-    /// v1.0.0.x (2026-09-01) T25:Fooocus env stopped 状态额外要求 3 件套齐
-    /// (BED + Requirements + 默认模型)— FooocusReadyToStart = false 时按钮 enabled=false。
-    /// running 状态(FooocusStop)不受 ready gate 影响(用户随时想停)。
     /// </summary>
     [JsonIgnore]
     private bool _startStopButtonEnabled = true;
@@ -283,19 +247,6 @@ public class Environment : INotifyPropertyChanged
         get => _startStopButtonTooltip;
         set => SetField(ref _startStopButtonTooltip, value);
     }
-
-    /// <summary>
-    /// v1.0.0.x (2026-09-01) T25:Fooocus kind 启停 ready gate —
-    /// true = 3 件套都装好(BED + Requirements + 默认模型全装齐),可以启动 env。
-    /// 其它 9 个 non-ComfyUI/Forge kind 永远 true(因为它们的 StartStopButtonEnabled
-    /// 不依赖这个字段;T25 用户决策"只 Fooocus kind 加 ready gate")。
-    /// 单独放 computed bool 而不内联在 StartStopButtonEnabled setter,是为了让 unit test
-    /// 可以直接断 env.FooocusReadyToStart 而不构造 VM。
-    /// </summary>
-    [JsonIgnore]
-    public bool FooocusReadyToStart =>
-        TemplateKind != "Fooocus"
-        || (IsBaseEnvInstalled && IsRequirementsInstalled && FooocusAllDefaultModelsDownloaded);
 
     /// <summary>
     /// v0.6.11+ T1:env-list 行 toggle 按钮用 — true = Requirements 已装(marker 文件存在),

@@ -17,8 +17,9 @@ public class SettingsDefaultsTemplateSeedTests
         // OpenVoice/Whisper/CoquiTTS/Bark 是 GitHub-cloned AI 语音 defaults)。
         // v1.0.0.x:A1111 + SwarmUI 模板已下线,不再 seed(A1111 因 Stability-AI
         // 仓库从 github 移除;SwarmUI 因 ProcessLauncher Python 假设 functional break)。
-        // v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX/Fooocus → 6 → 10;
-        // +HivisionIDPhotos → 11。
+        // v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX → 6 → 9;
+        // +HivisionIDPhotos → 10。
+        // v1.0.0.x (2026-09-01) T29:Fooocus 已下线 (gated HF repo 401),保持 10。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -33,7 +34,6 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.True(s.Templates.ContainsKey("HunyuanVideo"));
         Assert.True(s.Templates.ContainsKey("LTXVideo"));
         Assert.True(s.Templates.ContainsKey("CogVideoX"));
-        Assert.True(s.Templates.ContainsKey("Fooocus"));
         Assert.True(s.Templates.ContainsKey("HivisionIDPhotos"));
     }
 
@@ -125,11 +125,10 @@ public class SettingsDefaultsTemplateSeedTests
     [InlineData("HunyuanVideo")]
     [InlineData("LTXVideo")]
     [InlineData("CogVideoX")]
-    [InlineData("Fooocus")]
     [InlineData("HivisionIDPhotos")]
     public void Apply_EmptySettings_NonImageBuiltInTemplate_VerifiedDefaultsToFalse(string kind)
     {
-        // v1.0.0.x (2026-08-31): 9 个非 ComfyUI/Forge built-in 默认 Verified=false ——
+        // v1.0.0.x (2026-08-31): 8 个非 ComfyUI/Forge built-in 默认 Verified=false ——
         // 验证后逐个 ship 时由 TemplateConfigDefaults factory 改 true。
         // 锁当前 default 防止后续手抖改默认值。
         var s = new Settings();
@@ -359,8 +358,9 @@ public class SettingsDefaultsTemplateSeedTests
         // <system_template_library_dir>/envTemplates/<Kind> 多一层嵌套。修法:
         // default 直接写 "<Kind>",新装用户走这条路。
         // v1.0.0.x (2026-08-29): SwarmUI 已下线,8 个 built-in 减到 6 个;
-        // +4 个 GitHub-clone 视频/图像生成模板(HunyuanVideo/LTXVideo/CogVideoX/Fooocus)
-        // 共 10 个;+HivisionIDPhotos → 11 个。
+        // +3 个 GitHub-clone 视频/图像生成模板(HunyuanVideo/LTXVideo/CogVideoX)
+        // 共 9 个;+HivisionIDPhotos → 10 个。
+        // v1.0.0.x (2026-09-01) T29:Fooocus 已下线,保持 10 个。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -373,7 +373,6 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("HunyuanVideo", s.Templates["HunyuanVideo"].LocalSourceDir);
         Assert.Equal("LTXVideo", s.Templates["LTXVideo"].LocalSourceDir);
         Assert.Equal("CogVideoX", s.Templates["CogVideoX"].LocalSourceDir);
-        Assert.Equal("Fooocus", s.Templates["Fooocus"].LocalSourceDir);
         Assert.Equal("HivisionIDPhotos", s.Templates["HivisionIDPhotos"].LocalSourceDir);
     }
 

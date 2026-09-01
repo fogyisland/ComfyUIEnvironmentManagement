@@ -170,7 +170,7 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
 
     // v1.0.0.x (2026-08-29):「装/卸依赖」对 Forge 没用 —— Forge pre-flight 由 launch_utils.py
     // 在 launch.py 启动时 idempotent 自动跑,手动按钮冗余。ComfyUI / OpenVoice / Whisper /
-    // CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX / Fooocus / HivisionIDPhotos
+    // CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos
     // 保留按钮(各自有 requirements.txt 要 pip install)。镜像 ComfyUiManagerButtonVisible
     // 同模式但反向。
     [Theory]
@@ -183,7 +183,6 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
     [InlineData("HunyuanVideo", true)]
     [InlineData("LTXVideo", true)]
     [InlineData("CogVideoX", true)]
-    [InlineData("Fooocus", true)]
     [InlineData("HivisionIDPhotos", true)]
     public void Model_RequirementsButtonVisible_FalseOnlyForForgeKind(string kind, bool expected)
     {

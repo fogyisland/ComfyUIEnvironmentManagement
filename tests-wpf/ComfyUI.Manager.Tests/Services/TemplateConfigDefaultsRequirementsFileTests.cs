@@ -5,15 +5,15 @@ using Xunit;
 namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
-/// v1.0.0.x (2026-09-01): 锁 <see cref="TemplateConfigDefaults"/> 11 个 built-in 工厂的
+/// v1.0.0.x (2026-09-01): 锁 <see cref="TemplateConfigDefaults"/> 10 个 built-in 工厂的
 /// <c>RequirementsFile</c> 默认值 ——
 /// <list type="bullet">
-///   <item>Fooocus = "requirements_versions.txt"(上游默认文件名)</item>
 ///   <item>HunyuanVideo / CogVideoX = "requirements.txt"</item>
 ///   <item>LTXVideo = ""(uv sync 装 pyproject.toml)</item>
 ///   <item>ComfyUI / Forge / OpenVoice / Whisper / CoquiTTS / Bark / HivisionIDPhotos = ""
 ///   (走自己 Actions Grid 或 env-create 自动 pip install)</item>
 /// </list>
+/// T29 (2026-09-01): Fooocus 已下线,requirements_versions.txt 配置随之删除。
 ///
 /// 镜像 <see cref="TemplateConfigDefaultsVerifiedTests"/> pattern(反射工厂方法
 /// + Theory InlineData),新 built-in 加进来自动覆盖(只要加 InlineData)。
@@ -21,14 +21,6 @@ namespace ComfyUI.Manager.Tests.Services;
 public sealed class TemplateConfigDefaultsRequirementsFileTests
 {
     private const string ProjectRoot = "D:/proj";
-
-    [Fact]
-    public void Fooocus_RequirementsFile_IsRequirementsVersionsTxt()
-    {
-        // Fooocus 上游 launch.py 用 requirements_versions.txt(23 non-torch deps)
-        var cfg = TemplateConfigDefaults.Fooocus(ProjectRoot);
-        Assert.Equal("requirements_versions.txt", cfg.RequirementsFile);
-    }
 
     [Fact]
     public void HunyuanVideo_RequirementsFile_IsRequirementsTxt()

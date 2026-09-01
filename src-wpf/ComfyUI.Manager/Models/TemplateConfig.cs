@@ -19,18 +19,6 @@ public enum TemplateSourceKind
 }
 
 /// <summary>
-/// Fooocus 模板 entry 模式:<see cref="AutoUpdate"/> = 跟上游同步(默认,现状,跟 v1.0.0 行为 100% 一致);
-/// <see cref="Stable"/> = 用 <c>entry.py</c> 不 auto-update,生产可预测。
-/// 镜像 <see cref="TemplateSourceKind"/> 的数字 fallback 模式 — 老 settings 缺字段 → 0 → AutoUpdate,
-/// 零迁移成本。JsonStringEnumConverter 把数字 / "AutoUpdate" / "Stable" 都接受为合法值。
-/// </summary>
-public enum FooocusEntryMode
-{
-    AutoUpdate = 0,
-    Stable = 1,
-}
-
-/// <summary>
 /// v1.0.0 multi-template: per-template configuration. String-keyed by Kind (no enum).
 /// Snapshot per env (Environment.TemplateConfigSnapshot) freezes at env creation time;
 /// updates to Settings.Templates do NOT affect existing envs.
@@ -68,18 +56,6 @@ public class TemplateConfig
     public string UserExtraArgs { get; set; } = "";
 
     /// <summary>
-    /// v1.0.0.x (2026-08-31):Fooocus entry 模式 — 仅 Kind=="Fooocus" 时由
-    /// <see cref="ComfyUI.Manager.Infrastructure.ProcessLauncher.BuildStartCommand"/> 读取。
-    /// <see cref="FooocusEntryMode.AutoUpdate"/> (默认) 用 entry_with_update.py;
-    /// <see cref="FooocusEntryMode.Stable"/> 用 entry.py。
-    /// 改 settings 不影响已存在 env(env.TemplateConfigSnapshot 冻结,ProcessLauncher.cs:843-846)。
-    /// 老 settings 缺字段 → JsonStringEnumConverter 数字 fallback → AutoUpdate。
-    /// </summary>
-    [JsonPropertyName("fooocus_entry_mode")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public FooocusEntryMode FooocusEntryMode { get; set; } = FooocusEntryMode.AutoUpdate;
-
-    /// <summary>
     /// v1.0.0.x: 用户/编辑器自由填的元数据(描述/作者/版本/分类/备注等)。
     /// 跟 <c>CatalogEntry.RawMetadata</c>(从 GitHub API 自动抓)概念不同 — 这是用户在
     /// <see cref="ComfyUI.Manager.Views.TemplateManagement.EditTemplateDialog"/>
@@ -96,7 +72,6 @@ public class TemplateConfig
     ///
     /// 配置示例:
     /// <list type="bullet">
-    ///   <item>Fooocus = "requirements_versions.txt"(上游默认文件名,23 non-torch deps)</item>
     ///   <item>HunyuanVideo / CogVideoX = "requirements.txt"</item>
     ///   <item>LTXVideo = ""(uv sync 装 pyproject.toml 全套依赖)</item>
     ///   <item>ComfyUI / Forge = ""(走自己 Actions Grid 的 RequirementsInstaller 路径)</item>
@@ -118,8 +93,7 @@ public class TemplateConfig
     /// 用户手动编辑 settings.inf 设 true 仍生效(pure JSON 不防),但 UI 无入口 ——
     /// 防止假阳性(用户勾了不工作的模板骗自己)。
     ///
-    /// 老 settings.json 缺字段 → JsonSerializer 默认 false → 没 badge,**零迁移成本**
-    /// (跟 <see cref="FooocusEntryMode"/> 同模式)。
+    /// 老 settings.json 缺字段 → JsonSerializer 默认 false → 没 badge,**零迁移成本**。
     ///
     /// Snapshot freeze:<see cref="Environment.TemplateConfigSnapshot"/> 用 JSON round-trip
     /// clone,env 创建后改 settings 不影响已有 env(env 启动时的 Verified 状态冻结)。
@@ -161,10 +135,10 @@ public class TemplateConfig
     /// <summary>
     /// Whether the user can delete this template from the management UI. Built-in
     /// templates are protected (G13) — they always exist as canonical templates.
-    /// v1.0.0.x (2026-08-29): 11 built-in kinds (2 图像 + 4 语音 + 5 视频/图像生成/工具:
+    /// v1.0.0.x (2026-08-29): 10 built-in kinds (2 图像 + 4 语音 + 4 视频/图像生成/工具:
     /// ComfyUI + Forge + OpenVoice + Whisper + CoquiTTS + Bark +
-    /// HunyuanVideo + LTXVideo + CogVideoX + Fooocus + HivisionIDPhotos;
-    /// A1111 + SwarmUI 已下线)。
+    /// HunyuanVideo + LTXVideo + CogVideoX + HivisionIDPhotos;
+    /// A1111 + SwarmUI 已下线,T29 (2026-09-01) 再 -Fooocus)。
     /// Hides the grayed-out Delete button on built-in cards.
     /// </summary>
     [JsonIgnore]
@@ -172,7 +146,7 @@ public class TemplateConfig
     {
         "ComfyUI" or "Forge"
             or "OpenVoice" or "Whisper" or "CoquiTTS" or "Bark"
-            or "HunyuanVideo" or "LTXVideo" or "CogVideoX" or "Fooocus"
+            or "HunyuanVideo" or "LTXVideo" or "CogVideoX"
             or "HivisionIDPhotos" => false,
         _ => true,
     };
