@@ -73,6 +73,93 @@ public class FooocusDefaultModelsInstaller
     }
 
     /// <summary>
+    /// v1.0.0.x (2026-09-01) T24:精确判定 Fooocus 全部默认模型是否下载 ——
+    /// T22 4 vae_approx 文件 + T23b probe 拿 4 dict(launcher 自动下载)→ 全部
+    /// 文件存在 → 返 true(merged 「下载默认模型」按钮 disabled)。否则 false
+    /// (按钮 enabled,缺哪个装哪个)。
+    /// <para>3 步:</para>
+    /// <list type="number">
+    ///   <item>T22 4 fixed file existence check(<c>models/vae_approx/...</c> +
+    ///   <c>models/prompt_expansion/fooocus_expansion/pytorch_model.bin</c>)</item>
+    ///   <item>Step 1 全部存在 → spawn venv Python 跑 <see cref="FooocusConfigProbe"/>
+    ///   拿 4 dict + 5 path</item>
+    ///   <item>遍历 4 dict 所有 entry,check 实际文件存在 → 全部存在 → 返 true</item>
+    /// </list>
+    /// <para>probe 失败(venv python 不存在 / JSON parse fail)→ 返 false
+    /// (按钮保持 enabled,用户重试或诊断环境)。</para>
+    /// </summary>
+    public static async Task<bool> CheckAllDefaultModelsDownloadedAsync(
+        Environment env,
+        IProgress<string>? logProgress = null,
+        CancellationToken ct = default)
+    {
+        if (env is null || string.IsNullOrWhiteSpace(env.RootPath)) return false;
+
+        // Step 1: T22 4 fixed vae_approx + fooocus_expansion 文件
+        var vaeApproxDir = Path.Combine(env.RootPath, "models", "vae_approx");
+        var vaeApproxFiles = new[]
+        {
+            "xlvaeapp.pth",
+            "vaeapp_sd15.pth",          // Fooocus 上游 quirk:URL .pt,本地 .pth
+            "xl-to-v1_interposer-v4.0.safetensors",
+        };
+        foreach (var name in vaeApproxFiles)
+        {
+            if (!File.Exists(Path.Combine(vaeApproxDir, name)))
+            {
+                logProgress?.Report($"[fooocus-check] 缺 T22 文件:{Path.Combine(vaeApproxDir, name)}");
+                return false;
+            }
+        }
+        var expansionPath = Path.Combine(env.RootPath, "models", "prompt_expansion", "fooocus_expansion", "pytorch_model.bin");
+        if (!File.Exists(expansionPath))
+        {
+            logProgress?.Report($"[fooocus-check] 缺 T22 文件:{expansionPath}");
+            return false;
+        }
+
+        // Step 2: probe 4 dict
+        var config = await FooocusConfigProbe.ProbeAsync(env, logProgress, ct).ConfigureAwait(false);
+        if (config is null)
+        {
+            logProgress?.Report("[fooocus-check] probe 失败 → 按钮保持 enabled");
+            return false;
+        }
+
+        // Step 3: 遍历 4 dict 所有 entry
+        var entries = new List<(string FileName, string SubDir)>();
+        AddDictFileNames(entries, config.CheckpointDownloads, config.Paths.GetValueOrDefault("checkpoints", "models/checkpoints"));
+        AddDictFileNames(entries, config.LoraDownloads, config.Paths.GetValueOrDefault("loras", "models/loras"));
+        AddDictFileNames(entries, config.EmbeddingsDownloads, config.Paths.GetValueOrDefault("embeddings", "models/embeddings"));
+        AddDictFileNames(entries, config.VaeDownloads, config.Paths.GetValueOrDefault("vae", "models/vae"));
+
+        foreach (var entry in entries)
+        {
+            var path = Path.Combine(env.RootPath, entry.SubDir, entry.FileName);
+            if (!File.Exists(path))
+            {
+                logProgress?.Report($"[fooocus-check] 缺 T23b 文件:{path}");
+                return false;
+            }
+        }
+
+        logProgress?.Report($"[fooocus-check] ✓ 全部 {entries.Count + 4} 个默认模型已就位(按钮 disabled)");
+        return true;
+    }
+
+    private static void AddDictFileNames(
+        List<(string FileName, string SubDir)> sink,
+        IReadOnlyDictionary<string, string> dict,
+        string subDir)
+    {
+        foreach (var kvp in dict)
+        {
+            if (string.IsNullOrWhiteSpace(kvp.Key)) continue;
+            sink.Add((kvp.Key, subDir));
+        }
+    }
+
+    /// <summary>
     /// 下载 4 个 Fooocus 默认模型 + 写 marker。失败任一 → 返 Fail,
     /// 已成功的文件保留(env 启动可复用);用户可重试按钮(剩余失败会重下)。
     /// </summary>

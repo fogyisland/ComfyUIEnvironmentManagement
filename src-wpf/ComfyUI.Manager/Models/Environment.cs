@@ -174,6 +174,18 @@ public class Environment
     public bool FooocusModelsDownloadButtonVisible => TemplateKind == "Fooocus";
 
     /// <summary>
+    /// v1.0.0.x (2026-09-01) T24:Fooocus 「下载默认模型」按钮 disabled 判定 ——
+    /// true = T22 4 vae_approx 文件 + T23b probe 4 dict(checkpoint / lora /
+    /// embedding / vae)所有 entry 全部就位。VM 在 Load() 末尾 async 调
+    /// <see cref="Services.FooocusDefaultModelsInstaller.CheckAllDefaultModelsDownloadedAsync"/>
+    /// 填充这个字段;XAML 绑 <c>IsEnabled="{Binding !FooocusAllDefaultModelsDownloaded}"</c>
+    /// 决定按钮 enabled / disabled。默认 false(初始 enabled)— 首次 Load() 后
+    /// 30s TTL 内不再重复 probe。
+    /// </summary>
+    [JsonIgnore]
+    public bool FooocusAllDefaultModelsDownloaded { get; set; }
+
+    /// <summary>
     /// v1.0.0.x #577:env-list 行 toggle 按钮用 — true = 本地常用节点已全部装好
     /// (Settings.LocalNodesDirectory 下每个子包都已在 env/custom_nodes/),false = 未装或不全。
     /// Load 末尾重新算(LocalNodeInstaller.IsInstalled),不持久化(同 IsComfyUiManagerInstalled pattern)。

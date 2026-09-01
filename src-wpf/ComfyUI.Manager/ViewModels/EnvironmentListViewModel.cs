@@ -148,73 +148,70 @@ public class EnvironmentListViewModel : ViewModelBase
         }
     }
 
+    private static readonly TimeSpan FooocusAllModelsCacheTtl = TimeSpan.FromSeconds(30);
+    private readonly Dictionary<string, DateTime> _fooocusAllModelsCheckedAt = new();
+    private readonly Dictionary<string, bool> _fooocusAllModelsResult = new();
+
     /// <summary>
-    /// v1.0.0.x (2026-09-01) T22:镜像 <see cref="ToggleFooocusBaseEnvAsync"/> 模式 —
-    /// Fooocus env 点「下载默认模型」按钮时调 <see cref="FooocusDefaultModelsInstaller.InstallAsync"/>,
-    /// 装 4 个 vae_approx + fooocus_expansion 模型,inline 面板显示进度。失败任一 → 返 Fail,
-    /// 已成功的文件保留,用户可重试按钮(剩余失败会重下)。
+    /// v1.0.0.x (2026-09-01) T24:Fooocus env 「下载默认模型」disabled 状态 probe —
+    /// 对 Fooocus kind env 跑 <see cref="FooocusDefaultModelsInstaller.CheckAllDefaultModelsDownloadedAsync"/>,
+    /// 30s TTL 缓存避免重复 probe(probe ~1-2s)。Fire-and-forget 后台跑
+    /// (Load() 末尾调用),不阻塞 UI 线程。结果存到 env.FooocusAllDefaultModelsDownloaded
+    /// 触发 XAML 按钮 IsEnabled 切换。
     /// </summary>
-    private async System.Threading.Tasks.Task DownloadFooocusModelsAsync(Environment? env)
+    private async System.Threading.Tasks.Task RefreshFooocusAllModelsStatusAsync()
     {
-        if (env is null) return;
-        if (IsEnvBusy(env)) return;
-
-        // 已装过(marker 文件存在)→ 显示"已下载"状态,不重下(用户可重下走 marker 删除逻辑)
-        if (FooocusDefaultModelsInstaller.IsInstalled(env))
-        {
-            var timestamp = await ReadMarkerTimestampAsync(env, FooocusDefaultModelsConstants.MarkerFileName);
-            var alreadyDownloaded = new BaseEnvStatusViewModel(
-                env, "Fooocus", "Fooocus 默认模型已下载(4 个文件)",
-                async (e, p, ct) => new FooocusModelsDownloadResult(
-                    Success: true, Cancelled: false, Reason: null,
-                    DownloadedCount: FooocusDefaultModelsConstants.DefaultModels.Count,
-                    FailedCount: 0, TotalBytes: 0));
-            FooocusModelsDownloadStatus = alreadyDownloaded;
-            RaisePropertyChanged(nameof(FooocusModelsDownloadStatus));
-            alreadyDownloaded.MarkAlreadyInstalled(timestamp);
-            return;
-        }
-
-        var status = new BaseEnvStatusViewModel(
-            env, "Fooocus", "Fooocus 默认模型下载完成(4 个文件,total ~2GB)",
-            async (e, p, ct) => await _fooocusDefaultModelsInstaller.InstallAsync(e, p, ct));
-        FooocusModelsDownloadStatus = status;
-        RaisePropertyChanged(nameof(FooocusModelsDownloadStatus));
-        MarkEnvBusy(env, BusyKind.BEDInstall);  // 复用 BEDInstall busy kind — 都是长操作
         try
         {
-            await status.RunAsync();
-            if (status.IsComplete && !status.HasError)
+            foreach (var env in Environments.Where(e => e.TemplateKind == "Fooocus"))
             {
-                // 成功 → 不复用 IsBaseEnvInstalled(语义不同 — 模型已下载 ≠ BED 装好)
-                // 用 IsFooocusModelsInstalled(暂未加 bool,简化为 2s 后 Hide 面板即可)
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                status.Hide();
+                // 30s TTL:30s 内不重复 probe
+                if (_fooocusAllModelsCheckedAt.TryGetValue(env.Id, out var last)
+                    && DateTime.UtcNow - last < FooocusAllModelsCacheTtl)
+                    continue;
+
+                var result = await FooocusDefaultModelsInstaller
+                    .CheckAllDefaultModelsDownloadedAsync(env, null, default)
+                    .ConfigureAwait(true);
+                env.FooocusAllDefaultModelsDownloaded = result;
+                _fooocusAllModelsCheckedAt[env.Id] = DateTime.UtcNow;
+                _fooocusAllModelsResult[env.Id] = result;
+                RaisePropertyChanged(nameof(env.FooocusAllDefaultModelsDownloaded));
             }
         }
-        finally
+        catch
         {
-            UnmarkEnvBusy(env);
-            Load();
-            RaiseCommandsChanged();
+            // probe 失败静默(默认 false,按钮 enabled 提示用户重试)
         }
     }
 
     /// <summary>
-    /// v1.0.0.x (2026-09-01) T23b:Fooocus 「下载 launcher 默认」按钮处理 ——
-    /// 调 <see cref="FooocusDefaultModelsInstaller.DownloadLauncherDefaultsAsync"/> 装
-    /// 4 dict(checkpoint + lora + embedding + vae)所有 entry,inline 面板显示进度
-    /// (复用 <see cref="FooocusModelsDownloadStatus"/> 面板,跟 T22 一样的
-    /// <see cref="BaseEnvStatusViewModel"/> 通用 ctor)。
+    /// v1.0.0.x (2026-09-01) T22 + T23b + T24 合并:「下载默认模型」按钮智能
+    /// download —— 调 <see cref="FooocusDefaultModelsInstaller.CheckAllDefaultModelsDownloadedAsync"/>
+    /// 决定缺哪个,装 T22 4 vae_approx + T23b 4 launcher dict,inline 面板显示进度
+    /// (复用 <see cref="FooocusModelsDownloadStatus"/> 面板 + 通用
+    /// <see cref="BaseEnvStatusViewModel"/> ctor)。
+    /// <para>CanExecute 拦截 <see cref="Environment.FooocusAllDefaultModelsDownloaded"/>
+    /// = true 场景(按钮已 disabled,defensive 早返)。</para>
     /// </summary>
-    private async System.Threading.Tasks.Task DownloadFooocusLauncherDefaultsAsync(Environment? env)
+    private async System.Threading.Tasks.Task DownloadFooocusAllModelsAsync(Environment? env)
     {
         if (env is null) return;
         if (IsEnvBusy(env)) return;
 
+        // 决定装哪些:直接调 CheckAllDefaultModelsDownloadedAsync,
+        // 它返回 false → 有缺 → 进 download 流程。每个 installer 内部
+        // skip 已存在文件,幂等。
         var status = new BaseEnvStatusViewModel(
-            env, "Fooocus", "Fooocus launcher 默认模型下载完成(checkpoint/lora/embedding/vae)",
-            async (e, p, ct) => await _fooocusDefaultModelsInstaller.DownloadLauncherDefaultsAsync(e, p, ct));
+            env, "Fooocus", "Fooocus 默认模型下载完成(T22 4 文件 + T23b 4 dict)",
+            async (e, p, ct) =>
+            {
+                // 先装 T22(4 vae_approx),再装 T23b(4 launcher dicts)
+                var r1 = await _fooocusDefaultModelsInstaller.InstallAsync(e, p, ct);
+                if (!r1.Success) return r1;
+                var r2 = await _fooocusDefaultModelsInstaller.DownloadLauncherDefaultsAsync(e, p, ct);
+                return r2.Success ? r2 : r1;
+            });
         FooocusModelsDownloadStatus = status;
         RaisePropertyChanged(nameof(FooocusModelsDownloadStatus));
         MarkEnvBusy(env, BusyKind.BEDInstall);
@@ -223,6 +220,10 @@ public class EnvironmentListViewModel : ViewModelBase
             await status.RunAsync();
             if (status.IsComplete && !status.HasError)
             {
+                // 装完 → 重新 probe 刷新 disabled 状态
+                env.FooocusAllDefaultModelsDownloaded = await FooocusDefaultModelsInstaller
+                    .CheckAllDefaultModelsDownloadedAsync(env, null, CancellationToken.None);
+                RaisePropertyChanged(nameof(env.FooocusAllDefaultModelsDownloaded));
                 await Task.Delay(TimeSpan.FromSeconds(2));
                 status.Hide();
             }
@@ -468,18 +469,13 @@ public class EnvironmentListViewModel : ViewModelBase
     public RelayCommand ToggleBaseEnvCommand { get; }
 
     /// <summary>
-    /// v1.0.0.x (2026-09-01) T22:Fooocus 「下载默认模型」按钮绑定 ——
-    /// 镜像 ToggleBaseEnvCommand,只对 Fooocus kind 可用。
+    /// v1.0.0.x (2026-09-01) T22 + T23b + T24:合并 Fooocus 「下载默认模型」按钮
+    /// 绑定 —— 智能 download(缺哪个装哪个):T22 4 vae_approx 缺 → 装 T22;
+    /// T23b 4 launcher dict 缺 → probe + 装。只对 Fooocus kind 启用,busy 禁用,
+    /// <see cref="Environment.FooocusAllDefaultModelsDownloaded"/>=true 也禁用
+    /// (全装齐 → 按钮 disabled)。镜像 ToggleBaseEnvCommand CanExecute pattern。
     /// </summary>
-    public RelayCommand DownloadFooocusModelsCommand { get; }
-
-    /// <summary>
-    /// v1.0.0.x (2026-09-01) T23b:Fooocus 「下载 launcher 默认」按钮绑定 ——
-    /// 镜像 DownloadFooocusModelsCommand,只对 Fooocus kind 可用。
-    /// 装 4 dict(checkpoint + lora + embedding + vae)的所有 entry,
-    /// 避免 launch.py line 131-140 启动时网络超时 crash env。
-    /// </summary>
-    public RelayCommand DownloadFooocusLauncherDefaultsCommand { get; }
+    public RelayCommand DownloadFooocusAllModelsCommand { get; }
 
     public string? RecentBasePythonPath { get; private set; }
 
@@ -823,29 +819,19 @@ public class EnvironmentListViewModel : ViewModelBase
                 // mutex 拦并发 BED install/uninstall)。
                 return true;
             });
-        // v1.0.0.x (2026-09-01) T22:Fooocus 「下载默认模型」按钮 ——
-        // 只对 Fooocus kind 启用,busy 时禁用。镜像 ToggleBaseEnvCommand CanExecute pattern
-        // 但不需要 IsBaseEnvInstalled 判断(重复下载无害 — 已存在的文件跳过)。
-        DownloadFooocusModelsCommand = new RelayCommand(
-            async p => await DownloadFooocusModelsAsync(p as Environment ?? Selected),
+        // v1.0.0.x (2026-09-01) T22 + T23b + T24:合并 「下载默认模型」按钮 ——
+        // 智能 download(缺哪个装哪个):T22 4 vae_approx 缺 → 装 T22;
+        // T23b 4 launcher dict 缺 → probe + 装。只对 Fooocus kind 启用,busy 禁用,
+        // 全装齐(FooocusAllDefaultModelsDownloaded=true)也禁用。
+        DownloadFooocusAllModelsCommand = new RelayCommand(
+            async p => await DownloadFooocusAllModelsAsync(p as Environment ?? Selected),
             p =>
             {
                 var env = p as Environment ?? Selected;
                 if (env is null) return false;
                 if (env.TemplateKind != "Fooocus") return false;
                 if (IsEnvBusy(env)) return false;
-                return true;
-            });
-        // v1.0.0.x (2026-09-01) T23b:Fooocus 「下载 launcher 默认」按钮 ——
-        // 镜像 DownloadFooocusModelsCommand pattern,只对 Fooocus kind 启用,busy 禁用。
-        DownloadFooocusLauncherDefaultsCommand = new RelayCommand(
-            async p => await DownloadFooocusLauncherDefaultsAsync(p as Environment ?? Selected),
-            p =>
-            {
-                var env = p as Environment ?? Selected;
-                if (env is null) return false;
-                if (env.TemplateKind != "Fooocus") return false;
-                if (IsEnvBusy(env)) return false;
+                if (env.FooocusAllDefaultModelsDownloaded) return false;  // 全装齐 → disabled
                 return true;
             });
         // v1.0.0.x #577:env 行末位「安装本地常用」按钮 — 单向 install(不 toggle,没有
@@ -1028,6 +1014,10 @@ public class EnvironmentListViewModel : ViewModelBase
             }
         }
         RaiseCommandsChanged();
+        // v1.0.0.x (2026-09-01) T24:async 后台跑 Fooocus 全默认模型 probe ——
+        // 设 env.FooocusAllDefaultModelsDownloaded 控制「下载默认模型」按钮 disabled。
+        // probe ~1-2s 不阻塞 UI(fire-and-forget)。Load() 多次调用 30s TTL 避免重复。
+        _ = RefreshFooocusAllModelsStatusAsync();
     }
 
     /// <summary>
@@ -2471,10 +2461,8 @@ public class EnvironmentListViewModel : ViewModelBase
         // v0.6.11+ T1:toggle 命令也要 refresh,否则 busy 切换后按钮不会自动 enable/disable
         ToggleRequirementsCommand.RaiseCanExecuteChanged();
         ToggleBaseEnvCommand.RaiseCanExecuteChanged();
-        // v1.0.0.x (2026-09-01) T22:同 ToggleBaseEnvCommand,busy 切换也要 refresh。
-        DownloadFooocusModelsCommand.RaiseCanExecuteChanged();
-        // v1.0.0.x (2026-09-01) T23b:同 T22。
-        DownloadFooocusLauncherDefaultsCommand.RaiseCanExecuteChanged();
+        // v1.0.0.x (2026-09-01) T22 + T23b + T24 合并:busy 切换 refresh + 装完状态变化。
+        DownloadFooocusAllModelsCommand.RaiseCanExecuteChanged();
         // v0.6.15.8 T5:NodeManagement open 命令的 CanExecute 依赖 IsEnvBusy(env),
         // busy 状态变化要 refresh 让按钮 enable/disable。
         OpenNodeManagementCommand.RaiseCanExecuteChanged();
