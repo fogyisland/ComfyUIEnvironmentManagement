@@ -1030,6 +1030,21 @@ public sealed class ProcessLauncher : IDisposable
                 entryArgs += $" --controlnet-dir {fp.ControlnetDir}";
         }
 
+        // v1.0.0.x (2026-09-01) T26:Fooocus 默认加 --share ——
+        // entry_with_update.py / entry.py 启动 gradio 时 args_manager.args.share=False;
+        // 用户 settings.inf 设了 http_proxy (e.g. 127.0.0.1:10808) 时 localhost 不可访问
+        // → gradio_root.launch() 抛 ValueError("shareable link required") → python exit
+        // → env.Status 回 stopped,用户看到按钮能点但启动失败。
+        // Fooocus 上游 args_manager.args.share 已支持(Envs/Fooocus*/webui.py:1124 读它),
+        // --share 让 gradio 创建临时公网 tunnel 绕开 localhost 限制(72h 自动过期)。
+        // 镜像 Forge kind-special 分支(line 1016-1031)。
+        // 防重复:用户手动 EntryArgs 已含 --share → 跳过(避免命令行双 flag 触发 argparse 错)。
+        if (string.Equals(snapshot.Kind, "Fooocus", StringComparison.Ordinal)
+            && !entryArgs.Contains("--share"))
+        {
+            entryArgs += " --share";
+        }
+
         // v1.0.0.x (2026-08-29):Forge 启动禁用 webui.py 自动开浏览器 —
         // 用户原话:"他启动后自动打开网页,在这里我们不推荐"。
         //
