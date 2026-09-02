@@ -238,20 +238,6 @@ public class TemplateConfigTests
         Assert.False(cfg.CanDelete);
     }
 
-    [Fact]
-    public void CanDelete_BuiltInCoquiTTS_False()
-    {
-        var cfg = new TemplateConfig { Kind = "CoquiTTS", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
-        Assert.False(cfg.CanDelete);
-    }
-
-    [Fact]
-    public void CanDelete_BuiltInBark_False()
-    {
-        var cfg = new TemplateConfig { Kind = "Bark", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
-        Assert.False(cfg.CanDelete);
-    }
-
     // --- v1.0.0.x (2026-08-29): 4 new built-in video/image-gen kinds (G13 delete 保护) ---
 
     [Fact]

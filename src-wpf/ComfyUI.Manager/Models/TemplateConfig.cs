@@ -135,17 +135,17 @@ public class TemplateConfig
     /// <summary>
     /// Whether the user can delete this template from the management UI. Built-in
     /// templates are protected (G13) — they always exist as canonical templates.
-    /// v1.0.0.x (2026-08-29): 10 built-in kinds (2 图像 + 4 语音 + 4 视频/图像生成/工具:
-    /// ComfyUI + Forge + OpenVoice + Whisper + CoquiTTS + Bark +
+    /// v1.0.0.x (2026-09-01) T30: 8 built-in kinds (2 图像 + 2 语音 + 4 视频/图像生成/工具:
+    /// ComfyUI + Forge + OpenVoice + Whisper +
     /// HunyuanVideo + LTXVideo + CogVideoX + HivisionIDPhotos;
-    /// A1111 + SwarmUI 已下线,T29 (2026-09-01) 再 -Fooocus)。
+    /// A1111 + SwarmUI 已下线,T29 -Fooocus,T30 -CoquiTTS -Bark)。
     /// Hides the grayed-out Delete button on built-in cards.
     /// </summary>
     [JsonIgnore]
     public bool CanDelete => Kind switch
     {
         "ComfyUI" or "Forge"
-            or "OpenVoice" or "Whisper" or "CoquiTTS" or "Bark"
+            or "OpenVoice" or "Whisper"
             or "HunyuanVideo" or "LTXVideo" or "CogVideoX"
             or "HivisionIDPhotos" => false,
         _ => true,
@@ -182,7 +182,7 @@ public class TemplateConfig
     /// v1.0.0.x:模板管理卡片用本地状态 badge。<see cref="LocalDirBadgeHint"/>
     /// 没本地目录时显示,提醒用户「在模板管理页点 下载与更新 把模板源码 clone 到本地」。
     /// v1.0.0.x #630: 文字"本地目录为空" → "源码未下载" ——
-    /// 3 个 GitHub AI 语音模板(Whisper / CoquiTTS / Bark)首次使用前没 clone,
+    /// 2 个 GitHub AI 语音模板(OpenVoice / Whisper)首次使用前没 clone,
     /// 旧文案容易被误读为「错误」;新文案直白「未下载」配合琥珀 badge 颜色,语义清楚。
     /// </summary>
     public const string LocalDirBadgeHint = "源码未下载";

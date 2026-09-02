@@ -15,8 +15,10 @@ namespace ComfyUI.Manager.ViewModels;
 
 /// <summary>
 /// v1.0.0 multi-template: sidebar page VM. Lists + adds + edits + deletes templates.
-/// Built-in 7 个内置模板 are protected from delete (G13):
-    /// ComfyUI / Forge / OpenVoice / Whisper / CoquiTTS / Bark。
+/// Built-in 8 个内置模板 are protected from delete (G13):
+    /// ComfyUI / Forge / OpenVoice / Whisper / HunyuanVideo / LTXVideo /
+    /// CogVideoX / HivisionIDPhotos。
+    /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线,从 G13 名单移除。
     /// v1.0.0.x: A1111 + SwarmUI 模板已下线,不再 seed。
 /// </summary>
 public class TemplateManagementViewModel : ViewModelBase

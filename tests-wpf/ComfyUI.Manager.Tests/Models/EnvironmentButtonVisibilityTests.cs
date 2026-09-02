@@ -7,10 +7,11 @@ namespace ComfyUI.Manager.Tests.Models;
 /// v1.0.0.x (2026-08-31): 锁 <see cref="Environment.GenericActionsVisible"/> 行为 ——
 /// Row 2 第 3 个 Grid `GenericActions` 显示条件:
 /// <list type="bullet">
-///   <item>8 个 non-ComfyUI/Forge built-in kind = true(OpenVoice / Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos)</item>
+///   <item>6 个 non-ComfyUI/Forge built-in kind = true(OpenVoice / Whisper / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos)</item>
 ///   <item>ComfyUI + Forge = false(各自走自己的 5×2 / 3×2 Grid)</item>
 ///   <item>空 / 未知 kind = false(default)</item>
 /// </list>
+/// v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,剩 6 个 non-ComfyUI/Forge built-in。
 ///
 /// 镜像 <see cref="Environment.RequirementsButtonVisible"/> 模式(inverse computed bool),
 /// XAML 用单 DataTrigger Value="True" 触发 visible。
@@ -20,15 +21,13 @@ public sealed class EnvironmentButtonVisibilityTests
     [Theory]
     [InlineData("OpenVoice")]
     [InlineData("Whisper")]
-    [InlineData("CoquiTTS")]
-    [InlineData("Bark")]
     [InlineData("HunyuanVideo")]
     [InlineData("LTXVideo")]
     [InlineData("CogVideoX")]
     [InlineData("HivisionIDPhotos")]
-    public void GenericActionsVisible_TrueForEightNonComfyUiForgeBuiltInKinds(string kind)
+    public void GenericActionsVisible_TrueForSixNonComfyUiForgeBuiltInKinds(string kind)
     {
-        // v1.0.0.x:8 个 built-in 用通用 5-button Grid(start/log/browser/report/delete)
+        // v1.0.0.x:6 个 built-in 用通用 5-button Grid(start/log/browser/report/delete)
         var env = new Environment { TemplateKind = kind };
         Assert.True(env.GenericActionsVisible);
     }
@@ -106,8 +105,6 @@ public sealed class EnvironmentButtonVisibilityTests
     [InlineData("LTXVideo")]  // uv sync 处理依赖,不需要 BaseEnv 按钮
     [InlineData("OpenVoice")]
     [InlineData("Whisper")]
-    [InlineData("CoquiTTS")]
-    [InlineData("Bark")]
     [InlineData("HivisionIDPhotos")]
     public void BaseEnvButtonVisible_FalseForNonImageVideoKinds(string kind)
     {

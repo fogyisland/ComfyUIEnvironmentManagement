@@ -41,7 +41,7 @@ public sealed class ProcessLauncherEncodingTests
         var allKinds = new[]
         {
             "ComfyUI", "Forge", "OpenVoice", "Whisper",
-            "CoquiTTS", "Bark", "HunyuanVideo", "LTXVideo",
+            "HunyuanVideo", "LTXVideo",
             "CogVideoX", "HivisionIDPhotos", "MyCustomKind"
         };
         var expected = ProcessLauncher.PythonEncodingEnvironmentVariables();

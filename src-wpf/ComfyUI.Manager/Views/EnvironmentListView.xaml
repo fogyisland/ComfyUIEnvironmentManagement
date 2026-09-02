@@ -599,9 +599,9 @@
                                                           RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}" />
                                     </Grid>
-                                    <!-- v1.0.0.x (2026-08-31): 通用 env Actions ——
-                                         8 个 non-ComfyUI/Forge built-in kind(OpenVoice /
-                                         Whisper / CoquiTTS / Bark / HunyuanVideo / LTXVideo /
+                                    <!-- v1.0.0.x (2026-09-01) T30: 通用 env Actions ——
+                                         6 个 non-ComfyUI/Forge built-in kind(OpenVoice /
+                                         Whisper / HunyuanVideo / LTXVideo /
                                          CogVideoX / HivisionIDPhotos)的 env 行用这套 5-button Grid。
                                          1 行 × 5 列布局。
                                          Command 复用 VM 现有 property(全是 template-kind-agnostic,

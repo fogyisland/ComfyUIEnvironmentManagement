@@ -36,7 +36,7 @@ namespace ComfyUI.Manager.Infrastructure;
 ///   - Python    : 模板 Python 根(指向 package 自带的 portable Python/ 目录,
 ///                 内含 3.10/3.11/.../python.exe)
 ///   - ENVTemplate: 系统模板库根(v1.0.0.x seed,放所有内置 + 用户模板源码 ——
-///                 ComfyUI / Forge / OpenVoice / Whisper / CoquiTTS / Bark)
+///                 ComfyUI / Forge / OpenVoice / Whisper)
 ///   - ComfyUITemplate : shared 布局的 ComfyUI 源(package root/ComfyUITemplate/,v1.0.0+ 从 `ComfyUI/` 重命名)
 ///   - Envs      : EnvCreatorService 创建 env 时放这里(空 → 不预创建)
 ///   - Nodes     : 全局 catalog 节点根(空 → 不预创建)
@@ -435,11 +435,13 @@ public static class SettingsDefaults
         if (s.DisableBuiltInTemplatesSeed) return;
 
         // G4: only seed if missing — never overwrite user customization
-        // v1.0.0.x: 加 5 个 built-in defaults — Forge(#497 修复)+
-        // OpenVoice/Whisper/CoquiTTS/Bark(AI 语音 GitHub clone)。G13 delete 保护
-        // 通过 TemplateConfig.CanDelete 里的 hardcoded kind 白名单保护所有 7 个。
-        // v1.0.0.x: A1111 + SwarmUI 不再 seed — 模板已下线(A1111 因 Stability-AI
-        // 仓库移除;SwarmUI 因 ProcessLauncher Python 假设 functional break)。
+        // v1.0.0.x: 加 3 个 built-in defaults — Forge(#497 修复)+
+        // OpenVoice/Whisper(AI 语音 GitHub clone)。G13 delete 保护
+        // 通过 TemplateConfig.CanDelete 里的 hardcoded kind 白名单保护所有 8 个。
+        // v1.0.0.x: A1111 + SwarmUI + CoquiTTS + Bark 不再 seed —
+        // A1111 因 Stability-AI 仓库移除;SwarmUI 因 ProcessLauncher Python 假设
+        // functional break。v1.0.0.x (2026-09-01) T30: CoquiTTS 因 coqui 公司
+        // 2024 关停;Bark 因 repo archived (>2y 无更新)。
         if (!s.Templates.ContainsKey("ComfyUI"))
         {
             s.Templates["ComfyUI"] = TemplateConfigDefaults.ComfyUi(projectRoot);
@@ -456,14 +458,8 @@ public static class SettingsDefaults
         {
             s.Templates["Whisper"] = TemplateConfigDefaults.Whisper(projectRoot);
         }
-        if (!s.Templates.ContainsKey("CoquiTTS"))
-        {
-            s.Templates["CoquiTTS"] = TemplateConfigDefaults.CoquiTts(projectRoot);
-        }
-        if (!s.Templates.ContainsKey("Bark"))
-        {
-            s.Templates["Bark"] = TemplateConfigDefaults.Bark(projectRoot);
-        }
+        // v1.0.0.x (2026-09-01) T30: CoquiTTS (coqui-ai/TTS) + Bark (suno-ai/bark) 下线
+        // (coqui 公司 2024 关停 + Bark repo archived, >2y 无更新)。
         // v1.0.0.x (2026-08-29): 加 3 个 Gradio Python webui built-in —
         // HunyuanVideo / LTXVideo / CogVideoX。ProcessLauncher Python 假设
         // 兼容(都是 python <entryScript>.py --port <port> 模式),所以归类为正常 built-in。
@@ -489,15 +485,15 @@ public static class SettingsDefaults
         }
     }
 
-    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 11 个 built-in 同步。
+    // v1.0.0.x bug #509: 跟 TemplateConfigDefaults 里 8 个 built-in 同步。
     // v1.0.0.x:A1111 + SwarmUI 从 seed + BuiltInKinds 移除(模板已下线),剩 6 个。
     // v1.0.0.x (2026-08-29): 加 HunyuanVideo/LTXVideo/CogVideoX → 6 → 9。
     // v1.0.0.x (2026-08-29): +HivisionIDPhotos → 9 → 10。
-    // v1.0.0.x (2026-09-01) T29:Fooocus 从 seed + BuiltInKinds 移除 → 10。
+    // v1.0.0.x (2026-09-01) T29: Fooocus 移除 → 10; T30: CoquiTTS + Bark 移除 → 8。
     private static readonly string[] BuiltInKinds =
     {
         "ComfyUI", "Forge",
-        "OpenVoice", "Whisper", "CoquiTTS", "Bark",
+        "OpenVoice", "Whisper",
         "HunyuanVideo", "LTXVideo", "CogVideoX",
         "HivisionIDPhotos",
     };
@@ -507,14 +503,19 @@ public static class SettingsDefaults
     /// 移除) + SwarmUI (ProcessLauncher Python 假设 functional break)。
     /// v1.0.0.x (2026-09-01) T29:+Fooocus (gated HF repo lllyasviel/fooocus_expansion
     /// 401 Unauthorized,用户决策 2026-09-01 隐藏 + 删代码 + 删 FocusAll env)。
+    /// v1.0.0.x (2026-09-01) T30:+CoquiTTS (coqui 公司 2024 关停) +
+    /// Bark (suno-ai/bark repo archived, >2y 无更新)。
     /// 已从 BuiltInKinds 移除(不会再 seed),但 shipped 用户 settings.inf 里仍可能 persist
     /// 老条目。Apply 末尾调 PruneDeprecatedBuiltInKinds 一次性从 s.Templates dict 清掉,
     /// 模板管理 UI(TemplateManagementViewModel 直接遍历 s.Templates)不再显示。
-    /// **不**碰 BuiltInKinds 当前的 10 个,**不**碰用户手填的 custom kind。
+    /// **不**碰 BuiltInKinds 当前的 8 个,**不**碰用户手填的 custom kind。
     /// </summary>
     private static readonly string[] DeprecatedBuiltInKinds =
     {
         "A1111", "SwarmUI", "Fooocus",
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS (coqui 公司 2024 关停) +
+        // Bark (suno-ai/bark repo archived, >2y 无更新) 已下线。
+        "CoquiTTS", "Bark",
     };
 
     /// <summary>

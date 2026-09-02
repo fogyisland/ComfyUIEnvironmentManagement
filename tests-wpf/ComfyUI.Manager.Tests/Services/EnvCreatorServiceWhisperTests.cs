@@ -13,7 +13,8 @@ namespace ComfyUI.Manager.Tests.Services;
 /// v1.0.0.x (2026-08-31):锁 <see cref="EnvCreatorService"/> step 7.7(Whisper 分支)
 /// 触发 <c>pip install openai-whisper</c> — 镜像 LTX-2 step 7.5 uv sync factory pattern
 /// (<c>Func&lt;venvPython, ct, Task&gt;?</c> ctor 注入)。其它 kind(ComfyUI / Forge /
-/// LTXVideo / CoquiTTS / Bark / etc)完全不触发(回归保护 — 防 Whisper 分支污染)。
+/// LTXVideo / etc)完全不触发(回归保护 — 防 Whisper 分支污染)。
+/// v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,从 kind 列表移除。
 ///
 /// Whisper 是 PyPI 包,没有 monorepo uv sync(LTXVideo 模式)。不装包直接
 /// <c>python -m whisper</c> → ImportError → WaitForCliCompletionAsync 抛

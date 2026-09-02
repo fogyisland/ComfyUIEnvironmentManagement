@@ -15,7 +15,8 @@ namespace ComfyUI.Manager.Services;
 ///   offset 不稳定(Windows 10/11 多次实测偏移到 MZ 头/heap 头),≥3 次试错无解。
 /// - 改用 <see cref="IsEnvProcessOwned"/>:<see cref="Process.MainModule"/> 拿到 EXE 路径,
 ///   检查其所在目录是否在 <paramref name="envRootPath"/> 下。
-/// - 覆盖率:6/7 built-in templates(ComfyUI/Forge/OpenVoice/Whisper/CoquiTTS/Bark)— 它们的
+/// - 覆盖率:6/8 built-in templates(ComfyUI/Forge/OpenVoice/Whisper)— 其它
+/// HunyuanVideo/LTXVideo/CogVideoX/HivisionIDPhotos 缺 serve 端口,不在测覆盖范围的
 ///   进程都是 venv 内的 python.exe,EXE 路径在 envRootPath/.venv/Scripts/python.exe。
 /// - SwarmUI 已下线 (2026-08-29):以前的例外描述移除 — 现在所有 built-in 都走 venv python。
 /// - 失败一律返 false,调用方 skip 而非 throw(启动期 cleanup 必须 fail-safe)。

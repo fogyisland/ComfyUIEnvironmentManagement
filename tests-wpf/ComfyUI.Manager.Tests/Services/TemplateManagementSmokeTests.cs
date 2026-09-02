@@ -29,6 +29,9 @@ namespace ComfyUI.Manager.Tests.Services;
 /// v1.0.0.x (2026-08-31): 7 → 10 — Whisper/CoquiTTS/Bark/HivisionIDPhotos 4 个语音/
 /// 图像模板今天已陆续 clone 到 ENVTemplate/(用户 dev verify 通过)。
 /// v1.0.0.x (2026-09-01) T29: Fooocus 已删除 (gated HF repo 401 不可用)。
+/// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线 (coqui 公司 2024 关停 +
+/// suno-ai/bark repo archived >2y 无更新),从 ClonedBuiltinKinds + AllBuiltins 移除,
+/// 总数 10 → 8。ENVTemplate/CoquiTTS + ENVTemplate/Bark 目录也待删(T30d)。
 /// v1.0.0.x: A1111 不再是内置模板(已下线),从所有列表移除,总数 8 → 7。
 /// </summary>
 public sealed class TemplateManagementSmokeTests
@@ -46,6 +49,8 @@ public sealed class TemplateManagementSmokeTests
     /// v1.0.0.x (2026-08-29): 3 个新视频/图像生成模板(HunyuanVideo/LTXVideo/CogVideoX)
     /// 已 clone 到 ENVTemplate,从 PendingBuiltinKinds 移到 ClonedBuiltinKinds(3 → 6)。
     /// v1.0.0.x (2026-09-01) T29: Fooocus 已删除(11 → 10 built-ins)。
+    /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线 (10 → 8 built-ins),
+    /// 同时 ENVTemplate/CoquiTTS + ENVTemplate/Bark 目录也应清掉。
     /// v1.0.0.x: 从 4 个减到 3 个 — SwarmUI 已下线 + 目录已删除。
     /// v1.0.0.x: 从 5 个减到 4 个 — A1111 已下线。
     /// v1.0.0.x (2026-08-31): 6 → 10 — Whisper/CoquiTTS/Bark/HivisionIDPhotos 4 个语音/
@@ -55,7 +60,7 @@ public sealed class TemplateManagementSmokeTests
     {
         "ComfyUI", "Forge", "OpenVoice",
         "HunyuanVideo", "LTXVideo", "CogVideoX",
-        "Whisper", "CoquiTTS", "Bark",
+        "Whisper",
         "HivisionIDPhotos",
     };
 
@@ -63,14 +68,16 @@ public sealed class TemplateManagementSmokeTests
     /// shipped 状态下 <c>ENVTemplate/</c> 不存在的内置模板(待 clone)。
     /// 测试断言 LocalDirExists=false 且 badge=<see cref="TemplateConfig.LocalDirBadgeHint"/>。
     /// v1.0.0.x (2026-08-31): 0 个 — 10 个 built-in 全部已 clone 到 ENVTemplate/。
+    /// v1.0.0.x (2026-09-01) T30: 仍 0 个 — 8 个 built-in 全部已 clone 到 ENVTemplate/。
     /// </summary>
     private static readonly string[] PendingBuiltinKinds = Array.Empty<string>();
 
     /// <summary>
-    /// 一站式枚举 10 个内置模板 → 实际 TemplateConfig 实例,供 [Theory] / [Fact] 用。
+    /// 一站式枚举 8 个内置模板 → 实际 TemplateConfig 实例,供 [Theory] / [Fact] 用。
     /// 用 projectRoot="" 占位,LocalSourceDir 全部是 "<Kind>" 相对路径,不需要真 projectRoot。
     /// v1.0.0.x (2026-08-29): 从 6 个扩到 10 个 — +HunyuanVideo/LTXVideo/CogVideoX
     /// + HivisionIDPhotos。v1.0.0.x (2026-09-01) T29: Fooocus 已删除,保持 10 个。
+    /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线,10 → 8。
     /// </summary>
     private static IEnumerable<(string Kind, TemplateConfig Cfg)> AllBuiltins()
     {
@@ -78,8 +85,6 @@ public sealed class TemplateManagementSmokeTests
         yield return ("Forge",            TemplateConfigDefaults.Forge(""));
         yield return ("OpenVoice",        TemplateConfigDefaults.OpenVoice(""));
         yield return ("Whisper",          TemplateConfigDefaults.Whisper(""));
-        yield return ("CoquiTTS",         TemplateConfigDefaults.CoquiTts(""));
-        yield return ("Bark",             TemplateConfigDefaults.Bark(""));
         yield return ("HunyuanVideo",     TemplateConfigDefaults.HunyuanVideo(""));
         yield return ("LTXVideo",         TemplateConfigDefaults.LTXVideo(""));
         yield return ("CogVideoX",        TemplateConfigDefaults.CogVideoX(""));
@@ -87,7 +92,7 @@ public sealed class TemplateManagementSmokeTests
     }
 
     /// <summary>
-    /// 10 个已 shipped 内置模板,目录存在 + 非空 → badge 不显示,card 显示源 [本地]/[GitHub] 即可。
+    /// 8 个已 shipped 内置模板,目录存在 + 非空 → badge 不显示,card 显示源 [本地]/[GitHub] 即可。
     /// </summary>
     [Fact]
     public void ClonedBuiltins_HaveLocalDir_NoBadge()
@@ -121,6 +126,7 @@ public sealed class TemplateManagementSmokeTests
     /// <summary>
     /// 0 个待 clone 内置模板,目录不存在 → badge 显示"本地目录为空",提醒用户。
     /// v1.0.0.x (2026-08-31): 0 个 — 全部 10 个 built-in 已 shipped + 已 clone。
+    /// v1.0.0.x (2026-09-01) T30: 仍 0 个 — 全部 8 个 built-in 已 shipped + 已 clone。
     /// </summary>
     [Fact]
     public void PendingBuiltins_MissingDir_ShowRedBadge()
@@ -145,20 +151,21 @@ public sealed class TemplateManagementSmokeTests
     }
 
     /// <summary>
-    /// 防回归:TemplateConfigDefaults 必须正好注册 10 个内置模板(kind 列表 = Cloned + Pending)。
+    /// 防回归:TemplateConfigDefaults 必须正好注册 8 个内置模板(kind 列表 = Cloned + Pending)。
     /// 漏注册(用户报「只有 2 个模板」#497 历史)或重命名都会让这个测试 fail。
     /// 这个测试**不依赖** ENVTemplate/ 是否存在,锁的是代码契约。
     /// v1.0.0.x (2026-08-29): 6 → 10 个 — +HunyuanVideo/LTXVideo/CogVideoX
     /// + HivisionIDPhotos。v1.0.0.x (2026-09-01) T29: Fooocus 已删,保持 10。
+    /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线,10 → 8。
     /// v1.0.0.x: 从 8 个减到 7 个 — A1111 已下线;再减到 6 个 — SwarmUI 已下线。
     /// </summary>
     [Fact]
-    public void AllBuiltins_EnumExactlyTen()
+    public void AllBuiltins_EnumExactlyEight()
     {
         var actual = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (kind, _) in AllBuiltins())
             actual.Add(kind);
-        Assert.Equal(10, actual.Count);
+        Assert.Equal(8, actual.Count);
         foreach (var kind in ClonedBuiltinKinds)
             Assert.Contains(kind, actual);
         foreach (var kind in PendingBuiltinKinds)
@@ -166,7 +173,7 @@ public sealed class TemplateManagementSmokeTests
     }
 
     /// <summary>
-    /// 防回归:10 个内置模板的 <see cref="TemplateConfig.CanDelete"/> 必须全部为 false(G13)。
+    /// 防回归:8 个内置模板的 <see cref="TemplateConfig.CanDelete"/> 必须全部为 false(G13)。
     /// 任何内置模板漏写白名单 → 用户能删 → 模板管理列表掉项。
     /// </summary>
     [Fact]
@@ -182,11 +189,12 @@ public sealed class TemplateManagementSmokeTests
     /// 防回归:内置模板 SourceKind + GitHubRepoUrl 配套。
     /// - Local 类(ComfyUI/Forge)— SourceKind=Local,无 repo URL 是 OK 的
     ///   (它们的 CanUpdateSource 走白名单,但 URL 是给 Update 用的,创建时不强制)。
-    /// - GitHub 类(OpenVoice/Whisper/CoquiTTS/Bark + HunyuanVideo/LTXVideo/CogVideoX +
+    /// - GitHub 类(OpenVoice/Whisper + HunyuanVideo/LTXVideo/CogVideoX +
     ///   HivisionIDPhotos)— SourceKind=GitHub + URL 非空,才能被 TemplateSourceUpdater.CloneAsync
     ///   用上(否则 clone target 拿不到)。
     /// v1.0.0.x (2026-08-29): 3 个视频/图像生成模板走 GitHub clone,加进 case 列表。
     /// v1.0.0.x (2026-08-29): HivisionIDPhotos 加进 GitHub case 列表。
+    /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线,从 GitHub case 列表移除。
     /// </summary>
     [Fact]
     public void AllBuiltins_SourceKindMatchesKind()
@@ -201,8 +209,6 @@ public sealed class TemplateManagementSmokeTests
                     break;
                 case "OpenVoice":
                 case "Whisper":
-                case "CoquiTTS":
-                case "Bark":
                 case "HunyuanVideo":
                 case "LTXVideo":
                 case "CogVideoX":
@@ -222,8 +228,6 @@ public sealed class TemplateManagementSmokeTests
         "Forge"            => TemplateConfigDefaults.Forge(""),
         "OpenVoice"        => TemplateConfigDefaults.OpenVoice(""),
         "Whisper"          => TemplateConfigDefaults.Whisper(""),
-        "CoquiTTS"         => TemplateConfigDefaults.CoquiTts(""),
-        "Bark"             => TemplateConfigDefaults.Bark(""),
         "HunyuanVideo"     => TemplateConfigDefaults.HunyuanVideo(""),
         "LTXVideo"         => TemplateConfigDefaults.LTXVideo(""),
         "CogVideoX"        => TemplateConfigDefaults.CogVideoX(""),

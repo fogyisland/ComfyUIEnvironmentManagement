@@ -66,7 +66,8 @@
                                             ToolTip="项目方已验证此模板可正常运行(env-create + 启动 + 接口可达)">
                                         <TextBlock Text="✓ 已验证 可运行" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
                                     </Border>
-                                    <!-- v1.0.0.x:本地目录状态 — GitHub 模板(Whisper / CoquiTTS / Bark)
+                                    <!-- v1.0.0.x (2026-09-01) T30:本地目录状态 — GitHub 模板(OpenVoice /
+                                         Whisper / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos)
                                          首次使用前没 git clone 时显琥珀色 badge 提醒用户点 「下载与更新」。
                                          SourceKindBadge 之前。v1.0.0.x #630: 颜色 #D32F2F 红 →
                                          #F59E0B 琥珀 — "未下载" 不是错误,红色让用户误以为坏了。 -->

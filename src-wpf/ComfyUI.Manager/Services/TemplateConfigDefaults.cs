@@ -6,12 +6,14 @@ namespace ComfyUI.Manager.Services;
 /// v1.0.0 multi-template: built-in default TemplateConfig singletons.
 /// Used by SettingsDefaults.Apply to seed on first run. Read-only after construction.
 ///
-/// v1.0.0.x: 加 6 个 built-in — Forge(本地 shipped,但之前没注册 → #497 用户
-/// 看到「只有 2 个模板」)+ OpenVoice/Whisper/CoquiTTS/Bark(GitHub clone,AI 语音服务)。
+/// v1.0.0.x: 加 4 个 built-in — Forge(本地 shipped,但之前没注册 → #497 用户
+/// 看到「只有 2 个模板」)+ OpenVoice/Whisper(GitHub clone,AI 语音服务)。
 /// v1.0.0.x (2026-08-29): SwarmUI 已下线 — ProcessLauncher 的 Python 假设对 SwarmUI
 /// (.NET app)functional break,venv python 不存在 + Models junction 路径错 +
-/// PYTHONPATH 无意义。用户决定去掉 SwarmUI 模板。剩 7 个 built-in 都受 G13 delete
-/// 保护(改 <see cref="TemplateConfig.CanDelete"/>)。
+/// PYTHONPATH 无意义。用户决定去掉 SwarmUI 模板。
+/// v1.0.0.x (2026-09-01) T30: CoquiTTS (coqui-ai/TTS, coqui 公司 2024 关停) +
+/// Bark (suno-ai/bark, repo 已 archived) 已下线 (>2y 无更新)。剩 6 个 built-in 都受
+/// G13 delete 保护(改 <see cref="TemplateConfig.CanDelete"/>)。
 /// </summary>
 public static class TemplateConfigDefaults
 {
@@ -21,11 +23,13 @@ public static class TemplateConfigDefaults
     // "envTemplates/" 前缀 — 加了会被 resolve 成 <system_template_library_dir>/envTemplates/ComfyUI
     // 多一层(用户 2026-08-26 反馈 git clone 创建了 nested envTemplate/envtemplate/ 子目录)。
     // 2 个 image templates (ComfyUI/Forge) 老 settings 里就是这个形式
-    // (LocalSourceDir = "<Kind>"),4 个 GitHub AI voice (OpenVoice/Whisper/CoquiTTS/Bark)
-    // 是新建,统一对齐。v1.0.0.x: A1111 + SwarmUI 模板已下线 — A1111 因
+    // (LocalSourceDir = "<Kind>"),2 个 GitHub AI voice (OpenVoice/Whisper) 是新建,
+    // 统一对齐。v1.0.0.x: A1111 + SwarmUI + CoquiTTS + Bark 模板已下线 — A1111 因
     // Stability-AI/stablediffusion 仓库已从 github 移除,SwarmUI 因 ProcessLauncher
     // Python 假设 functional break(A1111 pre-flight + sdweb 启动都 fail paths.py:34;
-    // SwarmUI 是 .NET app,venv python 不存在)。Forge 替代 SD 角色。
+    // SwarmUI 是 .NET app,venv python 不存在)。v1.0.0.x (2026-09-01) T30:
+    // CoquiTTS (coqui 公司 2024 关停) + Bark (repo archived, >2y 无更新)。
+    // Forge 替代 SD 角色。
     public static TemplateConfig ComfyUi(string projectRoot) => new()
     {
         Name = "ComfyUI",
@@ -129,44 +133,6 @@ public static class TemplateConfigDefaults
         SourceKind = TemplateSourceKind.GitHub,
         GitHubRepoUrl = "https://github.com/openai/whisper.git",
         EntryScript = "whisper",
-        EntryArgs = "",
-        ModelsSubdir = "",
-        ExtraJunctionTargets = new(),
-        UserExtraArgs = "",
-    };
-
-    /// <summary>
-    /// v1.0.0.x: AI 语音 — Coqui TTS (coqui-ai/TTS)。多语言 TTS 库。
-    /// GitHub clone source。Entry 用 tts-server(HTTP server,coqui-ai 提供的
-    /// 内置服务模式)便于 UI 远程调用。
-    /// </summary>
-    public static TemplateConfig CoquiTts(string projectRoot) => new()
-    {
-        Name = "CoquiTTS",
-        Kind = "CoquiTTS",
-        LocalSourceDir = "CoquiTTS",
-        SourceKind = TemplateSourceKind.GitHub,
-        GitHubRepoUrl = "https://github.com/coqui-ai/TTS.git",
-        EntryScript = "tts-server",
-        EntryArgs = "--port {port}",
-        ModelsSubdir = "",
-        ExtraJunctionTargets = new(),
-        UserExtraArgs = "",
-    };
-
-    /// <summary>
-    /// v1.0.0.x: Bark (suno-ai/bark)。生成式语音 / 音效模型。
-    /// GitHub clone source。Bark 是 CLI 工具(无 HTTP server),
-    /// entry 用 bark 模块(等同 python -m bark)。
-    /// </summary>
-    public static TemplateConfig Bark(string projectRoot) => new()
-    {
-        Name = "Bark",
-        Kind = "Bark",
-        LocalSourceDir = "Bark",
-        SourceKind = TemplateSourceKind.GitHub,
-        GitHubRepoUrl = "https://github.com/suno-ai/bark.git",
-        EntryScript = "bark",
         EntryArgs = "",
         ModelsSubdir = "",
         ExtraJunctionTargets = new(),

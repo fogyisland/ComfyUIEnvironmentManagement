@@ -43,7 +43,7 @@ public class StartupPathProbeTests
     {
         var all = new[] {
             "ComfyUI", "Forge",
-            "OpenVoice", "Whisper", "CoquiTTS", "Bark",
+            "OpenVoice", "Whisper",
             "HunyuanVideo", "LTXVideo", "CogVideoX",
             "HivisionIDPhotos",
         };

@@ -5,15 +5,16 @@ using Xunit;
 namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
-/// v1.0.0.x (2026-09-01): 锁 <see cref="TemplateConfigDefaults"/> 10 个 built-in 工厂的
+/// v1.0.0.x (2026-09-01): 锁 <see cref="TemplateConfigDefaults"/> 8 个 built-in 工厂的
 /// <c>RequirementsFile</c> 默认值 ——
 /// <list type="bullet">
 ///   <item>HunyuanVideo / CogVideoX = "requirements.txt"</item>
 ///   <item>LTXVideo = ""(uv sync 装 pyproject.toml)</item>
-///   <item>ComfyUI / Forge / OpenVoice / Whisper / CoquiTTS / Bark / HivisionIDPhotos = ""
+///   <item>ComfyUI / Forge / OpenVoice / Whisper / HivisionIDPhotos = ""
 ///   (走自己 Actions Grid 或 env-create 自动 pip install)</item>
 /// </list>
 /// T29 (2026-09-01): Fooocus 已下线,requirements_versions.txt 配置随之删除。
+/// T30 (2026-09-01): CoquiTTS + Bark 已下线,RequirementsFile 配置随之删除。
 ///
 /// 镜像 <see cref="TemplateConfigDefaultsVerifiedTests"/> pattern(反射工厂方法
 /// + Theory InlineData),新 built-in 加进来自动覆盖(只要加 InlineData)。
@@ -50,17 +51,16 @@ public sealed class TemplateConfigDefaultsRequirementsFileTests
     [InlineData("Forge")]
     [InlineData("OpenVoice")]
     [InlineData("Whisper")]
-    [InlineData("CoquiTts")]
-    [InlineData("Bark")]
     [InlineData("HivisionIdPhotos")]
     public void OtherBuiltIn_RequirementsFile_IsEmpty(string factoryName)
     {
-        // 其它 7 个 built-in 不需要 RequirementsFile:
+        // 其它 5 个 built-in 不需要 RequirementsFile:
         // - ComfyUI / Forge 走自己 Actions Grid 的 RequirementsInstaller
-        // - OpenVoice / Whisper / CoquiTTS / Bark / HivisionIDPhotos env-create 时
+        // - OpenVoice / Whisper / HivisionIDPhotos env-create 时
         //   已经 `pip install -e .` 或类似自带依赖(不在本 wave 范围)
-        // 镜像 Factory Method 的 CamelCase 命名规则(CoquiTts / HivisionIdPhotos
-        // 不是 CoquiTTS / HivisionIDPhotos — Kind 字符串才是后者)
+        // 镜像 Factory Method 的 CamelCase 命名规则(HivisionIdPhotos
+        // 不是 HivisionIDPhotos — Kind 字符串才是后者)
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,不在此列表。
         var method = typeof(TemplateConfigDefaults)
             .GetMethod(factoryName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             ?? throw new System.InvalidOperationException($"Factory method '{factoryName}' not found on TemplateConfigDefaults");

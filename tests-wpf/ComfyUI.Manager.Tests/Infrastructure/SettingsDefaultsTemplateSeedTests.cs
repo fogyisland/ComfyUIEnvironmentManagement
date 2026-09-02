@@ -13,13 +13,14 @@ public class SettingsDefaultsTemplateSeedTests
     [Fact]
     public void Apply_EmptySettings_SeedsAllBuiltInTemplates()
     {
-        // v1.0.0.x: 加 5 个 built-in(Forge 是 shipped 但漏注册 → #497 修复;
-        // OpenVoice/Whisper/CoquiTTS/Bark 是 GitHub-cloned AI 语音 defaults)。
+        // v1.0.0.x: 加 3 个 built-in(Forge 是 shipped 但漏注册 → #497 修复;
+        // OpenVoice/Whisper 是 GitHub-cloned AI 语音 defaults)。
         // v1.0.0.x:A1111 + SwarmUI 模板已下线,不再 seed(A1111 因 Stability-AI
         // 仓库从 github 移除;SwarmUI 因 ProcessLauncher Python 假设 functional break)。
-        // v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX → 6 → 9;
-        // +HivisionIDPhotos → 10。
-        // v1.0.0.x (2026-09-01) T29:Fooocus 已下线 (gated HF repo 401),保持 10。
+        // v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX → 5 → 8;
+        // +HivisionIDPhotos → 9。
+        // v1.0.0.x (2026-09-01) T29:Fooocus 已下线 (gated HF repo 401),保持 9。
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线 (>2y 无更新) → 8。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -29,8 +30,8 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.False(s.Templates.ContainsKey("SwarmUI"));
         Assert.True(s.Templates.ContainsKey("OpenVoice"));
         Assert.True(s.Templates.ContainsKey("Whisper"));
-        Assert.True(s.Templates.ContainsKey("CoquiTTS"));
-        Assert.True(s.Templates.ContainsKey("Bark"));
+        Assert.False(s.Templates.ContainsKey("CoquiTTS"));
+        Assert.False(s.Templates.ContainsKey("Bark"));
         Assert.True(s.Templates.ContainsKey("HunyuanVideo"));
         Assert.True(s.Templates.ContainsKey("LTXVideo"));
         Assert.True(s.Templates.ContainsKey("CogVideoX"));
@@ -57,14 +58,6 @@ public class SettingsDefaultsTemplateSeedTests
         // 必填 positional audio file + --model 在 UserExtraArgs 拼。
         // ProcessLauncher.BuildStartCommand Whisper 分支 ignore EntryArgs。
         Assert.Equal("", wh.EntryArgs);
-
-        var co = s.Templates["CoquiTTS"];
-        Assert.Equal(TemplateSourceKind.GitHub, co.SourceKind);
-        Assert.Equal("https://github.com/coqui-ai/TTS.git", co.GitHubRepoUrl);
-
-        var bk = s.Templates["Bark"];
-        Assert.Equal(TemplateSourceKind.GitHub, bk.SourceKind);
-        Assert.Equal("https://github.com/suno-ai/bark.git", bk.GitHubRepoUrl);
     }
 
     [Fact]
@@ -120,17 +113,16 @@ public class SettingsDefaultsTemplateSeedTests
     [Theory]
     [InlineData("OpenVoice")]
     [InlineData("Whisper")]
-    [InlineData("CoquiTTS")]
-    [InlineData("Bark")]
     [InlineData("HunyuanVideo")]
     [InlineData("LTXVideo")]
     [InlineData("CogVideoX")]
     [InlineData("HivisionIDPhotos")]
     public void Apply_EmptySettings_NonImageBuiltInTemplate_VerifiedDefaultsToFalse(string kind)
     {
-        // v1.0.0.x (2026-08-31): 8 个非 ComfyUI/Forge built-in 默认 Verified=false ——
+        // v1.0.0.x (2026-08-31): 6 个非 ComfyUI/Forge built-in 默认 Verified=false ——
         // 验证后逐个 ship 时由 TemplateConfigDefaults factory 改 true。
         // 锁当前 default 防止后续手抖改默认值。
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,剩 6 个。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -361,6 +353,7 @@ public class SettingsDefaultsTemplateSeedTests
         // +3 个 GitHub-clone 视频/图像生成模板(HunyuanVideo/LTXVideo/CogVideoX)
         // 共 9 个;+HivisionIDPhotos → 10 个。
         // v1.0.0.x (2026-09-01) T29:Fooocus 已下线,保持 10 个。
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线 → 8 个。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -368,8 +361,6 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("Forge", s.Templates["Forge"].LocalSourceDir);
         Assert.Equal("OpenVoice", s.Templates["OpenVoice"].LocalSourceDir);
         Assert.Equal("Whisper", s.Templates["Whisper"].LocalSourceDir);
-        Assert.Equal("CoquiTTS", s.Templates["CoquiTTS"].LocalSourceDir);
-        Assert.Equal("Bark", s.Templates["Bark"].LocalSourceDir);
         Assert.Equal("HunyuanVideo", s.Templates["HunyuanVideo"].LocalSourceDir);
         Assert.Equal("LTXVideo", s.Templates["LTXVideo"].LocalSourceDir);
         Assert.Equal("CogVideoX", s.Templates["CogVideoX"].LocalSourceDir);
@@ -379,9 +370,10 @@ public class SettingsDefaultsTemplateSeedTests
     [Fact]
     public void Apply_PreExistingEnvTemplatesPrefix_NormalizedToKind()
     {
-        // v1.0.0.x bug #509: 已 shipped 用户的 settings.inf 里 4 个 GitHub AI voice
-        // (OpenVoice/Whisper/CoquiTTS/Bark) 已经被种了 "envTemplates\<Kind>" →
+        // v1.0.0.x bug #509: 已 shipped 用户的 settings.inf 里 2 个 GitHub AI voice
+        // (OpenVoice/Whisper) 已经被种了 "envTemplates\<Kind>" →
         // Apply 时通过 NormalizeBuiltInTemplatePaths 替换成 "<Kind>"。
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,不再 seed,不再 normalize。
         // Custom templates(用户手填的 LocalSourceDir)一律不动。
         var s = new Settings();
         s.Templates["OpenVoice"] = new TemplateConfig
