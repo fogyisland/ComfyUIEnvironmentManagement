@@ -1005,24 +1005,24 @@ public class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// v1.0.0.x (2026-09-03) T33:批量更新**不显示** ComfyUI 模板 env —— 镜像
-    /// (inverse of) <see cref="ComfyUI.Manager.Models.Environment.ComfyUiManagerButtonVisible"/>
-    /// 等的"ComfyUI 专属工具"判定。ComfyUI 模板用户直接用单 env 行的节点管理 UI
-    /// (<see cref="ComfyUI.Manager.Models.Environment.LocalNodesButtonVisible"/> +
-    /// <see cref="ComfyUI.Manager.Models.Environment.NodeManagementButtonVisible"/>)
-    /// 更精细。批量更新设计的目的是给 **non-ComfyUI 模板** (OpenVoice / HunyuanVideo /
-    /// CogVideoX / HivisionIDPhotos / Forge)做 env-level git pull:
-    /// - 基础环境(env.RootPath 顶层 git pull,刷新模板源码)
-    /// - ComfyUI-Manager 节点(<c>custom_nodes/ComfyUI-Manager</c>,Forge 也用同样机制)
-    /// 对 ComfyUI 模板的 env 来说,batch git pull 反而容易在
-    /// 用户已用 node management 工具精细管理 <c>custom_nodes/</c> 目录的状态下
-    /// 撞脏状态。镜像既有 <c>OrdinalIgnoreCase</c> 宽松比较风格。
+    /// v1.0.0.x (2026-09-03) T33:批量更新只显示 ComfyUI 模板 env —— 跟 4 处既有判定
+    /// (<see cref="ComfyUI.Manager.Models.Environment.ComfyUiManagerButtonVisible"/> /
+    /// <see cref="ComfyUI.Manager.Models.Environment.NodeManagementButtonVisible"/> /
+    /// <see cref="ComfyUI.Manager.Models.Environment.LocalNodesButtonVisible"/>)
+    /// 100% 一致。原因:
+    /// - bulk update 的 "基础环境" + "ComfyUI-Manager" 跟 node-level update 都需要
+    ///   <c>custom_nodes/</c> 目录 + ComfyUI-Manager 节点(只 ComfyUI 模板有)
+    /// - Forge 用 <c>extensions/</c>(非 <c>custom_nodes/</c>),env-level + ComfyUI-Manager
+    ///   item 跑不通,反而对 Forge RootPath 跑 git pull 有副作用
+    /// - HunyuanVideo / CogVideoX / HivisionIDPhotos / OpenVoice 完全没 ComfyUI 源,
+    ///   bulk update 跑下来 2 条 env-level item 全 skipped,UI 噪音
+    /// 镜像既有 <c>OrdinalIgnoreCase</c> 宽松比较风格(防手工改 settings 写成 "comfyui")。
     /// </summary>
     private List<EnvRow> LoadBulkUpdateEnvRows()
     {
         if (_envRepo is null) return new List<EnvRow>();
         return _envRepo.ListAll()
-            .Where(env => !string.Equals(env.TemplateKind, "ComfyUI", StringComparison.OrdinalIgnoreCase))
+            .Where(env => string.Equals(env.TemplateKind, "ComfyUI", StringComparison.OrdinalIgnoreCase))
             .Select(env => new EnvRow(env.Id, env.Name, env.Status ?? "stopped"))
             .ToList();
     }
