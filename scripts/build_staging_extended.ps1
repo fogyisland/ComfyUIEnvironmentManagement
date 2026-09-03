@@ -41,6 +41,38 @@ if (-not (Test-Path "$ProjectRoot/python")) {
 }
 Copy-Item -Recurse -Force "$ProjectRoot/python" (Join-Path $AppDir "Python")
 
+# 3.5. 删 staging Python 副本的冗余 subdirs (per User 决策 T35 C 方案) ——
+# 只删 staging 副本,user `python/` 实际数据不动
+# - Lib/test/ (60.9M) 单元测试套件 runtime 不需要
+# - Lib/idlelib/ (4.5M) IDLE GUI IDE runtime 不需要
+# - Lib/unittest/ (3.3M) 测试框架
+# - Lib/ensurepip/ (3.2M) pip installer runtime 不需要(用户用 venv)
+# - Lib/distutils/ (2.6M) deprecation
+# - Lib/__pycache__/ (9.1M) 字节码缓存,首运行会自动重建
+# - Lib/site-packages/ (17.8M) pip packages,env-create 自己管 venv 不需要预装
+Write-Host "[3.5/7] Pruning staging Python redundant subdirs..." -ForegroundColor Yellow
+$PythonDst = Join-Path $AppDir "Python"
+$PruneSubdirs = @(
+    "Lib/test",
+    "Lib/idlelib",
+    "Lib/unittest",
+    "Lib/ensurepip",
+    "Lib/distutils",
+    "Lib/__pycache__",
+    "Lib/site-packages"
+)
+$Saved = 0
+foreach ($sub in $PruneSubdirs) {
+    $p = Join-Path $PythonDst $sub
+    if (Test-Path $p) {
+        $size = (Get-ChildItem -Path $p -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue
+        $Saved += $size
+        Write-Host ("  pruned: $sub ({0:N1} MB)" -f ($size/1MB))
+    }
+}
+Write-Host ("  total saved: {0:N1} MB" -f ($Saved/1MB))
+
 # 4. ComfyUITemplate/(从仓库根,排除大文件 + user 数据) — User 决策 "1. 模板需要保留"
 Write-Host "[4/7] Copying ComfyUITemplate (excl models/output/input/custom_nodes/localnodes/user/...)..." -ForegroundColor Yellow
 $ComfyUITemplateSrc = Join-Path $ProjectRoot "ComfyUITemplate"
