@@ -34,12 +34,24 @@ Write-Host "[2/7] Publishing WPF self-contained..." -ForegroundColor Yellow
 & "$ProjectRoot/scripts/build_staging.ps1" -ProjectRoot $ProjectRoot -Configuration $Configuration -Runtime $Runtime -OutputDir $OutputDir
 if ($LASTEXITCODE -ne 0) { throw "build_staging.ps1 failed" }
 
-# 3. portable Python (跟 build_release step 5 一样)
+# 3. portable Python
+# v1.0.0.x T36:per user 决策"保证 release 尽可能小,我记得 Python 网上的包只有 30M" ——
+# 优先用 Python 官方 embeddable distribution(30MB,只 stdlib + interpreter,无 site-packages/Doc),
+# fallback 到 user dev `python/`(~70-180MB 含 site-packages + Doc + Tcl + site-packages)。
 Write-Host "[3/7] Copying portable Python..." -ForegroundColor Yellow
-if (-not (Test-Path "$ProjectRoot/python")) {
-    throw "portable python/ 目录不存在:需要在 venv 中跑过 comfy-mgr install 才能用 WPF 自检"
+$PythonEmbeddedDir = Join-Path $ProjectRoot "release/python-embed/extracted"
+if (Test-Path $PythonEmbeddedDir/python.exe) {
+    # 优先:Python embeddable distribution(30MB,无冗余)
+    $PythonSrc = $PythonEmbeddedDir
+    Write-Host "  using Python embeddable from $PythonEmbeddedDir (small)" -ForegroundColor DarkGray
+} elseif (Test-Path "$ProjectRoot/python") {
+    # fallback:user dev python/(69-180MB)
+    $PythonSrc = "$ProjectRoot/python"
+    Write-Host "  using user dev python/(large; run scripts/fetch_python_embeddable.ps1 to get small)" -ForegroundColor DarkGray
+} else {
+    throw "找不到 Python source。跑 scripts/fetch_python_embeddable.ps1 下载 embeddable(30MB),或在 venv 中跑过 comfy-mgr install 让 user dev python/ 可用"
 }
-Copy-Item -Recurse -Force "$ProjectRoot/python" (Join-Path $AppDir "Python")
+Copy-Item -Recurse -Force $PythonSrc (Join-Path $AppDir "Python")
 
 # 3.5. 删 staging Python 副本的冗余 subdirs (per User 决策 T35 C 方案) ——
 # 只删 staging 副本,user `python/` 实际数据不动
