@@ -14,13 +14,14 @@ public class SettingsDefaultsTemplateSeedTests
     public void Apply_EmptySettings_SeedsAllBuiltInTemplates()
     {
         // v1.0.0.x: 加 3 个 built-in(Forge 是 shipped 但漏注册 → #497 修复;
-        // OpenVoice/Whisper 是 GitHub-cloned AI 语音 defaults)。
+        // OpenVoice 是 GitHub-cloned AI 语音 default)。
         // v1.0.0.x:A1111 + SwarmUI 模板已下线,不再 seed(A1111 因 Stability-AI
         // 仓库从 github 移除;SwarmUI 因 ProcessLauncher Python 假设 functional break)。
-        // v1.0.0.x (2026-08-29): +HunyuanVideo/LTXVideo/CogVideoX → 5 → 8;
-        // +HivisionIDPhotos → 9。
-        // v1.0.0.x (2026-09-01) T29:Fooocus 已下线 (gated HF repo 401),保持 9。
-        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线 (>2y 无更新) → 8。
+        // v1.0.0.x (2026-08-29): +HunyuanVideo/CogVideoX → 5 → 7;
+        // +HivisionIDPhotos → 8。
+        // v1.0.0.x (2026-09-01) T29:Fooocus 已下线 (gated HF repo 401),保持 8。
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线 (>2y 无更新) → 6。
+        // v1.0.0.x (2026-09-02) T31:Whisper + LTXVideo 纯 CLI 已下线 → 6 个 built-in。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -29,11 +30,11 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.True(s.Templates.ContainsKey("Forge"));
         Assert.False(s.Templates.ContainsKey("SwarmUI"));
         Assert.True(s.Templates.ContainsKey("OpenVoice"));
-        Assert.True(s.Templates.ContainsKey("Whisper"));
+        Assert.False(s.Templates.ContainsKey("Whisper"));
         Assert.False(s.Templates.ContainsKey("CoquiTTS"));
         Assert.False(s.Templates.ContainsKey("Bark"));
         Assert.True(s.Templates.ContainsKey("HunyuanVideo"));
-        Assert.True(s.Templates.ContainsKey("LTXVideo"));
+        Assert.False(s.Templates.ContainsKey("LTXVideo"));
         Assert.True(s.Templates.ContainsKey("CogVideoX"));
         Assert.True(s.Templates.ContainsKey("HivisionIDPhotos"));
     }
@@ -52,12 +53,11 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("--share", ov.EntryArgs);
 
         var wh = s.Templates["Whisper"];
-        Assert.Equal(TemplateSourceKind.GitHub, wh.SourceKind);
-        Assert.Equal("https://github.com/openai/whisper.git", wh.GitHubRepoUrl);
-        // v1.0.0.x (2026-08-31):Whisper CLI 工具,EntryArgs 默认空 —
-        // 必填 positional audio file + --model 在 UserExtraArgs 拼。
-        // ProcessLauncher.BuildStartCommand Whisper 分支 ignore EntryArgs。
-        Assert.Equal("", wh.EntryArgs);
+        // v1.0.0.x (2026-09-02) T31:Whisper 模板已下线 — 不再 seed。保留这个 lookup
+        // 是为了 verify PruneDeprecatedBuiltInKinds 没在空 settings 里插回(空 settings
+        // 走 if-not-exists seed,Whisper factory 已删 → 不会有 s.Templates["Whisper"] key)。
+        Assert.False(s.Templates.ContainsKey("Whisper"),
+            "v1.0.0.x T31:Whisper 模板已下线,SettingsDefaults 不应 seed");
     }
 
     [Fact]
@@ -112,17 +112,18 @@ public class SettingsDefaultsTemplateSeedTests
 
     [Theory]
     [InlineData("OpenVoice")]
-    [InlineData("Whisper")]
+    [InlineData("OpenVoice")]
     [InlineData("HunyuanVideo")]
-    [InlineData("LTXVideo")]
     [InlineData("CogVideoX")]
     [InlineData("HivisionIDPhotos")]
     public void Apply_EmptySettings_NonImageBuiltInTemplate_VerifiedDefaultsToFalse(string kind)
     {
-        // v1.0.0.x (2026-08-31): 6 个非 ComfyUI/Forge built-in 默认 Verified=false ——
+        // v1.0.0.x (2026-08-31): 4 个非 ComfyUI/Forge built-in 默认 Verified=false ——
         // 验证后逐个 ship 时由 TemplateConfigDefaults factory 改 true。
         // 锁当前 default 防止后续手抖改默认值。
-        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,剩 6 个。
+        // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,剩 4 个(因为 OpenVoice 也算)。
+        // v1.0.0.x (2026-09-02) T31:Whisper + LTXVideo 已下线,剩 3 个(实际 OpenVoice +
+        // HunyuanVideo + CogVideoX + HivisionIDPhotos = 4 个非 ComfyUI/Forge built-in)。
         var s = new Settings();
         SettingsDefaults.Apply(s, ProjectRoot);
 
@@ -174,29 +175,10 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.True(s.Templates["Forge"].Verified);
     }
 
-    [Fact]
-    public void Apply_ExistingSettings_NonWhitelistedBuiltIn_StaysUnverified()
-    {
-        // v1.0.0.x (2026-08-31): 9 个非白名单 built-in(Whisper/OpenVoice/etc)即使
-        // 已在 settings.inf 里(seed 过),也不会被 upgrade 到 Verified=true。
-        // 等后续 wave 验证后 ship 时再加迁移。
-        var s = new Settings();
-        s.Templates["Whisper"] = new TemplateConfig
-        {
-            Name = "Whisper",
-            Kind = "Whisper",
-            LocalSourceDir = "Whisper",
-            SourceKind = TemplateSourceKind.GitHub,
-            GitHubRepoUrl = "https://github.com/openai/whisper.git",
-            EntryScript = "whisper",
-            EntryArgs = "",
-            ModelsSubdir = "",
-        };
-
-        SettingsDefaults.Apply(s, ProjectRoot);
-
-        Assert.False(s.Templates["Whisper"].Verified);
-    }
+    // v1.0.0.x (2026-09-02) T31:删 Apply_ExistingSettings_NonWhitelistedBuiltIn_StaysUnverified
+    // 整 [Fact] — 原测试只测 Whisper factory,Whisper 模板已下线,无意义。
+    // 其它非白名单 built-in (OpenVoice / HunyuanVideo / CogVideoX / HivisionIDPhotos) 是否被
+    // upgrade 由后续 wave ship 时再写新 test。
 
     [Fact]
     public void Apply_ExistingSettings_AlreadyVerified_StaysTrue()
@@ -360,9 +342,8 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("ComfyUI", s.Templates["ComfyUI"].LocalSourceDir);
         Assert.Equal("Forge", s.Templates["Forge"].LocalSourceDir);
         Assert.Equal("OpenVoice", s.Templates["OpenVoice"].LocalSourceDir);
-        Assert.Equal("Whisper", s.Templates["Whisper"].LocalSourceDir);
+        // v1.0.0.x (2026-09-02) T31:Whisper + LTXVideo 模板已下线,无 seed entry。
         Assert.Equal("HunyuanVideo", s.Templates["HunyuanVideo"].LocalSourceDir);
-        Assert.Equal("LTXVideo", s.Templates["LTXVideo"].LocalSourceDir);
         Assert.Equal("CogVideoX", s.Templates["CogVideoX"].LocalSourceDir);
         Assert.Equal("HivisionIDPhotos", s.Templates["HivisionIDPhotos"].LocalSourceDir);
     }
@@ -370,10 +351,11 @@ public class SettingsDefaultsTemplateSeedTests
     [Fact]
     public void Apply_PreExistingEnvTemplatesPrefix_NormalizedToKind()
     {
-        // v1.0.0.x bug #509: 已 shipped 用户的 settings.inf 里 2 个 GitHub AI voice
-        // (OpenVoice/Whisper) 已经被种了 "envTemplates\<Kind>" →
+        // v1.0.0.x bug #509: 已 shipped 用户的 settings.inf 里 GitHub AI voice
+        // (OpenVoice) 已经被种了 "envTemplates\<Kind>" →
         // Apply 时通过 NormalizeBuiltInTemplatePaths 替换成 "<Kind>"。
         // v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线,不再 seed,不再 normalize。
+        // v1.0.0.x (2026-09-02) T31:Whisper 已下线,不再 normalize。
         // Custom templates(用户手填的 LocalSourceDir)一律不动。
         var s = new Settings();
         s.Templates["OpenVoice"] = new TemplateConfig

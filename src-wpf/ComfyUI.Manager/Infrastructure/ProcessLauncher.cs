@@ -167,9 +167,6 @@ public sealed class ProcessLauncher : IDisposable
         try
         {
             stageProgress?.Report("stage:激活本地环境");
-            // v1.0.0.x (2026-08-30):LTX-2 模型检查(缺失抛 ModelsMissingException → UI MessageBox)。
-            // 排在 BuildStartCommand 之前 —— 缺模型时不浪费一次 entry-script 存在性检查。
-            EnsureLtx2ModelsPresent(env);
 
             // Settings 提前到这(load 一次,Forge / OpenVoice 共享)。
             var settings = new SettingsRepository(new LocalDataPaths(_projectRoot)).Load();
@@ -306,16 +303,9 @@ public sealed class ProcessLauncher : IDisposable
             {
                 // v0.6.7.1: 就绪 = 端口 listen 或 stdout 出现就绪行,任一先到即可。
                 var timeout = TimeSpan.FromSeconds(_startupTimeoutSeconds);
-                // v1.0.0.x (2026-08-31):Whisper CLI 工具 one-shot transcribe → exit,
-                // 不 bind port,等 process 自然退出。其它 server template 走原 WaitForReadyAsync。
-                if (string.Equals(env.TemplateKind, "Whisper", StringComparison.Ordinal))
-                {
-                    await WaitForCliCompletionAsync(entry, timeout, ct);
-                }
-                else
-                {
-                    await WaitForReadyAsync(entry, "127.0.0.1", port, timeout, ct);
-                }
+                // v1.0.0.x (2026-09-02) T31:Whisper CLI 模板已下线,删 WaitForCliCompletionAsync
+                // 分支 — 所有 6 个剩 built-in 都走 HTTP port probe + WaitForReadyAsync。
+                await WaitForReadyAsync(entry, "127.0.0.1", port, timeout, ct);
             }
             catch
             {
@@ -811,66 +801,6 @@ public sealed class ProcessLauncher : IDisposable
     }
 
     /// <summary>
-    /// v1.0.0.x (2026-08-31):Whisper CLI 工具 (one-shot `whisper` transcribe → exit)
-    /// 等 process 自然退出而非端口 listen — 镜像 <see cref="WaitForReadyAsync"/> 的
-    /// 500ms tick poll 模式,但检测 <c>Process.HasExited</c> 取代端口检查。
-    ///
-    /// 退出行为:
-    /// - exit code 0 → return(CLI 正常完成)
-    /// - exit code 非 0 → <see cref="ServiceLaunchException"/>(跟 WaitForReadyAsync
-    ///   进程提前退出语义一致 — Whisper CLI 报错也是用户可见的"未就绪")
-    /// - timeout → <see cref="TimeoutException"/>(跟 WaitForReadyAsync timeout 一致)
-    ///
-    /// 不主动 kill — 调用方 catch 块已经 TryKillProcessTree,这里只 wait + 报错。
-    /// </summary>
-    private static async Task WaitForCliCompletionAsync(
-        ProcessEntry entry, TimeSpan timeout, CancellationToken ct)
-    {
-        using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        deadlineCts.CancelAfter(timeout);
-
-        var deadline = DateTime.UtcNow + timeout;
-        while (true)
-        {
-            if (entry.Process.HasExited)
-            {
-                int? code = null;
-                try { code = entry.Process.ExitCode; } catch { }
-                if (code == 0)
-                {
-                    return;  // CLI 正常完成
-                }
-                throw new ServiceLaunchException(
-                    $"{entry.ProcessDisplayName} CLI 退出失败(exit code {code}),查看日志: {entry.LogFilePath}");
-            }
-
-            if (ct.IsCancellationRequested)
-            {
-                throw new OperationCanceledException(ct);
-            }
-            if (DateTime.UtcNow >= deadline)
-            {
-                throw new TimeoutException(
-                    $"{entry.ProcessDisplayName} CLI 在 {timeout.TotalSeconds:0}s 内未完成,可在设置中调大「ComfyUI 启动就绪超时」。");
-            }
-
-            try
-            {
-                await Task.Delay(500, deadlineCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                if (ct.IsCancellationRequested)
-                {
-                    throw new OperationCanceledException(ct);
-                }
-                throw new TimeoutException(
-                    $"{entry.ProcessDisplayName} CLI 在 {timeout.TotalSeconds:0}s 内未完成,可在设置中调大「ComfyUI 启动就绪超时」。");
-            }
-        }
-    }
-
-    /// <summary>
     /// 包 <see cref="WaitForPortAsync"/>:把 TimeoutException 吃掉,返回 bool
     /// 让 <see cref="WaitForReadyAsync"/> 统一决定报错文案。
     /// </summary>
@@ -951,21 +881,6 @@ public sealed class ProcessLauncher : IDisposable
             ? env.PythonExecutable
             : Path.Combine(envRoot, "venv", "Scripts", "python.exe");
         var entryScript = Path.Combine(envRoot, snapshot.EntryScript);
-        // v1.0.0.x (2026-08-31):Whisper CLI 工具 short-circuit —
-        // EntryScript="whisper" 是 console-script 名(PATH 上 whisper.exe,不是
-        // <envRoot>/whisper 文件),用 `python -m whisper <args>` 调起
-        // (whisper/__main__.py 支持 module invocation)。
-        // {port}/{models}/{env} 替换 + File.Exists check(全部对 CLI 工具无意义)。
-        // UserExtraArgs 拼到 "whisper" 后(用户在 env-create dialog 填 audio + --model)。
-        if (string.Equals(snapshot.Kind, "Whisper", StringComparison.Ordinal))
-        {
-            var whisperArgs = "whisper";
-            if (!string.IsNullOrWhiteSpace(snapshot.EntryArgs))
-                whisperArgs += " " + snapshot.EntryArgs;
-            if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
-                whisperArgs += " " + snapshot.UserExtraArgs;
-            return (venvPython, ("-m", whisperArgs));
-        }
         // Spec §9: 入口脚本不存在时 throw 清晰指示,而不是 spawn python 然后看到
         // "ModuleNotFoundError: No module named 'main.py'" 之类的晦涩错。
         if (!File.Exists(entryScript))
@@ -973,18 +888,10 @@ public sealed class ProcessLauncher : IDisposable
                 $"入口脚本不存在: {entryScript}");
         var port = env.Port?.ToString() ?? "8000";
         var entryArgs = snapshot.EntryArgs.Replace("{port}", port);
-        // v1.0.0.x (2026-08-30):新增 {models} / {env} 占位符 — LTX-2 走 CLI 模式,
-        // EntryArgs 要拼模型绝对路径 ({models}/ltx-2.5/<file>.safetensors) 和 env
-        // 根路径 (--output-path {env}/outputs/...)。空 ModelsDirectory → 替换为
-        // 空串(不抛,跟现有 {port} 空 → "8000" 风格一致 — EntryArgs 用了 {models}
-        // 但 env 没配 ModelsDirectory 的边界情况仍可启动,只是 CLI 拿不到模型会自
-        // 己报错,不在 StartEnvAsync 这层卡)。
-        entryArgs = entryArgs.Replace(
-            "{models}",
-            string.IsNullOrWhiteSpace(env.ModelsDirectory) ? "" : env.ModelsDirectory);
-        entryArgs = entryArgs.Replace(
-            "{env}",
-            string.IsNullOrWhiteSpace(envRoot) ? "" : envRoot);
+        // v1.0.0.x (2026-09-02) T31:Whisper + LTXVideo 纯 CLI 已下线,
+        // {models} / {env} 占位符不再使用 — 删两行 Replace。Whisper 模板本身已删
+        // (factory 移除),LTXVideo 也已删(uv sync / wrapper generator 整段移除)。
+        // 现在所有 6 个剩 built-in 都是 web server 模式,只 {port} 占位符足够。
         if (!string.IsNullOrWhiteSpace(snapshot.UserExtraArgs))
             entryArgs += " " + snapshot.UserExtraArgs;
 
@@ -1040,49 +947,6 @@ public sealed class ProcessLauncher : IDisposable
         // 详见 <see cref="ForgeExtraEnvironmentVariables"/>。
 
         return (venvPython, (entryScript, entryArgs));
-    }
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):LTX-2 env 启动前检查 5 个 <c>.safetensors</c> 是否存在。
-    /// 缺失抛 <see cref="ModelsMissingException"/>,UI 层(StartStopCommand 顶层 try/catch)
-    /// 接住后弹 MessageBox 展示 HF repo URL + 完整 <c>hf download</c> 命令。
-    ///
-    /// 不自动下载:LTX-2.5 是 gated repo + 66 GiB,需要用户先 <c>hf auth login</c>
-    /// 并在网页接受条款。
-    ///
-    /// 边界条件:
-    /// - <c>env.TemplateKind != "LTXVideo"</c> → 直接返回(其它模板不强制检模型)
-    /// - <see cref="Environment.Ltx2RequiredModels"/> 为空(ModelsDirectory 未配)→ 直接返回
-    /// </summary>
-    /// <remarks>
-    /// 单独抽 public static helper 让单元测试可直接调 —— 走整个 StartEnvAsync
-    /// 集成路径(要真 python + 真端口)成本太高。
-    /// </remarks>
-    public static void EnsureLtx2ModelsPresent(Environment env)
-    {
-        if (env is null) throw new ArgumentNullException(nameof(env));
-        if (!string.Equals(env.TemplateKind, "LTXVideo", StringComparison.Ordinal)) return;
-        var required = env.Ltx2RequiredModels;
-        if (required.Count == 0) return;
-
-        var missing = new List<string>();
-        foreach (var p in required)
-        {
-            if (!File.Exists(p)) missing.Add(p);
-        }
-        if (missing.Count == 0) return;
-
-        throw new ModelsMissingException(
-            $"缺少 LTX-2 模型文件({missing.Count} 个),请按弹窗提示下载后重试",
-            missing,
-            "https://huggingface.co/Lightricks/LTX-2.5",
-            "hf download Lightricks/LTX-2.5 " +
-            "diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors " +
-            "text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors " +
-            "vae/ltx-2.5-video-vae-bf16.safetensors " +
-            "vae/ltx-2.5-audio-vae-bf16.safetensors " +
-            "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors " +
-            $"--local-dir {env.ModelsDirectory}/ltx-2.5");
     }
 
     /// <summary>

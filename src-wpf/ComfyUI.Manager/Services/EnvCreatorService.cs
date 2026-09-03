@@ -32,10 +32,10 @@ namespace ComfyUI.Manager.Services;
 ///   6.5 升级 venv 内的 pip(<c>python -m pip install --upgrade pip</c>,warn-only)
 ///   6.6 seed wheel 包到 venv(<c>python -m pip install wheel</c>,required — fix Forge pre-flight CLIP `bdist_wheel` missing)
 ///   7. 插 SQLite 行(持久化 TemplateKind + TemplateConfigSnapshot JSON 克隆)
-///   7.5 (v1.0.0.x 2026-08-30) — 只对 LTXVideo 触发 uv sync(uv toolchain 由 step 6.7 装好)。
-///       其它模板的 requirements 由用户点 env 行「装依赖」按钮触发 RequirementsInstaller
-///       (env-create 不主动装 requirements — 跟 Global Constraint
-///       "其它 11 个内置模板 env-create 流程不能变" 对齐)。
+/// v1.0.0.x (2026-09-02) T31:env-create step 6.7 uv install + step 7.5 uv sync +
+/// step 7.6 wrapper generator(LTX-2 monorepo uv sync 流程)+ step 7.7 Whisper install
+/// 全部删除 — LTXVideo + Whisper 纯 CLI 模板已下线。所有 6 个剩 built-in 走
+/// requirements.txt 用户手动按钮路径(env 行「装依赖」)。
 /// </summary>
 public sealed class EnvCreatorService
 {
@@ -72,39 +72,6 @@ public sealed class EnvCreatorService
     /// </summary>
     private readonly Func<string, CancellationToken, Task>? _pipInstallWheelAsync;
 
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):env-create step 6.7 — 安装 Astral uv 到
-    /// <c>&lt;env&gt;/tools/uv/uv.exe</c>(仅 <c>Kind == "LTXVideo"</c> 触发)。
-    /// 工厂签名 = <c>(envRoot) → IUvInstaller</c>:real 模式返 <see cref="UvInstaller"/>,
-    /// 测试可注入 fake 记录调用次数 + 校验 envRoot。默认 <c>null</c> 时走 real 实现。
-    /// </summary>
-    private readonly Func<string, IUvInstaller>? _uvInstallerFactory;
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):env-create step 7.5(LTXVideo 分支)— 跑
-    /// <c>&lt;envRoot&gt;/tools/uv/uv.exe sync --extra natten</c>。
-    /// 签名 = <c>(uvExePath) → Task</c>;默认 <c>null</c> 时走 real Process.Start uv sync。
-    /// 测试可注入 fake(避免真实 uv.exe 启动失败 — uv.exe 是 Lightricks/LTX-2
-    /// 专用二进制,测试机一般没装)。
-    /// </summary>
-    private readonly Func<string, CancellationToken, Task>? _uvSyncAsync;
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):env-create step 7.6 — 生成 LTX-2 wrapper .bat(仅 LTXVideo)。
-    /// 工厂签名 = <c>(envRoot) → ILtx2WrapperGenerator</c>:real 模式返
-    /// <see cref="Ltx2WrapperGenerator"/>,测试注入 fake。
-    /// </summary>
-    private readonly Func<string, ILtx2WrapperGenerator>? _wrapperGeneratorFactory;
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-31):env-create step 7.7(Whisper 分支)— 跑
-    /// <c>&lt;venvPython&gt; -m pip install openai-whisper</c>。Whisper 是 PyPI 包,没有
-    /// monorepo uv sync(LTXVideo 模式);不装包直接 <c>python -m whisper</c> → ImportError
-    /// → 启动 fail。签名 = <c>(venvPython, ct) → Task</c>。默认 <c>null</c> 走 real
-    /// <see cref="RunWhisperInstallAsync"/>,测试可注入 fake(避免真实网络 pip install)。
-    /// </summary>
-    private readonly Func<string, CancellationToken, Task>? _whisperInstallAsync;
-
     public EnvCreatorService(
         SqliteConnectionFactory dbFactory,
         VenvCreator venvCreator,
@@ -112,11 +79,7 @@ public sealed class EnvCreatorService
         Models.Settings settings,
         string projectRoot,
         Func<string, CancellationToken, Task>? pipUpgradeAsync = null,
-        Func<string, CancellationToken, Task>? pipInstallWheelAsync = null,
-        Func<string, IUvInstaller>? uvInstallerFactory = null,
-        Func<string, ILtx2WrapperGenerator>? wrapperGeneratorFactory = null,
-        Func<string, CancellationToken, Task>? uvSyncAsync = null,
-        Func<string, CancellationToken, Task>? whisperInstallAsync = null)
+        Func<string, CancellationToken, Task>? pipInstallWheelAsync = null)
     {
         _dbFactory = dbFactory;
         _venvCreator = venvCreator;
@@ -125,28 +88,6 @@ public sealed class EnvCreatorService
         _projectRoot = projectRoot;
         _pipUpgradeAsync = pipUpgradeAsync;
         _pipInstallWheelAsync = pipInstallWheelAsync;
-        _uvInstallerFactory = uvInstallerFactory;
-        _wrapperGeneratorFactory = wrapperGeneratorFactory;
-        _uvSyncAsync = uvSyncAsync;
-        _whisperInstallAsync = whisperInstallAsync;
-    }
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):LTX-2 env 装 uv 工具链 — 工厂接口,real impl 是
-    /// <see cref="UvInstaller"/>。envRoot 已在 factory 闭包里传入 ctor,接口签名不重复传。
-    /// </summary>
-    public interface IUvInstaller
-    {
-        Task<string> InstallAsync(CancellationToken ct = default);
-    }
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):LTX-2 env 生成 wrapper .bat — 工厂接口,real impl 是
-    /// <see cref="Ltx2WrapperGenerator"/>。envRoot 已在 factory 闭包里传入 ctor,接口签名不重复传。
-    /// </summary>
-    public interface ILtx2WrapperGenerator
-    {
-        Task GenerateAsync(CancellationToken ct = default);
     }
 
     public sealed class CreateEnvException : Exception
@@ -358,36 +299,6 @@ public sealed class EnvCreatorService
                 $"venv 内 wheel 包安装失败(后续 setup.py 包 install 必跑不通): {ex.Message}");
         }
 
-        // 6.7 (LTX-2 only) — 安装 Astral uv 到 <env>/tools/uv/uv.exe。
-        // v1.0.0.x (2026-08-30) 新增:LTX-2 monorepo 装包走 uv sync,需要 uv 工具链;
-        // 装到 env 内部(不进 PATH)→ 用户机器 / 项目搬家都能用,跟 env 生命周期绑定。
-        // 走 factory 模式:real 返 UvInstaller(envRoot),测试可注入 fake 记录调用次数。
-        if (string.Equals(templateConfig.Kind, "LTXVideo", StringComparison.Ordinal))
-        {
-            progress?.Report(new CreateStepReport("安装 uv 工具链", UvInstaller.DownloadUrl));
-            try
-            {
-                IUvInstaller installer = _uvInstallerFactory is not null
-                    ? _uvInstallerFactory(rootPath)
-                    : new UvInstaller(rootPath);
-                await installer.InstallAsync(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                // 取消 → 回滚 env 根目录 + 上抛(env-create 整体取消)
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // required(跟 step 6.6 wheel 同语义):没 uv 后续 uv sync 跑不通,
-                // env 等于废。回滚 env 根目录 + 包 CreateEnvException。
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw new CreateEnvException("UV_INSTALL_FAILED",
-                    $"uv 工具安装失败: {ex.Message}");
-            }
-        }
-
         // 7. 构造 Environment 写库
         // v1.0.0 T4 G2:TemplateConfigSnapshot 用 JSON round-trip 克隆,后续 settings
         // 编辑不会 mutate 已存在的 env snapshot(测试 `CreateAsync_SnapshotIsFrozen_*`)。
@@ -435,90 +346,6 @@ public sealed class EnvCreatorService
             TemplateSnapshot = env.TemplateConfigSnapshot,
             CreatedAt = DateTime.UtcNow.ToString("o"),
         });
-
-        // 7.5 (v1.0.0.x 2026-08-30) — 只对 LTXVideo 触发 uv sync。
-        // 其它模板的 requirements 由用户点 env 行「装依赖」按钮触发 RequirementsInstaller
-        // (env-create 不主动装 requirements,行为跟 v1.0.0.x T6 之前一致 — 跟 Global Constraint
-        // "其它 11 个内置模板 env-create 流程不能变" 对齐)。
-        // 写在 SQLite 写入 + EnvMarker 之后 → env-create 主流程回滚触发时 env 已
-        // 落 DB 但不影响 SQLite 一致性(整流程 catch 走 try Directory.Delete 回滚)。
-        if (string.Equals(templateConfig.Kind, "LTXVideo", StringComparison.Ordinal))
-        {
-            var uvExe = Path.Combine(rootPath, "tools", "uv", "uv.exe");
-            progress?.Report(new CreateStepReport("LTX-2: uv sync --extra natten",
-                $"{uvExe} sync --extra natten"));
-            try
-            {
-                var sync = _uvSyncAsync ?? RunUvSyncAsync;
-                await sync(uvExe, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw;
-            }
-            catch (CreateEnvException) { throw; }
-            catch (Exception ex)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw new CreateEnvException("UV_SYNC_FAILED",
-                    $"uv sync 失败: {ex.Message}");
-            }
-        }
-
-        // 7.6 (LTX-2 only) — 生成 wrapper .bat(run-ltx2-distilled.bat / run-ltx2-dfr.bat)。
-        // EntryScript 直接指向 wrapper;wrapper 用 %~dp0tools\uv\uv.exe 解析 uv 路径,
-        // env 可搬到任意机器 + env 改路径不需要重新生成 wrapper。factory 模式同 step 6.7。
-        if (string.Equals(templateConfig.Kind, "LTXVideo", StringComparison.Ordinal))
-        {
-            progress?.Report(new CreateStepReport("生成 LTX-2 wrapper 脚本",
-                "run-ltx2-distilled.bat / run-ltx2-dfr.bat"));
-            try
-            {
-                ILtx2WrapperGenerator gen = _wrapperGeneratorFactory is not null
-                    ? _wrapperGeneratorFactory(rootPath)
-                    : new Ltx2WrapperGenerator(rootPath);
-                await gen.GenerateAsync(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw;
-            }
-            catch (Exception ex)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw new CreateEnvException("LTX2_WRAPPER_GENERATE_FAILED",
-                    $"生成 wrapper .bat 失败: {ex.Message}");
-            }
-        }
-
-        // 7.7 (Whisper only) — `pip install openai-whisper`。
-        // Whisper 是 PyPI 包,没有 monorepo uv sync(LTXVideo 模式)。不装包直接
-        // `python -m whisper` → ImportError → WaitForCliCompletionAsync 抛
-        // ServiceLaunchException("Whisper CLI 退出失败")。required(同 step 7.5 uv sync):
-        // 没装包 env 等于废。factory 模式同 step 6.6 wheel seed。
-        if (string.Equals(templateConfig.Kind, "Whisper", StringComparison.Ordinal))
-        {
-            progress?.Report(new CreateStepReport("安装 Whisper 包到 venv",
-                $"{venvPython} -m pip install openai-whisper"));
-            try
-            {
-                var install = _whisperInstallAsync ?? RunWhisperInstallAsync;
-                await install(venvPython, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw;
-            }
-            catch (Exception ex)
-            {
-                try { Directory.Delete(rootPath, recursive: true); } catch { }
-                throw new CreateEnvException("WHISPER_INSTALL_FAILED",
-                    $"openai-whisper 安装失败: {ex.Message}");
-            }
-        }
 
         // v1.0.0.x: 常用节点安装不再在 env-create 末尾自动跑 — 用户在 env 行右侧
         // 按钮触发(RequirementsInstaller / 行内按钮已存在,逻辑独立)。env-create
@@ -700,103 +527,10 @@ public sealed class EnvCreatorService
     }
 
     /// <summary>
-    /// v1.0.0.x (2026-08-30):env-create step 7.5(LTXVideo 分支)默认实现 — 跑
-    /// <c>&lt;uvExe&gt; sync --extra natten</c>。
-    ///
-    /// 镜像 <see cref="RunPipInstallWheelAsync"/> 模式:进程启动 →
-    /// 等 exit → 非 0 exit code / 启动失败抛 <see cref="InvalidOperationException"/>。
-    /// ctor 注入 <c>_uvSyncAsync</c> 替换为测试 fake。
-    ///
-    /// 抛异常的语义(由 step 7.5 catch 处理):
-    /// - <see cref="OperationCanceledException"/> → 上抛,走取消分支(回滚 env 根目录)
-    /// - <see cref="InvalidOperationException"/>(process start failed / non-zero exit)
-    ///   → 包成 <see cref="CreateEnvException"/>(<c>UV_SYNC_FAILED</c>),env-create 整体失败
+    /// v1.0.0.x (2026-09-02) T31:env-create step 6.7 uv install / step 7.5 uv sync /
+    /// step 7.6 wrapper generator / step 7.7 Whisper pip install + 4 ctor params +
+    /// 4 fields + 2 interfaces (`IUvInstaller` + `ILtx2WrapperGenerator`) +
+    /// 2 静态方法 (`RunUvSyncAsync` + `RunWhisperInstallAsync`) 全部删除 —
+    /// LTXVideo + Whisper 纯 CLI 模板已下线。
     /// </summary>
-    internal static async Task RunUvSyncAsync(string uvExe, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(uvExe))
-            throw new ArgumentException("uvExe 不能为空", nameof(uvExe));
-        if (!File.Exists(uvExe))
-            throw new InvalidOperationException($"uv.exe 不存在: {uvExe}(step 6.7 应已装好 — 检查 install 失败原因)");
-
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = uvExe,
-            Arguments = "sync --extra natten",
-            WorkingDirectory = Path.GetDirectoryName(uvExe) ?? "",
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        using var p = System.Diagnostics.Process.Start(psi)
-            ?? throw new InvalidOperationException("uv sync 进程启动失败(Process.Start 返回 null)");
-
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
-
-        if (p.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"uv sync --extra natten exit={p.ExitCode}");
-        }
-    }
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-31):env-create step 7.7(Whisper 分支)默认实现 — 跑
-    /// <c>&lt;venvPython&gt; -m pip install openai-whisper</c>。
-    ///
-    /// 镜像 <see cref="RunPipInstallWheelAsync"/> 模式:进程启动 → 并发读 stdout/stderr →
-    /// 等 exit → 非 0 exit code / 启动失败抛 <see cref="InvalidOperationException"/>。
-    /// ctor 注入 <c>_whisperInstallAsync</c> 替换为测试 fake(避免真实网络 pip install)。
-    ///
-    /// 抛异常的语义(由 step 7.7 catch 处理):
-    /// - <see cref="OperationCanceledException"/> → 上抛,走取消分支(回滚 env 根目录)
-    /// - 其他异常 → 包成 <see cref="CreateEnvException"/>(<c>WHISPER_INSTALL_FAILED</c>),
-    ///   env-create 整体失败
-    /// </summary>
-    internal static async Task RunWhisperInstallAsync(string venvPython, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(venvPython))
-            throw new ArgumentException("venvPython 不能为空", nameof(venvPython));
-
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = venvPython,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("-m");
-        psi.ArgumentList.Add("pip");
-        psi.ArgumentList.Add("install");
-        psi.ArgumentList.Add("openai-whisper");
-
-        using var p = System.Diagnostics.Process.Start(psi)
-            ?? throw new InvalidOperationException("pip install openai-whisper 进程启动失败(Process.Start 返回 null)");
-
-        var stdoutDone = new TaskCompletionSource<bool>();
-        var stderrDone = new TaskCompletionSource<bool>();
-        _ = Task.Run(async () =>
-        {
-            try { while (await p.StandardOutput.ReadLineAsync().ConfigureAwait(false) is not null) { } }
-            catch { }
-            finally { stdoutDone.TrySetResult(true); }
-        });
-        _ = Task.Run(async () =>
-        {
-            try { while (await p.StandardError.ReadLineAsync().ConfigureAwait(false) is not null) { } }
-            catch { }
-            finally { stderrDone.TrySetResult(true); }
-        });
-
-        await p.WaitForExitAsync(ct).ConfigureAwait(false);
-        await Task.WhenAll(stdoutDone.Task, stderrDone.Task).ConfigureAwait(false);
-
-        if (p.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"pip install openai-whisper exit={p.ExitCode}");
-        }
-    }
 }

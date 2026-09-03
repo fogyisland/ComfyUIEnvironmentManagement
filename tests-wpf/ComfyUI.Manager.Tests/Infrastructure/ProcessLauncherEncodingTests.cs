@@ -40,8 +40,9 @@ public sealed class ProcessLauncherEncodingTests
         // 本方法对所有 kind 返同一 dict(不 gated)。
         var allKinds = new[]
         {
-            "ComfyUI", "Forge", "OpenVoice", "Whisper",
-            "HunyuanVideo", "LTXVideo",
+            // v1.0.0.x (2026-09-02) T31:Whisper + LTXVideo 纯 CLI 已下线,从 allKinds 移除。
+            "ComfyUI", "Forge", "OpenVoice",
+            "HunyuanVideo",
             "CogVideoX", "HivisionIDPhotos", "MyCustomKind"
         };
         var expected = ProcessLauncher.PythonEncodingEnvironmentVariables();

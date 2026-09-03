@@ -20,14 +20,12 @@ public sealed class EnvironmentButtonVisibilityTests
 {
     [Theory]
     [InlineData("OpenVoice")]
-    [InlineData("Whisper")]
     [InlineData("HunyuanVideo")]
-    [InlineData("LTXVideo")]
     [InlineData("CogVideoX")]
     [InlineData("HivisionIDPhotos")]
-    public void GenericActionsVisible_TrueForSixNonComfyUiForgeBuiltInKinds(string kind)
+    public void GenericActionsVisible_TrueForFourNonComfyUiForgeBuiltInKinds(string kind)
     {
-        // v1.0.0.x:6 个 built-in 用通用 5-button Grid(start/log/browser/report/delete)
+        // v1.0.0.x:4 个 built-in 用通用 5-button Grid(start/log/browser/report/delete)
         var env = new Environment { TemplateKind = kind };
         Assert.True(env.GenericActionsVisible);
     }
@@ -102,9 +100,7 @@ public sealed class EnvironmentButtonVisibilityTests
     [Theory]
     [InlineData("ComfyUI")]   // 回归 — ComfyUI 走自己 5×2 Grid(有自己 BaseEnv 按钮)
     [InlineData("Forge")]     // 回归 — Forge 走自己 3×2 Grid(有自己 BaseEnv 按钮)
-    [InlineData("LTXVideo")]  // uv sync 处理依赖,不需要 BaseEnv 按钮
     [InlineData("OpenVoice")]
-    [InlineData("Whisper")]
     [InlineData("HivisionIDPhotos")]
     public void BaseEnvButtonVisible_FalseForNonImageVideoKinds(string kind)
     {
@@ -141,25 +137,6 @@ public sealed class EnvironmentButtonVisibilityTests
         };
         Assert.True(env.BaseEnvButtonVisible);
         Assert.True(env.RequirementsFileButtonVisible);
-    }
-
-    [Fact]
-    public void RequirementsFileButtonVisible_LTXVideo_False_NoRequirementsFile()
-    {
-        // LTXVideo uv sync 装依赖,RequirementsFile = "" → RequirementsFileButtonVisible = false
-        var env = new Environment
-        {
-            TemplateKind = "LTXVideo",
-            TemplateConfigSnapshot = new TemplateConfig
-            {
-                Kind = "LTXVideo",
-                Name = "LTXVideo",
-                LocalSourceDir = "LTXVideo",
-                RequirementsFile = "",  // 显式空(uv sync 处理)
-            },
-        };
-        Assert.False(env.BaseEnvButtonVisible);          // LTXVideo 不在正向列举
-        Assert.False(env.RequirementsFileButtonVisible); // 链式 false
     }
 
     [Fact]

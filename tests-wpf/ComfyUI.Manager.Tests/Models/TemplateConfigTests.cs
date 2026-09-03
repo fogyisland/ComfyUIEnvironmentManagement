@@ -231,26 +231,12 @@ public class TemplateConfigTests
         Assert.False(cfg.CanDelete);
     }
 
-    [Fact]
-    public void CanDelete_BuiltInWhisper_False()
-    {
-        var cfg = new TemplateConfig { Kind = "Whisper", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
-        Assert.False(cfg.CanDelete);
-    }
-
     // --- v1.0.0.x (2026-08-29): 4 new built-in video/image-gen kinds (G13 delete 保护) ---
 
     [Fact]
     public void CanDelete_BuiltInHunyuanVideo_False()
     {
         var cfg = new TemplateConfig { Kind = "HunyuanVideo", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
-        Assert.False(cfg.CanDelete);
-    }
-
-    [Fact]
-    public void CanDelete_BuiltInLTXVideo_False()
-    {
-        var cfg = new TemplateConfig { Kind = "LTXVideo", SourceKind = TemplateSourceKind.GitHub, GitHubRepoUrl = "https://x" };
         Assert.False(cfg.CanDelete);
     }
 
@@ -270,6 +256,45 @@ public class TemplateConfigTests
 
     // --- v1.0.0.x (2026-08-29): HivisionIDPhotos built-in (G13 delete 保护) ---
     // (Fooocus CanDelete_BuiltInFooocus_False 已删 — T29 2026-09-01)
+
+    // --- v1.0.0.x (2026-09-02) T32: NotDeveloped 派生属性锁 4 个 Verified=false built-in ---
+
+    [Fact]
+    public void NotDeveloped_FalseForComfyUI_VerifiedTrue()
+    {
+        // ComfyUI 是 BuiltInKinds 但 Verified=true(项目方已 dev 验证)→ NotDeveloped=false
+        var cfg = new TemplateConfig { Kind = "ComfyUI", Verified = true };
+        Assert.False(cfg.NotDeveloped);
+    }
+
+    [Fact]
+    public void NotDeveloped_FalseForForge_VerifiedTrue()
+    {
+        // Forge 同上
+        var cfg = new TemplateConfig { Kind = "Forge", Verified = true };
+        Assert.False(cfg.NotDeveloped);
+    }
+
+    [Theory]
+    [InlineData("OpenVoice")]
+    [InlineData("HunyuanVideo")]
+    [InlineData("CogVideoX")]
+    [InlineData("HivisionIDPhotos")]
+    public void NotDeveloped_TrueForAllFourBuiltInUnverified(string kind)
+    {
+        // 4 个未 dev 验证 built-in → NotDeveloped=true
+        var cfg = new TemplateConfig { Kind = kind, Verified = false };
+        Assert.True(cfg.NotDeveloped);
+    }
+
+    [Fact]
+    public void NotDeveloped_FalseForCustomKind_NotInBuiltInKinds()
+    {
+        // 用户自定义 kind(如"MyCustomA1111Like")即使 Verified=false 也不显示
+        // "未开发" badge — "未开发"特指项目方未 ship,用户自定义不属于此范畴。
+        var cfg = new TemplateConfig { Kind = "MyCustomA1111Like", Verified = false };
+        Assert.False(cfg.NotDeveloped);
+    }
 
     // --- v1.0.0.x: Forge 加 built-in repo URL,可走 UpdateAsync ---
 

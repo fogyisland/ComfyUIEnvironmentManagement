@@ -42,11 +42,17 @@ public class CreateEnvDialogTemplateKindTests
             {
                 Kind = "ComfyUI", LocalSourceDir = "ComfyUI",
                 EntryScript = "main.py", EntryArgs = "--port {port}", ModelsSubdir = "models",
+                // v1.0.0.x (2026-09-02) T32:ComfyUI Verified=true(项目方已 dev 验证)——
+                // BuildVm 默认 false 会让 NotDeveloped filter 把 ComfyUI + Forge 都过滤掉
+                // → vm.TemplateOptions 空 → 现有 tests 失败。镜像 prod SettingsDefaults
+                // Apply 末尾 MarkVerifiedBuiltIns 行为。
+                Verified = true,
             };
             settings.Templates["Forge"] = new TemplateConfig
             {
                 Kind = "Forge", LocalSourceDir = "Forge",
                 EntryScript = "webui.py", EntryArgs = "--port {port}", ModelsSubdir = "models/Stable-diffusion",
+                Verified = true,
             };
         }
         foreach (var kvp in settings.Templates)

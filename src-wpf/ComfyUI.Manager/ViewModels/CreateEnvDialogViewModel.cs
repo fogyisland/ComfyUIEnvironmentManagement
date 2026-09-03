@@ -42,8 +42,13 @@ public class CreateEnvDialogViewModel : ViewModelBase
         // 下载完再回来。完全干净的 LocalSourceDir 不显示,跟"显示警告 + 灰按钮" 旧
         // 行为对比 — 旧行为让用户在 ComboBox 看到 7 项但只有 3 项能选,UI 噪音大;
         // 新行为 ComboBox 只显示能选的,清楚。
+        // v1.0.0.x (2026-09-02) T32:过滤掉 NotDeveloped built-in — 用户决策"完全隐藏",
+        // 下拉只显示 2 个 Verified=true (ComfyUI / Forge) + 用户自定义 kind。
+        // 用户仍能 EditTemplateDialog + Custom Kind 输入启用 4 个 NotDeveloped built-in
+        // (灵活)。镜像 LocalDirExists 过滤模式,单 Where clause 叠加。
         TemplateOptions = _settings.Templates.Values
-            .Where(t => t.LocalDirExists(_settings.SystemTemplateLibraryDir))
+            .Where(t => t.LocalDirExists(_settings.SystemTemplateLibraryDir)
+                     && !t.NotDeveloped)
             .OrderBy(t => t.Kind)
             .ToList();
 

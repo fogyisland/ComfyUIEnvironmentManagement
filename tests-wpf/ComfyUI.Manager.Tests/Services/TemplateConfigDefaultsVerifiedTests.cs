@@ -8,10 +8,11 @@ namespace ComfyUI.Manager.Tests.Services;
 /// <c>Verified</c> 默认值 ——
 /// <list type="bullet">
 ///   <item>ComfyUI + Forge = <c>true</c>(项目方已 dev build 验证 env-create + 启动 + 接口可达)</item>
-///   <item>其它 6 个 = <c>false</c>(OpenVoice / Whisper / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos — 等后续 wave 验证后逐个 ship)</item>
+///   <item>其它 4 个 = <c>false</c>(OpenVoice / HunyuanVideo / CogVideoX / HivisionIDPhotos — 等后续 wave 验证后逐个 ship)</item>
 /// </list>
 /// T29 (2026-09-01): Fooocus 已下线,从 9 → 8。
 /// T30 (2026-09-01): CoquiTTS + Bark 已下线,从 8 → 6。
+/// T31 (2026-09-02): Whisper + LTXVideo 已下线,从 6 → 4。
 ///
 /// 用户决策(AskUserQuestion 2026-08-31):EditTemplateDialog 不暴露 Checkbox,
 /// Verified 只能由工厂在 ship 时设置。
@@ -36,9 +37,7 @@ public sealed class TemplateConfigDefaultsVerifiedTests
 
     [Theory]
     [InlineData("OpenVoice")]
-    [InlineData("Whisper")]
     [InlineData("HunyuanVideo")]
-    [InlineData("LTXVideo")]
     [InlineData("CogVideoX")]
     [InlineData("HivisionIdPhotos")]
     public void NonImageBuiltIn_Verified_DefaultsToFalse(string factoryName)

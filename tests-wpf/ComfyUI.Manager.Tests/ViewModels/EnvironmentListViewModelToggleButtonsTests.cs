@@ -178,9 +178,7 @@ public class EnvironmentListViewModelToggleButtonsTests : IDisposable
     [InlineData("ComfyUI", true)]
     [InlineData("Forge", false)]
     [InlineData("OpenVoice", true)]
-    [InlineData("Whisper", true)]
     [InlineData("HunyuanVideo", true)]
-    [InlineData("LTXVideo", true)]
     [InlineData("CogVideoX", true)]
     [InlineData("HivisionIDPhotos", true)]
     public void Model_RequirementsButtonVisible_FalseOnlyForForgeKind(string kind, bool expected)

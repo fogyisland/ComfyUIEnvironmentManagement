@@ -54,15 +54,13 @@ public static class StartupPathProbe
         new("ComfyUI", "ComfyUI"),
         new("Forge", "Forge"),
         new("OpenVoice", "OpenVoice"),
-        new("Whisper", "Whisper"),
         // v1.0.0.x (2026-09-01) T30: CoquiTTS (coqui-ai/TTS, coqui 公司 2024 关停) +
         // Bark (suno-ai/bark, repo archived >2y 无更新) 已下线。
         // v1.0.0.x (2026-08-29): 4 个 GitHub-clone 视频/图像生成模板 — 跟
         // OpenVoice/Whisper 一样的源模式,LocalSourceDir 默认 = kind 名。
+        // v1.0.0.x (2026-09-02) T31: Whisper (CLI only,无 Web UI) + LTXVideo (CLI only,
+        // 无 Web UI) 已下线 — 用户决策"删除所有不带 Web UI 的"。
         new("HunyuanVideo", "HunyuanVideo"),
-        // v1.0.0.x LTX-2 (T1):LocalSourceDir = "LTXVideo" (kind 名,跟 ENVTemplate/LTXVideo/
-        // 磁盘目录一致 — 不能用 "LTX-Video" 品牌命名,因为磁盘实际目录就叫 "LTXVideo")。
-        new("LTXVideo", "LTXVideo"),
         new("CogVideoX", "CogVideoX"),
         new("HivisionIDPhotos", "HivisionIDPhotos"),
     };

@@ -14,6 +14,11 @@ namespace ComfyUI.Manager.Services;
 /// v1.0.0.x (2026-09-01) T30: CoquiTTS (coqui-ai/TTS, coqui 公司 2024 关停) +
 /// Bark (suno-ai/bark, repo 已 archived) 已下线 (>2y 无更新)。剩 6 个 built-in 都受
 /// G13 delete 保护(改 <see cref="TemplateConfig.CanDelete"/>)。
+/// v1.0.0.x (2026-09-02) T31: Whisper (openai/whisper 纯 CLI one-shot transcribe,
+/// 无 Web UI) + LTXVideo (Lightricks/LTX-Video run-ltx2-distilled.bat 纯 CLI batch,
+/// 无 Web UI) 已下线 — 用户决策 "删除所有不带 Web UI 的"。剩 4 个非 ComfyUI/Forge
+/// built-in (OpenVoice / HunyuanVideo / CogVideoX / HivisionIDPhotos) + ComfyUI/Forge
+/// = 6 个 built-in 都受 G13 delete 保护。
 /// </summary>
 public static class TemplateConfigDefaults
 {
@@ -24,11 +29,13 @@ public static class TemplateConfigDefaults
     // 多一层(用户 2026-08-26 反馈 git clone 创建了 nested envTemplate/envtemplate/ 子目录)。
     // 2 个 image templates (ComfyUI/Forge) 老 settings 里就是这个形式
     // (LocalSourceDir = "<Kind>"),2 个 GitHub AI voice (OpenVoice/Whisper) 是新建,
-    // 统一对齐。v1.0.0.x: A1111 + SwarmUI + CoquiTTS + Bark 模板已下线 — A1111 因
-    // Stability-AI/stablediffusion 仓库已从 github 移除,SwarmUI 因 ProcessLauncher
-    // Python 假设 functional break(A1111 pre-flight + sdweb 启动都 fail paths.py:34;
-    // SwarmUI 是 .NET app,venv python 不存在)。v1.0.0.x (2026-09-01) T30:
-    // CoquiTTS (coqui 公司 2024 关停) + Bark (repo archived, >2y 无更新)。
+    // 统一对齐。v1.0.0.x: A1111 + SwarmUI + CoquiTTS + Bark + Whisper + LTXVideo
+    // 模板已下线 — A1111 因 Stability-AI/stablediffusion 仓库已从 github 移除;
+    // SwarmUI 因 ProcessLauncher Python 假设 functional break(A1111 pre-flight +
+    // sdweb 启动都 fail paths.py:34;SwarmUI 是 .NET app,venv python 不存在)。
+    // v1.0.0.x (2026-09-01) T30: CoquiTTS (coqui 公司 2024 关停) + Bark
+    // (repo archived, >2y 无更新)。
+    // v1.0.0.x (2026-09-02) T31: Whisper + LTXVideo 纯 CLI,无 Web UI,已下线。
     // Forge 替代 SD 角色。
     public static TemplateConfig ComfyUi(string projectRoot) => new()
     {
@@ -107,39 +114,6 @@ public static class TemplateConfigDefaults
     };
 
     /// <summary>
-    /// v1.0.0.x: AI 语音 — Whisper (openai/whisper)。OpenAI 官方 speech-to-text。
-    /// GitHub clone source。Whisper 是 CLI 工具 (one-shot transcribe → exit),
-    /// ProcessLauncher.BuildStartCommand 在 Kind=="Whisper" 分支 short-circuit +
-    /// 用 <c>python -m whisper &lt;args&gt;</c> 调起,本 factory 的 EntryScript /
-    /// EntryArgs 字段被该分支忽略(EntryScript="whisper" 是 console-script 名而非
-    /// 文件路径,BuildStartCommand Whisper 分支完全跳过 File.Exists check + {port}
-    /// / {models} / {env} 占位符替换)。
-    ///
-    /// CLI 必填 positional <c>audio</c> 文件 + <c>--model</c>,用户在 env-create dialog
-    /// 用 <see cref="TemplateConfig.UserExtraArgs"/> 拼完整命令行,例如
-    /// <c>--model tiny C:/audio/sample.wav</c>。EntryArgs 默认空(模板级 default 不替用户
-    /// 选 audio 路径 — audio 是 env-specific 配置)。启动若 Whisper CLI 缺 audio
-    /// 报错 → WaitForCliCompletionAsync 抛 ServiceLaunchException("exit code != 0"),
-    /// 用户看日志看到 Whisper usage,知道在 UserExtraArgs 加 audio path。
-    ///
-    /// 注意:Whisper 不是常驻 web server,port 参数无意义但保留 {port} 占位符兼容
-    /// 模板结构(其它字段如 Settings.ForgePaths 等共享同一 TemplateConfig 序列化)。
-    /// </summary>
-    public static TemplateConfig Whisper(string projectRoot) => new()
-    {
-        Name = "Whisper",
-        Kind = "Whisper",
-        LocalSourceDir = "Whisper",
-        SourceKind = TemplateSourceKind.GitHub,
-        GitHubRepoUrl = "https://github.com/openai/whisper.git",
-        EntryScript = "whisper",
-        EntryArgs = "",
-        ModelsSubdir = "",
-        ExtraJunctionTargets = new(),
-        UserExtraArgs = "",
-    };
-
-    /// <summary>
     /// v1.0.0.x: HunyuanVideo Native Gradio WebUI (Tencent-Hunyuan/HunyuanVideo)。
     /// 腾讯混元视频生成模型的官方 Gradio WebUI。GitHub-clone source。
     /// Entry: <c>gradio_webui.py</c>(仓库根目录),通过 <c>--port {port} --listen 0.0.0.0</c>
@@ -161,37 +135,6 @@ public static class TemplateConfigDefaults
         // BaseEnv 按钮 → BaseEnvProfilePickerDialog 让用户选 ≥2.5.1 live defaults;
         // 依赖按钮 → pip install requirements.txt
         RequirementsFile = "requirements.txt",
-    };
-
-    /// <summary>
-    /// v1.0.0.x: LTX-2 video generator (Lightricks/LTX-2)。
-    /// Lightricks 官方 LTX-2 视频生成模型的 wrapper script。GitHub-clone source。
-    /// Entry: <c>run-ltx2-distilled.bat</c>(仓库根目录 wrapper,env-create 生成)。
-    /// 长串 CLI 参数显式指定 5 个 model weights + output path,无 <c>{port}</c>
-    /// (CLI 模式,不暴露 web 端口)。
-    /// </summary>
-    public static TemplateConfig LTXVideo(string projectRoot) => new()
-    {
-        Name = "LTXVideo",
-        Kind = "LTXVideo",
-        LocalSourceDir = "LTXVideo",
-        SourceKind = TemplateSourceKind.GitHub,
-        GitHubRepoUrl = "https://github.com/Lightricks/LTX-2.git",
-        EntryScript = "run-ltx2-distilled.bat",
-        EntryArgs =
-            "--transformer-path {models}/ltx-2.5/diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors " +
-            "--text-encoder-path {models}/ltx-2.5/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors " +
-            "--video-vae-path {models}/ltx-2.5/vae/ltx-2.5-video-vae-bf16.safetensors " +
-            "--audio-vae-path {models}/ltx-2.5/vae/ltx-2.5-audio-vae-bf16.safetensors " +
-            "--spatial-upsampler-path {models}/ltx-2.5/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors " +
-            "--num-frames 121 --seed 42 --output-path {env}/outputs/output.mp4",
-        ModelsSubdir = "Models/ltx-2.5",
-        ExtraJunctionTargets = new(),
-        UserExtraArgs = "",
-        // v1.0.0.x (2026-09-01): LTX-2 uv sync 在 env-create step 7.5 已装 pyproject.toml 全套依赖
-        // (含 torch ≥2.1.0 + LTX-2 自定义 deps),不需要额外 BaseEnv 或 Requirements 按钮。
-        // RequirementsFile 显式空(跟 default "" 一致) + 注释说明 uv sync 路径
-        RequirementsFile = "",
     };
 
     /// <summary>

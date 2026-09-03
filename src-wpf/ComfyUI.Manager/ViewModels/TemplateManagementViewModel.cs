@@ -15,10 +15,11 @@ namespace ComfyUI.Manager.ViewModels;
 
 /// <summary>
 /// v1.0.0 multi-template: sidebar page VM. Lists + adds + edits + deletes templates.
-/// Built-in 8 个内置模板 are protected from delete (G13):
-    /// ComfyUI / Forge / OpenVoice / Whisper / HunyuanVideo / LTXVideo /
+/// Built-in 6 个内置模板 are protected from delete (G13):
+    /// ComfyUI / Forge / OpenVoice / HunyuanVideo /
     /// CogVideoX / HivisionIDPhotos。
     /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线,从 G13 名单移除。
+    /// v1.0.0.x (2026-09-02) T31: Whisper + LTXVideo 纯 CLI 模板已下线,从 G13 名单移除。
     /// v1.0.0.x: A1111 + SwarmUI 模板已下线,不再 seed。
 /// </summary>
 public class TemplateManagementViewModel : ViewModelBase
@@ -334,10 +335,8 @@ public class TemplateManagementViewModel : ViewModelBase
         // HunyuanVideo (腾讯混元视频)、LTX-Video (Lightricks)、CogVideoX (智谱)。
         // 用户改 URL 后不会回退到这里的 default(参考 TemplateConfigDefaults 的 seed-only 语义)。
         "HunyuanVideo" => "https://github.com/Tencent-Hunyuan/HunyuanVideo.git",
-        // v1.0.0.x LTX-2 (T1):v1 Lightricks/LTX-Video repo 已弃用,默认 URL 指向
-        // v2 monorepo Lightricks/LTX-2。跟 TemplateConfigDefaults.LTXVideo.GitHubRepoUrl
-        // 对齐(用户首次创建 LTXVideo env / TemplateManagementView 点 Reset 时)。
-        "LTXVideo" => "https://github.com/Lightricks/LTX-2.git",
+        // v1.0.0.x (2026-09-02) T31:Whisper + LTXVideo 纯 CLI 模板已下线,GetDefaultRepoUrl
+        // switch 删 2 case。Whisper 之前无 case (走 _ => ""),LTXVideo 有 case 已删。
         "CogVideoX" => "https://github.com/THUDM/CogVideo.git",
         // v1.0.0.x (2026-08-29): HivisionIDPhotos(Zeyi-Lin) AI 证件照 Gradio app。
         "HivisionIDPhotos" => "https://github.com/Zeyi-Lin/HivisionIDPhotos.git",

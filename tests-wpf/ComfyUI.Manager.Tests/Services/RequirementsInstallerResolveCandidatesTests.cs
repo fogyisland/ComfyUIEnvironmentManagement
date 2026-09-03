@@ -100,21 +100,6 @@ public sealed class RequirementsInstallerResolveCandidatesTests : IDisposable
     }
 
     [Fact]
-    public void LTXVideo_EmptyRequirementsFile_DoesNotAddFourthCandidate()
-    {
-        // v1.0.0.x (2026-09-01): LTXVideo uv sync 处理依赖,RequirementsFile = ""
-        // → ResolveRequirementsCandidates 不加第 4 candidate(行为跟之前一致)
-        var env = SeedEnv("LTXVideo", "");
-
-        var candidates = InvokeResolveCandidates(env);
-
-        Assert.Equal(2, candidates.Count);  // 只 2 fallback paths(无 ComfyuiSource,无 RequirementsFile)
-        // 2 个 candidates 都是 <RootPath>/ComfyUI/requirements.txt + <RootPath>/requirements.txt
-        // 这两条 fallback path 本来就跟 TemplateKind 无关 — LTXVideo / OpenVoice 等都会
-        // 出现。DoesNotContain 检查没有意义,只验 count 就够。
-    }
-
-    [Fact]
     public void EmptyTemplateConfigSnapshot_DoesNotAddFourthCandidate()
     {
         // 老 env 没 TemplateConfigSnapshot(env 是 env-create 前 / DB 列加载失败) →

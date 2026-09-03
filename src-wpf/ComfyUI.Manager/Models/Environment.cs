@@ -129,10 +129,11 @@ public class Environment : INotifyPropertyChanged
     /// 手动触发。本工具手动「装依赖」按钮 = ForgePreFlightInstaller.InstallAsync ——
     /// 跟 launch_utils.py 跑同一份代码,只是把 4 件事从「每次 launch」前置到「一次性」,
     /// 用户体感反而多一个无意义按钮。
-    /// ComfyUI / OpenVoice / Whisper / HunyuanVideo / LTXVideo / CogVideoX /
+    /// ComfyUI / OpenVoice / HunyuanVideo / CogVideoX /
     /// HivisionIDPhotos 保留「装/卸依赖」按钮 — 它们有各自独立的
     /// requirements.txt 要 pip install。
     /// v1.0.0.x (2026-09-01) T30:CoquiTTS + Bark 已下线(>2y 无更新)。
+    /// v1.0.0.x (2026-09-02) T31:Whisper + LTXVideo 纯 CLI 已下线,不再保留按钮。
     /// 镜像 <see cref="ComfyUiManagerButtonVisible"/> 同模式(inverse:对 ComfyUI 显示对 Forge 隐藏)。
     /// </summary>
     [JsonIgnore]
@@ -141,11 +142,13 @@ public class Environment : INotifyPropertyChanged
     /// <summary>
     /// v1.0.0.x (2026-08-31): 通用 env Actions Grid 显示条件 ——
     /// TemplateKind 既不是 ComfyUI 也不是 Forge 的 env 才显示
-    /// (OpenVoice / Whisper / HunyuanVideo /
-    /// LTXVideo / CogVideoX / HivisionIDPhotos — 8 个 built-in + 任何
+    /// (OpenVoice / HunyuanVideo /
+    /// CogVideoX / HivisionIDPhotos — 4 个 non-ComfyUI/Forge built-in + 任何
     /// custom kind)。
     /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线(>2y 无更新),剩 6 个
     /// non-ComfyUI/Forge built-in。
+    /// v1.0.0.x (2026-09-02) T31: Whisper + LTXVideo 纯 CLI 已下线,剩 4 个
+    /// non-ComfyUI/Forge built-in + ComfyUI/Forge = 6 个总 built-in。
     ///
     /// 镜像 <see cref="RequirementsButtonVisible"/> pattern(单行 computed bool +
     /// XAML DataTrigger Value="True" 触发 visible),不引入 MultiBinding 或新 converter。
@@ -162,11 +165,11 @@ public class Environment : INotifyPropertyChanged
     /// TemplateKind 在 {HunyuanVideo, CogVideoX} 时显示(正向列举,
     /// 比 negative enumeration 易读且不易漏)。
     /// HunyuanVideo / CogVideoX → BaseEnvProfilePickerDialog 选 live defaults ≥2.5.1。
-    /// LTXVideo 用 uv sync 装 pyproject.toml 不需要按钮(显式排除);
     /// OpenVoice / Whisper / HivisionIDPhotos 是 CLI / CPU / TF,
     /// 也不在列举里(env-create 时 pip install -e . 已搞定依赖)。ComfyUI / Forge
     /// 各自 Actions Grid 有自己的 BaseEnv 按钮。
     /// v1.0.0.x (2026-09-01) T30: CoquiTTS + Bark 已下线,不再列举。
+    /// v1.0.0.x (2026-09-02) T31: LTXVideo (uv sync) 已下线,无需排除注释。
     /// </summary>
     [JsonIgnore]
     public bool BaseEnvButtonVisible => TemplateKind == "HunyuanVideo"
@@ -378,34 +381,4 @@ public class Environment : INotifyPropertyChanged
     /// </summary>
     [JsonIgnore]
     public bool HasFailedNodes => FailedNodeCount > 0;
-
-    /// <summary>
-    /// v1.0.0.x (2026-08-30):LTX-2 env 启动前必检的 5 个 .safetensors 绝对路径 —
-    /// HF repo <c>Lightricks/LTX-2.5</c> quick start 命令列的 distilled transformer +
-    /// gemma4-12b 文本编码器 + video VAE + audio VAE + spatial upsampler。
-    /// 路径约定 <c>&lt;env.ModelsDirectory&gt;/ltx-2.5/&lt;HF 子目录&gt;/&lt;model&gt;.safetensors</c>
-    /// 跟 <c>hf download --local-dir &lt;ModelsDirectory&gt;</c> 一致(env.ModelsDirectory
-    /// 已有 SQLite 持久化字段)。
-    /// 非 LTXVideo kind / ModelsDirectory 空 → 返空(其它模板不强制)。
-    /// ProcessLauncher.StartEnvAsync 跑前检查 — 缺失抛 <see cref="ModelsMissingException"/>
-    /// → UI MessageBox。
-    /// </summary>
-    [JsonIgnore]
-    public IReadOnlyList<string> Ltx2RequiredModels
-    {
-        get
-        {
-            if (TemplateKind != "LTXVideo") return Array.Empty<string>();
-            if (string.IsNullOrWhiteSpace(ModelsDirectory)) return Array.Empty<string>();
-            var root = Path.GetFullPath(Path.Combine(ModelsDirectory, "ltx-2.5"));
-            return new[]
-            {
-                Path.Combine(root, "diffusion_models", "ltx-2.5-22b-distilled-transformer-bf16.safetensors"),
-                Path.Combine(root, "text_encoders", "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"),
-                Path.Combine(root, "vae", "ltx-2.5-video-vae-bf16.safetensors"),
-                Path.Combine(root, "vae", "ltx-2.5-audio-vae-bf16.safetensors"),
-                Path.Combine(root, "latent_upscale_models", "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"),
-            };
-        }
-    }
 }

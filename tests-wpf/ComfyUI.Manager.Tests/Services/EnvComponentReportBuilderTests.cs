@@ -315,9 +315,7 @@ public sealed class EnvComponentReportBuilderTests : IDisposable
     [InlineData("ComfyUI", "ComfyUI 源码")]      // 向后兼容:ComfyUI 留原样
     [InlineData("Forge", "Forge 源码")]
     [InlineData("OpenVoice", "OpenVoice 源码")]
-    [InlineData("Whisper", "Whisper 源码")]
     [InlineData("HunyuanVideo", "HunyuanVideo 源码")]
-    [InlineData("LTXVideo", "LTXVideo 源码")]
     [InlineData("HivisionIDPhotos", "HivisionIDPhotos 源码")]
     public async Task BuildAsync_SourceDisplayName_DerivedFromTemplateKind(
         string templateKind, string expectedDisplayName)

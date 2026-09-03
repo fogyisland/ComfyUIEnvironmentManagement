@@ -43,8 +43,8 @@ public class StartupPathProbeTests
     {
         var all = new[] {
             "ComfyUI", "Forge",
-            "OpenVoice", "Whisper",
-            "HunyuanVideo", "LTXVideo", "CogVideoX",
+            "OpenVoice",
+            "HunyuanVideo", "CogVideoX",
             "HivisionIDPhotos",
         };
         foreach (var k in kinds.Length == 0 ? all : kinds)

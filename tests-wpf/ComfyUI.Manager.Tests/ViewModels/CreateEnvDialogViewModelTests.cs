@@ -35,6 +35,10 @@ public class CreateEnvDialogViewModelTests
         {
             Kind = "ComfyUI", LocalSourceDir = "ComfyUITemplate",
             EntryScript = "main.py", EntryArgs = "--port {port}", ModelsSubdir = "models",
+            // v1.0.0.x (2026-09-02) T32:ComfyUI Verified=true(项目方已 dev 验证)——
+            // 镜像 prod SettingsDefaults.Apply 末尾 MarkVerifiedBuiltIns 行为。
+            // 否则 T32 filter `&& !t.NotDeveloped` 把 ComfyUI 过滤掉 → 测试 fail。
+            Verified = true,
         };
         var dir = Path.Combine(anchor, "ComfyUITemplate");
         Directory.CreateDirectory(dir);
@@ -215,6 +219,8 @@ public class CreateEnvDialogViewModelTests
                 Kind = "Forge", LocalSourceDir = "Templates/Forge",
                 EntryScript = "webui.py", EntryArgs = "--port {port}",
                 ModelsSubdir = "models/Stable-diffusion",
+                // v1.0.0.x (2026-09-02) T32:Forge Verified=true
+                Verified = true,
             };
             var vm = new CreateEnvDialogViewModel(null!, settings, root);
             // Forge 应是唯一 TemplateOptions + SelectedTemplateKind 应回退到 "Forge"

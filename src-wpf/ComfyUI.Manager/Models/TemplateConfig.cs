@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Serialization;
+using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Services;
 
 namespace ComfyUI.Manager.Models;
@@ -135,21 +137,40 @@ public class TemplateConfig
     /// <summary>
     /// Whether the user can delete this template from the management UI. Built-in
     /// templates are protected (G13) — they always exist as canonical templates.
-    /// v1.0.0.x (2026-09-01) T30: 8 built-in kinds (2 图像 + 2 语音 + 4 视频/图像生成/工具:
-    /// ComfyUI + Forge + OpenVoice + Whisper +
-    /// HunyuanVideo + LTXVideo + CogVideoX + HivisionIDPhotos;
-    /// A1111 + SwarmUI 已下线,T29 -Fooocus,T30 -CoquiTTS -Bark)。
+    /// v1.0.0.x (2026-09-02) T31: 6 built-in kinds (2 图像 + 1 语音 + 3 视频/图像生成/工具):
+    /// ComfyUI + Forge + OpenVoice +
+    /// HunyuanVideo + CogVideoX + HivisionIDPhotos;
+    /// A1111 + SwarmUI 已下线,T29 -Fooocus,T30 -CoquiTTS -Bark,
+    /// T31 -Whisper -LTXVideo)。
     /// Hides the grayed-out Delete button on built-in cards.
     /// </summary>
     [JsonIgnore]
     public bool CanDelete => Kind switch
     {
         "ComfyUI" or "Forge"
-            or "OpenVoice" or "Whisper"
-            or "HunyuanVideo" or "LTXVideo" or "CogVideoX"
+            or "OpenVoice"
+            or "HunyuanVideo" or "CogVideoX"
             or "HivisionIDPhotos" => false,
         _ => true,
     };
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-02) T32:此 built-in 模板项目方暂未 dev build 验证。
+    /// 只对 6 个 BuiltInKinds (ComfyUI / Forge / OpenVoice / HunyuanVideo /
+    /// CogVideoX / HivisionIDPhotos) 且 Verified=false (即除 ComfyUI + Forge 外
+    /// 的 4 个)返回 true。用户自定义 kind 即使 Verified=false 也不返回 true ——
+    /// "未开发"特指项目方未 ship 验证,用户自定义不属于此范畴。
+    ///
+    /// 用途:
+    /// - TemplateManagementView 模板卡片显示绿色 "⚠ 未开发" badge
+    /// - CreateEnvDialog Kind 下拉过滤掉 4 个 NotDeveloped built-in
+    ///   (用户仍能 EditTemplateDialog + Custom Kind 输入手动启用)
+    /// 镜像 <see cref="ComfyUiManagerButtonVisible"/> / <see cref="GenericActionsVisible"/> 模式,
+    /// 不引入 MultiBinding 或新 converter,纯 single-line computed bool。
+    /// </summary>
+    [JsonIgnore]
+    public bool NotDeveloped => !Verified
+        && Array.IndexOf(SettingsDefaults.BuiltInKinds, Kind) >= 0;
 
     /// <summary>
     /// v1.0.0.x:本地源码目录是否存在(走 <see cref="TemplatePathResolver.Resolve"/> 把

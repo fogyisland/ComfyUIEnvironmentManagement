@@ -66,8 +66,24 @@
                                             ToolTip="项目方已验证此模板可正常运行(env-create + 启动 + 接口可达)">
                                         <TextBlock Text="✓ 已验证 可运行" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
                                     </Border>
+                                    <!-- v1.0.0.x (2026-09-02) T32: 「未开发」绿色 ⚠ badge ——
+                                         项目方未 dev build 验证的 6 个 built-in(除 ComfyUI / Forge 外
+                                         的 4 个:OpenVoice / HunyuanVideo / CogVideoX / HivisionIDPhotos)。
+                                         NotDeveloped = !Verified && Kind 在 BuiltInKinds。用户自定义 kind
+                                         即使 Verified=false 也不显示(不属于项目方范畴)。
+                                         跟 ✓ 已验证 共用同色 SuccessBrush(用户决策 2026-09-02),靠
+                                         "✓ 已验证" vs "⚠ 未开发" 文字区分。DockPanel.Dock="Right" 链
+                                         在 Verified badge 之后 → 显示在 ✓ 左边(如果有 ✓ 的话),
+                                         没 ✓ 时显示在最右。 -->
+                                    <Border DockPanel.Dock="Right" Margin="6,0,0,0"
+                                            Padding="6,2" CornerRadius="3"
+                                            Background="{DynamicResource SuccessBrush}"
+                                            Visibility="{Binding NotDeveloped, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                                            ToolTip="项目方暂未 dev build 验证,启动可能不稳定。建议先用 dev 环境试跑确认。">
+                                        <TextBlock Text="⚠ 未开发" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                    </Border>
                                     <!-- v1.0.0.x (2026-09-01) T30:本地目录状态 — GitHub 模板(OpenVoice /
-                                         Whisper / HunyuanVideo / LTXVideo / CogVideoX / HivisionIDPhotos)
+                                         HunyuanVideo / CogVideoX / HivisionIDPhotos)
                                          首次使用前没 git clone 时显琥珀色 badge 提醒用户点 「下载与更新」。
                                          SourceKindBadge 之前。v1.0.0.x #630: 颜色 #D32F2F 红 →
                                          #F59E0B 琥珀 — "未下载" 不是错误,红色让用户误以为坏了。 -->

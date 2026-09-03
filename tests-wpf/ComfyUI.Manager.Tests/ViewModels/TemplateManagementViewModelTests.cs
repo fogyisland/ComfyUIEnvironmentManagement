@@ -216,20 +216,20 @@ public class TemplateManagementViewModelTests
                 SystemTemplateLibraryDir = anchor,
                 Templates = new Dictionary<string, TemplateConfig>
                 {
-                    ["Whisper"] = new TemplateConfig
+                    ["OpenVoice"] = new TemplateConfig
                     {
-                        Name = "Whisper", Kind = "Whisper",
-                        LocalSourceDir = "Whisper",
+                        Name = "OpenVoice", Kind = "OpenVoice",
+                        LocalSourceDir = "OpenVoice",
                         SourceKind = TemplateSourceKind.GitHub,
-                        GitHubRepoUrl = "https://github.com/openai/whisper.git",
-                        EntryScript = "whisper",
+                        GitHubRepoUrl = "https://github.com/myshell-ai/OpenVoice.git",
+                        EntryScript = "openvoice/openvoice_app.py",
                     },
                 },
             };
 
             var fakeUpdater = new FakeUpdater { CreateTargetOnSuccess = true, CreateTargetAnchor = anchor };
             var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
-            var t = vm.Templates.First(x => x.Kind == "Whisper");
+            var t = vm.Templates.First(x => x.Kind == "OpenVoice");
 
             // ctor 跑过 LocalDirMissing = !LocalDirExists — 目录不存在 → true
             Assert.True(t.LocalDirMissing);
@@ -241,7 +241,7 @@ public class TemplateManagementViewModelTests
             await Task.Delay(100);
 
             // 修复验证:成功后 LocalDirMissing 自动从 true → false
-            // FakeUpdater.CreateTargetOnSuccess 真创建了 <anchor>/Whisper 目录
+            // FakeUpdater.CreateTargetOnSuccess 真创建了 <anchor>/OpenVoice 目录
             Assert.False(t.LocalDirMissing);
         }
         finally
@@ -263,20 +263,20 @@ public class TemplateManagementViewModelTests
                 SystemTemplateLibraryDir = anchor,
                 Templates = new Dictionary<string, TemplateConfig>
                 {
-                    ["Whisper"] = new TemplateConfig
+                    ["OpenVoice"] = new TemplateConfig
                     {
-                        Name = "Whisper", Kind = "Whisper",
-                        LocalSourceDir = "Whisper",
+                        Name = "OpenVoice", Kind = "OpenVoice",
+                        LocalSourceDir = "OpenVoice",
                         SourceKind = TemplateSourceKind.GitHub,
-                        GitHubRepoUrl = "https://github.com/openai/whisper.git",
-                        EntryScript = "whisper",
+                        GitHubRepoUrl = "https://github.com/myshell-ai/OpenVoice.git",
+                        EntryScript = "openvoice/openvoice_app.py",
                     },
                 },
             };
 
             var fakeUpdater = new FakeUpdater { CreateTargetOnSuccess = true, CreateTargetAnchor = anchor };
             var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
-            var t = vm.Templates.First(x => x.Kind == "Whisper");
+            var t = vm.Templates.First(x => x.Kind == "OpenVoice");
             Assert.True(t.LocalDirMissing);
 
             vm.UpdateSourceCommand.Execute(t);
@@ -306,20 +306,20 @@ public class TemplateManagementViewModelTests
                 SystemTemplateLibraryDir = anchor,
                 Templates = new Dictionary<string, TemplateConfig>
                 {
-                    ["Whisper"] = new TemplateConfig
+                    ["OpenVoice"] = new TemplateConfig
                     {
-                        Name = "Whisper", Kind = "Whisper",
-                        LocalSourceDir = "Whisper",
+                        Name = "OpenVoice", Kind = "OpenVoice",
+                        LocalSourceDir = "OpenVoice",
                         SourceKind = TemplateSourceKind.GitHub,
-                        GitHubRepoUrl = "https://github.com/openai/whisper.git",
-                        EntryScript = "whisper",
+                        GitHubRepoUrl = "https://github.com/myshell-ai/OpenVoice.git",
+                        EntryScript = "openvoice/openvoice_app.py",
                     },
                 },
             };
 
             var fakeUpdater = new FakeUpdater { ForceFailure = true, FailureReason = "网络超时" };
             var vm = new TemplateManagementViewModel(s, editTemplateFactory: null, updater: fakeUpdater);
-            var t = vm.Templates.First(x => x.Kind == "Whisper");
+            var t = vm.Templates.First(x => x.Kind == "OpenVoice");
             Assert.True(t.LocalDirMissing);
 
             vm.DownloadOrUpdateCommand.Execute(t);

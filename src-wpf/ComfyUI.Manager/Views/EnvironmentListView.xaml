@@ -601,7 +601,7 @@
                                     </Grid>
                                     <!-- v1.0.0.x (2026-09-01) T30: 通用 env Actions ——
                                          6 个 non-ComfyUI/Forge built-in kind(OpenVoice /
-                                         Whisper / HunyuanVideo / LTXVideo /
+                                         HunyuanVideo /
                                          CogVideoX / HivisionIDPhotos)的 env 行用这套 5-button Grid。
                                          1 行 × 5 列布局。
                                          Command 复用 VM 现有 property(全是 template-kind-agnostic,
@@ -660,7 +660,7 @@
                                              显示条件 = Environment.RequirementsFileButtonVisible
                                              (BaseEnvButtonVisible && TemplateConfigSnapshot.RequirementsFile 非空)。
                                              装/卸 RequirementsFile 指向的 requirements.txt (HunyuanVideo / CogVideoX)。
-                                             LTXVideo 无按钮(uv sync 已搞定)。-->
+                                             -->
                                         <Button Grid.Row="0" Grid.Column="2" Content="{Binding RequirementsButtonText}"
                                                 Style="{StaticResource MaterialButton}"
                                                 Visibility="{Binding RequirementsFileButtonVisible, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
