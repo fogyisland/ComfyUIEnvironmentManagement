@@ -39,13 +39,17 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
     {
         // OpenBulkUpdate 真用的 service:BulkUpdateOrchestrator(必须非 null)+ dbFactory。
         // 其它 service 传 null(VM ctor 不调用它们);UiPreferencesService 必须非 null(MVM ctor 校验)。
+        // v1.0.0.x (2026-09-03) T33:加 envRepo 参数(第 22 个 nullable arg)——
+        // OpenBulkUpdate 内部 LoadBulkUpdateEnvRows 用 _envRepo,默认 null 早 return → EnvRows 永远空。
+        // 镜像 prod App.xaml.cs DI wire。
         var orch = new BulkUpdateOrchestrator(
             _projectRoot, "git", new EnvironmentRepository(db.Factory), new NodeRepository(db.Factory));
         return new MainViewModel(
             db.Factory,
             null!, orch, null!, null!, null!, null!, null!,
             new Settings(), null!, null!, null!, null!, null!, null!,
-            null!, "", "", null!, null!, new UiPreferencesService(_projectRoot));
+            null!, "", "", null!, null!, new UiPreferencesService(_projectRoot),
+            envRepo: new EnvironmentRepository(db.Factory));
     }
 
     [Fact]
@@ -109,7 +113,7 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         // v0.6.18 G3:用户先在环境页新建 / 删除 env,切回 bulk update 时
         // EnvRows 列表必须刷新(VM 复用,但 env 列表不能 stale)。
         using var db = new TestDb();
-        SeedEnv(db, "env-1", "Env One");
+        SeedEnv(db, "env-1", "Env One", templateKind: "OpenVoice");
         var main = NewMainVm(db);
         main.BulkUpdateViewFactory = vm => new StubBulkUpdateView(vm);
 
@@ -119,7 +123,7 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         Assert.Single(vm!.EnvRows);
 
         // 新增一个 env(模拟用户在 env 页创建了新环境)
-        SeedEnv(db, "env-2", "Env Two");
+        SeedEnv(db, "env-2", "Env Two", templateKind: "OpenVoice");
         main.OpenBulkUpdateCommand.Execute(null);
 
         Assert.Equal(2, vm.EnvRows.Count);   // 复用 VM 但 EnvRows 已刷新
@@ -133,7 +137,7 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         // v0.6.18.2:OpenBulkUpdate 必须把 env 的 scanned_nodes 拉进扁平 UpdateItems。
         // ComfyUI-Manager 行被过滤掉(走 env-level ComfyUiManager 槽位)。
         using var db = new TestDb();
-        SeedEnv(db, "env-1", "Env One");
+        SeedEnv(db, "env-1", "Env One", templateKind: "OpenVoice");
         SeedNode(db, "ComfyUI-Manager", "env-1", "comfyui-manager", "/tmp/1/custom_nodes/ComfyUI-Manager");
         SeedNode(db, "real-node", "env-1", "real-pkg", "/tmp/1/custom_nodes/real-node");
         var main = NewMainVm(db);
@@ -155,7 +159,7 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
     {
         // v0.6.18.2:用户安装新节点后切回 bulk update,UpdateItems 必须包含新节点。
         using var db = new TestDb();
-        SeedEnv(db, "env-1", "Env One");
+        SeedEnv(db, "env-1", "Env One", templateKind: "OpenVoice");
         SeedNode(db, "node-1", "env-1", "pkg-1", "/tmp/1/custom_nodes/node-1");
         var main = NewMainVm(db);
         main.BulkUpdateViewFactory = vm => new StubBulkUpdateView(vm);
@@ -173,17 +177,31 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         Assert.Equal(4, vm.UpdateItems.Count);
     }
 
-    private static void SeedEnv(TestDb db, string id, string name)
+    private static void SeedEnv(TestDb db, string id, string name, string templateKind = "ComfyUI")
     {
-        using var conn = db.Factory.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            INSERT INTO environments (id, name, root_path, comfyui_layout)
-            VALUES (@id, @name, @root, 'isolated');";
-        cmd.Parameters.AddWithValue("@id", id);
-        cmd.Parameters.AddWithValue("@name", name);
-        cmd.Parameters.AddWithValue("@root", $"/tmp/{id}");
-        cmd.ExecuteNonQuery();
+        // v1.0.0.x (2026-09-03) T33:加可选 templateKind 参数(默认 ComfyUI 兼容既有 test)。
+        // 手工 INSERT 包含 template_kind 列(EnvironmentRepository.LoadAll backfill 默认 ComfyUI
+        // 但 OpenBulkUpdate 走的是 LoadAll — 实际 template_kind 在 settings.inf / SQL insert 时填)。
+        try
+        {
+            using var conn = db.Factory.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO environments (id, name, root_path, comfyui_layout, template_kind)
+                VALUES (@id, @name, @root, 'isolated', @kind);";
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@name", name);
+            cmd.Parameters.AddWithValue("@root", $"/tmp/{id}");
+            cmd.Parameters.AddWithValue("@kind", templateKind);
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            // v1.0.0.x (2026-09-03) T33 debug:写文件看实际 INSERT 失败原因
+            System.IO.File.AppendAllText(@"C:\tmp\t33_seed_debug.log",
+                $"SeedEnv FAIL id={id} templateKind={templateKind}: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}\n\n");
+            throw;
+        }
     }
 
     private static void SeedNode(TestDb db, string id, string envId, string pkg, string path)
@@ -198,6 +216,36 @@ public sealed class MainViewModelBulkUpdateInlineTests : IDisposable
         cmd.Parameters.AddWithValue("@pkg", pkg);
         cmd.Parameters.AddWithValue("@path", path);
         cmd.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public void OpenBulkUpdate_ExcludesComfyUiTemplateEnvs()
+    {
+        // v1.0.0.x (2026-09-03) T33:批量更新**不显示** ComfyUI 模板 env ——
+        // ComfyUI 模板用户用单 env 行的节点管理 UI(LocalNodesButtonVisible +
+        // NodeManagementButtonVisible)更精细。批量更新给 OpenVoice / HunyuanVideo /
+        // CogVideoX / HivisionIDPhotos / Forge 这 5 个 non-ComfyUI 模板用。
+        // 镜像既有 OrdinalIgnoreCase 宽松比较风格。
+        // - env-comfyui (ComfyUI) → 隐藏
+        // - env-forge (Forge) → 显示
+        // - env-hunyuan (HunyuanVideo) → 显示
+        using var db = new TestDb();
+        SeedEnv(db, "env-comfyui", "ComfyUI Env");
+        SeedEnv(db, "env-forge", "Forge Env", templateKind: "Forge");
+        SeedEnv(db, "env-hunyuan", "HunyuanVideo Env", templateKind: "HunyuanVideo");
+
+        var main = NewMainVm(db);
+        // 跟既有 test 一样 stub BulkUpdateViewFactory,避免 new BulkUpdateView() 触发 STA。
+        main.BulkUpdateViewFactory = vm => new StubBulkUpdateView(vm);
+        main.OpenBulkUpdateCommand.Execute(null);
+
+        var bulk = main.CurrentBulkUpdateViewModel;
+        Assert.NotNull(bulk);
+        Assert.Equal(2, bulk!.EnvRows.Count);
+        var ids = bulk.EnvRows.Select(e => e.EnvId).ToHashSet(System.StringComparer.Ordinal);
+        Assert.Contains("env-forge", ids);
+        Assert.Contains("env-hunyuan", ids);
+        Assert.DoesNotContain("env-comfyui", ids);
     }
 
     /// <summary>

@@ -29,6 +29,14 @@ public sealed class TestDb : IDisposable
     {
         using var conn = new SqliteConnection($"Data Source={Path}");
         conn.Open();
+        // v1.0.0.x (2026-09-03) T33:设 PRAGMA journal_mode=WAL 跟 production
+        // SqliteConnectionFactory.Open 一致,否则 TestDb raw conn (journal=DELETE 默认)
+        // 写 + Factory.Open (journal=WAL) 读可能跨 mode 不可见。
+        using (var pragma = conn.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;";
+            pragma.ExecuteNonQuery();
+        }
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             CREATE TABLE environments (
@@ -44,10 +52,23 @@ public sealed class TestDb : IDisposable
                 port INTEGER,
                 enabled_node_ids_json TEXT DEFAULT '[]',
                 status TEXT DEFAULT 'stopped',
+                base_python_path TEXT NOT NULL DEFAULT '',
+                python_version TEXT NOT NULL DEFAULT '',
                 pid INTEGER,
                 bed_profile_id TEXT,
                 bed_status TEXT,
-                bed_failed_reason TEXT
+                bed_failed_reason TEXT,
+                notes TEXT,
+                -- v1.0.0.x (2026-09-03) T33:TestDb hardcoded schema 之前 drift 跟 production,
+                -- 缺 template_kind + template_config_snapshot 列 → EnvironmentRepository.ListAll
+                -- SELECT 这两列抛 ""no such column"" SqliteException,所有 EnvRows 加载失败。
+                -- 同步 SqliteConnectionFactory.cs:215-216 EnsureColumn 加的列。
+                -- 关键:TestDb 之前还缺 base_python_path / python_version / notes ——
+                -- 这些列在 production CREATE TABLE(line 105-106 + EnvironmentRepository.cs:182)
+                -- 跟 template_kind 间有 column 顺序,reader.GetString(19) 假设第 20 个 column = template_kind。
+                -- TestDb 必须保持跟 production 完全相同的 column 顺序。
+                template_kind TEXT NOT NULL DEFAULT 'ComfyUI',
+                template_config_snapshot TEXT
             );
             CREATE TABLE scanned_nodes (
                 id TEXT PRIMARY KEY,

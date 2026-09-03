@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -1003,6 +1004,29 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-03) T33:批量更新**不显示** ComfyUI 模板 env —— 镜像
+    /// (inverse of) <see cref="ComfyUI.Manager.Models.Environment.ComfyUiManagerButtonVisible"/>
+    /// 等的"ComfyUI 专属工具"判定。ComfyUI 模板用户直接用单 env 行的节点管理 UI
+    /// (<see cref="ComfyUI.Manager.Models.Environment.LocalNodesButtonVisible"/> +
+    /// <see cref="ComfyUI.Manager.Models.Environment.NodeManagementButtonVisible"/>)
+    /// 更精细。批量更新设计的目的是给 **non-ComfyUI 模板** (OpenVoice / HunyuanVideo /
+    /// CogVideoX / HivisionIDPhotos / Forge)做 env-level git pull:
+    /// - 基础环境(env.RootPath 顶层 git pull,刷新模板源码)
+    /// - ComfyUI-Manager 节点(<c>custom_nodes/ComfyUI-Manager</c>,Forge 也用同样机制)
+    /// 对 ComfyUI 模板的 env 来说,batch git pull 反而容易在
+    /// 用户已用 node management 工具精细管理 <c>custom_nodes/</c> 目录的状态下
+    /// 撞脏状态。镜像既有 <c>OrdinalIgnoreCase</c> 宽松比较风格。
+    /// </summary>
+    private List<EnvRow> LoadBulkUpdateEnvRows()
+    {
+        if (_envRepo is null) return new List<EnvRow>();
+        return _envRepo.ListAll()
+            .Where(env => !string.Equals(env.TemplateKind, "ComfyUI", StringComparison.OrdinalIgnoreCase))
+            .Select(env => new EnvRow(env.Id, env.Name, env.Status ?? "stopped"))
+            .ToList();
+    }
+
     private void OpenBulkUpdate()
     {
         CurrentSection = MainSection.BulkUpdate;
@@ -1014,12 +1038,11 @@ public class MainViewModel : ViewModelBase
             // v0.6.18.1:VM 现在也拉每个 env 的 scanned_nodes 填 AvailableNodes,
             // 所以 ctor 需要 NodeRepository;两次进入(Lazy / Reuse)都新建一份 NodeRepository,
             // 因为它本身只是 thin wrapper over SqliteConnectionFactory,无状态。
-            var envRepo = new EnvironmentRepository(_dbFactory);
+            // v1.0.0.x (2026-09-03) T33:helper LoadBulkUpdateEnvRows() 过滤
+            // non-ComfyUI-template env(只 ComfyUI kind 显示)。
             var nodeRepo = new NodeRepository(_dbFactory);
             _bulkUpdateViewModel = new BulkUpdateViewModel(_orchestrator, nodeRepo);
-            var envRows = envRepo.ListAll()
-                .Select(env => new EnvRow(env.Id, env.Name, env.Status ?? "stopped"))
-                .ToList();
+            var envRows = LoadBulkUpdateEnvRows();
             _bulkUpdateViewModel.LoadEnvs(envRows, nodeRepo);
             _bulkUpdateView = BulkUpdateViewFactory is null
                 ? new BulkUpdateView { DataContext = _bulkUpdateViewModel }
@@ -1029,11 +1052,9 @@ public class MainViewModel : ViewModelBase
         {
             // 复用 VM 时刷新 env 列表 —— 用户在 env 页新建 / 删除后回到这里应该看到最新。
             // AvailableNodes 也会自动重算(env 选中状态变化触发)。
-            var envRepo = new EnvironmentRepository(_dbFactory);
+            // v1.0.0.x (2026-09-03) T33:同样用 LoadBulkUpdateEnvRows() 过滤。
             var nodeRepo = new NodeRepository(_dbFactory);
-            var envRows = envRepo.ListAll()
-                .Select(env => new EnvRow(env.Id, env.Name, env.Status ?? "stopped"))
-                .ToList();
+            var envRows = LoadBulkUpdateEnvRows();
             _bulkUpdateViewModel.LoadEnvs(envRows, nodeRepo);
         }
         CurrentView = _bulkUpdateView;

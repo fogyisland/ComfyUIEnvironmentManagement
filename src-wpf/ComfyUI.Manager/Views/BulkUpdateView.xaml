@@ -209,10 +209,14 @@
                     <Border Visibility="{Binding EnvRows.Count, Converter={StaticResource ZeroCountToVisibility}}"
                             HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="还没有任何环境" FontSize="13"
+                            <!-- v1.0.0.x (2026-09-03) T33:空态文案 ——
+                                 BulkUpdate 不显示 ComfyUI 模板 env(ComfyUI 用节点管理 UI)。
+                                 显示 OpenVoice / HunyuanVideo / CogVideoX / HivisionIDPhotos / Forge
+                                 这 5 个 non-ComfyUI 模板。空态文案指引用户。 -->
+                            <TextBlock Text="还没有任何可批量更新的环境" FontSize="13"
                                        HorizontalAlignment="Center"
                                        Foreground="{DynamicResource OnSurfaceBrush}" />
-                            <TextBlock Text="先去「环境」页新建一个"
+                            <TextBlock Text="ComfyUI 模板请在「环境」行右侧用节点管理,其他模板可用此批量更新"
                                        FontSize="11" Margin="0,4,0,0"
                                        HorizontalAlignment="Center"
                                        Foreground="{DynamicResource OutlineBrush}" />
