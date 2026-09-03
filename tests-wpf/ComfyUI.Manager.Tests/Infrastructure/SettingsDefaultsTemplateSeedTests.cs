@@ -52,9 +52,8 @@ public class SettingsDefaultsTemplateSeedTests
         Assert.Equal("openvoice/openvoice_app.py", ov.EntryScript);
         Assert.Equal("--share", ov.EntryArgs);
 
-        var wh = s.Templates["Whisper"];
-        // v1.0.0.x (2026-09-02) T31:Whisper 模板已下线 — 不再 seed。保留这个 lookup
-        // 是为了 verify PruneDeprecatedBuiltInKinds 没在空 settings 里插回(空 settings
+        // v1.0.0.x (2026-09-02) T31:Whisper 模板已下线 — 不再 seed。
+        // verify PruneDeprecatedBuiltInKinds 没在空 settings 里插回(空 settings
         // 走 if-not-exists seed,Whisper factory 已删 → 不会有 s.Templates["Whisper"] key)。
         Assert.False(s.Templates.ContainsKey("Whisper"),
             "v1.0.0.x T31:Whisper 模板已下线,SettingsDefaults 不应 seed");
