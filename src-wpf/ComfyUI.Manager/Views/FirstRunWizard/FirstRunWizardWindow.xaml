@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ComfyUIManagement 首次配置"
-        Width="640" Height="440"
+        Width="700" Height="540"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         ShowInTaskbar="False">
@@ -11,6 +11,14 @@
         <Style x:Key="StepLabelStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="Normal"/>
             <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+        <!-- v1.0.0.x (2026-09-03) T34:每个 path 字段的 hint label 样式 ——
+             小号字 + 浅色,显示「为什么是这个目录」(从 VM property doc comment 镜像) -->
+        <Style x:Key="PathHintStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+            <Setter Property="Foreground" Value="{DynamicResource OutlineBrush}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
     </Window.Resources>
     <Grid Margin="20">
@@ -33,7 +41,7 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-            <TextBlock Text="→  ② Python 解释器">
+            <TextBlock Text="→  ② Python">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
                         <Style.Triggers>
@@ -44,7 +52,40 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-            <TextBlock Text="→  ③ 完成">
+            <TextBlock Text="→  ③ Envs/Nodes">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsPaths1EnvNodes}" Value="True">
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <TextBlock Text="→  ④ Models/Workflows">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsPaths2ModelsWorkflows}" Value="True">
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <TextBlock Text="→  ⑤ Templates/Log">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsPaths3SystemLog}" Value="True">
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <TextBlock Text="→  ⑥ 完成">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
                         <Style.Triggers>
@@ -58,58 +99,173 @@
         </StackPanel>
 
         <!-- Step content -->
-        <Grid Grid.Row="1">
-            <!-- Step 1: Welcome -->
-            <StackPanel Visibility="{Binding IsWelcome, Converter={StaticResource BoolToVisibility}}">
-                <TextBlock Text="欢迎使用 ComfyUIManagement"
-                           FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
-                <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
-                    这是首次启动,请设置安装根目录(ComfyUIManagement 把环境、模型、节点数据放在这里)。
-                </TextBlock>
-                <TextBlock Text="安装根目录:" Margin="0,8,0,4"/>
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="浏览..."
-                            Margin="6,0,0,0" Padding="10,4"
-                            Click="OnBrowseInstallPath"/>
-                    <TextBox Text="{Binding InstallPath, UpdateSourceTrigger=PropertyChanged}"/>
-                </DockPanel>
-            </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <!-- Step 1: Welcome -->
+                <StackPanel Visibility="{Binding IsWelcome, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="欢迎使用 ComfyUIManagement"
+                               FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
+                        这是首次启动,请设置安装根目录(ComfyUIManagement 把环境、模型、节点数据放在这里)。
+                    </TextBlock>
+                    <TextBlock Text="安装根目录:" Margin="0,8,0,4"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseInstallPath"/>
+                        <TextBox Text="{Binding InstallPath, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+                </StackPanel>
 
-            <!-- Step 2: Python -->
-            <StackPanel Visibility="{Binding IsPython, Converter={StaticResource BoolToVisibility}}">
-                <TextBlock Text="配置 Python 解释器"
-                           FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
-                <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
-                    请选择 Python 解释器(3.10 或更高)。ComfyUIManagement 会用它创建环境。
-                </TextBlock>
-                <TextBlock Text="python.exe 路径:" Margin="0,8,0,4"/>
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="浏览..."
-                            Margin="6,0,0,0" Padding="10,4"
-                            Click="OnBrowsePythonPath"/>
-                    <TextBox Text="{Binding PythonPath, UpdateSourceTrigger=PropertyChanged}"/>
-                </DockPanel>
-                <TextBlock Margin="0,6,0,0">
-                    <Run Text="状态: "/>
-                    <Run Text="{Binding IsPythonValid, Mode=OneWay}" FontWeight="SemiBold"/>
-                </TextBlock>
-            </StackPanel>
+                <!-- Step 2: Python -->
+                <StackPanel Visibility="{Binding IsPython, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="配置 Python 解释器"
+                               FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
+                        请选择 Python 解释器(3.10 或更高)。ComfyUIManagement 会用它创建环境。
+                    </TextBlock>
+                    <TextBlock Text="python.exe 路径:" Margin="0,8,0,4"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowsePythonPath"/>
+                        <TextBox Text="{Binding PythonPath, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+                    <TextBlock Margin="0,6,0,0">
+                        <Run Text="状态: "/>
+                        <Run Text="{Binding IsPythonValid, Mode=OneWay}" FontWeight="SemiBold"/>
+                    </TextBlock>
+                </StackPanel>
 
-            <!-- Step 3: Confirm -->
-            <StackPanel Visibility="{Binding IsConfirm, Converter={StaticResource BoolToVisibility}}">
-                <TextBlock Text="即将完成配置"
-                           FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
-                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8">
-                    请确认以下设置,完成后 ComfyUIManagement 将启动主界面。
-                </TextBlock>
-                <TextBlock Margin="0,4,0,0">
-                    <Run Text="安装根目录: "/><Run Text="{Binding InstallPath, Mode=OneWay}" FontWeight="SemiBold"/>
-                </TextBlock>
-                <TextBlock Margin="0,4,0,0">
-                    <Run Text="Python 解释器: "/><Run Text="{Binding PythonPath, Mode=OneWay}" FontWeight="SemiBold"/>
-                </TextBlock>
-            </StackPanel>
-        </Grid>
+                <!-- v1.0.0.x (2026-09-03) T34:Step 3 Envs + Nodes(4 个 path) -->
+                <StackPanel Visibility="{Binding IsPaths1EnvNodes, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="环境与节点目录"
+                               FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
+                        这 4 个目录管理「用户创建的环境 + 节点」。每个 path 留默认即可,稍后可在 Settings 改。
+                    </TextBlock>
+
+                    <TextBlock Text="EnvsDir" FontWeight="SemiBold"/>
+                    <TextBlock Text="用户创建的 env 根目录,每个 env 一个子目录。EnvCreatorService 在这创建 env。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,12">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseEnvsDir"/>
+                        <TextBox Text="{Binding EnvsDir, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+
+                    <TextBlock Text="GlobalNodesDir" FontWeight="SemiBold"/>
+                    <TextBlock Text="全局已下载节点存储,供 env 间共享(Catalog 下载 default target)。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,12">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseGlobalNodesDir"/>
+                        <TextBox Text="{Binding GlobalNodesDir, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+
+                    <TextBlock Text="LocalNodeDirectory" FontWeight="SemiBold"/>
+                    <TextBlock Text="Catalog 单节点下载 default(单 node 模式)。跟 LocalNodesDirectory(批量)区分。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,12">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseLocalNodeDirectory"/>
+                        <TextBox Text="{Binding LocalNodeDirectory, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+
+                    <TextBlock Text="LocalNodesDirectory" FontWeight="SemiBold"/>
+                    <TextBlock Text="本地常用节点批量安装的源(env 行「装本地常用」按钮)。EnvListVM.InstallLocalNodesCommand 复制源。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,4">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseLocalNodesDirectory"/>
+                        <TextBox Text="{Binding LocalNodesDirectory, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+                </StackPanel>
+
+                <!-- v1.0.0.x (2026-09-03) T34:Step 4 Models + Workflows(2 个 path) -->
+                <StackPanel Visibility="{Binding IsPaths2ModelsWorkflows, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="模型与工作流目录"
+                               FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
+                        模型是 env-create 时的 junction 挂载点 + ModelMarketplace 下载 target;Workflow 是 env-start 后 fire-and-forget 同步目的地。
+                    </TextBlock>
+
+                    <TextBlock Text="DefaultModelsDirectory" FontWeight="SemiBold"/>
+                    <TextBlock Text="env-create junction 挂载点 + ModelMarketplace 下载 default。user extra_model_paths.yaml 也从这读。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,12">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseDefaultModelsDirectory"/>
+                        <TextBox Text="{Binding DefaultModelsDirectory, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+
+                    <TextBlock Text="WorkflowsDirectory" FontWeight="SemiBold"/>
+                    <TextBlock Text="env-start 后 fire-and-forget 同步到的 user/default/workflows/。WorkflowMarketplace 下载 default。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,4">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseWorkflowsDirectory"/>
+                        <TextBox Text="{Binding WorkflowsDirectory, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+                </StackPanel>
+
+                <!-- v1.0.0.x (2026-09-03) T34:Step 5 System Template + Log(2 个 path) -->
+                <StackPanel Visibility="{Binding IsPaths3SystemLog, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="系统模板与日志目录"
+                               FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
+                        系统模板是 git clone 下来的 ComfyUI / Forge / OpenVoice 等源码;日志目录是 env-start 状态面板的日志文件父目录。
+                    </TextBlock>
+
+                    <TextBlock Text="SystemTemplateLibraryDir" FontWeight="SemiBold"/>
+                    <TextBlock Text="clone 下来的模板源码(ComfyUI / Forge / OpenVoice 等)存这。TemplateSourceUpdater 走它。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,12">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseSystemTemplateLibraryDir"/>
+                        <TextBox Text="{Binding SystemTemplateLibraryDir, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+
+                    <TextBlock Text="LogDirectory" FontWeight="SemiBold"/>
+                    <TextBlock Text="日志父目录,EnvStartStatus 日志写 Logs/&lt;envId&gt;.log。SettingsDefaults.Apply 自动建 Logs/。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,4">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseLogDirectory"/>
+                        <TextBox Text="{Binding LogDirectory, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+                </StackPanel>
+
+                <!-- Step 6: Confirm -->
+                <StackPanel Visibility="{Binding IsConfirm, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="即将完成配置"
+                               FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                    <TextBlock TextWrapping="Wrap" Margin="0,0,0,8">
+                        请确认以下设置,完成后 ComfyUIManagement 将启动主界面。空字段会用内置默认 seed。
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="安装根目录: "/><Run Text="{Binding InstallPath, Mode=OneWay}" FontWeight="SemiBold"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="Python 解释器: "/><Run Text="{Binding PythonPath, Mode=OneWay}" FontWeight="SemiBold"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="EnvsDir: "/><Run Text="{Binding EnvsDir, Mode=OneWay}" FontWeight="SemiBold"/>
+                    </TextBlock>
+                    <TextBlock Margin="0,4,0,0">
+                        <Run Text="LogDirectory: "/><Run Text="{Binding LogDirectory, Mode=OneWay}" FontWeight="SemiBold"/>
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
 
         <!-- Nav buttons -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
