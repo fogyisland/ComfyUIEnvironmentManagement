@@ -154,6 +154,46 @@ foreach ($sub in $PruneSubdirs) {
 }
 Write-Host ("  total saved: {0:N1} MB" -f ($Saved/1MB))
 
+# 3.6. v1.0.0.x T38:per user 决策"只需要能够运行,其他非必要内容都没有意义"
+# 进一步删 Python runtime 不需要的:
+# - Doc/ (8.9MB) Python 文档(.chm help file)
+# - tcl/ (9MB) Tcl/Tk 工具包(不用 tkinter GUI 的话不需要)
+# - Lib/ctypes/test/ (ctypes 测试套件)
+# - Lib/importlib/test/ (importlib 测试)
+# - DLLs/_test*.pyd (test C extensions,~几 MB)
+# - include/ (1.1MB) Python C headers,build extensions 用,runtime 不需要
+# 保留 stdlib 必备:Lib/{asyncio,collections,concurrent,ctypes,dbm,encodings,html,http,importlib,json,logging,multiprocessing,sqlite3,...}
+Write-Host "[3.6/7] Pruning Python runtime bloat (Doc/tcl/tests/include)..." -ForegroundColor Yellow
+$PruneRuntimeBloat = @(
+    "Doc",
+    "tcl",
+    "Tools",
+    "include",
+    "DLLs/_ctypes_test.pyd",
+    "DLLs/_testbuffer.pyd",
+    "DLLs/_testcapi.pyd",
+    "DLLs/_testconsole.pyd",
+    "DLLs/_testimportmultiple.pyd",
+    "DLLs/_testinternalcapi.pyd",
+    "DLLs/_testmultiphase.pyd",
+    "Lib/ctypes/test",
+    "Lib/importlib/test",
+    "Lib/sqlite3/test",
+    "Lib/unittest/test",
+    "Lib/test/support"
+)
+$SavedBloat = 0
+foreach ($sub in $PruneRuntimeBloat) {
+    $p = Join-Path $PythonDst $sub
+    if (Test-Path $p) {
+        $size = (Get-ChildItem -Path $p -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue
+        $SavedBloat += $size
+        Write-Host ("  pruned: $sub ({0:N1} MB)" -f ($size/1MB))
+    }
+}
+Write-Host ("  total saved (runtime bloat): {0:N1} MB" -f ($SavedBloat/1MB))
+
 # 4. ComfyUITemplate/(从仓库根,排除大文件 + user 数据) — User 决策 "1. 模板需要保留"
 Write-Host "[4/7] Copying ComfyUITemplate (excl models/output/input/custom_nodes/localnodes/user/...)..." -ForegroundColor Yellow
 $ComfyUITemplateSrc = Join-Path $ProjectRoot "ComfyUITemplate"
