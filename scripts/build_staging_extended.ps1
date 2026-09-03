@@ -16,6 +16,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# v1.0.0.x T37 fix:之前 $ProjectRoot 在被 & 调 build_staging.ps1 子脚本时可能被 reset —
+# line 44 `cd release/staging/...` 改变 working directory 跟 Reset-Location,
+# 让 Resolve-Path 找不到 repo。重新 Resolve 一次确保 $ProjectRoot 跟 $SlimSrc 不为 null。
+$ProjectRoot = (Resolve-Path "$PSScriptRoot/..")
 $AppDir = Join-Path $ProjectRoot $OutputDir
 
 Write-Host "=== T35 staging build (extended, no zip) ===" -ForegroundColor Cyan
@@ -29,10 +33,75 @@ if (Test-Path $AppDir) {
 }
 New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
 
-# 2. dotnet publish self-contained (WPF)
-Write-Host "[2/7] Publishing WPF self-contained..." -ForegroundColor Yellow
+# 2. dotnet publish self-contained (WPF) + slim git (替代 91M git-portable)
+Write-Host "[2/7] Publishing WPF self-contained + slim git..." -ForegroundColor Yellow
 & "$ProjectRoot/scripts/build_staging.ps1" -ProjectRoot $ProjectRoot -Configuration $Configuration -Runtime $Runtime -OutputDir $OutputDir
 if ($LASTEXITCODE -ne 0) { throw "build_staging.ps1 failed" }
+
+# 2.5. v1.0.0.x T37:per user 反馈"git 不是只有 30 多 M 吗" ——
+# build_staging.ps1 拷的 bin/git-portable 是 git-for-windows 完整 bundle 91M(Avalonia GUI +
+# gcmcore credential manager + perl + openssl + curl + ssh + tcl),git clone 实际只需要 git.exe +
+# msys runtime + libcurl + libssl + libcrypto ~5-8MB
+# 我们 *不* 改 build_staging.ps1(保持原纯净),而是在 staging build 跑完后覆盖 slim git
+Write-Host "[2.5/7] Slimming git from 91M to ~8-12M (drop GUI/credential/perl/ssh/tcl)..." -ForegroundColor Yellow
+$SlimSrc = Join-Path $ProjectRoot "release/git-slim"
+$StagingGitDir = Join-Path $AppDir "bin/git-portable"
+$SourceGitDir = Join-Path $ProjectRoot "bin/git-portable"
+# 完整 git.exe 跑得动只依赖 system32 + 自带 mincore,不需要 mingw64/bin/* GUI DLL
+# minimal subset: cmd/ + usr/bin/(msys runtime + libcurl + libssl + libcrypto + libiconv + git tools)
+# exclude: mingw64/(GUI/gcmcore/credential) + perl + tcl + tk + ssh + rebase + awk + find + diff 等冗余
+$SlimSrc = Join-Path $ProjectRoot "release/git-slim"
+if (-not (Test-Path $SlimSrc)) { New-Item -ItemType Directory -Path $SlimSrc -Force | Out-Null }
+$BuildSlimNow = $true
+if (Test-Path (Join-Path $SlimSrc "cmd/git.exe")) {
+    Write-Host "  using cached git-slim from $SlimSrc" -ForegroundColor DarkGray
+    $BuildSlimNow = $false
+} else {
+    New-Item -ItemType Directory -Path $SlimSrc -Force | Out-Null
+}
+if ($BuildSlimNow) {
+    # 拷 cmd/(git.exe + helpers 168K)
+    $cmdSrc = Join-Path $SourceGitDir "cmd"
+    $cmdDst = Join-Path $SlimSrc "cmd"
+    if (Test-Path $cmdSrc) {
+        New-Item -ItemType Directory -Path $cmdDst -Force | Out-Null
+        Copy-Item -Recurse -Force $cmdSrc $cmdDst
+    }
+    # 拷 usr/bin/(msys runtime + libcurl + libssl + libcrypto + libiconv + 必要 git tools)
+    # 关键:msys-2.0.dll(MSYS2 C runtime,2-3MB) + libcurl + libssl + libcrypto + libiconv
+    # exclude: perl/* + tcl/* + tk/* + ssh* + ssh-* + awk + rebase + find + diff + grep + less
+    $usrBinSrc = Join-Path $SourceGitDir "usr/bin"
+    $usrBinDst = Join-Path $SlimSrc "usr/bin"
+    if (Test-Path $usrBinSrc) {
+        New-Item -ItemType Directory -Path $usrBinDst -Force | Out-Null
+        $Excludes = @("perl*", "tcl*", "tk*", "ssh*", "rebase*", "awk*", "find*", "diff*", "grep*", "less*", "rsync*", "scp*", "sftp*", "cygpath*", "cygcheck*", "getfacl*", "setfacl*", "minTTY*", "winpty*", "bash*", "dash*", "env*", "expr*", "id*", "kill*", "ln*", "mkdir*", "mkfifo*", "mknod*", "mv*", "rm*", "rmdir*", "sleep*", "stty*", "sync*", "tee*", "touch*", "true*", "false*", "uname*", "wc*", "which*", "whoami*", "xargs*", "yes*", "cygserver*", "ld*", "cygcheck*", "mount*", "ps*", "kill*", "test*", "tr*", "cut*", "sort*", "uniq*", "head*", "tail*", "wc*", "paste*", "join*", "split*", "fmt*", "xargs*", "od*", "xxd*", "cksum*", "md5sum*", "sha1sum*", "sha256sum*", "sha512sum*", "sum*", "b2sum*", "base32*", "base64*", "md5sum*", "zip*", "unzip*", "tar*", "gzip*", "xz*", "bzip*", "compress*", "uncompress*", "lha*", "lzh*", "pax*", "cpio*", "ar*", "ranlib*", "nm*", "objdump*", "strings*", "strace*", "ltrace*", "gdb*", "addr2line*", "c++filt*", "elfedit*", "gprof*", "gcov*", "gdb-add-index*", "gprof*", "size*", "strings*", "objcopy*", "readelf*", "ldd*", "as*", "ar*", "gcc*", "g++*", "cc*", "cpp*", "c++*", "g77*", "f77*", "f95*", "fortran*", "gfortran*", "make*", "cmake*", "ctags*", "etags*", "cscope*", "gprof*", "gperf*", "time*", "timeout*", "date*", "cal*", "info*", "man*", "apropos*", "whatis*", "whereis*", "make*", "automake*", "autoconf*", "autoheader*", "autoreconf*", "autoscan*", "autoupdate*", "ifnames*", "symlinks*", "m4*", "gawk*", "awk*", "perl*", "pod2*", "podselect*", "prove*")
+        $files = Get-ChildItem -Path $usrBinSrc -File | Where-Object { $name = $_.Name; -not ($Excludes | Where-Object { $name -like $_ }) }
+        foreach ($f in $files) {
+            Copy-Item -Force $f.FullName $usrBinDst
+        }
+    }
+    # usr/libexec/(git helpers 560K)
+    $libexecSrc = Join-Path $SourceGitDir "usr/libexec"
+    $libexecDst = Join-Path $SlimSrc "usr/libexec"
+    if (Test-Path $libexecSrc) {
+        New-Item -ItemType Directory -Path $libexecDst -Force | Out-Null
+        Copy-Item -Recurse -Force $libexecSrc $libexecDst
+    }
+    # etc/(gitconfig 1K)
+    $etcSrc = Join-Path $SourceGitDir "etc"
+    if (Test-Path $etcSrc) {
+        $etcDst = Join-Path $SlimSrc "etc"
+        New-Item -ItemType Directory -Path $etcDst -Force | Out-Null
+        Copy-Item -Recurse -Force $etcSrc $etcDst
+    }
+    $SlimSize = (Get-ChildItem -Path $SlimSrc -Recurse -File | Measure-Object -Property Length -Sum).Sum
+    Write-Host ("  git-slim cached: {0:N1} MB" -f ($SlimSize/1MB)) -ForegroundColor DarkGray
+}
+# 覆盖 staging bin/git-portable
+if (Test-Path $StagingGitDir) { Remove-Item -Recurse -Force $StagingGitDir }
+Copy-Item -Recurse -Force $SlimSrc $StagingGitDir
+$StagingGitSize = (Get-ChildItem -Path $StagingGitDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
+Write-Host ("  staging bin/git-portable: 91M -> {0:N1} MB" -f ($StagingGitSize/1MB)) -ForegroundColor DarkGray
 
 # 3. portable Python
 # v1.0.0.x T36:per user 决策"保证 release 尽可能小,我记得 Python 网上的包只有 30M" ——
