@@ -83,6 +83,7 @@ if (Test-Path $WorkflowSrc) {
     Write-Host "  Workflow/ 不存在(用户还没下载 workflow),跳过" -ForegroundColor DarkGray
 }
 
+
 # 7. 占位 .gitkeep 空目录(Envs / Models / logs 等运行期自动创建)
 Write-Host "[7/7] Finalizing placeholder dirs..." -ForegroundColor Yellow
 $topDirs = @("Envs", "Models", "logs", "Nodes")
