@@ -315,8 +315,21 @@
                             CornerRadius="4"
                             Padding="{TemplateBinding Padding}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="Center" />
+                            <!-- v1.0.0.x (2026-09-05):ContentPresenter 内 TextBlock 显式 Foreground ——
+                                 之前用 TextElement.Foreground 但 implicit TextBlock style 优先级更高,
+                                 选中态文字仍然是 #1C1B1F(深黑)— 白底看不见。
+                                 改用直接 nested TextBlock + RelativeSource 绑 RadioButton.Foreground,
+                                 绕开 implicit style 优先级。 -->
+                            <ContentPresenter
+                                x:Name="ContentSite"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                             <!-- v1.0.0:禁用时显示"未启用"小标签(sidebar.inf 控制 IsEnabled 后,
                                  让用户一眼看出"为什么这个菜单点不动")。Visibility 默认 Collapsed,
                                  IsEnabled=False 触发器翻成 Visible。 -->
@@ -339,9 +352,16 @@
                                     Value="{DynamicResource SurfaceBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
+                            <!-- v1.0.0.x (2026-09-05):选中态高对比 ——
+                                 用户原话"白色模式下,选中黑色 文字白色,暗黑模式下,选中的菜单白色,文字黑色"。
+                                 之前用 InverseOnSurfaceBrush 配错(字与底同色看不见)。
+                                 现在用显式 new resource ——
+                                 Light 选中: Background = #000000 黑, Foreground = #FFFFFF 白
+                                 Dark  选中: Background = #FFFFFF 白, Foreground = #000000 黑
+                                 确保任何主题下都高对比。 -->
                             <Setter TargetName="Bd" Property="Background"
-                                    Value="{DynamicResource PrimaryBrush}" />
-                            <Setter Property="Foreground" Value="{DynamicResource OnPrimaryBrush}" />
+                                    Value="{DynamicResource SidebarSelectedBackgroundBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource SidebarSelectedForegroundBrush}" />
                         </Trigger>
                         <!-- v1.0.0:sidebar.inf 控制 IsEnabled 时显示灰底 + 标签 + 改 cursor。
                              灰底用 SurfaceVariantBrush 跟标签背景同色,视觉统一。 -->
@@ -748,9 +768,11 @@
     </Style>
     <Style TargetType="{x:Type CheckBox}">
         <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
     </Style>
     <Style TargetType="{x:Type RadioButton}">
         <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
     </Style>
     <Style TargetType="{x:Type Label}">
         <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>

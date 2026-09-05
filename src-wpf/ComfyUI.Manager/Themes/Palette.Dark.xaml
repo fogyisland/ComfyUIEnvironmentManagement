@@ -20,6 +20,20 @@
     <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource SecondaryColor}" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
+    <!-- v1.0.0.x (2026-09-05):Sidebar 选中态资源(Dark 主题) ——
+         Dark 选中: Background 白 + Foreground 黑
+         跟主背景(#1E1E1E 深灰)翻转形成高对比。 -->
+    <Color x:Key="SidebarSelectedBackgroundColor">#FFFFFF</Color>
+    <Color x:Key="SidebarSelectedForegroundColor">#000000</Color>
+    <SolidColorBrush x:Key="SidebarSelectedBackgroundBrush" Color="{StaticResource SidebarSelectedBackgroundColor}" />
+    <SolidColorBrush x:Key="SidebarSelectedForegroundBrush" Color="{StaticResource SidebarSelectedForegroundColor}" />
+    <!-- v1.0.0.x (2026-09-05):Inverse 系列 ——
+         Dark 主题 InverseOnSurface = #E6E1E5(浅白),InverseOnPrimary = #1C1B1F(深黑)。
+         sidebar 选中态用这个,跟 Background 翻转形成高对比。 -->
+    <Color x:Key="InverseOnSurfaceColor">#E6E1E5</Color>
+    <Color x:Key="InverseOnPrimaryColor">#1C1B1F</Color>
+    <SolidColorBrush x:Key="InverseOnSurfaceBrush" Color="{StaticResource InverseOnSurfaceColor}" />
+    <SolidColorBrush x:Key="InverseOnPrimaryBrush" Color="{StaticResource InverseOnPrimaryColor}" />
     <!-- v1.0.0.x (2026-09-05):WindowBackgroundBrush 别名 BackgroundBrush ——
          ModelMarketplaceView/WorkflowMarketplaceView 早期 hardcode 引用 WindowBackgroundBrush
          (没有这个 key,WPF fallback SystemColors.WindowBrush=白底)。Dark 模式下白底明显。

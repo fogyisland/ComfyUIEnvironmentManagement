@@ -20,6 +20,25 @@
     <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource SecondaryColor}" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
+    <!-- v1.0.0.x (2026-09-05):Sidebar 选中态资源 ——
+         之前用 OnSurface/Inverse 系列配错(字与底同色看不见)。
+         现在显式定义 Sidebar 选中态颜色,清晰命名,跟主背景反色。
+         Light 选中: SidebarSelectedBackgroundBrush = #000000 黑 + SidebarSelectedForegroundBrush = #FFFFFF 白
+         Dark  选中: SidebarSelectedBackgroundBrush = #FFFFFF 白 + SidebarSelectedForegroundBrush = #000000 黑 -->
+    <Color x:Key="SidebarSelectedBackgroundColor">#000000</Color>
+    <Color x:Key="SidebarSelectedForegroundColor">#FFFFFF</Color>
+    <SolidColorBrush x:Key="SidebarSelectedBackgroundBrush" Color="{StaticResource SidebarSelectedBackgroundColor}" />
+    <SolidColorBrush x:Key="SidebarSelectedForegroundBrush" Color="{StaticResource SidebarSelectedForegroundColor}" />
+    <!-- v1.0.0.x (2026-09-05):Inverse 系列 ——
+         sidebar 选中态背景 + 文字反色用。InverseOnSurfaceBrush 跟 OnSurfaceBrush
+         反相(实际上 Light OnSurface=#1C1B1F 深黑 + InverseOnSurface 白 = 互反),
+         但更明确命名:选中态 = 主背景反色 + 文字反色。
+         Light: InverseOnSurfaceBrush=#1C1B1F(深黑) + InverseOnPrimaryBrush=#FFFFFF(白)
+         Dark:  InverseOnSurfaceBrush=#E6E1E5(浅白) + InverseOnPrimaryBrush=#1C1B1F(深黑) -->
+    <Color x:Key="InverseOnSurfaceColor">#1C1B1F</Color>
+    <Color x:Key="InverseOnPrimaryColor">#FFFFFF</Color>
+    <SolidColorBrush x:Key="InverseOnSurfaceBrush" Color="{StaticResource InverseOnSurfaceColor}" />
+    <SolidColorBrush x:Key="InverseOnPrimaryBrush" Color="{StaticResource InverseOnPrimaryColor}" />
     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource BackgroundColor}" />
     <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
     <SolidColorBrush x:Key="ErrorVariantBrush" Color="{StaticResource ErrorVariantColor}" />
