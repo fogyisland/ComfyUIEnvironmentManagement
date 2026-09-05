@@ -13,8 +13,18 @@ public partial class FirstRunWizardWindow : Window
         InitializeComponent();
         _vm = vm;
         DataContext = vm;
-        vm.Completed += () => { DialogResult = true; Close(); };
-        vm.Cancelled += () => { DialogResult = false; Close(); };
+        // v1.0.0.x (2026-09-05):用 Closing event 通知 main,不用 DialogResult setter ——
+        // 用户原话"还是会啊",深查发现:WPF DialogResult setter 在 modeless Window 上
+        // 也会触发 Close(),然后 Close 触发 ShutdownMode=OnMainWindowClose 检查
+        // Application.Current.MainWindow → 整个 app 退。
+        // 改用自定义 Closed event handler,Close 前先取消(不让 WPF 触发 ShutdownMode)。
+        // v1.0.0.x:用 Window.Closing event 在 wizard 关闭时设 e.Cancel = true(不真关),
+        // 但 wizard 自己内部标记"已关闭",用户也能继续看 main。但这样 wizard 永远不
+        // 关,用户必须点 X 才行。**更稳的修法:改 ShutdownMode,只在主程序需要时关。**
+        // 这里:不在 wizard 设 DialogResult(避开 WPF 触发 ShutdownMode 的奇怪路径),
+        // 改用 vm.Completed/Cancelled event → wizard.Close(),不设 DialogResult。
+        vm.Completed += () => Close();
+        vm.Cancelled += () => Close();
     }
 
     private void OnBrowseInstallPath(object sender, RoutedEventArgs e)

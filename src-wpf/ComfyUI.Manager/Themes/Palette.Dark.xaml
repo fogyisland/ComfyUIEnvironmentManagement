@@ -20,6 +20,11 @@
     <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource SecondaryColor}" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
+    <!-- v1.0.0.x (2026-09-05):WindowBackgroundBrush 别名 BackgroundBrush ——
+         ModelMarketplaceView/WorkflowMarketplaceView 早期 hardcode 引用 WindowBackgroundBrush
+         (没有这个 key,WPF fallback SystemColors.WindowBrush=白底)。Dark 模式下白底明显。
+         加 alias 让早期 XAML 仍能解析,Future 改 background 时统一用 BackgroundBrush。 -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource BackgroundColor}" />
     <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
     <SolidColorBrush x:Key="ErrorVariantBrush" Color="{StaticResource ErrorVariantColor}" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />

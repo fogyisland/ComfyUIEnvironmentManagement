@@ -688,4 +688,71 @@
         <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
         <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
     </Style>
+    <!-- v1.0.0.x (2026-09-05):Button 跟随主题 ——
+         用户原话"暗模式下某些菜单的黑色文字还在,按钮也还是白色"。
+         之前 implicit style 只 catch root-level TextBlock,Button/ComboBox 内嵌的子 TextBlock
+         + Button 自己的 chrome 不在 implicit style 覆盖范围。
+         Button style 设 Background + BorderBrush + Foreground,模板内的子元素用
+         TemplateBinding 引用(Button 默认 ControlTemplate 支持 Foreground/BorderBrush/Background
+         三个 TemplateBinding,但子 TextBlock 不会自动跟随 → 需要更彻底的隐式 style
+         或模板修改)。
+         折中:用 Background/Foreground 覆盖 Button chrome(背景+文字),
+         内部具体字符如需主题色可单独加 ContentTemplate 绑定 OnSurfaceBrush。 -->
+    <Style TargetType="{x:Type Button}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource OutlineBrush}"/>
+        <!-- v1.0.0.x (2026-09-05):Button 内部 ContentPresenter 显式绑 Foreground ——
+             用户原话"wizard 中的按钮还是白色的,应该是黑色的,字应该是白色的"。
+             WPF Button 默认 ControlTemplate (Aero2) 不绑 Foreground 到 ContentPresenter,
+             即使 Button.Foreground 改了,ContentPresenter 文字仍走 chrome 默认色。
+             显式覆盖 ContentPresenter 模板让文字跟 Button.Foreground 走。 -->
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="3"
+                            Padding="6,4">
+                        <ContentPresenter
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            TextElement.Foreground="{TemplateBinding Foreground}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- v1.0.0.x:MenuItem 跟随主题 ——
+        暗模式下 menu/dropdown 里黑色文字问题同样(ContentPresenter 内 TextBlock 没绑主题色)。 -->
+    <Style TargetType="{x:Type MenuItem}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type ContextMenu}">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type Menu}">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    </Style>
+    <!-- v1.0.0.x:ListBox/ListViewItem/CheckBox/RadioButton 跟随主题 ——
+        各种列表项和选择控件在暗模式下默认黑字。 -->
+    <Style TargetType="{x:Type ListBox}">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type ListBoxItem}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type CheckBox}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type RadioButton}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type Label}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+    </Style>
 </ResourceDictionary>

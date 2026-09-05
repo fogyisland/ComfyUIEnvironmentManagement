@@ -8,7 +8,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              d:DataContext="{d:DesignInstance Type=vm:WorkflowMarketplaceViewModel}"
-             Background="{DynamicResource WindowBackgroundBrush}">
+             Background="{DynamicResource BackgroundBrush}">
   <!--
     v0.6.19.x:工作流市场 view polish — 4 axes:
     A) card layout:220x300 + Uniform stretch + source badge pill (WorkflowSourceBadge* converters)

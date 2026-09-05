@@ -1,7 +1,18 @@
 <Application x:Class="ComfyUI.Manager.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             ShutdownMode="OnMainWindowClose">
+             ShutdownMode="OnExplicitShutdown">
+    <!-- v1.0.0.x (2026-09-05):ShutdownMode = OnExplicitShutdown ——
+         用户原话"wizard 点击完成之后程序会退出,文件内容已保存,wizard 窗口需要退出 但主程序不应该退出"。
+         之前 OnMainWindowClose,任何 Window Close 触发 Shutdown 检查
+         Application.Current.MainWindow。
+         - wizard 关闭 → MainWindow=wizard? 触发 Shutdown
+         - splash 关闭(0.8s fade)→ MainWindow=splash? 触发 Shutdown
+         - dialog 关闭 → 触发 Shutdown
+         - user 误关主窗 → 触发 Shutdown(OK)
+         改 OnExplicitShutdown:Application 不自动关,只有显式调 Shutdown() 才退。
+         MainWindow.Close() 只关 main,不退 app。
+         user 真正想退 → 关 main → App.xaml.cs MainWindow.OnClosing 调 Shutdown()。 -->
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

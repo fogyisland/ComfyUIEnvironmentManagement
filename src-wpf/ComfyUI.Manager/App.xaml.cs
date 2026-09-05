@@ -277,11 +277,13 @@ public partial class App : Application
         var isFirstRun = FirstRun.FirstRunDetector.IsFirstRun(projectRoot);
         SettingsDefaults.Apply(settings, projectRoot, rawJson);
         settingsRepo.Save(settings);
-        // v1.0.0.x (2026-09-05):首启动自动写 firstrun.inf,标记首启动完成 ——
-        // 用户原话"启动的时候默认生成 setting.inf 文件,然后在 wizard 会列出自动生成的文件"。
-        // Apply + Save 已写 settings.inf,这里再 MarkComplete 写 firstrun.inf。
-        // 下次启动 IsFirstRun false → 不弹 wizard(走"已完成"路径)。
-        FirstRun.FirstRunDetector.MarkComplete(projectRoot);
+        // v1.0.0.x (2026-09-05):首启动 Apply + Save,firstrun.inf 等 wizard Finish 才写 ——
+        // 用户原话"第一次执行 wizard 中途退出不算第一次执行,这个写入的步骤需要在完成之后"。
+        // 之前 OnStartup line 284 立即 MarkComplete,wizard Cancel 后 firstrun.inf 已存在,
+        // 二次启动 IsFirstRun false → 不弹 wizard。但 Cancel = 没完成 → 应再弹。
+        // 现在:Apply + Save 写 settings.inf(用户原话"启动的时候默认生成 setting.inf"),
+        // MarkComplete 移到 wizard Completed event handler — wizard Finish 才写 firstrun.inf,
+        // Cancel 不写(等价没完成)。
 
         // v1.0.0.x (2026-09-05):完全移除启动期路径错位检测 + PathMigrationConfirmDialog ——
         // 用户原话"去掉目录比对不存在并建议功能"。
@@ -598,6 +600,12 @@ public partial class App : Application
         // → 应用直接退出。显式指 MainWindow=main 让 splash close 不影响应用生命周期。
         main.Show();
         Application.Current.MainWindow = main;
+        // v1.0.0.x (2026-09-05):wizard 完成后切回 OnMainWindowClose ——
+        // 用户给的设计思路:OnStartup 早期(OnExplicitShutdown 期间)弹 wizard 不会触发
+        // Shutdown。main.Show + 设 MainWindow=main 后,切回 OnMainWindowClose:
+        // 此时 main 已是 MainWindow,user 关 main → 自然 Shutdown(行为跟 OnMainWindowClose 一样,
+        // user 体验没变)。wizard Close 不会再触发 Shutdown,因为它不是 MainWindow。
+        Application.Current.ShutdownMode = ShutdownMode.OnMainWindowClose;
         // v1.0.0.x (2026-09-05):首次 wizard 完成后 MainWindow 没 focus,需要再点击才出现 ——
         // 用户原话"第一次设置完 wizard 不启动,要再次点击才启动"。
         // Root cause:首启动路径(wizard 完成 → splash close → main.Show()),wizard
@@ -642,6 +650,22 @@ public partial class App : Application
                 {
                     _mainVm.ReloadSettingsAfterWizard();
                 }
+                // v1.0.0.x (2026-09-05):wizard Finish 才写 firstrun.inf ——
+                // 用户原话"第一次执行 wizard 中途退出不算第一次执行,这个写入的步骤需要在完成之后"。
+                // 之前 OnStartup line 284 立即 MarkComplete,wizard Cancel 后 firstrun.inf 已存在
+                // → 二次启动 IsFirstRun false → 不弹 wizard。但 Cancel = 没完成,应再弹。
+                // 现在:只有 Completed event (Finish() 触发) 才 MarkComplete,Cancel 不写。
+                // Cancelled event 不写 → 二次启动 IsFirstRun true → 再弹 wizard。
+                FirstRun.FirstRunDetector.MarkComplete(projectRoot);
+            };
+            wizardVm.Cancelled += () =>
+            {
+                // v1.0.0.x (2026-09-05):wizard Cancel 不写 firstrun.inf ——
+                // user 中途关闭 wizard = 没完成,二次启动 IsFirstRun 仍 true → 再次弹 wizard。
+                // (实际上不需要做啥 — firstrun.inf 没 MarkComplete,IsFirstRun 保持 true,
+                // 写 firstrun.inf 之前是 wizard.Completed 路径才触发的。这里只是注释
+                // 表达设计意图:explicit Cancelled handler 即便空也保留,未来可能要加
+                // "是否清空 Apply 默认 settings?"的确认 dialog 等扩展。)
             };
             // 用 Show() (modeless) 不是 ShowDialog() — 跟 main 并存,user 可自由切。
             // v1.0.0.x (2026-09-05) bug fix:不设 MainWindow = wizard ——
@@ -649,18 +673,24 @@ public partial class App : Application
             // 触发 Shutdown → 整个进程退出。**main 一直保持 MainWindow**,wizard 关闭不影响
             // app 生命周期。
             wizard.Show();
-            // v1.0.0.x (2026-09-05):wizard Activate() 抢焦点 ——
-            // 用户原话"在 wizard 关闭前 wizard 应该是在最前面"。
-            // Show() 不抢焦点,wizard 在 main 后面,用户看不到。
-            // XAML Topmost=True 让 z-order 在前,Activate() 让焦点在 wizard。
-            wizard.Activate();
+            // v1.0.0.x (2026-09-05):不要 wizard.Activate() ——
+            // 用户原话"wizard 点击完成之后程序有一次退出了,文件的内容已经保存了,
+            // wizard 窗口需要退出 但是主程序不应该退出"。
+            // Activate() 会触发 WPF 内部把 Application.Current.MainWindow 改成 wizard。
+            // 即使我们之后用 line 681 显式设回 main,wizard.Close() 时
+            // ShutdownMode=OnMainWindowClose 检查 MainWindow,wizard 是刚关掉的
+            // 那个 → 触发 Shutdown。
+            // 改为:不 Activate(用 Topmost=True 抢 z-order,FocusManager 仍能让 wizard
+            // 接收键盘输入),让 main 始终是 MainWindow。
+            // XAML Topmost=True 让 wizard 在前 + main.Activate() 让 main 在 z-order
+            // 仍合法(虽然 Topmost wizard 在更前)。wizard 关闭时 MainWindow 仍 main,
+            // 不触发 Shutdown。
+            // (在 wizard Show 之前显式设 MainWindow=main,避免 Show 之后 wpf 自动改)
 
-            // v1.0.0.x (2026-09-05) bug fix:显式保持 MainWindow = main ——
-            // 用户原话"点击完成之后程序有一次退出了"。
-            // 之前 main.Activate() 不重设 MainWindow,wizard.Activate() 时 wpf 自动
-            // 把 MainWindow 改为 wizard。wizard.Close() → ShutdownMode=OnMainWindowClose
-            // 触发 Shutdown → 整个 app 退出。显式设回 main。
+            // 显式设回 main — 必须在 wizard.Show 之前,避免 wpf 自动把 MainWindow
+            // 改成 wizard
             Application.Current.MainWindow = main;
+            wizard.Show();
             main.Activate();
         }
 

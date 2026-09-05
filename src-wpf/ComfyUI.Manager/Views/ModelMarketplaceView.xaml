@@ -8,7 +8,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:ModelMarketplaceViewModel}"
-             Background="{DynamicResource WindowBackgroundBrush}">
+             Background="{DynamicResource BackgroundBrush}">
   <!--
     v0.6.20 T8:模型市场 view — 镜像 v0.6.19 WorkflowMarketplaceView toolbar / filter chips /
     card grid / console 4-row 布局,卡片内容 = ModelEntry (title + Kind badge pill +
