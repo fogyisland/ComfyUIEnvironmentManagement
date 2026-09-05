@@ -16,6 +16,13 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
     private FirstRunWizardStep _currentStep = FirstRunWizardStep.Welcome;
     private string _installPath = "";
     private string _pythonPath = "";
+    // v1.0.0.x (2026-09-05):Git 路径 — wizard 自动 seed Embeded/git-portable/cmd/git.exe 绝对路径,
+    // 用户确认或 Browse 改到系统 PATH "git" 或别处。
+    private string _gitPath = "";
+    // v1.0.0.x (2026-09-05):Python 路径也自动 seed Embeded/python/python.exe 绝对路径
+    // (用户原话"python 路径也是自然获取,我们只需要看正确与否 例如当前
+    // H:\ComfyUIManagement\Embeded\python 位于这个目录下的 python.exe")。
+    // Wizard Step 2 自动填这个绝对路径,用户确认或 Browse 改。
 
     // v1.0.0.x (2026-09-03) T34:8 个 settings 路径(除 TemplatePythonDir 已在 PythonPath
     // 步骤处理)。默认值 = SettingsDefaults.Apply 镜像 seed 路径 ——
@@ -55,7 +62,7 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
             _currentStep = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsWelcome));
-            OnPropertyChanged(nameof(IsPython));
+            OnPropertyChanged(nameof(IsPythonGit));
             OnPropertyChanged(nameof(IsPaths1EnvNodes));
             OnPropertyChanged(nameof(IsPaths2ModelsWorkflows));
             OnPropertyChanged(nameof(IsPaths3SystemLog));
@@ -63,7 +70,7 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         }
     }
     public bool IsWelcome => CurrentStep == FirstRunWizardStep.Welcome;
-    public bool IsPython => CurrentStep == FirstRunWizardStep.Python;
+    public bool IsPythonGit => CurrentStep == FirstRunWizardStep.PythonGit;
     public bool IsPaths1EnvNodes => CurrentStep == FirstRunWizardStep.Paths1EnvNodes;
     public bool IsPaths2ModelsWorkflows => CurrentStep == FirstRunWizardStep.Paths2ModelsWorkflows;
     public bool IsPaths3SystemLog => CurrentStep == FirstRunWizardStep.Paths3SystemLog;
@@ -80,6 +87,15 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         set { _pythonPath = value ?? ""; OnPropertyChanged(); NextCommandCanExecuteChanged(); }
     }
     public bool IsPythonValid => !string.IsNullOrWhiteSpace(_pythonPath) && System.IO.File.Exists(_pythonPath);
+
+    // v1.0.0.x (2026-09-05):Git 路径字段 — 默认 seed Embeded/git-portable/cmd/git.exe 绝对路径,
+    // 用户确认或 Browse 改到别的 git 安装。IsGitValid 检查文件存在(空字符串 OK = 用 PATH "git")。
+    public string GitPath
+    {
+        get => _gitPath;
+        set { _gitPath = value ?? ""; OnPropertyChanged(); NextCommandCanExecuteChanged(); }
+    }
+    public bool IsGitValid => string.IsNullOrWhiteSpace(_gitPath) || System.IO.File.Exists(_gitPath);
 
     public string SystemTemplateLibraryDir
     {
@@ -154,6 +170,45 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         _workflowsDirectory = System.IO.Path.Combine(projectRoot, "Workflow") + System.IO.Path.DirectorySeparatorChar;
         _logDirectory = System.IO.Path.Combine(projectRoot, "logs") + System.IO.Path.DirectorySeparatorChar;
 
+        // v1.0.0.x (2026-09-05):Git path 默认 seed Embeded/git-portable/cmd/git.exe 绝对路径
+        // (跟 Python + git 一起放 Embeded/),用户可在 wizard 里确认或 Browse 改到系统 PATH。
+        // ResolveGitExe 探测顺序:Embeded/git-portable → bin/git-portable → PATH "git"。
+        var gitEmbeded = System.IO.Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe");
+        if (System.IO.File.Exists(gitEmbeded))
+        {
+            _gitPath = gitEmbeded;
+        }
+        else
+        {
+            var gitBin = System.IO.Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe");
+            if (System.IO.File.Exists(gitBin))
+                _gitPath = gitBin;
+            // 否则留空字符串 → 走 PATH "git" fallback
+        }
+
+        // v1.0.0.x (2026-09-05):Python path 默认 seed Embeded/python/python.exe 绝对路径 —
+        // 用户原话"python 路径也是自然获取,我们只需要看正确与否 例如当前
+        // H:\ComfyUIManagement\Embeded\python 位于这个目录下的 python.exe"。
+        // 探测顺序跟 ResolveGitExe 对齐:Embeded/python/python.exe → Python/python.exe → python/python.exe(legacy) → 留空让用户 Browse。
+        var pythonEmbeded = System.IO.Path.Combine(projectRoot, "Embeded", "python", "python.exe");
+        if (System.IO.File.Exists(pythonEmbeded))
+        {
+            _pythonPath = pythonEmbeded;
+        }
+        else
+        {
+            var pythonUpper = System.IO.Path.Combine(projectRoot, "Python", "python.exe");
+            if (System.IO.File.Exists(pythonUpper))
+                _pythonPath = pythonUpper;
+            else
+            {
+                var pythonLower = System.IO.Path.Combine(projectRoot, "python", "python.exe");
+                if (System.IO.File.Exists(pythonLower))
+                    _pythonPath = pythonLower;
+                // 都没找到 → 留空让用户 Browse
+            }
+        }
+
         NextCommand = new RelayCommand(_ => GoNext(), _ => CanGoNext());
         BackCommand = new RelayCommand(_ => GoBack(), _ => CurrentStep != FirstRunWizardStep.Welcome);
         FinishCommand = new RelayCommand(_ => Finish(), _ => CurrentStep == FirstRunWizardStep.Confirm);
@@ -163,7 +218,9 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
     private bool CanGoNext() => CurrentStep switch
     {
         FirstRunWizardStep.Welcome => !string.IsNullOrWhiteSpace(_installPath),
-        FirstRunWizardStep.Python => IsPythonValid,
+        // v1.0.0.x (2026-09-05):合并 Python + Git 为 Step 2 ——
+        // 两个字段都要 valid 才能 Next(IsPythonValid 强制文件存在,IsGitValid 允许空字符串走 PATH "git" fallback)。
+        FirstRunWizardStep.PythonGit => IsPythonValid && IsGitValid,
         // Paths1-3 step: 路径字段可空(用户不填 → SettingsDefaults.Apply 后续再 seed),
         // 或填了也 OK。不强制必填。
         FirstRunWizardStep.Paths1EnvNodes => true,
@@ -177,8 +234,8 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
     {
         switch (CurrentStep)
         {
-            case FirstRunWizardStep.Welcome: CurrentStep = FirstRunWizardStep.Python; break;
-            case FirstRunWizardStep.Python: CurrentStep = FirstRunWizardStep.Paths1EnvNodes; break;
+            case FirstRunWizardStep.Welcome: CurrentStep = FirstRunWizardStep.PythonGit; break;
+            case FirstRunWizardStep.PythonGit: CurrentStep = FirstRunWizardStep.Paths1EnvNodes; break;
             case FirstRunWizardStep.Paths1EnvNodes: CurrentStep = FirstRunWizardStep.Paths2ModelsWorkflows; break;
             case FirstRunWizardStep.Paths2ModelsWorkflows: CurrentStep = FirstRunWizardStep.Paths3SystemLog; break;
             case FirstRunWizardStep.Paths3SystemLog: CurrentStep = FirstRunWizardStep.Confirm; break;
@@ -191,8 +248,8 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
     {
         switch (CurrentStep)
         {
-            case FirstRunWizardStep.Python: CurrentStep = FirstRunWizardStep.Welcome; break;
-            case FirstRunWizardStep.Paths1EnvNodes: CurrentStep = FirstRunWizardStep.Python; break;
+            case FirstRunWizardStep.PythonGit: CurrentStep = FirstRunWizardStep.Welcome; break;
+            case FirstRunWizardStep.Paths1EnvNodes: CurrentStep = FirstRunWizardStep.PythonGit; break;
             case FirstRunWizardStep.Paths2ModelsWorkflows: CurrentStep = FirstRunWizardStep.Paths1EnvNodes; break;
             case FirstRunWizardStep.Paths3SystemLog: CurrentStep = FirstRunWizardStep.Paths2ModelsWorkflows; break;
             case FirstRunWizardStep.Confirm: CurrentStep = FirstRunWizardStep.Paths3SystemLog; break;
@@ -208,6 +265,13 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         // legacy-to-INF 自动 migration,首启动少一道)。
         Directory.CreateDirectory(_appDataDir);
         var s = new Models.Settings();
+        // v1.0.0.x (2026-09-05) bug fix:写 InstallPath 到 settings ——
+        // 用户原话"为什么 wizard 结束之后不能够按照特定的路径启动呢"。
+        // 之前 InstallPath 只在 wizard 显示,没存 settings,程序始终用 exe 目录作 projectRoot。
+        // 现在存 settings.InstallPath,二次启动校验程序路径是否还在,
+        // 如果用户搬了文件夹 → 走 IsFirstRun 路径重新弹 wizard(因为 projectRoot 变了,
+        // MarkComplete 写到旧 path,新 path 找不到 firstrun.inf → 触发首启动 wizard 流程)。
+        s.InstallPath = _installPath;
         // wizard 强制写入 user-confirmed Python 路径
         s.TemplatePythonDir = System.IO.Path.GetDirectoryName(_pythonPath) ?? "";
         s.DefaultPythonVersion = "";  // 已通过 PythonInterpreters 多解释器管理,清掉 legacy 字段
@@ -220,6 +284,8 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
             });
             s.ActivePythonInterpreterName = "wizard-python";
         }
+        // v1.0.0.x (2026-09-05):写入 user-confirmed Git 路径(可能是绝对路径 / 留空走 PATH)
+        s.GitExe = _gitPath;
         // 写 8 个 wizard-confirmed 路径(覆盖 default seed)
         s.SystemTemplateLibraryDir = _systemTemplateLibraryDir;
         s.EnvsDir = _envsDir;
@@ -230,9 +296,18 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         s.WorkflowsDirectory = _workflowsDirectory;
         s.LogDirectory = _logDirectory;
 
-        new SettingsRepository(new LocalDataPaths(_appDataDir)).Save(s);
+        // v1.0.0.x (2026-09-05) bug fix:用 _projectRoot 不是 _appDataDir 构造 LocalDataPaths ——
+        // 用户原话"H:\ComfyUIManagement\config\config 路径似乎写入错误"。
+        // _appDataDir 已经是 <projectRoot>/config(包含 config 子目录),
+        // 再 LocalDataPaths(_appDataDir) 会 Path.Combine(config/, "config") = config/config/,
+        // settings.inf / firstrun.inf 写到嵌套 config/config/。
+        // _projectRoot 才是真正的项目根(H:\ComfyUIManagement),LocalDataPaths 会自动
+        // 拼上 config/ 子目录。
+        new SettingsRepository(new LocalDataPaths(_projectRoot)).Save(s);
 
-        FirstRunDetector.MarkComplete(_appDataDir);
+        // 同样修 MarkComplete:FirstRunDetector.IsFirstRun 内部 Path.Combine(appDataDir, "config", "firstrun.inf"),
+        // _appDataDir 已经是 config 目录 → firstrun.inf 写到 config/config/。改传 _projectRoot 让它自己拼 config。
+        FirstRunDetector.MarkComplete(_projectRoot);
         Completed?.Invoke();
     }
 

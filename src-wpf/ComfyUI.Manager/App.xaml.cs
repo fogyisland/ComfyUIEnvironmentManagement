@@ -143,7 +143,10 @@ public partial class App : Application
         // 在开发就不要限制了模型市场和工作流库了,只有在 release 时候才限制"。
         // dev 跳过 wizard 直接走 SettingsDefaults.Apply 的 dev-override 分支
         // (启用所有 hidden feature flag + 默认 3 source + HF + ModelScope 启用)。
-        if (!DevMode.IsEnabled && FirstRun.FirstRunDetector.IsFirstRun(localPaths.Directory))
+        // v1.0.0.x (2026-09-05):FirstRunDetector.IsFirstRun 内部 Path.Combine(appDataDir, "config", "firstrun.inf"),
+        // localPaths.Directory 已经是 <projectRoot>/config → 再加 config 变成 config/config/。
+        // 改传 projectRoot 让 IsFirstRun 内部自己拼 config/,firstrun.inf 落到正确的 config/config/firstrun.inf 路径。
+        if (!DevMode.IsEnabled && FirstRun.FirstRunDetector.IsFirstRun(projectRoot))
         {
             // Splash 默认 Topmost=true,会盖在 wizard 上让用户看不到 wizard,误以为卡死。
             // wizard 是 modal dialog,即使 Splash 非 Topmost 也能正常显示在上面。
@@ -287,66 +290,15 @@ public partial class App : Application
         SettingsDefaults.Apply(settings, projectRoot, rawJson);
         settingsRepo.Save(settings);
 
-        // v1.0.0.x #594:启动期路径错位检测 — 用户程序文件夹被移动后,settings 里持久化的
-        // 绝对路径可能指向不存在的目录。Apply 之后(避免误报过渡态)、EnvDirectoryScanner
-        // 之前(避免错位 env 列表被 scan 时找不到 .cmgr-env.json 报一堆错),逐项标可疑。
-        // 有可疑项 → splash 让位 → 弹 dialog;用户决定后写回 settings。
-        // 用户取消 → settings 不动(用户明确知情,继续启动)。
+        // v1.0.0.x (2026-09-05):完全移除启动期路径错位检测 + PathMigrationConfirmDialog ——
+        // 用户原话"去掉目录比对不存在并建议功能"。
+// 原 #594 设计:用户搬动程序文件夹 → settings 绝对路径失效 → 弹 dialog 让用户确认。
+// 实际:probe 误报多(wizard 没写 Settings.Templates → fallback hardcode 6 built-in kinds → 5 missing),
+// dialog ShowInTaskbar=False + z-order 在 Splash/wizard 后 → 用户看不见 → MainWindow 不显示。
+// 完全删掉,启动更快更简单。Settings 路径失效的用户可在 SettingsViewModel 手动改。
         //
-        // v1.0.0.x hotfix (2026-08-27):probe + dialog 包 try-catch — 任何异常(Dialog XAML
-        // resource 解析失败 / ShowDialog 内部 Shutdown)都会被 DispatcherUnhandledException
-        // 捕获 → Application.Shutdown() → 后续 new MainWindow() LoadComponent 抛 "Application
-        // 正在关闭" 整个进程崩。probe 本来就是 best-effort,失败要 swallow,不能阻塞主流程。
-        //
-        // v1.0.0.x hotfix (2026-08-27):ShowDialog 前 force `Application.Current.MainWindow = dlg` —
-        // 此时 MainWindow.Show() 还没调,Application.Current.MainWindow 还是 Splash。Splash
-        // 的 3s fade timer 在 modal ShowDialog 期间触发 close → ShutdownMode=OnMainWindowClose
-        // → Application.Shutdown() → 后续 new MainWindow() LoadComponent 抛"Application 正在关闭"
-        // 整个进程崩。把 dlg 临时设成 MainWindow 让 Splash fade close 不影响 app 生命周期
-        // (等同 v0.6.9.1 让位机制,line 547 还会显式指 MainWindow=main)。
-        try
-        {
-            var probeItems = StartupPathProbe.Detect(settings, projectRoot);
-            if (probeItems.Count > 0)
-            {
-                logger.Warn("app-startup",
-                    $"路径错位检测发现 {probeItems.Count} 个可疑路径,弹窗让用户确认");
-                if (_splash != null) { _splash.Topmost = false; }
-                _splashVm?.StartFadeOut();
-
-                var dlgVm = new PathMigrationConfirmViewModel(probeItems);
-                var dlg = new PathMigrationConfirmDialog(dlgVm);
-                Application.Current.MainWindow = dlg;
-                dlg.ShowDialog();
-
-                if (dlgVm.Decisions is { } decisions)
-                {
-                    var appliedCount = 0;
-                    foreach (var d in decisions)
-                    {
-                        if (!d.Apply) continue;
-                        if (ApplyPathDecision(settings, d.Label, d.RecommendedValue))
-                            appliedCount++;
-                    }
-                    if (appliedCount > 0)
-                    {
-                        settingsRepo.Save(settings);
-                        logger.Info("app-startup",
-                            $"路径错位确认:应用 {appliedCount}/{decisions.Count} 项更新");
-                    }
-                }
-                else
-                {
-                    logger.Info("app-startup", "路径错位确认:用户取消,settings 不动");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            // probe / dialog 任何异常 → log + 跳过,继续主流程启动
-            logger?.Error("app-startup", "路径错位检测流程异常,跳过", ex);
-            Debug.WriteLine($"[StartupPathProbe] failed: {ex}");
-        }
+        // (如果将来需要恢复,把 probe 放在一个明确的 wizard step 或 Settings UI 里,而不是
+        // 启动期弹 modal dialog 阻断主流程。)
 
         // v1.0.0.x:启动时扫 EnvsDir
 
@@ -653,6 +605,12 @@ public partial class App : Application
         // → 应用直接退出。显式指 MainWindow=main 让 splash close 不影响应用生命周期。
         main.Show();
         Application.Current.MainWindow = main;
+        // v1.0.0.x (2026-09-05):首次 wizard 完成后 MainWindow 没 focus,需要再点击才出现 ——
+        // 用户原话"第一次设置完 wizard 不启动,要再次点击才启动"。
+        // Root cause:首启动路径(wizard 完成 → splash close → main.Show()),wizard
+        // Close() 后 dispatcher 还没把 focus 转回 main。Activate() 强制让 WPF 把焦点
+        // 转移到 MainWindow,避免用户疑惑"程序没启动"。
+        main.Activate();
 
         // v1.0.0 sidebar.inf:首次启动写默认模板,后续按文件启用侧栏项。
         // 必须 Show() 之后 — FindName 要走 visual tree,构造期按钮还没 materialize。
@@ -794,9 +752,19 @@ public partial class App : Application
             ? AppContext.BaseDirectory
             : Path.GetDirectoryName(processPath) ?? AppContext.BaseDirectory;
         var probe = exeDir.TrimEnd('\\');
+        // v1.0.0.x (2026-09-05) bug fix:要求同时有 src-wpf + assets + build_release.ps1 才算 dev 仓库根 ——
+        // 之前只用 src-wpf 一个 marker,staging 路径 D:\ToolDevelop\ComfyUI\release\staging\ComfyUIManagement\
+        // walk 4 层到 D:\ToolDevelop\ComfyUI\ 也"找到" src-wpf(因为 staging 跟 dev 仓库同父目录),
+        // 然后 IsFirstRun(D:\ToolDevelop\ComfyUI) 命中 dev 仓库的 config\firstrun.inf
+        // (用户之前 dev 跑过 wizard 留下的)→ 跳过 wizard。
+        // 现在加 2 个 dev 仓库专用 marker: assets/(项目 logo 资源,只 dev 有) + build_release.ps1(脚本)。
+        // staging D:\ToolDevelop\ComfyUI\release\staging\ComfyUIManagement 没这两个,
+        // → fallback exeDir = projectRoot 正确。
         for (var i = 0; i < 8 && !string.IsNullOrEmpty(probe); i++)
         {
-            if (Directory.Exists(Path.Combine(probe, "src-wpf")))
+            if (Directory.Exists(Path.Combine(probe, "src-wpf"))
+                && Directory.Exists(Path.Combine(probe, "assets"))
+                && File.Exists(Path.Combine(probe, "build_release.ps1")))
             {
                 return probe.TrimEnd('\\');
             }
@@ -826,49 +794,6 @@ public partial class App : Application
         var portableEmbeded = Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe");
         if (File.Exists(portableEmbeded)) return portableEmbeded;
         return "git"; // fallback to PATH
-    }
-
-    /// <summary>
-    /// v1.0.0.x #594:把 dialog 决定应用到 settings — 9 个主路径字段 + 8 个 built-in
-    /// TemplateConfig.LocalSourceDir。Label 跟 <see cref="StartupPathProbe"/> 输出一致。
-    /// 返回 true 表示成功改了字段。
-    /// </summary>
-    private static bool ApplyPathDecision(Settings settings, string label, string newValue)
-    {
-        switch (label)
-        {
-            case "TemplatePythonDir":
-                settings.TemplatePythonDir = newValue; return true;
-            case "SystemTemplateLibraryDir":
-                settings.SystemTemplateLibraryDir = newValue; return true;
-            case "EnvsDir":
-                settings.EnvsDir = newValue; return true;
-            case "GlobalNodesDir":
-                settings.GlobalNodesDir = newValue; return true;
-            case "LocalNodeDirectory":
-                settings.LocalNodeDirectory = newValue; return true;
-            case "LocalNodesDirectory":
-                settings.LocalNodesDirectory = newValue; return true;
-            case "DefaultModelsDirectory":
-                settings.DefaultModelsDirectory = newValue; return true;
-            case "WorkflowsDirectory":
-                settings.WorkflowsDirectory = newValue; return true;
-            case "LogDirectory":
-                settings.LogDirectory = newValue; return true;
-            default:
-                // Template:<Kind>.LocalSourceDir
-                if (label.StartsWith("Template:") && label.EndsWith(".LocalSourceDir"))
-                {
-                    var kind = label.Substring("Template:".Length,
-                        label.Length - "Template:".Length - ".LocalSourceDir".Length);
-                    if (settings.Templates.TryGetValue(kind, out var cfg) && cfg is not null)
-                    {
-                        cfg.LocalSourceDir = newValue;
-                        return true;
-                    }
-                }
-                return false;
-        }
     }
 
     /// <summary>

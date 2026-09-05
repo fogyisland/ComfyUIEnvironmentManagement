@@ -51,7 +51,9 @@ namespace ComfyUI.Manager.Infrastructure;
 public static class SettingsDefaults
 {
     public const string TemplatePythonSubdir = "Python";
-    public const string TemplateComfyuiSubdir = "ComfyUITemplate";
+    public const string TemplateComfyuiSubdir = "ENVTemplate";  // v1.0.0.x (2026-09-05):改名 ENVTemplate 跟 SettingsDefaults.SystemTemplateLibrarySubdir 一致
+                                                                          // 之前 "ComfyUITemplate" 是 build_release 命名不一致 bug,
+                                                                          // 当前 staging 必须有 ENVTemplate/(跟 wizard VM ctor 默认 seed 一致)
     /// <summary>
     /// v1.0.0.x #569 phase 2: 系统模板库目录的默认相对子目录名。
     /// 用户原话"新建的时候发现模板源路径一样不对,按道理他应该是
@@ -118,10 +120,14 @@ public static class SettingsDefaults
             && string.IsNullOrWhiteSpace(s.DefaultPythonVersion))
         {
             string? relativeSubdir = null;
-            if (File.Exists(Path.Combine(projectRoot, "python", "python.exe")))
-                relativeSubdir = Path.Combine("python", "python.exe");
+            // v1.0.0.x (2026-09-05):用户决策 Python 移到 Embeded/python/(跟 git-portable 同级),
+            // 顶级目录只剩 ComfyUI.Manager.exe + ComfyUITemplate + Embeded + Workflow + Envs/...
+            if (File.Exists(Path.Combine(projectRoot, "Embeded", "python", "python.exe")))
+                relativeSubdir = Path.Combine("Embeded", "python", "python.exe");
             else if (File.Exists(Path.Combine(projectRoot, "Python", "python.exe")))
                 relativeSubdir = Path.Combine("Python", "python.exe");
+            else if (File.Exists(Path.Combine(projectRoot, "python", "python.exe")))
+                relativeSubdir = Path.Combine("python", "python.exe");
             if (relativeSubdir != null)
             {
                 s.PythonInterpreters.Add(new PythonInterpreter
@@ -133,21 +139,21 @@ public static class SettingsDefaults
             }
         }
 
-        // v1.0.0.x: shipped portable git 存在 + GitExe 空 → seed 绝对路径(当前 projectRoot
-        // + "bin/git-portable/cmd/git.exe"),跟 python 解释器同款但用绝对存储。
+        // v1.0.0.x (2026-09-05): shipped portable git 存在 + GitExe 空 → seed 绝对路径(当前 projectRoot
+        // + "Embeded/git-portable/cmd/git.exe"),跟 python 解释器同款但用绝对存储。
         // v1.0.0.x: 用户原话"git 程序也是绝对目录方式和之前一样" ——
         // 跟 EnvsDir / LocalNodeDirectory 等本地资源路径一致,seed 当前 projectRoot +
-        // "bin/git-portable/cmd/git.exe" 的绝对路径。Path.GetFullPath 规范化分隔符避免 UI
+        // "Embeded/git-portable/cmd/git.exe" 的绝对路径。Path.GetFullPath 规范化分隔符避免 UI
         // 显示 ..\ 之类相对形式;跨机器靠每次 Apply 重算 projectRoot + 重新拼接跟随。
         //
         // 行为跟 ResolveAsAbsolute 3-branch 对齐:
         // - 空 → seed 绝对
         // - 相对 → 转绝对 = projectRoot + current(升级已存在的相对路径到绝对)
         // - 绝对 → 保留(用户故意选的别处)
-        if (File.Exists(Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe")))
+        if (File.Exists(Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe")))
         {
             var absoluteSeed = Path.GetFullPath(
-                Path.Combine(projectRoot, "bin", "git-portable", "cmd", "git.exe"));
+                Path.Combine(projectRoot, "Embeded", "git-portable", "cmd", "git.exe"));
             if (string.IsNullOrWhiteSpace(s.GitExe))
             {
                 s.GitExe = absoluteSeed;

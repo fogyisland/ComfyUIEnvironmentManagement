@@ -85,19 +85,22 @@ Get-ChildItem -Path $AppDir -Directory | Where-Object {
     }
 }
 
-# 5. 复制 portable Python(v1.0.0:python/ → Python/)
-Write-Host "[5/8] Copying portable Python..." -ForegroundColor Yellow
+# 5. 复制 portable Python(v1.0.0.x:python/ → Embeded/python/,跟 git-portable 同级)
+# 用户原话"将 python 移动到 Embeded 目录下" — 顶级目录变干净,Python + git 都归到 Embeded/。
+Write-Host "[5/8] Copying portable Python to Embeded/python/..." -ForegroundColor Yellow
 if (-not (Test-Path "$Root/python")) {
     throw "portable python/ 目录不存在:需要在 venv 中跑过 comfy-mgr install 才能用 WPF 自检"
 }
-Copy-Item -Recurse -Force "$Root/python" (Join-Path $AppDir "Python")
+$EmbededDir = Join-Path $AppDir "Embeded"
+New-Item -ItemType Directory -Path $EmbededDir -Force | Out-Null
+Copy-Item -Recurse -Force "$Root/python" (Join-Path $EmbededDir "python")
 
 # 5.5. v1.0.0.x (2026-09-05) T41+:prune Python 副本的明显冗余(保留全部 stdlib 子目录)。
 # 理由:env-create 流程用 venv 创建 venv + pip install,需要 stdlib 完整可用(运行时 import)。
 # 只删以下非 runtime 大件:test 套件 / IDE / 文档 / 缓存 / 3rd-party site-packages。
 # 实测 162 MB → ~45 MB(节省 ~117 MB),`python -m venv` + `pip --version` 验证通过。
 Write-Host "[5.5/8] Pruning Python redundant dirs (keep all stdlib)..." -ForegroundColor Yellow
-$PythonDst = Join-Path $AppDir "Python"
+$PythonDst = Join-Path $EmbededDir "python"
 $PruneRedundant = @(
     # Lib/ 子目录(非 stdlib module,纯开发/测试/文档/缓存)
     "Lib/test",            # 60.9 MB - unit test 套件
@@ -147,16 +150,48 @@ if (-not (Test-Path "$Root/ComfyUITemplate/main.py")) {
     & "$Root/scripts/fetch_comfyui_template.ps1" -ProjectRoot $Root
     if ($LASTEXITCODE -ne 0) { throw "fetch_comfyui_template.ps1 failed" }
 }
-if (-not (Test-Path (Join-Path $AppDir "ComfyUITemplate"))) {
-    New-Item -ItemType Directory -Path (Join-Path $AppDir "ComfyUITemplate") -Force | Out-Null
+if (-not (Test-Path (Join-Path $AppDir "ENVTemplate"))) {
+    New-Item -ItemType Directory -Path (Join-Path $AppDir "ENVTemplate") -Force | Out-Null
 }
-# copy with overwrite so re-runs stay clean
-# 排除用户的本地数据(models/output/input/cache/custom_nodes 等),只保留 ComfyUI 源码作为模板
-# /XD = exclude directories(空格分隔列表)
-robocopy "$Root/ComfyUITemplate" (Join-Path $AppDir "ComfyUITemplate") /MIR `
-    /XD models output input __pycache__ custom_nodes localnodes user temp .git `
-    /XF "*.pyc" "*.safetensors" "*.ckpt" "*.pt" "*.pth" "*.bin" "*.gguf" `
-    /NJH /NJS /NDL /NFL /NC /NS | Out-Null
+# v1.0.0.x (2026-09-05):staging 默认只带 ComfyUI 模板,用户原话"默认情况下只提供comfyui 模板"。
+# 之前 ENVTemplate/CogVideoX + Forge + HivisionIDPhotos + HunyuanVideo + OpenVoice 都带,体积大且用户用不上。
+# 通过 /XF 文件 + /XD 目录排除 ComfyUI 之外的所有 template 子目录。
+$RoboExcludeDirs = @("models", "output", "input", "__pycache__", "custom_nodes", "localnodes", "user", "temp", ".git")
+# 优先级 1:dev 已有 ComfyUITemplate/ (user dev sync 过)
+if (Test-Path (Join-Path $Root "ComfyUITemplate")) {
+    $TemplateSource = Join-Path $Root "ComfyUITemplate"
+    Write-Host "  using dev ComfyUITemplate/ as ENVTemplate source" -ForegroundColor DarkGray
+}
+# 优先级 2:dev ENVTemplate/ 里有 ComfyUI/ (旧 layout)
+else {
+    # 尝试 fetch (网络可能拦截) — 失败时容错不 throw,留空 ENVTemplate/ 让 wizard 提示
+    $envTemplateComfyui = Join-Path $Root "ENVTemplate\ComfyUI"
+    if (Test-Path (Join-Path $envTemplateComfyui "main.py")) {
+        # 临时在 $Root 建 ComfyUITemplate 软链式拷贝点 → 走 robocopy 路径
+        $linkDir = Join-Path $Root "_build_envtemplate_link"
+        if (Test-Path $linkDir) { Remove-Item -Recurse -Force $linkDir }
+        New-Item -ItemType Junction -Path $linkDir -Target $envTemplateComfyui | Out-Null
+        $TemplateSource = $linkDir
+        Write-Host "  using dev ENVTemplate/ComfyUI/ via junction" -ForegroundColor DarkGray
+    } else {
+        Write-Warning "  ENVTemplate source not found (no ComfyUITemplate/, no ENVTemplate/ComfyUI/main.py); skipping — wizard will report missing templates"
+        $TemplateSource = $null
+    }
+}
+
+if ($null -ne $TemplateSource -and (Test-Path $TemplateSource)) {
+    $TemplateSubdirs = Get-ChildItem $TemplateSource -Directory | Where-Object { $_.Name -ne "ComfyUI" } | ForEach-Object { $_.Name }
+    $RoboExcludeDirs += $TemplateSubdirs
+    $RoboExcludeFiles = @("*.pyc", "*.safetensors", "*.ckpt", "*.pt", "*.pth", "*.bin", "*.gguf")
+    robocopy $TemplateSource (Join-Path $AppDir "ENVTemplate") /MIR `
+        /XD $RoboExcludeDirs `
+        /XF $RoboExcludeFiles `
+        /NJH /NJS /NDL /NFL /NC /NS | Out-Null
+}
+
+# 清理 junction 临时目录
+$linkDir = Join-Path $Root "_build_envtemplate_link"
+if (Test-Path $linkDir) { Remove-Item -Recurse -Force $linkDir }
 
 # 7. 预填 catalog-cache.db(v1.0.0:data/ → Data/)
 Write-Host "[7/8] Pre-filling catalog-cache.db..." -ForegroundColor Yellow
@@ -204,14 +239,37 @@ $AppConfigDir = Join-Path $AppDir "config"
 New-Item -ItemType Directory -Path $AppConfigDir -Force | Out-Null
 Copy-Item -Force "$Root/config/sidebar.inf" (Join-Path $AppConfigDir "sidebar.inf")
 
+# 7.7: v1.0.0.x (2026-09-05) 创建必须存在的运行时目录 ——
+# 用户原话"当前必须存在的路径:localnodes docs" + "还差一个 Logs 目录"
+# + "globalnodesdir 中的目录是 nodes 当前 staging 目录也没有" ——
+# localnodes/:本地常用节点批量源(EnvListVM.InstallLocalNodesCommand 复制从这里开始);
+# docs/:运行时生成的 wiki / dashboard 数据(用户元数据存放点);
+# Logs/:AppLogger 写日志的根目录(Settings.LogDirectory 或 projectRoot fallback);
+# Nodes/:globalnodesdir 默认指向的目录 — 全局 catalog 节点下载存储,
+# SettingsDefaults.GlobalNodesSubdir = "Nodes"。
+# 即使空也要建,避免首次启动运行时 mkdir fail。
+# v1.0.0.x (2026-09-05):用户决策"节点太大,还是不要带好了,到时候直接安装"
+# —— 不预装 ComfyUI-Manager(192 MB),用户首次运行通过 Catalog / Node 市场
+# 下载安装。
+Write-Host "[7.7/8] Creating required runtime dirs (localnodes, docs, Logs, Nodes)..." -ForegroundColor Yellow
+$RequiredDirs = @("localnodes", "docs", "Logs", "Nodes")
+foreach ($d in $RequiredDirs) {
+    $dirPath = Join-Path $AppDir $d
+    if (-not (Test-Path $dirPath)) {
+        New-Item -ItemType Directory -Path $dirPath -Force | Out-Null
+        Write-Host "  created: $d/"
+    }
+}
+
 # 8. 顶层目录放 .gitkeep 占位,保证解压后 13 个顶层目录都在(用户目录结构 spec 完整)
 #    Workflow/Envs/Models/Nodes/LocalNodes 是运行期自动创建的空目录
 Write-Host "[8/8] Finalizing + compressing..." -ForegroundColor Yellow
 Copy-Item -Force "$Root/README.md" $AppDir
 if (Test-Path "$Root/LICENSE") { Copy-Item -Force "$Root/LICENSE" $AppDir }
 
-# 顶层目录 placeholder
-$topDirs = @("Workflow", "Envs", "Models")
+# 顶层目录 placeholder(localnodes + docs + Logs + Nodes 已在 step 7.7 创建,这里只放 .gitkeep 占位
+# 保证解压后所有顶层目录都在 — 用户目录结构 spec 完整)
+$topDirs = @("Workflow", "Envs", "Models", "localnodes", "docs", "Logs", "Nodes")
 foreach ($d in $topDirs) {
     $dir = Join-Path $AppDir $d
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -219,17 +277,18 @@ foreach ($d in $topDirs) {
 }
 
 if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
-if ($env:SKIP_ZIP -eq "1") {
-    # v1.0.0.x (2026-09-05):用户原话"不需要压缩成zip" ——
-    # 绿色软件绿色发布,staging 目录可直接 double-click ComfyUI.Manager.exe 跑,
-    # 不需要分发 zip(下载后还要 unzip 一步,体验更差)。设 SKIP_ZIP=1 跳过 Compress-Archive。
-    Write-Host "  SKIP_ZIP=1 — skipping Compress-Archive" -ForegroundColor DarkGray
-    $Size = (Get-ChildItem $AppDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
-    Write-Host "✓ Built $AppDir ($([math]::Round($Size, 1)) MB) — staging only (no zip)" -ForegroundColor Green
-    Write-Host "Run 'ComfyUIManagement\ComfyUI.Manager.exe' directly." -ForegroundColor Green
-} else {
+# v1.0.0.x (2026-09-05):默认不产 zip ——
+# 用户原话"不需要发布 zip,只发布 staging"。staging 目录可直接 double-click ComfyUI.Manager.exe 跑,
+# 绿色软件发布不需要中间 zip(下载后还要 unzip,体验差)。
+# 设 BUILD_ZIP=1 显式生成 zip(用于测试 zip 解压兼容性时)。
+if ($env:BUILD_ZIP -eq "1") {
     Compress-Archive -Path "$AppDir/*" -DestinationPath $ZipPath -CompressionLevel Optimal
     $Size = (Get-Item $ZipPath).Length / 1MB
     Write-Host "✓ Built $ZipPath ($([math]::Round($Size, 1)) MB)" -ForegroundColor Green
     Write-Host "Unzip and run 'ComfyUIManagement\ComfyUI.Manager.exe' to test." -ForegroundColor Green
+} else {
+    Write-Host "  default no-zip mode (set BUILD_ZIP=1 to enable Compress-Archive)" -ForegroundColor DarkGray
+    $Size = (Get-ChildItem $AppDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
+    Write-Host "✓ Built $AppDir ($([math]::Round($Size, 1)) MB) — staging only (no zip)" -ForegroundColor Green
+    Write-Host "Run 'ComfyUIManagement\ComfyUI.Manager.exe' directly." -ForegroundColor Green
 }

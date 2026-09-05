@@ -43,6 +43,21 @@ public partial class FirstRunWizardWindow : Window
         }
     }
 
+    // v1.0.0.x (2026-09-05):Git path Browse handler — 用户可改到系统 PATH "git" 或别处安装的 git.exe。
+    // 留空时 wizard 完成会写空字符串 → ResolveGitExe fallback 到 PATH "git"。
+    private void OnBrowseGitPath(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择 git.exe",
+            Filter = "Git 程序|git.exe|所有文件|*.*",
+        };
+        if (dlg.ShowDialog(this) == true)
+        {
+            _vm.GitPath = dlg.FileName;
+        }
+    }
+
     // v1.0.0.x (2026-09-03) T34:8 个 path 字段 Browse handler(都用 OpenFolderDialog,InitialDirectory
     // fallback 到 Environment.CurrentDirectory = projectRoot,跟 SettingsDefaults.Apply seed 一致)
 

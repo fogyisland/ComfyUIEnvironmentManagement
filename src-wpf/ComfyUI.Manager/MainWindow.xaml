@@ -6,6 +6,7 @@
         xmlns:behaviors="clr-namespace:ComfyUI.Manager.Behaviors"
         xmlns:models="clr-namespace:ComfyUI.Manager.Models"
         Title="ComfyUI 多环境管理系统" Height="700" Width="1100"
+        WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BackgroundBrush}"
         Icon="pack://siteoforigin:,,,/assets/comfyuiLogo.png">
     <!-- v1.0.0:Window.Icon + 侧栏 header Image 同款 pack://siteoforigin scheme。

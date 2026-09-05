@@ -41,11 +41,11 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-            <TextBlock Text="→  ② Python">
+            <TextBlock Text="→  ② Python / Git">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsPython}" Value="True">
+                            <DataTrigger Binding="{Binding IsPythonGit}" Value="True">
                                 <Setter Property="FontWeight" Value="Bold"/>
                             </DataTrigger>
                         </Style.Triggers>
@@ -123,23 +123,41 @@
                                Margin="0,8,0,4" TextWrapping="Wrap"/>
                 </StackPanel>
 
-                <!-- Step 2: Python -->
-                <StackPanel Visibility="{Binding IsPython, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Text="配置 Python 解释器"
+                <!-- v1.0.0.x (2026-09-05) Step 2: Python + Git 合并到一个页面
+                     用户原话"在第二步骤写入 python /git 两个步骤 否则容易造成用户误解"。
+                     两个 runtime 工具(解释器 + 版本控制)同一页面更直观,用户一次确认两个 path。
+                     IsPythonGit = CurrentStep == PythonGit。 -->
+                <StackPanel Visibility="{Binding IsPythonGit, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="配置 Python 解释器与 Git 程序"
                                FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
                     <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
-                        请选择 Python 解释器(3.10 或更高)。ComfyUIManagement 会用它创建环境。
+                        Python 用于创建环境,Git 用于克隆 ComfyUI 模板源码。两者默认都自动算到程序目录下(Embeded/python、Embeded/git-portable),确认或 Browse 改。
                     </TextBlock>
-                    <TextBlock Text="python.exe 路径:" Margin="0,8,0,4"/>
-                    <DockPanel>
+
+                    <!-- Python 子节 -->
+                    <TextBlock Text="Python 解释器路径:" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                    <DockPanel Margin="0,0,0,8">
                         <Button DockPanel.Dock="Right" Content="浏览..."
                                 Margin="6,0,0,0" Padding="10,4"
                                 Click="OnBrowsePythonPath"/>
                         <TextBox Text="{Binding PythonPath, UpdateSourceTrigger=PropertyChanged}"/>
                     </DockPanel>
-                    <TextBlock Margin="0,6,0,0">
-                        <Run Text="状态: "/>
+                    <TextBlock Margin="0,0,0,12">
+                        <Run Text="Python 状态: "/>
                         <Run Text="{Binding IsPythonValid, Mode=OneWay}" FontWeight="SemiBold"/>
+                    </TextBlock>
+
+                    <!-- Git 子节 -->
+                    <TextBlock Text="Git 程序路径(留空走系统 PATH):" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                    <DockPanel Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseGitPath"/>
+                        <TextBox Text="{Binding GitPath, UpdateSourceTrigger=PropertyChanged}"/>
+                    </DockPanel>
+                    <TextBlock Margin="0,0,0,4">
+                        <Run Text="Git 状态: "/>
+                        <Run Text="{Binding IsGitValid, Mode=OneWay}" FontWeight="SemiBold"/>
                     </TextBlock>
                 </StackPanel>
 

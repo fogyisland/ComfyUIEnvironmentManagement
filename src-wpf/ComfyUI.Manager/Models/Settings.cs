@@ -45,6 +45,11 @@ public class Settings
     [JsonPropertyName("compat_api_base_url")] public string CompatApiBaseUrl { get; set; } = "";
 
     // —— 路径 ——
+    // v1.0.0.x (2026-09-05):安装根目录 — wizard Step 1 收集,二次启动校验程序路径是否还在。
+    // 用户原话"为什么 wizard 结束之后不能够按照特定的路径启动呢" ——
+    // 之前 InstallPath 只在 wizard 显示,没存 settings,程序始终用 exe 所在目录作 projectRoot。
+    // 现在存 settings 持久化,如果 path 不存在(用户搬了文件夹)→ 二次启动时弹 wizard 重设。
+    [JsonPropertyName("install_path")] public string InstallPath { get; set; } = "";
     [JsonPropertyName("template_python_dir")] public string TemplatePythonDir { get; set; } = "";
     // v1.0.0.x: 系统模板库目录 — 用户配置的共享模板根目录,模板管理页可从此处发现/管理内置模板。
     // 空 = 不启用(沿用 v1.0.0 默认行为)。非空 = 作为系统模板的统一存放根。

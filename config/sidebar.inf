@@ -7,12 +7,12 @@
 # BulkUpdate=批量更新, SystemStatus=系统状态
 Dashboard=1
 Environments=1
-Catalog=0
-LocalNodes=0
-Workflows=0
+Catalog=1
+LocalNodes=1
+Workflows=1
 LocalModels=1
 Templates=1
-Models=0
+Models=1
 Settings=1
 BulkUpdate=1
 SystemStatus=1
