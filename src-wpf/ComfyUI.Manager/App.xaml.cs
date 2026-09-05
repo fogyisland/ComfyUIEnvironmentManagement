@@ -387,6 +387,8 @@ public partial class App : Application
         // v1.0.0.x #589:env → localnodes/ 反向 sync — 把 ComfyUI-Manager 装的节点补到
         // 本地源目录,保证 LocalNodeBulkInstaller 下次重装能恢复这些节点(连同 requirements)。
         var localNodeSyncService = new LocalNodeSyncService(settings, logger);
+        // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeListScanner 共享 service 实例
+        var nodeListScanner = new NodeListScanner(nodeRepo, githubVersionService, logger);
         // v1.0.0 T11: 通用 template source updater — per-repo-URL, 给
         // TemplateManagementViewModel(ShowTemplateManagement)的每张模板卡
         // "更新源码" 按钮使用。构造时传 gitExe + gitProxy + logger(不是 gitRunner),
@@ -575,7 +577,9 @@ public partial class App : Application
             // SettingsViewModel.DownloadCommonNodesCommand(把 enabled common_nodes
             // git clone 到 settings.LocalNodesDirectory)。共享同一份 gitRunner +
             // gitProxy + logger,行为跟 RequirementsInstaller.AutoInstallCommonNodesAsync 一致。
-            commonNodeInstaller: commonNodeInstaller);
+            commonNodeInstaller: commonNodeInstaller,
+            // v1.0.0.x (2026-09-05) feat/nodelist-directory
+            nodeListScanner: nodeListScanner);
 
         // v1.0.0.x: 用户覆盖本地路径 repo factory
 

@@ -51,6 +51,11 @@ public class Settings
     // 现在存 settings 持久化,如果 path 不存在(用户搬了文件夹)→ 二次启动时弹 wizard 重设。
     [JsonPropertyName("install_path")] public string InstallPath { get; set; } = "";
     [JsonPropertyName("template_python_dir")] public string TemplatePythonDir { get; set; } = "";
+    // v1.0.0.x (2026-09-05) feat/nodelist-directory: 节点列表目录 ——
+    // 包含 custom-node-list.json 文件的根目录(支持子目录递归)。
+    // 用户手动点"扫描节点列表"→ NodeListScanner 解析所有 json,提取 author/title,
+    // 调 GitHubVersionService.FetchVersionsAsync 拉 metadata,写 scanned_nodes 表。
+    [JsonPropertyName("nodelist_directory")] public string NodelistDirectory { get; set; } = "";
     // v1.0.0.x: 系统模板库目录 — 用户配置的共享模板根目录,模板管理页可从此处发现/管理内置模板。
     // 空 = 不启用(沿用 v1.0.0 默认行为)。非空 = 作为系统模板的统一存放根。
     [JsonPropertyName("system_template_library_dir")] public string SystemTemplateLibraryDir { get; set; } = "";

@@ -49,6 +49,9 @@ public class MainViewModel : ViewModelBase
     private readonly ProcessLauncher _launcher;
     private readonly BulkUpdateOrchestrator _orchestrator;
     private readonly NodeOperations _nodeOps;
+    // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeListScanner ——
+    // 在 ctor 注入,ShowSettings 时 new SettingsViewModel 共享使用。
+    private readonly NodeListScanner? _nodeListScanner;
     private readonly EnvCreatorService _envCreator;
     private readonly EnvDeleterService _envDeleter;
     private readonly SettingsRepository _settingsRepo;
@@ -483,6 +486,8 @@ public class MainViewModel : ViewModelBase
         LocalNodeBulkInstaller? localNodeBulkInstaller = null,
         // v1.0.0.x #589:env → localnodes sync service。可空让测试不传。
         LocalNodeSyncService? localNodeSyncService = null,
+        // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeListScanner 注入
+        NodeListScanner? nodeListScanner = null,
         // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 透传给 SettingsViewModel。
         // 共享 App.xaml.cs 已构造的实例(同 gitRunner + gitProxy + logger),避免重复创建。
         CommonNodeInstaller? commonNodeInstaller = null,
@@ -527,6 +532,8 @@ public class MainViewModel : ViewModelBase
         _localNodeBulkInstaller = localNodeBulkInstaller;
         // v1.0.0.x #589:env → localnodes sync service — ShowSettings 里传给 SettingsViewModel。
         _localNodeSyncService = localNodeSyncService;
+        // v1.0.0.x (2026-09-05) feat/nodelist-directory
+        _nodeListScanner = nodeListScanner;
         _commonNodeInstaller = commonNodeInstaller;
         // v1.0.0.x:Forge BED installer — 透传给 EnvListVM(见 _forgeBaseEnvInstaller 字段注释)。
         _forgeBaseEnvInstaller = forgeBaseEnvInstaller;
@@ -1035,7 +1042,9 @@ public class MainViewModel : ViewModelBase
                 envRepo: _envRepo,
                 syncService: _localNodeSyncService,
                 // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 共享 App 注入的实例。
-                commonNodeInstaller: _commonNodeInstaller);
+                commonNodeInstaller: _commonNodeInstaller,
+                // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeListScanner 注入
+                nodeListScanner: _nodeListScanner);
             CurrentView = SettingsViewFactory is null
                 ? new SettingsView { DataContext = _settingsViewModel }
                 : SettingsViewFactory(_settingsViewModel) as SettingsView;

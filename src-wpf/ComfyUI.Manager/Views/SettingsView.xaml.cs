@@ -183,6 +183,21 @@ public partial class SettingsView : UserControl
         }
     }
 
+    // ============ v1.0.0.x (2026-09-05) feat/nodelist-directory:节点列表目录 ============
+    private void BrowseNodelistDirectory(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm)
+        {
+            var picked = vm.PickFolder();
+            if (!string.IsNullOrEmpty(picked)) vm.NodelistDirectory = picked;
+        }
+    }
+
+    private void ScanNodelistDirectory(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsViewModel vm) vm.ScanNodeListCommand.Execute(null);
+    }
+
     // ============ v1.0.0.x (2026-08-29):Forge 模型目录 6 个 per-type 浏览按钮 ============
     // 镜像 BrowseDefaultModelsDirectory 模式:vm.PickFolder() 返 nullable string,
     // 非空时写回对应 property(setter 内部 MarkDirty 自动触发 ⚠ 警告)。
