@@ -148,11 +148,25 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public FirstRunWizardViewModel(string appDataDir)
-        : this(appDataDir, System.IO.Path.GetDirectoryName(appDataDir) ?? appDataDir)
+        : this(appDataDir, System.IO.Path.GetDirectoryName(appDataDir) ?? appDataDir, null)
     {
     }
 
     public FirstRunWizardViewModel(string appDataDir, string projectRoot)
+        : this(appDataDir, projectRoot, settingsRepo: null)
+    {
+    }
+
+    // v1.0.0.x (2026-09-05):新 ctor ——
+    // 用户原话"启动的时候默认生成 setting.inf 文件,只是在 wizard 会列出自动生成的文件,
+    // 然后如果有更改则将变更的内容再次诙谐到 setting.inf 文件中"。
+    // 接受 settingsRepo 读已 Apply 后的 settings 现有值,显示给 user(让 user 看到自动生成的值)。
+    // 若 user 改完 Finish,Finish 把改动 merge 回 settings。
+    // 旧 ctor(不传 settingsRepo)仍可用 — 走默认 seed 路径,无现有 settings 时。
+    public FirstRunWizardViewModel(
+        string appDataDir,
+        string projectRoot,
+        ComfyUI.Manager.Data.SettingsRepository? settingsRepo)
     {
         _appDataDir = appDataDir;
         _projectRoot = projectRoot;
@@ -186,7 +200,7 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
             // 否则留空字符串 → 走 PATH "git" fallback
         }
 
-        // v1.0.0.x (2026-09-05):Python path 默认 seed Embeded/python/python.exe 绝对路径 —
+        // v1.0.0.x (2026-09-05):Python path 默认 seed Embeded/python/python.exe 绝对路径 ——
         // 用户原话"python 路径也是自然获取,我们只需要看正确与否 例如当前
         // H:\ComfyUIManagement\Embeded\python 位于这个目录下的 python.exe"。
         // 探测顺序跟 ResolveGitExe 对齐:Embeded/python/python.exe → Python/python.exe → python/python.exe(legacy) → 留空让用户 Browse。
@@ -206,6 +220,42 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
                 if (System.IO.File.Exists(pythonLower))
                     _pythonPath = pythonLower;
                 // 都没找到 → 留空让用户 Browse
+            }
+        }
+
+        // v1.0.0.x (2026-09-05):如果有 settingsRepo,Load 已 Apply 的 settings 现有值覆盖默认 seed ——
+        // 用户原话"启动的时候默认生成 setting.inf 文件,只是在 wizard 会列出自动生成的文件"。
+        // user 看到的是自动生成的路径(wizard 显示 Apply 后的值),不是空。
+        if (settingsRepo is not null)
+        {
+            try
+            {
+                var (existing, _) = settingsRepo.LoadWithRawJson();
+                // 用 existing 覆盖默认 seed(但空字段保留默认)
+                if (!string.IsNullOrWhiteSpace(existing.InstallPath)) _installPath = existing.InstallPath;
+                if (!string.IsNullOrWhiteSpace(existing.TemplatePythonDir)
+                    && System.IO.File.Exists(System.IO.Path.Combine(existing.TemplatePythonDir, "python.exe")))
+                {
+                    _pythonPath = System.IO.Path.Combine(existing.TemplatePythonDir, "python.exe");
+                }
+                if (existing.PythonInterpreters.Count > 0
+                    && !string.IsNullOrWhiteSpace(existing.PythonInterpreters[0].Path))
+                {
+                    _pythonPath = existing.PythonInterpreters[0].Path;
+                }
+                if (!string.IsNullOrWhiteSpace(existing.GitExe)) _gitPath = existing.GitExe;
+                if (!string.IsNullOrWhiteSpace(existing.SystemTemplateLibraryDir)) _systemTemplateLibraryDir = existing.SystemTemplateLibraryDir;
+                if (!string.IsNullOrWhiteSpace(existing.EnvsDir)) _envsDir = existing.EnvsDir;
+                if (!string.IsNullOrWhiteSpace(existing.GlobalNodesDir)) _globalNodesDir = existing.GlobalNodesDir;
+                if (!string.IsNullOrWhiteSpace(existing.LocalNodeDirectory)) _localNodeDirectory = existing.LocalNodeDirectory;
+                if (!string.IsNullOrWhiteSpace(existing.LocalNodesDirectory)) _localNodesDirectory = existing.LocalNodesDirectory;
+                if (!string.IsNullOrWhiteSpace(existing.DefaultModelsDirectory)) _defaultModelsDirectory = existing.DefaultModelsDirectory;
+                if (!string.IsNullOrWhiteSpace(existing.WorkflowsDirectory)) _workflowsDirectory = existing.WorkflowsDirectory;
+                if (!string.IsNullOrWhiteSpace(existing.LogDirectory)) _logDirectory = existing.LogDirectory;
+            }
+            catch
+            {
+                // 读取失败(磁盘 IO 等)→ 继续用默认 seed,不影响 wizard 显示
             }
         }
 

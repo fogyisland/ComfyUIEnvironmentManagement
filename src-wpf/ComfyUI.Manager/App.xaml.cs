@@ -136,51 +136,33 @@ public partial class App : Application
         // python 路径等全丢。
         new LocalDataMigrationService(localPaths, logger: null).RunIfNeeded();
 
-        // v1.0.0:首启动 wizard — 必须先于 settingsRepo.Load(),让 wizard 写入的
-        // settings.json 在下游 Load() 时被读到,避免 MainViewModel 用 stale Settings。
-        // localPaths.Directory (v0.6.16) 是唯一权威路径,跟 SettingsRepository 一致。
-        // v1.0.0 Phase 1:dev build 跳过 wizard — 用户原话"开发阶段没有限制,
-        // 在开发就不要限制了模型市场和工作流库了,只有在 release 时候才限制"。
-        // dev 跳过 wizard 直接走 SettingsDefaults.Apply 的 dev-override 分支
-        // (启用所有 hidden feature flag + 默认 3 source + HF + ModelScope 启用)。
-        // v1.0.0.x (2026-09-05):FirstRunDetector.IsFirstRun 内部 Path.Combine(appDataDir, "config", "firstrun.inf"),
-        // localPaths.Directory 已经是 <projectRoot>/config → 再加 config 变成 config/config/。
-        // 改传 projectRoot 让 IsFirstRun 内部自己拼 config/,firstrun.inf 落到正确的 config/config/firstrun.inf 路径。
-        if (!DevMode.IsEnabled && FirstRun.FirstRunDetector.IsFirstRun(projectRoot))
-        {
-            // Splash 默认 Topmost=true,会盖在 wizard 上让用户看不到 wizard,误以为卡死。
-            // wizard 是 modal dialog,即使 Splash 非 Topmost 也能正常显示在上面。
-            // 启动 fade 让 Splash 让位,wizard 接收输入。
-            if (_splash != null) { _splash.Topmost = false; }
-            _splashVm?.StartFadeOut();
-            var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(localPaths.Directory);
-            var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
-            // v1.0.0.x (2026-09-05) bug fix:Splash 是 Application.Current.MainWindow(它先 Show),
-            // fade close 触发 ShutdownMode=OnMainWindowClose → Application.Shutdown() → wizard
-            // 被 force-close → ShowDialog() 返回 null → line 158 Shutdown() 双触发,整个进程退。
-            // 显式把 wizard 设为 MainWindow,Splash fade close 不再触发 app 退出
-            // (等同 v0.6.9.1 让位机制,line 547 还会显式指 MainWindow=main)。
-            Application.Current.MainWindow = wizard;
-            if (wizard.ShowDialog() != true)
-            {
-                // user cancelled → exit cleanly (no half-config state)
-                Shutdown();
-                return;
-            }
-            // wizard completed → settings.json + sentinel already written by VM Finish()
-            // continue to settingsRepo.Load() as usual (picks up wizard's settings.json)
-        }
+        // v1.0.0.x (2026-09-05):并行启动 + wizard 列出自动生成的文件 ——
+        // 用户原话"启动 wizard 的同时也可以启用 main window 而不是先后顺序"
+        // + "启动的时候默认生成 setting.inf 文件,只是在 wizard 会列出自动生成的文件,
+        // 然后如果有更改则将变更的内容再次诙谐到 setting.inf 文件中"。
+        // 新设计:
+        //   1. settings.Load (空 → default,容错)
+        //   2. Apply 把 default 升级(seed 路径、转相对)+ Save 写 settings.inf
+        //   3. MarkComplete 写 firstrun.inf(标记首启动完成)
+        //   4. new MainWindow + main.Show() (CenterScreen,后台)
+        //   5. IsFirstRun true → wizard.Show() (modeless,后台 main 仍可见)
+        //      wizard 显示已 Apply 的 default settings,user 可改 → Finish 写回
+        //      若 user Cancel → settings 保留 Apply 默认,程序直接用
+        //   6. (不论 wizard 是否走完)main.Activate() 抢焦点
+        // 用户体验:
+        //   - 首启动:看到 Splash → main 自动 Show(背景)+ wizard 弹(前景,默认填好)
+        //   - 不改 wizard 默认:点 Cancel 即可,程序直接用 Apply 后的 settings
+        //   - 改 wizard:点 Finish,Finish 写回 settings.inf(MainViewModel 重读刷新 in-memory)
+        //   - 二次启动:wizard 不弹(已 IsFirstRun=false),main 直接 Show
+        //
+        // Step 1: settings load
+        var settingsRepo = new SettingsRepository(localPaths);
+        var (settings, rawJson) = settingsRepo.LoadWithRawJson();
 
         // v0.6.7.1 + v0.6.12: 在 logger / launcher 构造前先 Load settings —
         // logger 读 LogDirectory(决定 Logs 父目录),launcher 读 startupTimeoutSeconds / locale / models。
         // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
         // 不会改 ComfyUiStartupTimeoutSeconds,所以顺序安全。
-        // v0.6.16: 走 LocalDataPaths 注入,settings.json 现在落 <projectRoot>/.manager/。
-        var settingsRepo = new SettingsRepository(localPaths);
-        // v1.0.0 (T12):用 LoadWithRawJson 把磁盘上的 raw JSON 一起拿到,
-        // 喂给 SettingsDefaults.Apply 触发老 template_comfyui_dir 字段迁移。
-        var (settings, rawJson) = settingsRepo.LoadWithRawJson();
-
         // v0.6.16: db path 也走 LocalDataPaths 注入 —— state.db 落 <projectRoot>/.manager/。
         var dbFactory = new SqliteConnectionFactory(localPaths);
         // v1.0.0 T3:legacy env rows get backfilled with current Settings.Templates["ComfyUI"]
@@ -287,8 +269,19 @@ public partial class App : Application
         // 2) 已经在 projectRoot 下的绝对路径 → 转相对(跨机器/跨盘符时
         //    settings.json 不需重新生成)
         // 3) 用户故意选的别处绝对路径 → 保留
+        // v1.0.0.x (2026-09-05):提前缓存 IsFirstRun ——
+        // 用户原话"启动 wizard 的同时也可以启用 main window 而不是先后顺序"
+        // + "启动的时候默认生成 setting.inf 文件,只是在 wizard 会列出自动生成的文件"。
+        // wizard 显示时(main 已 Show 后)需要知道"首启动",但 MarkComplete 已写 firstrun.inf → IsFirstRun 变 false。
+        // 必须在 MarkComplete **前**缓存 isFirstRun。
+        var isFirstRun = FirstRun.FirstRunDetector.IsFirstRun(projectRoot);
         SettingsDefaults.Apply(settings, projectRoot, rawJson);
         settingsRepo.Save(settings);
+        // v1.0.0.x (2026-09-05):首启动自动写 firstrun.inf,标记首启动完成 ——
+        // 用户原话"启动的时候默认生成 setting.inf 文件,然后在 wizard 会列出自动生成的文件"。
+        // Apply + Save 已写 settings.inf,这里再 MarkComplete 写 firstrun.inf。
+        // 下次启动 IsFirstRun false → 不弹 wizard(走"已完成"路径)。
+        FirstRun.FirstRunDetector.MarkComplete(projectRoot);
 
         // v1.0.0.x (2026-09-05):完全移除启动期路径错位检测 + PathMigrationConfirmDialog ——
         // 用户原话"去掉目录比对不存在并建议功能"。
@@ -615,6 +608,43 @@ public partial class App : Application
         // v1.0.0 sidebar.inf:首次启动写默认模板,后续按文件启用侧栏项。
         // 必须 Show() 之后 — FindName 要走 visual tree,构造期按钮还没 materialize。
         ApplySidebarInf(main);
+
+        // v1.0.0.x (2026-09-05):首启动弹 wizard(modeless,后台 main 仍可见)——
+        // 用户原话"启动 wizard 的同时也可以启用 main window 而不是先后顺序"
+        // + "启动的时候默认生成 setting.inf 文件,只是在 wizard 会列出自动生成的文件,
+        // 然后如果有更改则将变更的内容再次诙谐到 setting.inf 文件中"。
+        // 实现:
+        //   - 设置已经 Apply + Save 写完 settings.inf(上面 line 273-275)
+        //   - MarkComplete 写 firstrun.inf(上面 line 280-285,标记首启动完成)
+        //   - 这里用 isFirstRun(在 Apply 前缓存,line 272)— true 才弹 wizard
+        //   - wizard ctor 读 settings(显示已 Apply 后的默认值)
+        //   - user Cancel → 保留 Apply 默认 settings,程序直接用
+        //   - user Finish → 写回 settings.inf(只改用户改的字段)
+        //   - 二次启动:isFirstRun false(已有 firstrun.inf)→ 不弹 wizard
+        if (isFirstRun)
+        {
+            // 首启动 MarkComplete 后,弹 wizard 让 user 确认/修改(后台 main 仍可见)
+            if (_splash != null) { _splash.Topmost = false; }
+            _splashVm?.StartFadeOut();
+
+            var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(
+                localPaths.Directory, projectRoot, settingsRepo);
+            var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
+            // 用 Show() (modeless) 不是 ShowDialog() — 跟 main 并存,user 可自由切。
+            // v1.0.0.x (2026-09-05) bug fix:不设 MainWindow = wizard ——
+            // 之前 line 637 设了 MainWindow = wizard,wizard Close 时 ShutdownMode=OnMainWindowClose
+            // 触发 Shutdown → 整个进程退出。**main 一直保持 MainWindow**,wizard 关闭不影响
+            // app 生命周期。
+            wizard.Show();
+            // v1.0.0.x (2026-09-05):wizard Activate() 抢焦点 ——
+            // 用户原话"在 wizard 关闭前 wizard 应该是在最前面"。
+            // Show() 不抢焦点,wizard 在 main 后面,用户看不到。
+            // XAML Topmost=True 让 z-order 在前,Activate() 让焦点在 wizard。
+            wizard.Activate();
+
+            // 只 activate main,MainWindow 不重设(已经是 main 了)
+            main.Activate();
+        }
 
         // v0.6.16: --auto-refresh-catalog CLI flag — 启动后后台触发 catalog 刷新
         // (含 GitHub metadata enrichment 如果 settings.FetchCatalogMetadata=true)。

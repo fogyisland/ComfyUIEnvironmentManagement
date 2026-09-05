@@ -5,7 +5,12 @@
         Width="700" Height="540"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        Topmost="True">
+        <!-- v1.0.0.x (2026-09-05):Topmost=True 让 wizard 关闭前总在 main 之上 ——
+             用户原话"在 wizard 关闭前 wizard 应该是在最前面"。
+             App.xaml.cs 用 Show()(modeless)不是 ShowDialog(),所以默认 z-order 在 main 后面,
+             加 Topmost 强制 wizard 在前。 -->
     <Window.Resources>
         <!-- Step indicator bold via DataTrigger(用 SemiBold 兜底避免编译期 converter 缺失)-->
         <Style x:Key="StepLabelStyle" TargetType="TextBlock">
