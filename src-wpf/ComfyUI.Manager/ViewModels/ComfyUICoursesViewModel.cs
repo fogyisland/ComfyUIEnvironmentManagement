@@ -9,7 +9,8 @@ namespace ComfyUI.Manager.ViewModels;
 ///
 /// 把 v0.6.15.5 起堆在 <see cref="AboutDialogViewModel"/> 里的 4 个课程链接抽到独立对话框:
 /// <see cref="CoursesHeader"/> + <see cref="Course51CTO"/> / <see cref="CourseShenYeCG"/> /
-/// <see cref="CourseYihuu"/> / <see cref="CourseUdemy"/>。
+/// <see cref="CourseYihuu"/>。
+/// v1.0.0.x (2026-09-05):用户原话"去掉Udemy 在课程更新这部分内容",删 CourseUdemy property + resx key。
 ///
 /// AboutDialog 瘦身只保留系统级信息(版本/描述/授权/仓库/问题反馈),这些课程链接
 /// 现在对应主菜单 "ComfyUI 课程" 顶级下拉,与 AboutDialog 完全脱离 — spec 重构
@@ -38,7 +39,6 @@ public sealed class ComfyUICoursesViewModel : ViewModelBase
         Course51CTO = GetString("About_Course_51CTO");
         CourseShenYeCG = GetString("About_Course_ShenYeCG");
         CourseYihuu = GetString("About_Course_Yihuu");
-        CourseUdemy = GetString("About_Course_Udemy");
         CloseCommand = new RelayCommand(_ => Close());
     }
 
@@ -48,7 +48,6 @@ public sealed class ComfyUICoursesViewModel : ViewModelBase
     public string Course51CTO { get; }
     public string CourseShenYeCG { get; }
     public string CourseYihuu { get; }
-    public string CourseUdemy { get; }
     public RelayCommand CloseCommand { get; }
 
     public event EventHandler? RequestClose;

@@ -42,8 +42,6 @@
                 <TextBlock Text="{Binding CourseShenYeCG, Mode=OneWay}"
                            Margin="8,4,0,4" FontSize="13" />
                 <TextBlock Text="{Binding CourseYihuu, Mode=OneWay}"
-                           Margin="8,4,0,4" FontSize="13" />
-                <TextBlock Text="{Binding CourseUdemy, Mode=OneWay}"
                            Margin="8,4,0,0" FontSize="13" />
             </StackPanel>
         </Border>
