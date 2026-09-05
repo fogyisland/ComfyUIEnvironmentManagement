@@ -282,6 +282,50 @@ public class MainViewModel : ViewModelBase
     /// </summary>
     public Task RefreshCatalogAsync() => _catalogRefreshService.RefreshAsync();
 
+    // v1.0.0.x (2026-09-05):wizard Finish 后系统 refresh ——
+    // 用户原话"wizard 保存文件后,我们的系统应该 refresh 一遍,而不是整个进程退出"。
+    // wizard Finish 写 settings 到 disk,_mainVm 持有 readonly _settings 引用,不会 in-place 更新。
+    // 重新 LoadFromDisk 把新值灌到 in-memory _settings 引用(替换 fields),然后通知
+    // SettingsViewModel 等子 VM 重新读 settings。
+    public void ReloadSettingsAfterWizard()
+    {
+        try
+        {
+            var (disk, _) = _settingsRepo.LoadWithRawJson();
+            // 把 disk 上的字段复制到 in-memory _settings(Settings 是 ref class,
+            // 字段 public set,所以直接赋值更新引用)
+            // 用反射或直接赋值 — 直接赋值最简(假设 properties 都有 setter)
+            _settings.PythonInterpreters.Clear();
+            foreach (var p in disk.PythonInterpreters) _settings.PythonInterpreters.Add(p);
+            _settings.ActivePythonInterpreterName = disk.ActivePythonInterpreterName;
+            _settings.TemplatePythonDir = disk.TemplatePythonDir;
+            _settings.DefaultPythonVersion = disk.DefaultPythonVersion;
+            _settings.GitExe = disk.GitExe;
+            _settings.InstallPath = disk.InstallPath;
+            _settings.SystemTemplateLibraryDir = disk.SystemTemplateLibraryDir;
+            _settings.EnvsDir = disk.EnvsDir;
+            _settings.GlobalNodesDir = disk.GlobalNodesDir;
+            _settings.LocalNodeDirectory = disk.LocalNodeDirectory;
+            _settings.LocalNodesDirectory = disk.LocalNodesDirectory;
+            _settings.DefaultModelsDirectory = disk.DefaultModelsDirectory;
+            _settings.WorkflowsDirectory = disk.WorkflowsDirectory;
+            _settings.LogDirectory = disk.LogDirectory;
+
+            // 通知 SettingsViewModel 重新读 settings
+            _settingsViewModel?.ReloadFromSettings();
+
+            // 触发 catalog 自动 refresh(如果启用)— 让 sidebar 节点列表更新
+            if (_settings.CatalogAutoRefresh)
+            {
+                _ = RefreshCatalogAsync();
+            }
+        }
+        catch
+        {
+            // reload 失败不影响程序继续运行
+        }
+    }
+
     /// <summary>
     /// v0.6.11+ SDD D1: InstallDialog 装成功回调,触发 env 重启(Stop if running
     /// + Start)。envId = 装成功的 env 标识;实现 = 切到 env-list tab → 在

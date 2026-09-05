@@ -40,6 +40,39 @@ public class SettingsViewModel : ViewModelBase, IDisposable
 
     // v0.6.11+ SDD B T1:dirty tracking。XAML 行内 ⚠️ 通过 {Binding Dirty[Xxx]} 查,
     // SaveCommand 一次性写盘 + 清 dirty,DiscardCommand 用 CopyInto 回滚。
+    // v1.0.0.x (2026-09-05):wizard Finish 后 reload ——
+    // 用户原话"wizard 保存文件后,我们的系统应该 refresh 一遍,而不是整个进程退出"。
+    // 从 disk LoadWithRawJson 拿新值,直接灌到 in-memory _settings 引用(共享实例
+    // 不需要 new,MainViewModel + SettingsViewModel 共享同 _settings 引用)。
+    // 然后通知所有子 ObservableCollection reload 触发 UI 刷新。
+    public void ReloadFromSettings()
+    {
+        try
+        {
+            var (disk, _) = _repo.LoadWithRawJson();
+            // 同步所有字段(跟 MainViewModel.ReloadSettingsAfterWizard 同步逻辑,但
+            // SettingsViewModel 自己维护的 ObservableCollection 也需要重绑)
+            // 简单做法:替换整个 _settings 引用(line 39 `Settings _settings` 不是 readonly)
+            _settings = disk;
+            // 重新绑定 ObservableCollection(触发 UI CollectionChanged)
+            ExtraPaths.Clear();
+            foreach (var p in disk.ExtraPaths) ExtraPaths.Add(p);
+            QuerySources.Clear();
+            foreach (var s in disk.QuerySources) QuerySources.Add(s);
+            DownloadSources.Clear();
+            foreach (var s in disk.DownloadSources) DownloadSources.Add(s);
+            PythonInterpreters.Clear();
+            foreach (var p in disk.PythonInterpreters) PythonInterpreters.Add(p);
+
+            // 触发整个 VM 的 property changed 让 sidebar 重新读主题等
+            RaisePropertyChanged(string.Empty);  // empty = 全部
+        }
+        catch
+        {
+            // reload 失败不影响继续运行
+        }
+    }
+
     public DirtyLookup Dirty { get; } = new();
 
     public bool HasUnsavedChanges => Dirty.Any;

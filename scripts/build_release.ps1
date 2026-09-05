@@ -180,10 +180,18 @@ else {
 }
 
 if ($null -ne $TemplateSource -and (Test-Path $TemplateSource)) {
-    $TemplateSubdirs = Get-ChildItem $TemplateSource -Directory | Where-Object { $_.Name -ne "ComfyUI" } | ForEach-Object { $_.Name }
-    $RoboExcludeDirs += $TemplateSubdirs
+    # v1.0.0.x (2026-09-05):share layout ——
+    # 用户原话"envtemplate 是模板文件目录 不是吧所有文件拷贝过来"。
+    # 之前直接 mirror ComfyUI 源根到 ENVTemplate/ → 错的:
+    #   - TemplatePathResolver.Resolve 期望 <SystemTemplateLibraryDir>/<Kind>/<LocalSourceDir>
+    #     = <projectRoot>/ENVTemplate/ComfyUI/<files>
+    #   - 模板 metadata 存 settings.Templates["ComfyUI"].LocalSourceDir
+    #   - SystemTemplateLibraryDir 默认 = <projectRoot>/ENVTemplate
+    #   - 所以 ComfyUI 源要拷到 <projectRoot>/ENVTemplate/ComfyUI/(share layout 嵌套 kind 子目录)
+    # 修改:staging 拷到 ENVTemplate/ComfyUI/(目录名固定 "ComfyUI" = dev 默认 kind)
     $RoboExcludeFiles = @("*.pyc", "*.safetensors", "*.ckpt", "*.pt", "*.pth", "*.bin", "*.gguf")
-    robocopy $TemplateSource (Join-Path $AppDir "ENVTemplate") /MIR `
+    $EnvTemplateComfyuiDst = Join-Path $AppDir "ENVTemplate\ComfyUI"
+    robocopy $TemplateSource $EnvTemplateComfyuiDst /MIR `
         /XD $RoboExcludeDirs `
         /XF $RoboExcludeFiles `
         /NJH /NJS /NDL /NFL /NC /NS | Out-Null

@@ -630,6 +630,19 @@ public partial class App : Application
             var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(
                 localPaths.Directory, projectRoot, settingsRepo);
             var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
+            // v1.0.0.x (2026-09-05):wizard Finish 后 reload + refresh ——
+            // 用户原话"wizard 保存文件后,我们的系统应该 refresh 一遍,而不是整个进程退出"。
+            // Finish 写完 settings 后,系统要感知变化(侧栏启用、Python path、Git path 等)。
+            // _mainVm 持有 readonly _settings 引用,不能 in-place 改。
+            // 最简方案:让 _mainVm 重新 load + 刷新自己。MainViewModel 暴露一个
+            // ReloadSettingsAfterWizard() 方法,刷新 in-memory _settings + 子 VM。
+            wizardVm.Completed += () =>
+            {
+                if (_mainVm is not null)
+                {
+                    _mainVm.ReloadSettingsAfterWizard();
+                }
+            };
             // 用 Show() (modeless) 不是 ShowDialog() — 跟 main 并存,user 可自由切。
             // v1.0.0.x (2026-09-05) bug fix:不设 MainWindow = wizard ——
             // 之前 line 637 设了 MainWindow = wizard,wizard Close 时 ShutdownMode=OnMainWindowClose
@@ -642,7 +655,12 @@ public partial class App : Application
             // XAML Topmost=True 让 z-order 在前,Activate() 让焦点在 wizard。
             wizard.Activate();
 
-            // 只 activate main,MainWindow 不重设(已经是 main 了)
+            // v1.0.0.x (2026-09-05) bug fix:显式保持 MainWindow = main ——
+            // 用户原话"点击完成之后程序有一次退出了"。
+            // 之前 main.Activate() 不重设 MainWindow,wizard.Activate() 时 wpf 自动
+            // 把 MainWindow 改为 wizard。wizard.Close() → ShutdownMode=OnMainWindowClose
+            // 触发 Shutdown → 整个 app 退出。显式设回 main。
+            Application.Current.MainWindow = main;
             main.Activate();
         }
 

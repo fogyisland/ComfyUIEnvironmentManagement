@@ -662,4 +662,30 @@
             </Grid>
         </Border>
     </DataTemplate>
+
+    <!-- v1.0.0.x (2026-09-05):全局 implicit 控件 Foreground 绑主题色 ——
+         用户原话"白天模式没有问题,但是如果转为黑夜模式,则文字和软件全部都是黑色"。
+         原因:WPF TextBlock/TextBox/PasswordBox/ComboBox 默认 Foreground = SystemColors.WindowText
+         (黑色),Background = SystemColors.Window (白色)。黑模式下背景变成 #1E1E1E,
+         黑色文字看不见 — 用户看到一片黑。
+         绑 OnSurfaceBrush (Dark: #E6E1E5 浅白; Light: #1C1B1F 深黑)
+         让前景/背景自动跟随主题切换。
+         已显式 Foreground 的控件不会被 implicit style 覆盖。
+         放在 ResourceDictionary 末尾因为 XAML 属性元素规则:属性元素必须在普通元素
+         内容之前或之后,implicit style 作为普通元素放在 MergedDictionaries 之后。 -->
+    <Style TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type TextBox}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type PasswordBox}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    </Style>
+    <Style TargetType="{x:Type ComboBox}">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+    </Style>
 </ResourceDictionary>
