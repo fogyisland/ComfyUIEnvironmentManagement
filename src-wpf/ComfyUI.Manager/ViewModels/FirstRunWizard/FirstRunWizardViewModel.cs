@@ -140,6 +140,10 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
     {
         _appDataDir = appDataDir;
         _projectRoot = projectRoot;
+        // v1.0.0.x (2026-09-05) UX fix:InstallPath 默认填 program path(等同 projectRoot,
+        // 因为 release 模式下 ResolveDevProjectRoot fallback 到 exe dir)。让用户看见默认,
+        // 确认路径正确,或 Browse 改到别的位置——而不是空字符串 + Next 按钮永远 disabled。
+        _installPath = projectRoot;
         // 默认 seed 路径镜像 SettingsDefaults.Apply 模式 (projectRoot/Kind/)
         _systemTemplateLibraryDir = System.IO.Path.Combine(projectRoot, "ENVTemplate") + System.IO.Path.DirectorySeparatorChar;
         _envsDir = System.IO.Path.Combine(projectRoot, "Envs") + System.IO.Path.DirectorySeparatorChar;

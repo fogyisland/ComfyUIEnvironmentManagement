@@ -114,7 +114,32 @@ def ensure_schema(conn):
 
 
 def fetch_catalog():
-    """单次 HTTPS GET 拿 custom-node-list.json。无 auth,无 GitHub API 依赖。"""
+    """单次 HTTPS GET 拿 custom-node-list.json。无 auth,无 GitHub API 依赖。
+    v1.0.0.x (2026-09-05) T41+:支持本地 seed — 公司网络拦截 github raw 时,
+    优先读 PREFILL_CATALOG_LOCAL 路径的 custom-node-list.json(已存在的 dev cache)。
+    Fallback chain:
+      1. PREFILL_CATALOG_LOCAL env var (绝对路径)
+      2. <projectRoot>/envs/faceswap/custom_nodes/ComfyUI-Manager/custom-node-list.json
+         (用户已 sync 过的 node_db 副本,大概率最新)
+      3. <projectRoot>/ComfyUITemplate/custom-node-list.json (用户从 ComfyUI-Manager 同步过)
+      4. CATALOG_URL HTTPS fetch(原行为)
+    """
+    import os
+    candidates = []
+    env_local = os.environ.get("PREFILL_CATALOG_LOCAL")
+    if env_local:
+        candidates.append(env_local)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    candidates.extend([
+        os.path.join(project_root, "envs", "faceswap", "custom_nodes", "ComfyUI-Manager", "custom-node-list.json"),
+        os.path.join(project_root, "ComfyUITemplate", "custom-node-list.json"),
+    ])
+    for path in candidates:
+        if path and os.path.isfile(path):
+            print(f"using local seed: {path}", file=sys.stderr)
+            with open(path, "r", encoding="utf-8") as f:
+                return json.loads(f.read())
     req = urllib.request.Request(
         CATALOG_URL,
         headers={"User-Agent": "ComfyUIManagement-prefill/1.0.0"},

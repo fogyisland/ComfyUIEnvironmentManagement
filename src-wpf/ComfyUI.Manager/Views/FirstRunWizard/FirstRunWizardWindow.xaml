@@ -115,6 +115,12 @@
                                 Click="OnBrowseInstallPath"/>
                         <TextBox Text="{Binding InstallPath, UpdateSourceTrigger=PropertyChanged}"/>
                     </DockPanel>
+                    <!-- v1.0.0.x (2026-09-05):绿色软件路径提示 — 默认已填 program 所在目录,
+                         用户确认路径正确后才能 Next。如果用户从压缩包解压后搬了文件夹,默认路径
+                         可能已失效(原地址变 broken symlink / 旧路径),红色提示要求核对一下。 -->
+                    <TextBlock Text="请确认当前的程序运行是否正确"
+                               Foreground="Red" FontWeight="SemiBold"
+                               Margin="0,8,0,4" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- Step 2: Python -->

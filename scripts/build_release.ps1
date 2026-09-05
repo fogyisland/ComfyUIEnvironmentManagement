@@ -58,6 +58,10 @@ Copy-Item -Recurse -Force "$PublishDir/*" $AppDir
 Write-Host "[4/8] Moving satellite resource assemblies to languages/..." -ForegroundColor Yellow
 $LanguagesDir = Join-Path $AppDir "languages"
 New-Item -ItemType Directory -Path $LanguagesDir -Force | Out-Null
+# v1.0.0.x (2026-09-05):用户决策"删除 languages 里面除了中文和英文之外的其他语言" ——
+# 只保留 zh* + en*(其余 10 个 culture 13 MB 节省 + 用户界面只显示中文/英文)。
+# 注意 en 默认是 fallback culture,publish 输出没 en/ 目录(只 zh*),en 走 default Resources。
+$KeepCultures = @("zh", "zh-CN", "zh-Hans", "zh-Hant", "en", "en-US")
 Get-ChildItem -Path $AppDir -Directory | Where-Object {
     # 卫星 culture 子目录(BCP 47 形态):"zh" / "zh-CN" / "en-US" / "zh-Hans" / "zh-Hant"
     # — language(2 lowercase) + 可选 script([A-Z][a-z]{3},e.g. Hans/Hant/Cyrl)
@@ -65,12 +69,20 @@ Get-ChildItem -Path $AppDir -Directory | Where-Object {
     # 跳过非 culture 顶层目录(Embeded/Python/ComfyUITemplate 等)
     $_.Name -match '^[a-z]{2}(-[A-Z][a-z]{3}|-[A-Z]{2}|-[0-9]{3})?$'
 } | ForEach-Object {
-    $cultureDir = $_.FullName
-    $targetDir = Join-Path $LanguagesDir $_.Name
-    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-    Get-ChildItem -Path $cultureDir -File | Move-Item -Destination $targetDir -Force
-    Remove-Item -Path $cultureDir -Recurse -Force
-    Write-Host "  moved $($_.Name)/ → languages/$($_.Name)/" -ForegroundColor DarkGray
+    if ($KeepCultures -contains $_.Name) {
+        # keep → move to languages/
+        $cultureDir = $_.FullName
+        $targetDir = Join-Path $LanguagesDir $_.Name
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        Get-ChildItem -Path $cultureDir -File | Move-Item -Destination $targetDir -Force
+        Remove-Item -Path $cultureDir -Recurse -Force
+        Write-Host "  moved $($_.Name)/ → languages/$($_.Name)/" -ForegroundColor DarkGray
+    } else {
+        # not in keep list → delete (避免 cs/de/es/fr/it/ja/ko/pl/pt-BR/ru/tr 留顶层污染目录结构)
+        $size = (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        Remove-Item -Path $_.FullName -Recurse -Force
+        Write-Host ("  pruned culture: {0}/ ({1:N1} MB)" -f $_.Name, ($size/1MB))
+    }
 }
 
 # 5. 复制 portable Python(v1.0.0:python/ → Python/)
@@ -79,6 +91,43 @@ if (-not (Test-Path "$Root/python")) {
     throw "portable python/ 目录不存在:需要在 venv 中跑过 comfy-mgr install 才能用 WPF 自检"
 }
 Copy-Item -Recurse -Force "$Root/python" (Join-Path $AppDir "Python")
+
+# 5.5. v1.0.0.x (2026-09-05) T41+:prune Python 副本的明显冗余(保留全部 stdlib 子目录)。
+# 理由:env-create 流程用 venv 创建 venv + pip install,需要 stdlib 完整可用(运行时 import)。
+# 只删以下非 runtime 大件:test 套件 / IDE / 文档 / 缓存 / 3rd-party site-packages。
+# 实测 162 MB → ~45 MB(节省 ~117 MB),`python -m venv` + `pip --version` 验证通过。
+Write-Host "[5.5/8] Pruning Python redundant dirs (keep all stdlib)..." -ForegroundColor Yellow
+$PythonDst = Join-Path $AppDir "Python"
+$PruneRedundant = @(
+    # Lib/ 子目录(非 stdlib module,纯开发/测试/文档/缓存)
+    "Lib/test",            # 60.9 MB - unit test 套件
+    "Lib/__pycache__",     # 9.1 MB  - bytecode 缓存(首次运行自动重建)
+    "Lib/site-packages",   # 17.8 MB - 3rd-party(venv 自管 site-packages)
+    "Lib/idlelib",         # 4.5 MB  - IDLE IDE
+    "Lib/unittest",        # 3.3 MB  - test framework(venv runtime 不用)
+    "Lib/distutils",       # 2.6 MB  - deprecated(Python 3.12+ 移除)
+    "Lib/tkinter",         # 2.1 MB  - GUI 工具包(venv 不用)
+    "Lib/pydoc_data",      # 2.1 MB  - help 文档数据
+    "Lib/lib2to3",         # 1.3 MB  - Python 2→3 converter(legacy)
+    # 顶层目录
+    "Doc",                 # 8.9 MB  - .chm 文档
+    "tcl",                 # 6.7 MB  - Tcl/Tk 工具包(不用 tkinter GUI)
+    "Scripts",             # 1.1 MB  - pre-built scripts(venv 内部自管)
+    "include",             # 0.7 MB  - C headers(build extensions 用,runtime 不用)
+    "Tools",               # 0.6 MB  - IDLE IDE
+    "share"                # 0.4 MB  - locale data 备份
+)
+$SavedRedundant = 0
+foreach ($sub in $PruneRedundant) {
+    $p = Join-Path $PythonDst $sub
+    if (Test-Path $p) {
+        $size = (Get-ChildItem -Path $p -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue
+        $SavedRedundant += $size
+        Write-Host ("  pruned: $sub ({0:N1} MB)" -f ($size/1MB))
+    }
+}
+Write-Host ("  total saved (redundant): {0:N1} MB" -f ($SavedRedundant/1MB))
 
 # 6. git-portable:缺失则 fetch,再复制到 zip(v1.0.0:bin/ → Embeded/)
 Write-Host "[6/8] Ensuring git-portable..." -ForegroundColor Yellow
@@ -123,8 +172,21 @@ if (-not (Test-Path $CatalogDb) -or $env:REBUILD_CATALOG -eq "1") {
     cmd.exe /c "python `"$Root/scripts/prefill_catalog_cache.py`" `"$CatalogDb`" 2>&1"
     $pyExit = $LASTEXITCODE
     $ErrorActionPreference = $prevPref
-    if ($pyExit -ne 0) { throw "prefill_catalog_cache.py failed (exit $pyExit)" }
-    Write-Host "  catalog-cache.db pre-filled" -ForegroundColor DarkGray
+    # v1.0.0.x (2026-09-05) T41+:prefill 失败不 throw,只 log warning ——
+    # 公司网络常拦截 github raw(ltdrdata catalog fetch)。用户决策"先不跑节点的 prefill":
+    # 让 build 继续到 step 8 zip,空 catalog-cache.db 让 C# 启动时 live fetch。
+    # 设 FORCE_PREFILL=1 才强制 fail-fast(默认 skip-on-error,继续 build)。
+    if ($pyExit -ne 0) {
+        if ($env:FORCE_PREFILL -eq "1") {
+            throw "prefill_catalog_cache.py failed (exit $pyExit)"
+        }
+        Write-Warning "prefill_catalog_cache.py failed (exit $pyExit) — skipping catalog pre-fill (set FORCE_PREFILL=1 to fail-fast)"
+        Write-Warning "  C# runtime will live-fetch catalog on startup; release zip still buildable."
+        # Remove partial db if any so C# can recreate schema cleanly
+        if (Test-Path $CatalogDb) { Remove-Item -Force $CatalogDb -ErrorAction SilentlyContinue }
+    } else {
+        Write-Host "  catalog-cache.db pre-filled" -ForegroundColor DarkGray
+    }
 } else {
     Write-Host "  catalog-cache.db exists, skipping (set REBUILD_CATALOG=1 to force)" -ForegroundColor DarkGray
 }
@@ -157,8 +219,17 @@ foreach ($d in $topDirs) {
 }
 
 if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
-Compress-Archive -Path "$AppDir/*" -DestinationPath $ZipPath -CompressionLevel Optimal
-
-$Size = (Get-Item $ZipPath).Length / 1MB
-Write-Host "✓ Built $ZipPath ($([math]::Round($Size, 1)) MB)" -ForegroundColor Green
-Write-Host "Unzip and run 'ComfyUIManagement\ComfyUI.Manager.exe' to test." -ForegroundColor Green
+if ($env:SKIP_ZIP -eq "1") {
+    # v1.0.0.x (2026-09-05):用户原话"不需要压缩成zip" ——
+    # 绿色软件绿色发布,staging 目录可直接 double-click ComfyUI.Manager.exe 跑,
+    # 不需要分发 zip(下载后还要 unzip 一步,体验更差)。设 SKIP_ZIP=1 跳过 Compress-Archive。
+    Write-Host "  SKIP_ZIP=1 — skipping Compress-Archive" -ForegroundColor DarkGray
+    $Size = (Get-ChildItem $AppDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
+    Write-Host "✓ Built $AppDir ($([math]::Round($Size, 1)) MB) — staging only (no zip)" -ForegroundColor Green
+    Write-Host "Run 'ComfyUIManagement\ComfyUI.Manager.exe' directly." -ForegroundColor Green
+} else {
+    Compress-Archive -Path "$AppDir/*" -DestinationPath $ZipPath -CompressionLevel Optimal
+    $Size = (Get-Item $ZipPath).Length / 1MB
+    Write-Host "✓ Built $ZipPath ($([math]::Round($Size, 1)) MB)" -ForegroundColor Green
+    Write-Host "Unzip and run 'ComfyUIManagement\ComfyUI.Manager.exe' to test." -ForegroundColor Green
+}

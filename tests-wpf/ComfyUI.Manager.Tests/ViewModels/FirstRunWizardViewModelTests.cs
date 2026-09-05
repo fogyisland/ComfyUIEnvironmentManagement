@@ -46,6 +46,15 @@ public class FirstRunWizardViewModelTests : IDisposable
         Assert.Equal(Path.Combine(_projectRoot, "logs") + Path.DirectorySeparatorChar, vm.LogDirectory);
     }
 
+    // v1.0.0.x (2026-09-05):绿色软件 — InstallPath 默认 = program path(等同 projectRoot),
+    // 用户在 wizard 第一步看见默认填好的 path,确认或 Browse 改,而不是空字符串 + Next disabled。
+    [Fact]
+    public void InstallPath_DefaultsToProjectRoot_ForGreenSoftwareUser()
+    {
+        var vm = NewVm();
+        Assert.Equal(_projectRoot, vm.InstallPath);
+    }
+
     [Fact]
     public void GoNext_WelcomeToPythonRequiresPythonPath()
     {
@@ -111,9 +120,11 @@ public class FirstRunWizardViewModelTests : IDisposable
         vm.FinishCommand.Execute(null);
         Assert.True(completed);
 
-        var sentinel = Path.Combine(_appDataDir, FirstRunDetector.SentinelFileName);
-        Assert.True(File.Exists(sentinel), "Sentinel file 没写");
-        Assert.False(FirstRunDetector.IsFirstRun(_appDataDir));
+        // v1.0.0.x T41:MarkComplete 改写 executed=0 到 config/firstrun.inf,删旧 .first-run-complete sentinel
+        var inf = Path.Combine(_appDataDir, "config", FirstRunDetector.FirstRunInfName);
+        Assert.True(File.Exists(inf), "firstrun.inf 没写");
+        Assert.Contains($"{FirstRunDetector.ExecutedKey}={FirstRunDetector.ExecutedFalse}", File.ReadAllText(inf));
+        Assert.False(FirstRunDetector.IsFirstRun(_appDataDir, "config"));
 
         var settingsInf = Path.Combine(_appDataDir, "config", "settings.inf");
         Assert.True(File.Exists(settingsInf), "settings.inf 没写");

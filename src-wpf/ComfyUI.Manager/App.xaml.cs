@@ -152,6 +152,12 @@ public partial class App : Application
             _splashVm?.StartFadeOut();
             var wizardVm = new ViewModels.FirstRunWizard.FirstRunWizardViewModel(localPaths.Directory);
             var wizard = new Views.FirstRunWizard.FirstRunWizardWindow(wizardVm);
+            // v1.0.0.x (2026-09-05) bug fix:Splash 是 Application.Current.MainWindow(它先 Show),
+            // fade close 触发 ShutdownMode=OnMainWindowClose → Application.Shutdown() → wizard
+            // 被 force-close → ShowDialog() 返回 null → line 158 Shutdown() 双触发,整个进程退。
+            // 显式把 wizard 设为 MainWindow,Splash fade close 不再触发 app 退出
+            // (等同 v0.6.9.1 让位机制,line 547 还会显式指 MainWindow=main)。
+            Application.Current.MainWindow = wizard;
             if (wizard.ShowDialog() != true)
             {
                 // user cancelled → exit cleanly (no half-config state)
