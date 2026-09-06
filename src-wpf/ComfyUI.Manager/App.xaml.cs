@@ -389,6 +389,8 @@ public partial class App : Application
         var localNodeSyncService = new LocalNodeSyncService(settings, logger);
         // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeListScanner 共享 service 实例
         var nodeListScanner = new NodeListScanner(nodeRepo, githubVersionService, logger);
+        // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeRepoQueryService
+        var nodeRepoQuery = new NodeRepoQueryService(http);
         // v1.0.0 T11: 通用 template source updater — per-repo-URL, 给
         // TemplateManagementViewModel(ShowTemplateManagement)的每张模板卡
         // "更新源码" 按钮使用。构造时传 gitExe + gitProxy + logger(不是 gitRunner),

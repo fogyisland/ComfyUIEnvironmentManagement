@@ -20,12 +20,21 @@ public sealed class NodeListScanner
 {
     private readonly NodeRepository _nodeRepo;
     private readonly GitHubVersionService _versionService;
+    // v1.0.0.x (2026-09-05) feat/nodelist-directory:云端节点仓库查询
+    private readonly NodeRepoQueryService? _repoQuery;
     private readonly AppLogger? _logger;
+    // v1.0.0.x feat/nodelist-directory:Settings 引用(读 host/token 配置)
+    private readonly Settings? _settings;
 
-    public NodeListScanner(NodeRepository nodeRepo, GitHubVersionService versionService, AppLogger? logger = null)
+    public NodeListScanner(
+        NodeRepository nodeRepo,
+        GitHubVersionService versionService,
+        AppLogger? logger = null,
+        NodeRepoQueryService? repoQuery = null)
     {
         _nodeRepo = nodeRepo;
         _versionService = versionService;
+        _repoQuery = repoQuery;
         _logger = logger;
     }
 
@@ -49,6 +58,11 @@ public sealed class NodeListScanner
         string directory,
         IProgress<ScanProgress>? progress = null,
         string? githubToken = null,
+        // v1.0.0.x feat/nodelist-directory:host + token + Settings 注入
+        NodelistHostKind hostKind = NodelistHostKind.GitHub,
+        string? customHostUrl = null,
+        string? hostToken = null,
+        NodeRepoQueryService? repoQuery = null,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -101,6 +115,24 @@ public sealed class NodeListScanner
         var idList = nodes.Select(kv => (kv.Key, kv.Value.Reference)).ToList();
         var versions = await _versionService.FetchVersionsAsync(idList, githubToken, ct: ct);
 
+        // 4.5 拉 repo metadata(NodeRepoQueryService,GET {host}/api/v1/repos/{author}/{repo})
+        //     解析 description/stars/license 等存到 ScanMeta(JSON 序列化)
+        var host = hostKind == NodelistHostKind.Custom
+            ? ResolveCustomHost(directory)
+            : "https://api.github.com";
+        var repoMetas = new Dictionary<string, NodeRepoQueryService.RepoMetadata>();
+        if (_repoQuery is not null && !string.IsNullOrWhiteSpace(host))
+        {
+            foreach (var kv in nodes)
+            {
+                ct.ThrowIfCancellationRequested();
+                var parts = kv.Key.Split('/', 2);
+                if (parts.Length != 2) continue;
+                var meta = await _repoQuery.FetchRepoMetadataAsync(host, githubToken, parts[0], parts[1], ct);
+                if (meta is not null) repoMetas[kv.Key] = meta;
+            }
+        }
+
         // 5. 写 scanned_nodes
         int newCount = 0, updatedCount = 0, failCount = 0;
         var nowIso = DateTime.UtcNow.ToString("o");
@@ -134,12 +166,7 @@ public sealed class NodeListScanner
                 Author = author,
                 Description = description,
                 Status = string.IsNullOrEmpty(version) ? "pending" : "ok",
-                ScanMeta = new Dictionary<string, string>
-                {
-                    ["source"] = "nodelist",
-                    ["reference"] = reference,
-                    ["published_at"] = publishedAt ?? "",
-                },
+                ScanMeta = BuildScanMeta(key, reference, publishedAt, repoMetas),
                 LastScannedAt = nowIso,
                 Source = "nodelist",
                 RepositoryUrl = reference,
@@ -153,5 +180,37 @@ public sealed class NodeListScanner
         return new ScanResult(
             files.Count, nodes.Count, nodes.Count,
             newCount, updatedCount, 0, failCount, sw.Elapsed);
+    }
+
+    // v1.0.0.x feat/nodelist-directory:resolve custom host URL
+    private string ResolveCustomHost(string nodelistDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(_settings?.NodelistCustomHostUrl))
+            return _settings.NodelistCustomHostUrl;
+        return "";
+    }
+
+    // v1.0.0.x feat/nodelist-directory:merge scan_meta + repo metadata
+    private static Dictionary<string, string> BuildScanMeta(
+        string key, string reference, string? publishedAt,
+        Dictionary<string, NodeRepoQueryService.RepoMetadata> repoMetas)
+    {
+        var meta = new Dictionary<string, string>
+        {
+            ["source"] = "nodelist",
+            ["reference"] = reference,
+            ["published_at"] = publishedAt ?? "",
+        };
+        if (repoMetas.TryGetValue(key, out var repoMeta))
+        {
+            meta["repo_description"] = repoMeta.Description ?? "";
+            meta["repo_stars"] = repoMeta.Stars?.ToString() ?? "";
+            meta["repo_watchers"] = repoMeta.Watchers?.ToString() ?? "";
+            meta["repo_license"] = repoMeta.License ?? "";
+            meta["repo_default_branch"] = repoMeta.DefaultBranch ?? "";
+            meta["repo_updated_at"] = repoMeta.UpdatedAt?.ToString("o") ?? "";
+            meta["repo_host"] = repoMeta.Host;
+        }
+        return meta;
     }
 }

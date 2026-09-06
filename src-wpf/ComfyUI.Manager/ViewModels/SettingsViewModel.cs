@@ -38,7 +38,11 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeListScanner 依赖 ——
     // App.xaml.cs 注入共享实例(跟其他 service 同一份),测试 callers 不传也能跑
     // (CanExecute 返 false,Scan 按钮 disabled)。
+    // v1.0.0.x feat/nodelist-directory:NodeRepoQueryService — node repo metadata
+    private readonly NodeRepoQueryService? _nodeRepoQuery;
     private readonly NodeListScanner? _nodeListScanner;
+    // v1.0.0.x feat/nodelist-directory:NodelistSync 依赖 —— App.xaml.cs 注入共享实例。
+    private readonly NodelistSync? _nodelistSync;
     private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
@@ -136,7 +140,13 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         CommonNodeInstaller? commonNodeInstaller = null,
         // v1.0.0.x (2026-09-05) feat/nodelist-directory:扫描节点列表服务依赖 ——
         // 没传 CanExecute 返 false,Scan 按钮 disabled。App.xaml.cs 注入共享实例。
-        NodeListScanner? nodeListScanner = null)
+        NodeListScanner? nodeListScanner = null,
+        // v1.0.0.x feat/nodelist-directory:NodelistSync 注入
+        NodelistSync? nodelistSync = null,
+        // v1.0.0.x feat/nodelist-directory:EnvsRoot 用于 NodelistSync 扫描源根
+        string? envsRoot = null,
+        // v1.0.0.x feat/nodelist-directory:NodeRepoQueryService — node repo metadata
+        NodeRepoQueryService? nodeRepoQuery = null)
     {
         _repo = repo;
         _proxy = proxy;
@@ -148,6 +158,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         _commonNodeInstaller = commonNodeInstaller;
         // v1.0.0.x (2026-09-05) feat/nodelist-directory
         _nodeListScanner = nodeListScanner;
+        EnvsRoot = envsRoot ?? "";
+        _nodeRepoQuery = nodeRepoQuery;
+        _nodelistSync = nodelistSync;
         // 优先用 MainViewModel 注入的共享实例(同 App 内 Settings 状态统一)。
         // 没有注入时(单元测试)才从 disk 加载。T12:走 LoadWithRawJson 拿到磁盘 raw JSON,
         // 以便 Apply 触发老 template_comfyui_dir 字段迁移。生产 App.xaml.cs 也用同一路径。
@@ -993,6 +1006,11 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set { _settings.NodelistDirectory = value ?? ""; MarkDirty(nameof(NodelistDirectory)); RaisePropertyChanged(); }
     }
 
+    // v1.0.0.x feat/nodelist-directory:ComvyUI 安装根(VM 本地 state,不入 settings.inf)——
+    // Sync 时扫描 <EnvsRoot>/<env>/custom_nodes/ComfyUI-Manager/ 找 custom-node-list.json。
+    // 默认 program 父目录(类似 wizard 行为)。
+    [System.Text.Json.Serialization.JsonIgnore] public string EnvsRoot { get; set; } = "";
+
     // v1.0.0.x:Forge env 6 个 per-type 模型目录覆盖(checkpoints/loras/vae/
     // embeddings/hypernetworks/controlnet)。空 → 走 cmd_args.py 内置 default;
     // 非空 → ProcessLauncher.BuildStartCommand 直接拼对应 --*dir CLI arg 注入
@@ -1667,6 +1685,20 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             ScanStatusText = "NodeListScanner 未注入(测试环境?)";
             return;
         }
+        if (_nodelistSync is not null && !string.IsNullOrWhiteSpace(EnvsRoot) && Directory.Exists(EnvsRoot))
+        {
+            ScanStatusText = "先同步节点列表...";
+            try
+            {
+                var syncResult = await Task.Run(() => _nodelistSync.Sync(EnvsRoot, _settings.NodelistDirectory));
+                ScanStatusText = $"同步完成 — 共扫 {syncResult.FilesScanned} 个文件,最大 {syncResult.LargestFileEntries} entries → 拷到 {syncResult.DestinationPath}";
+            }
+            catch (Exception ex)
+            {
+                ScanStatusText = $"同步失败:{ex.Message}";
+                return;
+            }
+        }
         if (string.IsNullOrWhiteSpace(_settings.NodelistDirectory) || !Directory.Exists(_settings.NodelistDirectory))
         {
             ScanStatusText = "NodelistDirectory 不存在,请先在设置里配置";
@@ -1683,7 +1715,14 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         });
         try
         {
-            var result = await _nodeListScanner.ScanAsync(_settings.NodelistDirectory, progress);
+            var result = await _nodeListScanner.ScanAsync(
+                _settings.NodelistDirectory, progress,
+                _settings.NodelistHostToken,
+                _settings.NodelistHostKind,
+                _settings.NodelistHostKind == NodelistHostKind.GitHub
+                    ? "https://api.github.com" : _settings.NodelistCustomHostUrl,
+                _settings.NodelistHostToken,
+                _nodeRepoQuery);
             TotalNodes = result.UniqueNodes;
             ScanStatusText = $"扫描完成 — 共 {result.FilesScanned} 个文件,{result.UniqueNodes} 个节点";
             ScanStatusText += $" (新增 {result.NewNodes},更新 {result.UpdatedNodes},失败 {result.FetchFailures})";
