@@ -10,6 +10,16 @@ public enum CatalogViewMode
     Tile,
 }
 
+// v1.0.0.x (2026-09-05) feat/nodelist-directory:节点查询 host 类型。
+// 用户原话"2 选 1,采用下拉菜单:第一个直接选择 github,可以添加源,其他源,TOken"。
+// GitHub = api.github.com(默认,NodeRepoQueryService 拼 {host}/api/v1/repos/{author}/{repo})
+// Custom = 用户填自定义 URL(NodelistCustomHostUrl)
+public enum NodelistHostKind
+{
+    GitHub,
+    Custom,
+}
+
 // v0.6.11++ pip mirror:用户选 global pip 镜像(影响 ComfyUI/Manager 依赖安装,
 // BED 不受影响 — 走 pytorch.org)。string 持久化以便老 settings.json 容错:
 // 读时若枚举值不认识 → 回退 "official"(G3)。
@@ -51,6 +61,18 @@ public class Settings
     // 现在存 settings 持久化,如果 path 不存在(用户搬了文件夹)→ 二次启动时弹 wizard 重设。
     [JsonPropertyName("install_path")] public string InstallPath { get; set; } = "";
     [JsonPropertyName("template_python_dir")] public string TemplatePythonDir { get; set; } = "";
+    // v1.0.0.x (2026-09-05) feat/nodelist-directory: 节点列表目录 ——
+    // 包含 custom-node-list.json 文件的根目录(支持子目录递归)。
+    // 用户手动点"扫描节点列表"→ NodeListScanner 解析所有 json,提取 author/title,
+    // 调 GitHubVersionService.FetchVersionsAsync 拉 metadata,写 scanned_nodes 表。
+    [JsonPropertyName("nodelist_directory")] public string NodelistDirectory { get; set; } = "";
+    // v1.0.0.x (2026-09-05) feat/nodelist-directory:节点查询 host 选择 ——
+    // 用户原话"2 选 1,采用下拉菜单:第一个直接选择 github,可以添加源,其他源,TOken"。
+    // HostKind = GitHub (默认,api.github.com) 或 Custom(用户填 URL)。
+    // NodelistHostToken = 可选 Personal Access Token(给 API 走 Authorization header)。
+    [JsonPropertyName("nodelist_host_kind")] public NodelistHostKind NodelistHostKind { get; set; } = NodelistHostKind.GitHub;
+    [JsonPropertyName("nodelist_custom_host_url")] public string NodelistCustomHostUrl { get; set; } = "";
+    [JsonPropertyName("nodelist_host_token")] public string NodelistHostToken { get; set; } = "";
     // v1.0.0.x: 系统模板库目录 — 用户配置的共享模板根目录,模板管理页可从此处发现/管理内置模板。
     // 空 = 不启用(沿用 v1.0.0 默认行为)。非空 = 作为系统模板的统一存放根。
     [JsonPropertyName("system_template_library_dir")] public string SystemTemplateLibraryDir { get; set; } = "";

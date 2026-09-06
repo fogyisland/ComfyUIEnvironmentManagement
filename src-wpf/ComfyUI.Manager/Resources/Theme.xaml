@@ -34,6 +34,8 @@
     <converters:EnumEqualsVisibilityConverter x:Key="EnumEqualsVisibility" />
     <!-- v0.6.15.10:bool → "trueText|falseText",node-mgmt row details 用 "存在|无"。 -->
     <converters:BoolToTextConverter x:Key="BoolToText" />
+    <!-- v1.0.0.x (2026-09-05) feat/nodelist-directory:String → Bool 转换器 -->
+    <converters:StringNotEmptyToBoolConverter x:Key="StringNotEmptyToBool" />
     <views:BoolToBrushConverter x:Key="BoolToBrush" />
     <views:SeverityToBrushConverter x:Key="SeverityToBrush" />
     <views:NullToVisibilityConverter x:Key="NullToVisibility" />

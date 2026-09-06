@@ -207,6 +207,31 @@
                  ProcessLauncher.BuildStartCommand 读这里,下次 Forge env 启动生效。
                  JumpToForgePaths 依赖 x:Name="ForgePathsGroupBox" 必须保留(防御:
                  SettingsView.cs 注释也提到 FindName 找的就是这个 x:Name)。 -->
+            <!-- v1.0.0.x (2026-09-05) feat/nodelist-directory:节点列表目录配置 -->
+            <TextBlock x:Name="SectionNodelistDirectory" Text="节点列表目录" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                <TextBlock Text="含 custom-node-list.json 的根目录(递归)。点击扫描→NodeListScanner 解析所有 json + 拉 GitHub metadata + 写 scanned_nodes。"
+                           VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="600" />
+                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource WarningBrush}"
+                           ToolTip="尚未保存"
+                           Visibility="{Binding Dirty[NodelistDirectory], Converter={StaticResource BoolToVisibility}}"/>
+            </StackPanel>
+            <DockPanel Margin="0,2,0,4">
+                <Button DockPanel.Dock="Right" Content="浏览..." Click="BrowseNodelistDirectory"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0" />
+                <Button DockPanel.Dock="Right" Content="扫描" Click="ScanNodelistDirectory"
+                        Style="{StaticResource MaterialButton}" Margin="4,0,0,0"
+                        IsEnabled="{Binding NodelistDirectory, Converter={StaticResource StringNotEmptyToBool}}"/>
+                <TextBox Text="{Binding NodelistDirectory, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}" />
+            </DockPanel>
+            <TextBlock Text="{Binding ScanStatusText}"
+                       Foreground="{DynamicResource OnSurfaceVariantBrush}" FontSize="11"
+                       Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="600"
+                       HorizontalAlignment="Left" />
+
             <TextBlock x:Name="SectionForgePaths" Text="Forge 模型目录" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="Forge env 启动时通过 6 个 CLI 参数(--ckpt-dir / --vae-dir / --lora-dir / --embeddings-dir / --hypernetwork-dir / --controlnet-dir)指定的 per-type 路径。"
                        Foreground="Gray" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap" MaxWidth="600"
