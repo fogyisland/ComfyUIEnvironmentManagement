@@ -601,8 +601,8 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     /// </summary>
     public string GitHubToken
     {
-        get => _settings.GitHubToken;
-        set { _settings.GitHubToken = value ?? ""; MarkDirty(nameof(GitHubToken)); }
+        get => _settings.NodelistCustomToken;
+        set { _settings.NodelistCustomToken = value ?? ""; MarkDirty(nameof(GitHubToken)); }
     }
 
     /// <summary>
@@ -652,6 +652,34 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             MarkDirty(nameof(PipMirrorCustomUrl));
             RaisePropertyChanged();
         }
+    }
+    // v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom 互斥 RadioButton
+    // 选 GitHub 时 disable custom URL/token,反之亦然。
+    public bool IsGitHubSelected
+    {
+        get => _settings.NodelistHostKind == Models.NodelistHostKind.GitHub;
+        set
+        {
+            if (value) SetNodelistHostKind(Models.NodelistHostKind.GitHub);
+            RaisePropertyChanged();
+        }
+    }
+    public bool IsCustomSelected
+    {
+        get => _settings.NodelistHostKind == Models.NodelistHostKind.Custom;
+        set
+        {
+            if (value) SetNodelistHostKind(Models.NodelistHostKind.Custom);
+            RaisePropertyChanged();
+        }
+    }
+    private void SetNodelistHostKind(Models.NodelistHostKind kind)
+    {
+        if (_settings.NodelistHostKind == kind) return;
+        _settings.NodelistHostKind = kind;
+        MarkDirty(nameof(NodelistHostKind));
+        RaisePropertyChanged(nameof(IsGitHubSelected));
+        RaisePropertyChanged(nameof(IsCustomSelected));
     }
     public bool IsCustomPipMirrorSelected
         => string.Equals(_settings.PipMirror, "custom", System.StringComparison.OrdinalIgnoreCase);
@@ -1715,13 +1743,18 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         });
         try
         {
+            // v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom token 互斥 —
+            // 用户原话"和 github token 属于互斥"。按 host kind 选对应 token 字段。
+            var token = _settings.NodelistHostKind == Models.NodelistHostKind.GitHub
+                ? _settings.NodelistCustomToken
+                : _settings.NodelistCustomToken;
             var result = await _nodeListScanner.ScanAsync(
                 _settings.NodelistDirectory, progress,
-                _settings.NodelistHostToken,
+                token,
                 _settings.NodelistHostKind,
                 _settings.NodelistHostKind == NodelistHostKind.GitHub
                     ? "https://api.github.com" : _settings.NodelistCustomHostUrl,
-                _settings.NodelistHostToken,
+                token,
                 _nodeRepoQuery);
             TotalNodes = result.UniqueNodes;
             ScanStatusText = $"扫描完成 — 共 {result.FilesScanned} 个文件,{result.UniqueNodes} 个节点";

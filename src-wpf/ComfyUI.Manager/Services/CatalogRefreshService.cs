@@ -219,7 +219,7 @@ public class CatalogRefreshService
                     // return partial result + logger.Warn("version-rate-limit", ...)。
                     // 这里仍然保留 catch 防其他异常(网络/反序列化)。
                     versions = await _versionService.FetchVersionsAsync(
-                        nodes, _settings.GitHubToken, versionProgress,
+                        nodes, _settings.NodelistCustomToken, versionProgress,
                         rateLimitProgress, rateLimitState, _logger, ct);
                 }
                 catch (RateLimitException ex)

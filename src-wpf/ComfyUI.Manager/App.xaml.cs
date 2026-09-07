@@ -391,6 +391,10 @@ public partial class App : Application
         var nodeListScanner = new NodeListScanner(nodeRepo, githubVersionService, logger);
         // v1.0.0.x (2026-09-05) feat/nodelist-directory:NodeRepoQueryService
         var nodeRepoQuery = new NodeRepoQueryService(http);
+        // v1.0.0.x (2026-09-05) feat/nodelist-redesign:NodelistRepository + Downloader + Ingestor
+        var nodelistRepo = new NodelistRepository(dbFactory);
+        var nodelistDownloader = new NodelistDownloader(http);
+        var nodelistIngestor = new NodelistIngestor(nodelistRepo, nodeRepoQuery, logger);
         // v1.0.0 T11: 通用 template source updater — per-repo-URL, 给
         // TemplateManagementViewModel(ShowTemplateManagement)的每张模板卡
         // "更新源码" 按钮使用。构造时传 gitExe + gitProxy + logger(不是 gitRunner),

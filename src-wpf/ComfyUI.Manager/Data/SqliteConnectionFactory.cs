@@ -197,7 +197,46 @@ public sealed class SqliteConnectionFactory
                 scanned_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS ix_local_model_files_source_id
-                ON local_model_files(source_id);";
+                ON local_model_files(source_id);
+
+            -- v1.0.0.x (2026-09-05) feat/nodelist-redesign:节点列表目录
+            -- NodesList = 节点 owner+repo_name 列表(Nodesdetail FK 父)
+            -- Nodesdetail = 拉云端 /api/v1/repos/{owner}/{repo} 拿的 metadata
+            -- 一对多:N 个版本(latest + historical releases)
+            CREATE TABLE IF NOT EXISTS nodelist_entries (
+                author TEXT NOT NULL,
+                repo_name TEXT NOT NULL,
+                -- 首次入库时间,ISO 8601 UTC
+                first_seen_at TEXT NOT NULL,
+                -- 最近一次增量入库时间
+                last_ingested_at TEXT,
+                -- 是否在最新 json 中还在(source=json / source=user_added)
+                source TEXT NOT NULL DEFAULT 'json',
+                PRIMARY KEY (author, repo_name)
+            );
+            CREATE INDEX IF NOT EXISTS ix_nodelist_entries_repo
+                ON nodelist_entries(repo_name);
+            CREATE TABLE IF NOT EXISTS nodelist_details (
+                -- author/repo_name + version = 唯一
+                author TEXT NOT NULL,
+                repo_name TEXT NOT NULL,
+                version TEXT NOT NULL,
+                description TEXT,
+                stars INTEGER,
+                watchers INTEGER,
+                license TEXT,
+                default_branch TEXT,
+                updated_at TEXT,
+                raw_json TEXT,
+                host TEXT NOT NULL DEFAULT 'github',
+                fetched_at TEXT NOT NULL,
+                PRIMARY KEY (author, repo_name, version),
+                FOREIGN KEY (author, repo_name)
+                    REFERENCES nodelist_entries(author, repo_name)
+                    ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS ix_nodelist_details_entry
+                ON nodelist_details(author, repo_name);";
         cmd.ExecuteNonQuery();
 
         // 增量升级:旧 db 没有 base_python_path / python_version 列 → ALTER TABLE ADD COLUMN。

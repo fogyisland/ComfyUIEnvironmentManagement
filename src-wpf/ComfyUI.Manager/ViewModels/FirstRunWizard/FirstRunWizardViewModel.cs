@@ -32,6 +32,8 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
     /// <summary>ENVTemplate 目录:clone 下来的模板源码 (ComfyUI / Forge / OpenVoice 等)
     /// 存这。TemplateSourceUpdater 走它。</summary>
     private string _systemTemplateLibraryDir = "";
+    // v1.0.0.x (2026-09-05) feat/nodelist-redesign:wizard 写入 NodelistDirectory 默认值
+    private string _nodelistDirectory = "";
     /// <summary>Envs 目录:用户创建的 env 根目录,每个 env 一个子目录。
     /// EnvCreatorService.CreateAsync 在这创建 env。</summary>
     private string _envsDir = "";
@@ -176,6 +178,8 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         _installPath = projectRoot;
         // 默认 seed 路径镜像 SettingsDefaults.Apply 模式 (projectRoot/Kind/)
         _systemTemplateLibraryDir = System.IO.Path.Combine(projectRoot, "ENVTemplate") + System.IO.Path.DirectorySeparatorChar;
+        // v1.0.0.x feat/nodelist-redesign:wizard 默认写 nodelist 目录 = <installPath>/nodelist
+        _nodelistDirectory = System.IO.Path.Combine(projectRoot, "nodelist");
         _envsDir = System.IO.Path.Combine(projectRoot, "Envs") + System.IO.Path.DirectorySeparatorChar;
         _globalNodesDir = System.IO.Path.Combine(projectRoot, "Nodes") + System.IO.Path.DirectorySeparatorChar;
         _localNodeDirectory = System.IO.Path.Combine(projectRoot, "LocalNodes") + System.IO.Path.DirectorySeparatorChar;
@@ -345,6 +349,8 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         s.DefaultModelsDirectory = _defaultModelsDirectory;
         s.WorkflowsDirectory = _workflowsDirectory;
         s.LogDirectory = _logDirectory;
+        // v1.0.0.x (2026-09-05) feat/nodelist-redesign:首次启动自动配 NodelistDirectory
+        s.NodelistDirectory = _nodelistDirectory;
 
         // v1.0.0.x (2026-09-05) bug fix:用 _projectRoot 不是 _appDataDir 构造 LocalDataPaths ——
         // 用户原话"H:\ComfyUIManagement\config\config 路径似乎写入错误"。
