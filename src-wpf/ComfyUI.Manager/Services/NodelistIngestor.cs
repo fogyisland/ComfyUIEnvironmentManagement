@@ -5,6 +5,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks;
 using System.Linq;
 
 namespace ComfyUI.Manager.Services;
@@ -113,27 +114,59 @@ public sealed class NodelistIngestor
         var detailsWritten = 0;
         var detailsFailed = 0;
 
-        for (int i = 0; i < toIngest.Count; i++)
+        // v1.0.0.x (2026-09-05) feat/nodelist-directory:用户原话"平均提交的频率是一秒钟10个" —
+        // 用 System.Threading.Channels.Channel + SemaphoreSlim 限流 10 req/s,Task.WhenAll 并发 fetch。
+        // 流程:先把 toIngest 写到 channel 缓冲,后端 N=10 个 worker 拉 + 限流 100ms/req + upsert。
+        var rateLimit = new SemaphoreSlim(1, 1);
+        var lastRelease = DateTime.UtcNow;
+        var rateDelay = TimeSpan.FromMilliseconds(100);  // 1s/10req = 100ms/req
+
+        async Task<((int NewCount, int DetailFailed, int DetailWritten) Result, int Index)> ProcessOneAsync(
+            (string Author, string RepoName) kvp, int index, int total, int currentNew)
         {
             ct.ThrowIfCancellationRequested();
-            var kvp = toIngest[i];
             var author = kvp.Author;
             var repoName = kvp.RepoName;
-            progress?.Report(new IngestProgress(i + 1, toIngest.Count, author, repoName));
+            // 报告进度(主线程)— 用 Application.Current.Dispatcher 跨线程
+            try
+            {
+                if (System.Windows.Application.Current?.Dispatcher is { } d)
+                {
+                    d.Invoke(() => progress?.Report(new IngestProgress(index + 1, total, author, repoName)));
+                }
+            }
+            catch { }
 
-            // 3a. upsert entry(轻量级先写,失败回滚)
+            // 限流:100ms 释放一个信号量槽(> 0 时等待)
+            await rateLimit.WaitAsync(ct);
+            try
+            {
+                var sinceLast = DateTime.UtcNow - lastRelease;
+                if (sinceLast < rateDelay)
+                {
+                    await Task.Delay(rateDelay - sinceLast, ct);
+                }
+                lastRelease = DateTime.UtcNow;
+            }
+            finally
+            {
+                rateLimit.Release();
+            }
+
+            int localNew = 0, localDetail = 0, localDetailFailed = 0;
+            // 3a. upsert entry
             try
             {
                 _repo.UpsertEntry(author, repoName, source: "json");
-                newCount++;
+                localNew = 1;
             }
             catch (Exception ex)
             {
                 _logger?.Warn("nodelist-ingest", $"entry upsert failed for {author}/{repoName}: {ex.Message}");
-                continue;
+                return ((localNew, localDetail, localDetailFailed), currentNew + localNew);
             }
 
-            // 3b. 拉云端 metadata → upsert detail
+            // 3b. 拉云端 metadata
             try
             {
                 var meta = await _queryService.FetchRepoMetadataAsync(host, token, author, repoName, ct);
@@ -147,18 +180,35 @@ public sealed class NodelistIngestor
                         meta.License, meta.DefaultBranch,
                         meta.UpdatedAt?.ToString("o"), meta.RawJson, meta.Host,
                         DateTime.UtcNow.ToString("o")));
-                    detailsWritten++;
+                    localDetail = 1;
                 }
                 else
                 {
-                    detailsFailed++;
+                    localDetailFailed = 1;
                 }
             }
             catch (Exception ex)
             {
                 _logger?.Warn("nodelist-ingest", $"detail fetch failed for {author}/{repoName}: {ex.Message}");
-                detailsFailed++;
+                localDetailFailed = 1;
             }
+            return ((localNew, localDetail, localDetailFailed), currentNew + localNew);
+        }
+
+        // 10 个并发 worker 拉数据
+        var tasks = new List<Task<((int, int, int), int)>>();
+        var currentNew = 0;
+        for (int i = 0; i < toIngest.Count; i++)
+        {
+            tasks.Add(ProcessOneAsync(toIngest[i], i, toIngest.Count, currentNew));
+        }
+        var results = await Task.WhenAll(tasks);
+        foreach (var tup in results)
+        {
+            var r = tup.Item1;
+            newCount += r.Item1;
+            detailsWritten += r.Item2;
+            detailsFailed += r.Item3;
         }
 
         sw.Stop();

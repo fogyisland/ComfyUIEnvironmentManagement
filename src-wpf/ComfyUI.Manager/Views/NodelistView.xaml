@@ -25,6 +25,10 @@
                     <Button Content="⬇ 下载并入库" Margin="0,0,8,0"
                             Style="{StaticResource MaterialButton}"
                             Command="{Binding DownloadAndIngestCommand}"/>
+                    <Button Content="⤴ 增量入库" Margin="0,0,8,0"
+                            Style="{StaticResource MaterialButton}"
+                            Command="{Binding IngestCommand}"
+                            ToolTip="不下载,只调 NodeRepoQueryService 拉已下载的 json 文件中节点 metadata"/>
                 </StackPanel>
             </DockPanel>
         </Border>

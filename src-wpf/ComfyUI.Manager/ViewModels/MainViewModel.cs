@@ -324,6 +324,14 @@ public class MainViewModel : ViewModelBase
             _settings.DefaultModelsDirectory = disk.DefaultModelsDirectory;
             _settings.WorkflowsDirectory = disk.WorkflowsDirectory;
             _settings.LogDirectory = disk.LogDirectory;
+            // v1.0.0.x (2026-09-05) feat/nodelist-redesign:同步 wizard 写的新字段
+            _settings.NodelistDirectory = disk.NodelistDirectory;
+            _settings.NodelistHostKind = disk.NodelistHostKind;
+            _settings.NodelistCustomHostUrl = disk.NodelistCustomHostUrl;
+
+            _settings.NodelistCustomToken = disk.NodelistCustomToken;
+            _settings.RefreshFetchVersions = disk.RefreshFetchVersions;
+            _settings.RefreshFetchMetadata = disk.RefreshFetchMetadata;
 
             // 通知 SettingsViewModel 重新读 settings
             _settingsViewModel?.ReloadFromSettings();

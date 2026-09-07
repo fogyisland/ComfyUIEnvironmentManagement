@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -16,14 +17,14 @@ namespace ComfyUI.Manager.Services;
 /// 其中这里的 Your-host 是在设置中进行 2 选 1,采用下拉菜单:
 /// 第一个直接选择 github,可以添加源,其他源,TOken"。
 ///
-/// 实现:
+/// 实施:
 /// - Host 来自 Settings.NodelistHostKind:
 ///   - GitHub → https://api.github.com
 ///   - Custom → Settings.NodelistCustomHostUrl
-/// - Token 来自 Settings.NodelistHostToken,走 Authorization: Bearer {token} Header
+/// - Token 走 X-API-Key Header(用户新规范,不是 Authorization: Bearer)
 /// - Path: GET {host}/api/v1/repos/{author}/{repo}
-///   - GitHub:返回完整 repo JSON(描述/星数/license/default_branch/updated_at 等)
-///   - 自定义 host:可能不遵循 GitHub v3 API,容忍性解析(描述/更新时间尽力取)
+/// - 缓存命中复用,未命中排队刷新同步等待
+/// - 限流:每 key 50,000 / 小时(用户新规范)
 /// - 返回 RepoMetadata 记录
 /// </summary>
 public sealed class NodeRepoQueryService
@@ -41,49 +42,102 @@ public sealed class NodeRepoQueryService
         string Host);
 
     private readonly HttpClient _http;
+    // 缓存 key = (host, owner, repo); value = metadata or null(404)
+    private readonly ConcurrentDictionary<string, RepoMetadata?> _cache = new();
+
+    // 限流:每 host 50,000 / 小时(简化 per-host counter 而非 per-key)
+    private static readonly ConcurrentDictionary<string, DateTime> _lastReset = new();
+    private static readonly ConcurrentDictionary<string, int> _counter = new();
+    private const int HourlyLimit = 50000;
 
     public NodeRepoQueryService(HttpClient http)
     {
         _http = http;
     }
 
+    private static string CacheKey(string host, string owner, string repo)
+        => $"{host.TrimEnd('/')}|{owner.ToLowerInvariant()}|{repo.ToLowerInvariant()}";
+
     /// <summary>
-    /// GET {host}/api/v1/repos/{owner}/{repo} 拿 metadata。
+    /// GET {host}/api/v1/repos/{owner}/{repo} 拿 metadata(X-API-Key header)。
+    /// 缓存命中复用;未命中排队 fetch(同一 host 串行避免限流)。
     /// </summary>
     public async Task<RepoMetadata?> FetchRepoMetadataAsync(
-        string host, string? token, string owner, string repo, CancellationToken ct = default)
+        string host, string? apiKey, string owner, string repo,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(owner) ||
             string.IsNullOrWhiteSpace(repo))
         {
             return null;
         }
-        var url = $"{host.TrimEnd('/')}/api/v1/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}";
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        if (!string.IsNullOrWhiteSpace(token))
+        var key = CacheKey(host, owner, repo);
+        if (_cache.TryGetValue(key, out var cached))
         {
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
+            return cached;  // 命中(也含 null = 404 缓存避免重复 404)
         }
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        req.Headers.UserAgent.ParseAdd("ComfyUIManager-NodeRepoQuery/1.0");
-
+        // 同一 host 串行(避免限流)
+        var gate = _hostGates.GetOrAdd(host.TrimEnd('/'), _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
         try
         {
-            using var resp = await _http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode) return null;
-            var raw = await resp.Content.ReadAsStringAsync(ct);
-            return Parse(owner, repo, host, raw);
+            // 双重检查(其他 awaiter 拿过)
+            if (_cache.TryGetValue(key, out cached)) return cached;
+
+            if (!CheckRateLimit(host)) return null;
+
+            var url = $"{host.TrimEnd('/')}/api/v1/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            req.Headers.UserAgent.ParseAdd("ComfyUIManager-NodeRepoQuery/1.0");
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                req.Headers.Add("X-API-Key", apiKey.Trim());
+            }
+            try
+            {
+                using var resp = await _http.SendAsync(req, ct);
+                _counter.AddOrUpdate(host.TrimEnd('/'), 1, (_, n) => n + 1);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    // 404 缓存 null 避免重复 404
+                    _cache[key] = null;
+                    return null;
+                }
+                var raw = await resp.Content.ReadAsStringAsync(ct);
+                var meta = Parse(owner, repo, host, raw);
+                _cache[key] = meta;
+                return meta;
+            }
+            catch
+            {
+                // 异常不缓存
+                return null;
+            }
         }
-        catch
+        finally
         {
-            return null;
+            gate.Release();
         }
     }
 
-    /// <summary>
-    /// 解析 GitHub v3 /api/v1/repos response。Custom host 可能不遵循完整 schema,
-    /// 容错解析(字段缺失返 null)。
-    /// </summary>
+    // 简易限流(每 host 50000/小时,简单计数 + 1小时 reset)
+    private static bool CheckRateLimit(string host)
+    {
+        var h = host.TrimEnd('/');
+        var now = DateTime.UtcNow;
+        if (_lastReset.TryGetValue(h, out var last) && (now - last).TotalHours < 1)
+        {
+            var count = _counter.GetOrAdd(h, 0);
+            return count < HourlyLimit;
+        }
+        _lastReset[h] = now;
+        _counter[h] = 0;
+        return true;
+    }
+
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _hostGates = new();
+
     private static RepoMetadata? Parse(string owner, string repo, string host, string raw)
     {
         try

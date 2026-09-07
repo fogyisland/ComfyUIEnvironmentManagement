@@ -79,6 +79,9 @@ public sealed class NodelistViewModel : ViewModelBase
         }
     }
     public bool IsNotBusy => !_isBusy;
+    // v1.0.0.x feat/nodelist-directory:增量入库 command
+    public RelayCommand IngestCommand { get; }
+
 
     public RelayCommand DownloadAndIngestCommand { get; }
 
@@ -137,6 +140,40 @@ public sealed class NodelistViewModel : ViewModelBase
                     License = d.License ?? "",
                 });
             }
+        }
+    }
+
+    // v1.0.0.x feat/nodelist-directory:增量入库(只调 API 不下载)
+    private async Task IngestOnlyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NodelistDirectory)) return;
+        var nodelistDir = System.IO.Path.Combine(NodelistDirectory, "nodelist");
+        var jsonFile = System.IO.Path.Combine(nodelistDir, "custom-node-list.json");
+        if (!System.IO.File.Exists(jsonFile))
+        {
+            StatusText = $"文件不存在: {jsonFile} — 请先点『下载并入库』";
+            return;
+        }
+        _isBusy = true;
+        StatusText = "增量入库中...";
+        try
+        {
+            // 调 IngestAsync(forceFull=false 增量),token 来自 Settings.NodelistCustomToken
+            // 在 Ingestor 内计算 host(从 NodelistHostKind)+ token
+            var host = Host;
+            var token = Token;
+            var result = await _ingestor.IngestAsync(
+                jsonFile, host, token, forceFull: false, progress: null, ct: default);
+            StatusText = $"增量入库完成 — 扫 {result.EntriesScanned} 个文件,{result.EntriesScanned} 个节点(新增 {result.EntriesNew},更新 {result.EntriesSkipped},失败 {result.DetailsFailed})";
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"入库失败:{ex.Message}";
+        }
+        finally
+        {
+            _isBusy = false;
         }
     }
 
