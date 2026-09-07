@@ -140,6 +140,13 @@ public class FirstRunWizardViewModel : INotifyPropertyChanged
         set { _logDirectory = value ?? ""; OnPropertyChanged(); }
     }
 
+    // v1.0.0.x (2026-09-05) feat/nodelist-redesign:节点列表目录
+    public string NodelistDirectory
+    {
+        get => _nodelistDirectory;
+        set { _nodelistDirectory = value ?? ""; OnPropertyChanged(); }
+    }
+
     public RelayCommand NextCommand { get; }
     public RelayCommand BackCommand { get; }
     public RelayCommand FinishCommand { get; }

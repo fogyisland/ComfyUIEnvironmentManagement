@@ -141,6 +141,16 @@ public partial class FirstRunWizardWindow : Window
         if (dlg.ShowDialog(this) == true) _vm.WorkflowsDirectory = dlg.FolderName;
     }
 
+    private void OnBrowseNodelistDirectory(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog
+        {
+            Title = "选择 节点列表目录 (含 custom-node-list.json 的根目录,扫描入库用)",
+            InitialDirectory = DirToBrowse(_vm.NodelistDirectory),
+        };
+        if (dlg.ShowDialog(this) == true) _vm.NodelistDirectory = dlg.FolderName;
+    }
+
     private void OnBrowseLogDirectory(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFolderDialog
