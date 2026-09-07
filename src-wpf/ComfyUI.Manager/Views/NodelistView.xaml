@@ -1,0 +1,73 @@
+<UserControl x:Class="ComfyUI.Manager.Views.NodelistView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
+             d:DataContext="{d:DesignInstance Type=vm:NodelistViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Padding="12,8"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="节点列表目录(NodesList / Nodesdetail)"
+                           FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{DynamicResource OnSurfaceVariantBrush}"
+                               Text="{Binding StatusText}" FontSize="11"/>
+                    <Button Content="⬇ 下载并入库" Margin="0,0,8,0"
+                            Style="{StaticResource MaterialButton}"
+                            Command="{Binding DownloadAndIngestCommand}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <DataGrid Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
+                  ItemsSource="{Binding Entries}" Margin="8"
+                  AlternatingRowBackground="{DynamicResource SurfaceVariantBrush}"
+                  Background="{DynamicResource BackgroundBrush}"
+                  Foreground="{DynamicResource OnSurfaceBrush}"
+                  BorderBrush="{DynamicResource OutlineBrush}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="作者" Binding="{Binding Author}" Width="160"/>
+                <DataGridTextColumn Header="仓库名" Binding="{Binding RepoName}" Width="200"/>
+                <DataGridTextColumn Header="首次入库" Binding="{Binding FirstSeenAt}" Width="180"/>
+                <DataGridTextColumn Header="最近入库" Binding="{Binding LastIngestedAt}" Width="180"/>
+                <DataGridTextColumn Header="来源" Binding="{Binding Source}" Width="100"/>
+                <DataGridTemplateColumn Header="详细版本" Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ItemsControl ItemsSource="{Binding DataContext.Details,
+                                RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="0,0,0,1" Padding="4,2">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Version}" FontWeight="Bold" Margin="0,0,8,0"/>
+                                                <TextBlock Text="⭐" Margin="0,0,4,0"/>
+                                                <TextBlock Text="{Binding Stars}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding License}" Margin="0,0,8,0" Foreground="{DynamicResource OnSurfaceVariantBrush}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

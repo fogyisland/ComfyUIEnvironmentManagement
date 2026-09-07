@@ -254,6 +254,17 @@
                         系统模板是 git clone 下来的 ComfyUI / Forge / OpenVoice 等源码;日志目录是 env-start 状态面板的日志文件父目录。
                     </TextBlock>
 
+                    <!-- v1.0.0.x (2026-09-05) feat/nodelist-redesign:节点列表目录 -->
+                    <TextBlock Text="NodelistDirectory" FontWeight="SemiBold"/>
+                    <TextBlock Text="含 custom-node-list.json 的根目录。下载的默认仓库 + 增量入库的源都在这里。"
+                               Style="{StaticResource PathHintStyle}"/>
+                    <DockPanel Margin="0,0,0,4">
+                        <Button DockPanel.Dock="Right" Content="浏览..."
+                                Margin="6,0,0,0" Padding="10,4"
+                                Click="OnBrowseNodelistDirectory"/>
+                        <TextBox Text="{Binding NodelistDirectory, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource MaterialTextBox}"/>
+                    </DockPanel>
                     <TextBlock Text="SystemTemplateLibraryDir" FontWeight="SemiBold"/>
                     <TextBlock Text="clone 下来的模板源码(ComfyUI / Forge / OpenVoice 等)存这。TemplateSourceUpdater 走它。"
                                Style="{StaticResource PathHintStyle}"/>

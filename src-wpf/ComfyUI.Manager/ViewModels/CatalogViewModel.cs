@@ -147,7 +147,7 @@ public class CatalogViewModel : ViewModelBase
         try
         {
             var result = await _versionService!.FetchVersionsAsync(
-                [(entry.Id, refUrl)], _settings.GitHubToken, ct: ct);
+                [(entry.Id, refUrl)], _settings.NodelistCustomToken, ct: ct);
             // 用户已切换到别的节点 → 丢弃本次结果
             if (ct.IsCancellationRequested || _selected?.Id != entry.Id) return;
             if (result.TryGetValue(entry.Id, out var versions) && versions.Count > 0)

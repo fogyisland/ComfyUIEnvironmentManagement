@@ -200,8 +200,8 @@ public class GitHubCatalogMetadataService
             try
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                if (!string.IsNullOrEmpty(_settings.GitHubToken))
-                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.GitHubToken);
+                if (!string.IsNullOrEmpty(_settings.NodelistCustomToken))
+                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.NodelistCustomToken);
                 req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
                 using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
 

@@ -152,21 +152,7 @@
                        Foreground="Gray" FontSize="11" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="480"
                        HorizontalAlignment="Left" />
 
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                <TextBlock Text="GitHub Token(可选 — 配置后刷新 catalog 时会同步拉取各节点最新版本号,留空则不拉)"
-                           TextWrapping="Wrap" VerticalAlignment="Center"/>
-                <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                           VerticalAlignment="Center"
-                           Foreground="{DynamicResource WarningBrush}"
-                           ToolTip="尚未保存"
-                           Visibility="{Binding Dirty[GitHubToken], Converter={StaticResource BoolToVisibility}}"/>
-            </StackPanel>
-            <PasswordBox x:Name="GitHubTokenBox" Width="480" HorizontalAlignment="Left"
-                         PasswordChanged="OnGitHubTokenChanged" />
-            <TextBlock Text="仅保存在本地 settings.json,不会上传到任何服务器"
-                       Foreground="Gray" FontSize="11" Margin="0,2,0,0" />
-
-            <!-- v0.6.11 T3: 开关 gate — 关闭 = 不拉节点版本号(默认,向后兼容);
+<!-- v0.6.11 T3: 开关 gate — 关闭 = 不拉节点版本号(默认,向后兼容);
                  开启 = 即使没配 token 也尝试拉 GitHub releases(无鉴权 60/h 限流,
                  失败 fail-soft,不抛)。这两个 property 互不约束:开关决定"拉不拉",
                  token 决定"是否鉴权"。 -->
@@ -231,6 +217,67 @@
                        Foreground="{DynamicResource OnSurfaceVariantBrush}" FontSize="11"
                        Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="600"
                        HorizontalAlignment="Left" />
+
+            <!-- v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom 互斥 token —
+                 用户原话"和 github token 属于互斥"。用单一 GroupName RadioButton 让用户
+                 2 选 1:GitHub = 默认(api.github.com + NodelistGitHubToken) 或
+                 Custom(自定义 URL + NodelistCustomToken)。选 GitHub 时 disable custom 字段,
+                 选 Custom 时 disable github 字段。IsEnabled 双向绑定 host kind 互斥。 -->
+            <StackPanel Margin="0,12,0,4">
+                <TextBlock Text="节点查询源(2 选 1)" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <RadioButton Content="GitHub(api.github.com)"
+                                 GroupName="NodelistHostKind"
+                                 IsChecked="{Binding IsGitHubSelected, Mode=TwoWay}"
+                                 Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <RadioButton Content="自定义服务器"
+                                 GroupName="NodelistHostKind"
+                                 IsChecked="{Binding IsCustomSelected, Mode=TwoWay}"
+                                 Margin="0,0,12,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <!-- v1.0.0.x (2026-09-05) feat/nodelist-redesign:刷新拉取控制 ——
+                     用户原话"去掉 github token 这个内容提示刷新时候拉取节点版本,
+                     里面有两个复选框:刷新时候拉取节点版本 + 刷新时候拉取 github 元数据 license/stars/tags/readme" -->
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                    <CheckBox Content="刷新时拉取节点版本" Margin="0,0,16,0" VerticalAlignment="Center"
+                              IsChecked="{Binding RefreshFetchVersions, Mode=TwoWay}"/>
+                    <CheckBox Content="刷新时拉取 GitHub 元数据(license/stars/tags/readme)" VerticalAlignment="Center"
+                              IsChecked="{Binding RefreshFetchMetadata, Mode=TwoWay}"/>
+                </StackPanel>
+                <TextBlock Text="GitHub Token(只在 GitHub 时用)" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[NodelistGitHubToken], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <TextBox Text="{Binding NodelistGitHubToken, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}"
+                         IsEnabled="{Binding IsGitHubSelected}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                    <TextBlock Text="自定义服务器 URL" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[NodelistCustomHostUrl], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <TextBox Text="{Binding NodelistCustomHostUrl, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}"
+                         IsEnabled="{Binding IsCustomSelected}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                    <TextBlock Text="自定义服务器 Token" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[NodelistCustomToken], Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+                <TextBox Text="{Binding NodelistCustomToken, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}"
+                         IsEnabled="{Binding IsCustomSelected}"/>
+            </StackPanel>
 
             <TextBlock x:Name="SectionForgePaths" Text="Forge 模型目录" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />
             <TextBlock Text="Forge env 启动时通过 6 个 CLI 参数(--ckpt-dir / --vae-dir / --lora-dir / --embeddings-dir / --hypernetwork-dir / --controlnet-dir)指定的 per-type 路径。"

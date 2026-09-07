@@ -56,6 +56,13 @@ public class MainViewModel : ViewModelBase
     private readonly NodelistSync? _nodelistSync;
     // v1.0.0.x feat/nodelist-directory:NodeRepoQueryService — node repo metadata
     private readonly NodeRepoQueryService? _nodeRepoQuery;
+    // v1.0.0.x (2026-09-05) feat/nodelist-redesign
+    private readonly NodelistRepository? _nodelistRepo;
+    private readonly NodelistDownloader? _nodelistDownloader;
+    private readonly NodelistIngestor? _nodelistIngestor;
+    // v1.0.0.x feat/nodelist-redesign:cache 的 NodelistViewModel + View
+    private NodelistViewModel? _nodelistViewModel;
+    private NodelistView? _nodelistView;
     private readonly EnvCreatorService _envCreator;
     private readonly EnvDeleterService _envDeleter;
     private readonly SettingsRepository _settingsRepo;
@@ -393,6 +400,8 @@ public class MainViewModel : ViewModelBase
     public RelayCommand ShowTemplateManagementCommand { get; }  // v1.0.0 T8: 模板管理
     public RelayCommand ShowLocalModelsCommand { get; }       // v1.0.0 T3: 本地模型
     public RelayCommand ShowSettingsCommand { get; }
+    // v1.0.0.x (2026-09-05) feat/nodelist-redesign
+    public RelayCommand ShowNodelistViewCommand { get; }
     public RelayCommand OpenBulkUpdateCommand { get; }
     public RelayCommand ShowSystemStatusCommand { get; }
     public RelayCommand SaveUiPreferencesCommand { get; }
@@ -496,6 +505,10 @@ public class MainViewModel : ViewModelBase
         NodelistSync? nodelistSync = null,
         // v1.0.0.x feat/nodelist-directory:NodeRepoQueryService — node repo metadata
         NodeRepoQueryService? nodeRepoQuery = null,
+        // v1.0.0.x feat/nodelist-redesign
+        NodelistRepository? nodelistRepo = null,
+        NodelistDownloader? nodelistDownloader = null,
+        NodelistIngestor? nodelistIngestor = null,
         // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 透传给 SettingsViewModel。
         // 共享 App.xaml.cs 已构造的实例(同 gitRunner + gitProxy + logger),避免重复创建。
         CommonNodeInstaller? commonNodeInstaller = null,
@@ -544,6 +557,9 @@ public class MainViewModel : ViewModelBase
         _nodeListScanner = nodeListScanner;
         _nodelistSync = nodelistSync;
         _nodeRepoQuery = nodeRepoQuery;
+        _nodelistRepo = nodelistRepo;
+        _nodelistDownloader = nodelistDownloader;
+        _nodelistIngestor = nodelistIngestor;
         _commonNodeInstaller = commonNodeInstaller;
         // v1.0.0.x:Forge BED installer — 透传给 EnvListVM(见 _forgeBaseEnvInstaller 字段注释)。
         _forgeBaseEnvInstaller = forgeBaseEnvInstaller;
@@ -580,6 +596,8 @@ public class MainViewModel : ViewModelBase
         ShowModelsCommand = new RelayCommand(_ => ShowModels());
         // v1.0.0 T8:模板管理命令。ShowTemplateManagement 懒构造 TemplateManagementViewModel。
         ShowTemplateManagementCommand = new RelayCommand(_ => ShowTemplateManagement());
+        // v1.0.0.x feat/nodelist-redesign
+        ShowNodelistViewCommand = new RelayCommand(_ => ShowNodelistView());
         // v1.0.0 T3:本地模型命令。ShowLocalModels 懒构造 LocalModelsViewModel + 触发 Initialize。
         ShowLocalModelsCommand = new RelayCommand(_ => ShowLocalModels());
         ShowSettingsCommand = new RelayCommand(_ => ShowSettings());
@@ -822,6 +840,27 @@ public class MainViewModel : ViewModelBase
                 : TemplateManagementViewFactory(_templateManagementViewModel);
         }
         CurrentView = _templateManagementView;
+    }
+
+    /// <summary>v1.0.0.x feat/nodelist-redesign:打开节点列表目录 view ——
+    /// 显示 NodesList + Nodesdetail,DownloadAndIngestCommand 一键下载+入库。</summary>
+    private void ShowNodelistView()
+    {
+        if (_nodelistViewModel is null)
+        {
+            _nodelistViewModel = new NodelistViewModel(
+                _nodelistDownloader!, _nodelistIngestor!, _nodelistRepo!);
+            _nodelistViewModel.NodelistDirectory = _settings!.NodelistDirectory;
+            // v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom token 互斥 —
+            // 用户原话"和 github token 属于互斥"。GitHub kind 用 NodelistGitHubToken,
+            // Custom kind 用 NodelistCustomToken(老的 NodelistHostToken 自动迁移)。
+            _nodelistViewModel.Host = _settings.NodelistHostKind == NodelistHostKind.GitHub
+                ? "https://api.github.com" : _settings.NodelistCustomHostUrl;
+            _nodelistViewModel.Token = _settings.NodelistHostKind == NodelistHostKind.GitHub
+                ? _settings.NodelistCustomToken
+                : _settings.NodelistCustomToken;
+        }
+        CurrentView = new NodelistView { DataContext = _nodelistViewModel };
     }
 
     // v1.0.0 T3: 本地模型页 — 侧栏新 entry "本地模型"。跟 ShowTemplateManagement
