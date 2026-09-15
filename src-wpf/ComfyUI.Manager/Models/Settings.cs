@@ -43,7 +43,11 @@ public class Settings
 {
     // —— 基础 / 显示 ——
     [JsonPropertyName("theme")] public string Theme { get; set; } = "material_purple";
-    [JsonPropertyName("theme_mode")] public string ThemeMode { get; set; } = "dark";
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43d):默认进入风格为白色 —
+    // 用户原话"默认进入风格为白色"。原默认 "dark" 偏暗,白色对节点市场首次 seed 后看
+    // StatusText / SelectedEntryHeader 等深色字色更友好。已有 settings.inf 不受影响(读的是
+    // 磁盘值,不是 default),只有全新装机或没设过 ThemeMode 的用户会看到 light。
+    [JsonPropertyName("theme_mode")] public string ThemeMode { get; set; } = "light";
     [JsonPropertyName("language")] public string Language { get; set; } = "zh_CN";
     [JsonPropertyName("catalog_auto_refresh")] public bool CatalogAutoRefresh { get; set; }
     [JsonPropertyName("catalog_cache_ttl_minutes")] public int CatalogCacheTtlMinutes { get; set; } = 60;
