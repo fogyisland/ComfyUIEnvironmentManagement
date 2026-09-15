@@ -3,8 +3,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Material You Dark -->
-    <Color x:Key="PrimaryColor">#BB86FC</Color>
-    <Color x:Key="PrimaryVariantColor">#9965E0</Color>
+    <!-- Material You Dark ——
+         v1.0.0.x (2026-09-15) T43g+user 「紫色按钮太难看」反馈:
+         Dark 默认 #BB86FC 淡紫改成中性白(去色调化)。
+         Primary=#E6E1E5 浅白(跟 InverseOnSurfaceBrush 同色),
+         PrimaryVariant=#C5C0CF hover 状态(深一档,仍浅灰系)。 -->
+    <Color x:Key="PrimaryColor">#E6E1E5</Color>
+    <Color x:Key="PrimaryVariantColor">#C5C0CF</Color>
     <Color x:Key="SecondaryColor">#03DAC6</Color>
     <Color x:Key="SurfaceColor">#2D2D2D</Color>
     <Color x:Key="BackgroundColor">#1E1E1E</Color>

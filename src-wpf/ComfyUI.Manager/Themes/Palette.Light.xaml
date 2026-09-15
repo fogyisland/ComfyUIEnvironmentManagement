@@ -2,9 +2,14 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Material You Light -->
-    <Color x:Key="PrimaryColor">#6750A4</Color>
-    <Color x:Key="PrimaryVariantColor">#4F378B</Color>
+    <!-- Material You Light ——
+         v1.0.0.x (2026-09-15) T43g+user 「紫色按钮太难看」反馈:
+         Material You 默认 #6750A4 深紫色 MaterialButton Background 太扎眼,
+         改成中性黑(去色调化)— 跟 OnSurfaceColor=#1C1B1F 同色,
+         让按钮变纯黑控件,Material Design Monochrome 风格。
+         PrimaryVariant=#2D2D2D 微调 hover 状态(深一档,仍黑灰系)。 -->
+    <Color x:Key="PrimaryColor">#1C1B1F</Color>
+    <Color x:Key="PrimaryVariantColor">#2D2D2D</Color>
     <Color x:Key="SecondaryColor">#625B71</Color>
     <Color x:Key="SurfaceColor">#FFFBFE</Color>
     <Color x:Key="BackgroundColor">#F6F1FB</Color>
