@@ -178,8 +178,17 @@ public sealed class NodelistIngestor
                     _repo.UpsertDetail(new NodelistRepository.Detail(
                         author, repoName, version,
                         meta.Description, meta.Stars, meta.Watchers,
+                        // v1.0.0.x T43f+user:6 个新字段(forks/pushed_at/html_url/language/open_issues/topics)
+                        // 让右边详情能展开显示完整仓库信息(用户原话"右边需要按照更加详细的内容列出")。
+                        meta.Forks,
                         meta.License, meta.DefaultBranch,
-                        meta.UpdatedAt?.ToString("o"), meta.RawJson, meta.Host,
+                        meta.UpdatedAt?.ToString("o"),
+                        meta.PushedAt?.ToString("o"),
+                        meta.HtmlUrl,
+                        meta.Language,
+                        meta.OpenIssues,
+                        meta.Topics,
+                        meta.RawJson, meta.Host,
                         DateTime.UtcNow.ToString("o")));
                     localDetail = 1;
                 }

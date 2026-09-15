@@ -224,9 +224,17 @@ public sealed class SqliteConnectionFactory
                 description TEXT,
                 stars INTEGER,
                 watchers INTEGER,
+                -- v1.0.0.x T43f+user:右边详情加更多字段。forks / pushed_at / html_url / language /
+                -- open_issues / topics(逗号分隔 string)都来自 raw_json。
+                forks INTEGER,
                 license TEXT,
                 default_branch TEXT,
                 updated_at TEXT,
+                pushed_at TEXT,
+                html_url TEXT,
+                language TEXT,
+                open_issues INTEGER,
+                topics TEXT,
                 raw_json TEXT,
                 host TEXT NOT NULL DEFAULT 'github',
                 fetched_at TEXT NOT NULL,
@@ -270,6 +278,16 @@ public sealed class SqliteConnectionFactory
         // v0.6.11:scanned_nodes.source(老 db backfill 为 'env';新唯一索引支持 download 行)
         EnsureColumn(conn, "scanned_nodes", "source", "TEXT NOT NULL DEFAULT 'env'");
         // v0.6.15.1 hotfix:节点 git URL(本地下载行才有,env 装行 NULL 即可)
+        EnsureColumn(conn, "scanned_nodes", "repository_url", "TEXT");
+
+        // v1.0.0.x T43f+user:右边详情加更多字段(Forks/PushedAt/HtmlUrl/Language/OpenIssues/Topics)。
+        // 老 DB backfill:新列都允许 NULL,直接 ADD COLUMN 即可,空值让 UI 走"未知"分支。
+        EnsureColumn(conn, "nodelist_details", "forks", "INTEGER");
+        EnsureColumn(conn, "nodelist_details", "pushed_at", "TEXT");
+        EnsureColumn(conn, "nodelist_details", "html_url", "TEXT");
+        EnsureColumn(conn, "nodelist_details", "language", "TEXT");
+        EnsureColumn(conn, "nodelist_details", "open_issues", "INTEGER");
+        EnsureColumn(conn, "nodelist_details", "topics", "TEXT");
         EnsureColumn(conn, "scanned_nodes", "repository_url", "TEXT");
 
         // v0.6.11:支持 (env_id, package, source) 三元组唯一 — 让 download(env_id='', source='download')

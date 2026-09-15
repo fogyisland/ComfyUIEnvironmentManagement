@@ -35,9 +35,18 @@ public sealed class NodeRepoQueryService
         string? Description,
         int? Stars,
         int? Watchers,
+        int? Forks,
         string? License,
         string? DefaultBranch,
         DateTime? UpdatedAt,
+        DateTime? PushedAt,
+        string? HtmlUrl,
+        string? Language,
+        int? OpenIssues,
+        // raw_json 里的 topics[] (e.g. ["image","controlnet"]) — 用 string 比 JSON 数组更方便 XAML binding。
+        // 写入:Ingestor 直接传 string(逗号分隔);读取:VM 拆 string[] 做 tag 显示。
+        // v1.0.0.x T43f+user:右边详情加 tags 显示(用户原话"右边需要按照更加详细的内容列出")。
+        string? Topics,
         string RawJson,
         string Host);
 
@@ -147,6 +156,7 @@ public sealed class NodeRepoQueryService
             var desc = TryGetString(root, "description");
             var stars = TryGetInt(root, "stargazers_count");
             var watchers = TryGetInt(root, "subscribers_count") ?? TryGetInt(root, "watchers_count");
+            var forks = TryGetInt(root, "forks_count");
             var license = root.TryGetProperty("license", out var lic) && lic.ValueKind == JsonValueKind.Object
                 ? TryGetString(lic, "spdx_id") ?? TryGetString(lic, "name")
                 : null;
@@ -157,7 +167,35 @@ public sealed class NodeRepoQueryService
             {
                 updated = dt;
             }
-            return new RepoMetadata(owner, repo, desc, stars, watchers, license, defaultBranch, updated, raw, host);
+            DateTime? pushed = null;
+            var pushedStr = TryGetString(root, "pushed_at");
+            if (!string.IsNullOrEmpty(pushedStr) && DateTime.TryParse(pushedStr, out var pdt))
+            {
+                pushed = pdt;
+            }
+            var htmlUrl = TryGetString(root, "html_url");
+            var language = TryGetString(root, "language");
+            var openIssues = TryGetInt(root, "open_issues_count");
+            // topics[] → comma-joined string for XAML binding(VM 在 detail 视图再 string.Split)。
+            // 例:["image","controlnet"] → "image,controlnet"。
+            // 用 ',' 而不是 ' ' 是因为部分 tag 可能含空格("stable diffusion"),空格分隔会撞。
+            string? topics = null;
+            if (root.TryGetProperty("topics", out var topicsEl) &&
+                topicsEl.ValueKind == JsonValueKind.Array)
+            {
+                var tagList = new List<string>();
+                foreach (var t in topicsEl.EnumerateArray())
+                {
+                    if (t.ValueKind == JsonValueKind.String)
+                    {
+                        var s = t.GetString();
+                        if (!string.IsNullOrWhiteSpace(s)) tagList.Add(s);
+                    }
+                }
+                if (tagList.Count > 0) topics = string.Join(",", tagList);
+            }
+            return new RepoMetadata(owner, repo, desc, stars, watchers, forks, license,
+                defaultBranch, updated, pushed, htmlUrl, language, openIssues, topics, raw, host);
         }
         catch
         {

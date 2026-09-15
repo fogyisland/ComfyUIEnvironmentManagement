@@ -36,8 +36,11 @@ public sealed class NodelistViewModel : ViewModelBase
     private readonly string _defaultDirectory;  // <projectRoot>/nodelist,VM 永远有 fallback 路径
     private readonly Action<string>? _onConfiguredDirectoryChanged;  // 把有效路径写回 Settings
 
-    /// <summary>左 list — 作者/仓库名列表。</summary>
+    /// <summary>左 list — 作者/仓库名列表(全量,Reload 时从 SQLite 灌入)。</summary>
     public ObservableCollection<NodelistEntryRow> Entries { get; } = new();
+
+    /// <summary>左 list 客户端搜索后的子集 — ListBox 实际绑这个(用户原话"在这里只需要搜索就好了")。</summary>
+    public ObservableCollection<NodelistEntryRow> FilteredEntries { get; } = new();
 
     /// <summary>右 detail — 选中 entry 的版本列表(随 SelectedEntry 联动)。</summary>
     public ObservableCollection<DetailRow> SelectedDetails { get; } = new();
@@ -112,6 +115,24 @@ public sealed class NodelistViewModel : ViewModelBase
         private set { _statusText = value; RaisePropertyChanged(); }
     }
 
+    // v1.0.0.x (2026-09-15) T43f+user:左 list 顶部 search TextBox 绑定 ——
+    // 模糊匹配 author / repo_name(用户原话"在这里只需要搜索就好了")。
+    // 输入立即生效(LostFocus 性能差;N=1500 in-memory filter 毫秒级)。
+    // 空字符串 = 显示全部。
+    private string _searchText = "";
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            var v = value ?? "";
+            if (_searchText == v) return;
+            _searchText = v;
+            RaisePropertyChanged();
+            ApplyFilter();
+        }
+    }
+
     private bool _isBusy;
     public bool IsBusy
     {
@@ -130,8 +151,6 @@ public sealed class NodelistViewModel : ViewModelBase
     // v1.0.0.x feat/nodelist-directory:增量入库 command
     public RelayCommand IngestCommand { get; }
     public RelayCommand DownloadAndIngestCommand { get; }
-    /// <summary>「📁 打开」按钮 — Explorer / 文件管理器打开当前 NodelistDirectory。</summary>
-    public RelayCommand OpenFolderCommand { get; }
 
     /// <summary>
     /// ctor ——
@@ -167,10 +186,6 @@ public sealed class NodelistViewModel : ViewModelBase
         IngestCommand = new RelayCommand(
             async _ => await IngestOnlyAsync(),
             _ => IsNotBusy);
-
-        OpenFolderCommand = new RelayCommand(
-            _ => OpenFolder(),
-            _ => !string.IsNullOrWhiteSpace(NodelistDirectory));
     }
 
     private readonly NodelistSourceConfigRepository? _sourceConfig;
@@ -184,11 +199,28 @@ public sealed class NodelistViewModel : ViewModelBase
         public string Source { get; set; } = "";
     }
 
+    /// <summary>v1.0.0.x T43f+user:右边详情一行 — 显示单个 version 的全部仓库字段。
+    /// 字段对应 <see cref="NodelistRepository.Detail"/>,从 SQLite 读后做显示友好格式化。
+    /// XAML 走 ItemsControl(分页=最新 10 个 version,见 GetDetailsByAuthor LIMIT 10)。</summary>
     public sealed class DetailRow
     {
         public string Version { get; set; } = "";
+        public string? Description { get; set; }
         public string Stars { get; set; } = "";
-        public string License { get; set; } = "";
+        public string Watchers { get; set; } = "";
+        public string Forks { get; set; } = "";
+        public string? License { get; set; }
+        public string? DefaultBranch { get; set; }
+        public string? UpdatedAt { get; set; }
+        public string? PushedAt { get; set; }
+        public string? HtmlUrl { get; set; }
+        public string? Language { get; set; }
+        public string OpenIssues { get; set; } = "";
+        // 逗号分隔 string(来自 RepoMetadata.Topics),XAML 用 ItemsControl + tag pill 渲染。
+        public string? Topics { get; set; }
+        public string? Host { get; set; }
+        // 拆 Topics 给 XAML 用(避免 XAML 写 string.Split)。
+        public IReadOnlyList<string> TopicTags { get; set; } = Array.Empty<string>();
     }
 
     /// <summary>
@@ -227,7 +259,7 @@ public sealed class NodelistViewModel : ViewModelBase
         }
     }
 
-    /// <summary>刷新左 list — SQLite → ObservableCollection。</summary>
+    /// <summary>刷新左 list — SQLite → Entries,然后走 ApplyFilter 灌 FilteredEntries。</summary>
     public async Task ReloadAsync()
     {
         var entries = _repo.GetAllEntries();
@@ -245,13 +277,52 @@ public sealed class NodelistViewModel : ViewModelBase
                 Source = e.Source,
             });
         }
-        // 默认选中第一个
-        if (Entries.Count > 0 && SelectedEntry is null)
+        ApplyFilter();
+        // 默认选中第一个(filtered 后)
+        if (FilteredEntries.Count > 0 && SelectedEntry is null)
         {
-            SelectedEntry = Entries[0];
+            SelectedEntry = FilteredEntries[0];
         }
         await Task.CompletedTask;
     }
+
+    /// <summary>v1.0.0.x T43f+user:把 Entries 按 SearchText 过滤后灌入 FilteredEntries。
+    /// 客户端过滤(1500 量级毫秒级),用户敲字 → 立即更新 XAML。
+    /// 大小写不敏感,空 = 不过滤。</summary>
+    private void ApplyFilter()
+    {
+        var prevSelected = SelectedEntry;
+        FilteredEntries.Clear();
+        var q = (_searchText ?? "").Trim();
+        if (q.Length == 0)
+        {
+            foreach (var e in Entries) FilteredEntries.Add(e);
+        }
+        else
+        {
+            foreach (var e in Entries)
+            {
+                if (e.Author.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    e.RepoName.Contains(q, StringComparison.OrdinalIgnoreCase))
+                {
+                    FilteredEntries.Add(e);
+                }
+            }
+        }
+        // 过滤后若原选中项被过滤掉,清空选中(让 XAML 右侧 detail 也清空)。
+        if (prevSelected is not null && !FilteredEntries.Contains(prevSelected))
+        {
+            SelectedEntry = null;
+        }
+        // 通知左 list 标题数字变更(显示"X / Y")
+        RaisePropertyChanged(nameof(EntriesSummaryText));
+    }
+
+    /// <summary>左 list 顶部标题:"仓库/作者 (15 / 1504)"。15=过滤后,1504=总数。</summary>
+    public string EntriesSummaryText => $"仓库 / 作者({FilteredEntries.Count} / {Entries.Count})";
+
+    /// <summary>右 detail 顶部版本列表标题:"版本(N/10)"。N=当前 detail 行数(0-10)。</summary>
+    public string SelectedDetailsSummaryText => $"版本({SelectedDetails.Count} / 10)";
 
     /// <summary>刷新右 detail — 联动 SelectedEntry。</summary>
     private void RefreshSelectedDetails()
@@ -263,10 +334,26 @@ public sealed class NodelistViewModel : ViewModelBase
             SelectedDetails.Add(new DetailRow
             {
                 Version = d.Version,
+                Description = d.Description,
                 Stars = d.Stars?.ToString() ?? "",
-                License = d.License ?? "",
+                Watchers = d.Watchers?.ToString() ?? "",
+                Forks = d.Forks?.ToString() ?? "",
+                License = d.License,
+                DefaultBranch = d.DefaultBranch,
+                UpdatedAt = d.UpdatedAt,
+                PushedAt = d.PushedAt,
+                HtmlUrl = d.HtmlUrl,
+                Language = d.Language,
+                OpenIssues = d.OpenIssues?.ToString() ?? "",
+                Topics = d.Topics,
+                TopicTags = string.IsNullOrWhiteSpace(d.Topics)
+                    ? Array.Empty<string>()
+                    : d.Topics.Split(',', StringSplitOptions.RemoveEmptyEntries |
+                                     StringSplitOptions.TrimEntries),
+                Host = d.Host,
             });
         }
+        RaisePropertyChanged(nameof(SelectedDetailsSummaryText));
     }
 
     // v1.0.0.x feat/nodelist-directory:增量入库(只调 API 不下载)
@@ -289,27 +376,15 @@ public sealed class NodelistViewModel : ViewModelBase
         Services.NodelistDownloader.DownloadResult? dl = null;
         try
         {
-            // v1.0.0.x (2026-09-15) T43e debug: pin throw site — 隔离每个 await + 每个 setter。
-            // Release build 行号不可靠,把每行 pin 到独立 try/catch 落日志后再 re-throw。
-            TryWriteNreDebugLog("DownloadAndIngestAsync.START", new Exception("entered"));
-            TryWriteNreDebugLog("DownloadAndIngestAsync.PIN_DOWNLOADER",
-                new Exception($"_downloader={(object?)_downloader ?? "null"}"));
-            var dlDir = NodelistDirectory;
-            TryWriteNreDebugLog("DownloadAndIngestAsync.PIN_NODELISTDIR",
-                new Exception($"NodelistDirectory='{dlDir}'"));
             StatusText = "下载 default custom-node-list.json...";
-            TryWriteNreDebugLog("DownloadAndIngestAsync.BEFORE_DL", new Exception("about to call DownloadDefaultAsync"));
-            dl = await _downloader.DownloadDefaultAsync(dlDir);
-            TryWriteNreDebugLog("DownloadAndIngestAsync.AFTER_DL", new Exception($"download done size={dl.SizeBytes}"));
+            dl = await _downloader.DownloadDefaultAsync(NodelistDirectory);
             StatusText = $"下载完成 ({dl.SizeBytes / 1024} KB) → {dl.FilePath}";
             await RunIngestAsync(dl.FilePath, "重新下载 + 入库");
         }
         catch (Exception ex)
         {
-            // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43e) debug:
-            // Release build 行号是编译器 inline 后位置,不是真正 throw site。
-            // 把 ex.ToString() 完整 stack + source + InnerException 写日志,
-            // 方便 diagnose。临时 Debug.WriteLine + log,后续如有 logger 注入切 logger.Error。
+            // v1.0.0.x (2026-09-15) T43e 修复完成后保留日志 fallback ——
+            // 任何后续 NRE / 异常都先落 nodelist_debug.log,Release stack 不可靠。
             TryWriteNreDebugLog("DownloadAndIngestAsync", ex);
             StatusText = $"失败:{ex.Message}";
         }
@@ -342,35 +417,14 @@ public sealed class NodelistViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43e) debug:
-            // 同 DownloadAndIngestAsync — 把 stack 落盘 nodelist_debug.log。
+            // v1.0.0.x (2026-09-15) T43e 修复完成后保留日志 fallback —
+            // 任何后续 NRE / 异常都先落 nodelist_debug.log,Release stack 不可靠。
             TryWriteNreDebugLog("RunIngestAsync", ex);
             StatusText = $"失败:{ex.Message}";
         }
         finally
         {
             IsBusy = false;
-        }
-    }
-
-    /// <summary>「📁 打开」按钮 — 调 OS 打开 NodelistDirectory。</summary>
-    private void OpenFolder()
-    {
-        try
-        {
-            var dir = NodelistDirectory;
-            if (string.IsNullOrWhiteSpace(dir)) return;
-            Directory.CreateDirectory(dir);
-            // v1.0.0.x OpenFolderCommand 走 OS 启动 explorer.exe /xdg-open /open <dir>
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = dir,
-                UseShellExecute = true,
-            });
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"打开目录失败:{ex.Message}";
         }
     }
 
