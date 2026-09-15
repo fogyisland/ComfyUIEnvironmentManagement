@@ -210,7 +210,7 @@ public sealed class NodelistViewModel : ViewModelBase
 
         // 空路径 — 自动 seed 到 defaultDirectory
         var seedDir = _defaultDirectory;
-        StatusText = $"首次启动:从网络下载默认节点列表 → {seedDir}\\{NodelistDownloader.SeedSubdirectoryName}\\";
+        StatusText = $"首次启动:从网络下载默认节点列表 → {seedDir}\\";
         try
         {
             var dl = await _downloader.DownloadDefaultAsync(seedDir);
@@ -273,7 +273,7 @@ public sealed class NodelistViewModel : ViewModelBase
     private async Task IngestOnlyAsync()
     {
         if (IsBusy) return;
-        var jsonFile = System.IO.Path.Combine(NodelistDirectory, NodelistDownloader.SeedSubdirectoryName, "custom-node-list.json");
+        var jsonFile = System.IO.Path.Combine(NodelistDirectory, NodelistDownloader.SeedFileName);
         if (!System.IO.File.Exists(jsonFile))
         {
             StatusText = $"文件不存在: {jsonFile} — 请先点『⬇ 重新下载』";

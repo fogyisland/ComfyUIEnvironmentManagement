@@ -397,6 +397,43 @@ public partial class App : Application
         var nodelistRepo = new NodelistRepository(dbFactory);
         var nodelistDownloader = new NodelistDownloader(http);
         var nodelistIngestor = new NodelistIngestor(nodelistRepo, nodeRepoQuery, logger);
+
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43c):启动期 nodelist 目录预创建 + 5s 后
+        // fire-and-forget 下载 default custom-node-list.json。用户原话"默认当前需要有nodelist 目录,
+        // 不然下载会出问题" + "我们的文件是在这里,而不是 nodelist\ json 文件" ——
+        // 即 seed json 直接在 nodelist 根下,不嵌 nodeslist 子目录(跟 staging 发布版根目录对齐)。
+        //
+        // 设计:
+        // 1. Directory.CreateDirectory 是同步 IO 但 <10ms(Mkdir syscall),不阻塞启动。
+        // 2. 下载 5s 延迟 — 给 Splash/Wizard 让位,避免 HTTP 请求跟 UI 抢占网络/线程池资源。
+        //    用户首屏已可见后再下;若此时用户已关 app,下载自然 cancel。
+        // 3. fire-and-forget Task.Run — 不阻塞 OnStartup 返回。下载/写文件失败 logger.warn,
+        //    不影响后续 BG job(1h 后重试)或 sidebar 手动「⬇ 重新下载」按钮(用户主动重试)。
+        // 4. 只下载不入库:启动期 SQLite nodelist_source_config 还没写(host/token 用户没设),
+        //    NodelistIngestor 跑不出详情;真正的入库走 BG job(配 token 后)或 sidebar 手动按钮。
+        var nodelistSeedDir = Path.Combine(projectRoot, "nodelist");
+        try
+        {
+            Directory.CreateDirectory(nodelistSeedDir);
+        }
+        catch
+        {
+            // 静默 — 用户运行期 sidebar 手动「⬇ 重新下载」按钮会再 CreateDirectory 兜底。
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                var dl = await nodelistDownloader.DownloadDefaultAsync(nodelistSeedDir);
+                logger.Info("app-startup",
+                    $"Nodelist 启动期 seed 完成: {dl.FilePath} ({dl.SizeBytes / 1024} KB, {dl.Elapsed.TotalSeconds:F1}s)");
+            }
+            catch (Exception ex)
+            {
+                logger.Warn("app-startup", $"Nodelist 启动期 seed 失败(忽略,后续 BG job / sidebar 可重试): {ex.Message}");
+            }
+        });
         // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token SSoT
         var nodelistSourceConfigRepo = new NodelistSourceConfigRepository(dbFactory);
         // v1.0.0.x (2026-09-05) feat/nodelist-directory:后台 Job ——

@@ -21,8 +21,8 @@ namespace ComfyUI.Manager.Services;
 /// 7.写入数据到 nodeslist 和 NodesDetailed"。
 ///
 /// 流程(增量入库):
-/// 1. 解析 {nodelistDirectory}/nodeslist/custom-node-list.json
-///    (v1.0.0.x 2026-09-15 T43+user:子目录命名从 nodelist 改 nodeslist 跟发布版 seed 一致)
+/// 1. 解析 {nodelistDirectory}/custom-node-list.json
+///    (v1.0.0.x 2026-09-15 T43+user:seed json 直接在 nodelist 根下,不嵌子目录)
 /// 2. 提取 author+repo_name 列表(去重)
 /// 3. 对比数据库现有 keys,只 upsert 新增(增量)/跳过已存在
 /// 4. 对新 author+repo 调 NodeRepoQueryService 拿 metadata

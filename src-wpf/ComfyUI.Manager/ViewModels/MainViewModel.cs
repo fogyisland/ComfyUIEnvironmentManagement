@@ -858,8 +858,8 @@ public class MainViewModel : ViewModelBase
     /// 替代原 ShowCatalog;同步设 CurrentSection=MainSection.Nodelist(status bar 显示「节点市场」,
     /// 之前漏设是 T41/T42 时的 bug,本 fix 顺手补)。
     /// v1.0.0.x (2026-09-15) T43+user 「空路径自动 seed」:首次进入若 Settings.NodelistDirectory
-    /// 空,VM 自动 seed 到 <projectRoot>/nodelist(走 NodelistDownloader.SeedSubdirectoryName=nodeslist
-    /// 子目录放 custom-node-list.json)。</summary>
+    /// 空,VM 自动 seed 到 <projectRoot>/nodelist(直接放 custom-node-list.json,
+    /// 不嵌 nodeslist 子目录,跟 staging 发布版根目录对齐)。</summary>
     private void ShowNodelistView()
     {
         CurrentSection = MainSection.Nodelist;
