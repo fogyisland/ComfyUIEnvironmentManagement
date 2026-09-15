@@ -112,10 +112,14 @@
                              Command="{Binding ShowEnvironmentsCommand}"
                              IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Environments, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
-                <!-- v0.6.15:本地节点页 — 跟 Catalog 同位置(节点目录紧邻)。从 Settings.LocalNodeDirectory 拉本地节点列表,可装到任一 env。 -->
-                <RadioButton x:Name="CatalogButton" Content="节点市场" GroupName="SidebarNav"
-                             Command="{Binding ShowCatalogCommand}"
-                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Catalog, Mode=OneWay}"
+                <!-- v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):sidebar 「节点市场」
+                     从 CatalogView(走 raw.githubusercontent.com + GitHub 60/h 限流)切换到
+                     NodelistView(走 NodelistIngestor pipeline + Cloud Cache API
+                     github.pudafo.com/api/v1/repos/{owner}/{repo} with X-API-Key)。
+                     ShowNodelistViewCommand 已就绪,绑定到 NodelistViewModel(NodelistView)。 -->
+                <RadioButton x:Name="NodelistButton" Content="节点市场" GroupName="SidebarNav"
+                             Command="{Binding ShowNodelistViewCommand}"
+                             IsChecked="{Binding CurrentSection, Converter={StaticResource SectionEquality}, ConverterParameter=Nodelist, Mode=OneWay}"
                              Style="{StaticResource SidebarRadioButtonStyle}" />
                 <!-- v0.6.19 T10:工作流市场 — 聚合 3 个 IWorkflowSource (Community/CivitAI/OpenArt) + batch download + env-start 后自动 symlink workflows 到 env。
                      v1.0.0:IsEnabled 由 sidebar.inf 控制(Workflows=0 灰显);命令实现已存在,无需占位 ToolTip。 -->

@@ -127,7 +127,7 @@ public class UiPreferencesServiceTests : IDisposable
               "window_maximized": true,
               "sidebar_visible": false,
               "last_selected_env_id": "env-legacy",
-              "last_view_name": "Catalog"
+              "last_view_name": "Nodelist"
             }
             """);
 
@@ -135,7 +135,9 @@ public class UiPreferencesServiceTests : IDisposable
         Assert.Equal(1024, prefs.WindowWidth);
         Assert.Equal(768, prefs.WindowHeight);
         Assert.Equal("env-legacy", prefs.LastSelectedEnvId);
-        Assert.Equal("Catalog", prefs.LastViewName);
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):持久化名
+        // "Catalog" → "Nodelist"(MainViewModel.ResolveCurrentViewName switch 改名)。
+        Assert.Equal("Nodelist", prefs.LastViewName);
 
         Assert.True(File.Exists(_svc.DefaultPath));
         Assert.False(File.Exists(legacyJsonPath));

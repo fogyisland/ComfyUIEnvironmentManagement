@@ -100,12 +100,12 @@ public sealed class MainViewModelRestartEnvTests : IDisposable
         // Environments so the inline status panel is visible.
         var (mvm, _) = NewMvmWithRealEnvListVm();
 
-        // ShowCatalogCommand is OK in real flow but here we lack catalog services
-        // (TestDb has empty catalog tables). Wrap in try/catch so the test only
+        // ShowNodelistViewCommand is OK in real flow but here we lack nodelist services
+        // (TestDb has empty nodelist tables). Wrap in try/catch so the test only
         // asserts on CurrentSection. (Same pattern as MainViewModelNavigationTests
         // ExecuteAllowingViewConstructionFailure.)
-        try { mvm.ShowCatalogCommand.Execute(null); } catch { /* catalog deps null in MVM test ctor */ }
-        Assert.Equal(MainSection.Catalog, mvm.CurrentSection);
+        try { mvm.ShowNodelistViewCommand.Execute(null); } catch { /* nodelist deps null in MVM test ctor */ }
+        Assert.Equal(MainSection.Nodelist, mvm.CurrentSection);
 
         // 不 await — 我们只验 CurrentSection 切到了 Environments(切 tab 是 sync)。
         // The restart itself will hit a non-existent envId, log warn + return.

@@ -18,9 +18,11 @@ public class MainSectionNameProviderTests
     }
 
     [Fact]
-    public void GetName_Catalog_ReturnsNodeCatalog()
+    public void GetName_Nodelist_ReturnsMarket()
     {
-        Assert.Equal("节点目录", MainSectionNameProvider.GetName(MainSection.Catalog));
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):Catalog → Nodelist,
+        // 显示名改「节点市场」。
+        Assert.Equal("节点市场", MainSectionNameProvider.GetName(MainSection.Nodelist));
     }
 
     [Fact]

@@ -13,14 +13,15 @@ namespace ComfyUI.Manager.Tests.Services;
 /// </summary>
 public class SidebarInfParserTests
 {
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):Catalog → Nodelist。
     private const string DefaultKnownKeys =
-        "Dashboard=1\nEnvironments=1\nCatalog=1\nLocalNodes=1\nWorkflows=1\nLocalModels=1\nTemplates=1\nModels=1\nSettings=1\nBulkUpdate=1\nSystemStatus=1\n";
+        "Dashboard=1\nEnvironments=1\nNodelist=1\nLocalNodes=1\nWorkflows=1\nLocalModels=1\nTemplates=1\nModels=1\nSettings=1\nBulkUpdate=1\nSystemStatus=1\n";
 
     [Fact]
     public void Parse_AllKeysPresent_ReturnsEnabledForAll()
     {
         var dict = SidebarInfParser.Parse(DefaultKnownKeys);
-        // 10 个 MainSection 全部 enabled
+        // 11 个 MainSection 全部 enabled(Nodelist 加进来后 +1)
         foreach (MainSection s in System.Enum.GetValues<MainSection>())
         {
             Assert.True(dict[s], $"{s} should be enabled when its key is 1");
@@ -31,11 +32,11 @@ public class SidebarInfParserTests
     public void Parse_ZeroValues_DisablesOnlyThoseSections()
     {
         var text = DefaultKnownKeys
-            .Replace("Catalog=1", "Catalog=0")
+            .Replace("Nodelist=1", "Nodelist=0")
             .Replace("Workflows=1", "Workflows=0")
             .Replace("Models=1", "Models=0");
         var dict = SidebarInfParser.Parse(text);
-        Assert.False(dict[MainSection.Catalog]);
+        Assert.False(dict[MainSection.Nodelist]);
         Assert.False(dict[MainSection.Workflows]);
         Assert.False(dict[MainSection.Models]);
         Assert.True(dict[MainSection.Dashboard]);
@@ -56,14 +57,14 @@ public class SidebarInfParserTests
     public void Parse_MalformedLine_Skipped()
     {
         // 坏行:无 key(=garbage) / 未知 value(Workflows=NOPE) — 跳过,不在 dict 里。
-        // 空 value(Catalog=)按 0 处理 — ini 习惯写法。
-        var text = "Dashboard=1\n=garbage\nCatalog=\nWorkflows=NOPE\nEnvironments=1\n";
+        // 空 value(Nodelist=)按 0 处理 — ini 习惯写法。
+        var text = "Dashboard=1\n=garbage\nNodelist=\nWorkflows=NOPE\nEnvironments=1\n";
         var dict = SidebarInfParser.Parse(text);
         Assert.True(dict[MainSection.Dashboard]);
         Assert.True(dict[MainSection.Environments]);
         // 空 value 当 0
-        Assert.True(dict.ContainsKey(MainSection.Catalog));
-        Assert.False(dict[MainSection.Catalog]);
+        Assert.True(dict.ContainsKey(MainSection.Nodelist));
+        Assert.False(dict[MainSection.Nodelist]);
         // 未知 value → 跳过 → 不在 dict 里
         Assert.False(dict.ContainsKey(MainSection.Workflows));
     }
@@ -71,21 +72,21 @@ public class SidebarInfParserTests
     [Fact]
     public void Parse_CaseInsensitiveKeys()
     {
-        var text = "dashboard=0\nWORKFLOWS=1\ncatalog=0\n";
+        var text = "dashboard=0\nWORKFLOWS=1\nnodelist=0\n";
         var dict = SidebarInfParser.Parse(text);
         Assert.False(dict[MainSection.Dashboard]);
         Assert.True(dict[MainSection.Workflows]);
-        Assert.False(dict[MainSection.Catalog]);
+        Assert.False(dict[MainSection.Nodelist]);
     }
 
     [Fact]
     public void Parse_WhitespaceTolerant()
     {
-        var text = "  Dashboard  =  1 \n\tEnvironments\t=\t1\n Catalog = 0 \n";
+        var text = "  Dashboard  =  1 \n\tEnvironments\t=\t1\n Nodelist = 0 \n";
         var dict = SidebarInfParser.Parse(text);
         Assert.True(dict[MainSection.Dashboard]);
         Assert.True(dict[MainSection.Environments]);
-        Assert.False(dict[MainSection.Catalog]);
+        Assert.False(dict[MainSection.Nodelist]);
     }
 
     [Fact]
@@ -123,9 +124,9 @@ public class SidebarInfParserTests
     [Fact]
     public void Parse_TextReader_OverloadWorks()
     {
-        using var sr = new StringReader("Dashboard=1\nCatalog=0\n");
+        using var sr = new StringReader("Dashboard=1\nNodelist=0\n");
         var dict = SidebarInfParser.Parse(sr);
         Assert.True(dict[MainSection.Dashboard]);
-        Assert.False(dict[MainSection.Catalog]);
+        Assert.False(dict[MainSection.Nodelist]);
     }
 }

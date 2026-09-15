@@ -26,7 +26,10 @@ public enum MainSection
 {
     Dashboard,
     Environments,
-    Catalog,
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):删 Catalog
+    // (sidebar 「节点市场」 改走 NodelistView);新增 Nodelist。位置紧邻 LocalNodes,
+    // 沿用 Environments 之后到 LocalNodes 的原 Catalog 槽位 — 保持 sidebar 排序稳定。
+    Nodelist,
     LocalNodes,  // v0.6.15
     // v0.6.19: 工作流市场 — between LocalNodes and Settings
     Workflows,
@@ -132,7 +135,11 @@ public class MainViewModel : ViewModelBase
     // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 SELECT COUNT(*)
     // 不再 ListAll().Where().Count()。可空:测试 ctor 不传走 null fallback。
     private readonly EnvironmentRepository? _envRepo;
-    // v0.6.15: 进程级 rate limit 单例 —— 透传给 CatalogViewModel。可空保留旧测试 ctor。
+    // v0.6.15: 进程级 rate limit 单例 —— 透传给 CatalogRefreshService / GitHubVersionService /
+// GitHubCatalogMetadataService(版本/元数据两个 stage 共用,GetBlocked / IsBlocked / Clear)。
+// v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):CatalogViewModel 已删,但 service
+// 仍依赖此 state(--auto-refresh-catalog CLI flag + RefreshCatalogAsync + wizard auto-refresh
+// 都走 CatalogRefreshService.RefreshAsync,IsBlocked 决定是否 skip)。可空保留旧测试 ctor。
     private readonly IRateLimitState? _rateLimitState;
     // v0.6.19 T10: 共享 HttpClient(singleton, App.xaml.cs 注入)— ShowWorkflows 构造
     // 3 个 IWorkflowSource (CommunityJson / CivitAi / OpenArt) + WorkflowDownloader
@@ -159,22 +166,22 @@ public class MainViewModel : ViewModelBase
     // Spotlight SearchTarget.Kind=SettingsSection 时无法 ScrollToSection(新 VM 无 SectionScrollRequested
     // 订阅者)。T7 改成 ShowSettings 复用同一份 VM,ScrollToSection 才能找到 view 端订阅。
     private SettingsViewModel? _settingsViewModel;
-    // v0.6.9 T7:CatalogViewModel 缓存 — 跟 SettingsVM 同模式,Spotlight 选中 node 后
-    // CatalogViewModel.Selected 必须真的绑上,ShowCatalog 才能命中同一份 VM。
-    private CatalogViewModel? _catalogViewModel;
-    private CatalogView? _catalogView;
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):删 Catalog VM/View
+    // 缓存 — sidebar 「节点市场」 改走 NodelistView(_nodelistViewModel / _nodelistView
+    // 已存在)。原 CatalogVM 给 Spotlight TargetKind.Node.SelectNode 用,T43 改走
+    // ShowNodelistView 后不再需要 SelectNode 这个 helper(CatalogViewModel 已删)。
     // v0.6.15:本地节点页 VM/View 缓存复用(同 Catalog/Settings 模式),
     // 首次进入构造 LocalNodeListViewModel(走 LocalNodeService.ListAsync 拉本地),
     // 后续进入复用同一份 VM,保留 busy 状态 + Items 内容。
     private LocalNodeListViewModel? _localNodesViewModel;
     private LocalNodeListView? _localNodesView;
     // v0.6.18:批量更新 inline VM/View 缓存(替代原 BulkUpdateDialog 弹窗模式)。
-    // 同 ShowCatalog / ShowLocalNodes 懒构造模式:首次进入构造 VM+View,
+    // 同 ShowNodelistView / ShowLocalNodes 懒构造模式:首次进入构造 VM+View,
     // 后续进入复用同一份,保留 IsBusy + Rows + Summary。切走 section 时
     // 若 IsBusy,VM.CancelRun() 兜底取消,避免 Task.Run 漏掉。
     private BulkUpdateViewModel? _bulkUpdateViewModel;
     private BulkUpdateView? _bulkUpdateView;
-    // v0.6.19 T10: 工作流市场 VM/View 缓存(同 ShowCatalog / ShowLocalNodes /
+    // v0.6.19 T10: 工作流市场 VM/View 缓存(同 ShowNodelistView / ShowLocalNodes /
     // OpenBulkUpdate 懒构造模式)。首次进入构造 VM + 触发 LoadAsync(后台拉 3 个 source),
     // 后续进入复用同一份 VM,保留 IsBusy + Workflows + Selected + ConsoleLog 状态。
     private WorkflowMarketplaceViewModel? _workflowMarketplaceViewModel;
@@ -402,7 +409,10 @@ public class MainViewModel : ViewModelBase
 
     public RelayCommand ShowDashboardCommand { get; }
     public RelayCommand ShowEnvironmentsCommand { get; }
-    public RelayCommand ShowCatalogCommand { get; }
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):删 ShowCatalogCommand —
+    // sidebar 「节点市场」 改绑 ShowNodelistViewCommand;CatalogView + CatalogViewModel
+    // 已删。CatalogRefreshService 字段仍保留(给 --auto-refresh-catalog CLI flag
+    // RefreshCatalogAsync + ReloadSettingsAfterWizard CatalogAutoRefresh 用)。
     public RelayCommand ShowLocalNodesCommand { get; }   // v0.6.15
     public RelayCommand ShowWorkflowsCommand { get; }    // v0.6.19 T10: 侧栏 8th "工作流市场"
     public RelayCommand ShowModelsCommand { get; }      // v0.6.20 T9: 侧栏 9th "模型市场"
@@ -481,7 +491,8 @@ public class MainViewModel : ViewModelBase
         // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*) 查询;
         // 可空保持旧测试 ctor 兼容。生产 DI(App.xaml.cs)总是传。
         EnvironmentRepository? envRepo = null,
-        // v0.6.15: rate limit 单例 — 透传给 CatalogViewModel。
+        // v0.6.15: rate limit 单例 — 透传给 CatalogRefreshService / GitHubVersionService /
+        // GitHubCatalogMetadataService(RefreshCatalogAsync + wizard auto-refresh 路径)。
         IRateLimitState? rateLimitState = null,
         // v0.6.19 T10: 共享 HttpClient — ShowWorkflows 用它构造 3 个 IWorkflowSource
         // + WorkflowDownloader。可空保留旧测试 ctor 兼容(传 null 时 ShowWorkflows
@@ -584,7 +595,8 @@ public class MainViewModel : ViewModelBase
         // v0.6.14 R1:EnvironmentRepository —— GetRunningEnvCount 走 COUNT(*) 而不是
         // ListAll().Where().Count() 的全表扫。可空 ctor 让旧测试不传也 compile。
         _envRepo = envRepo;
-        // v0.6.15: rate limit 单例 透传给 CatalogViewModel(ShowCatalog 内用)。
+        // v0.6.15: rate limit 单例 透传给 CatalogRefreshService / GitHubVersionService /
+// GitHubCatalogMetadataService(RefreshAsync 路径用 IsBlocked 决定是否 skip stage)。
         _rateLimitState = rateLimitState;
         // v0.6.19 T10: 共享 HttpClient + WorkflowSymlinker — ShowWorkflows + env-start
         // 同步 workflow junction 都用这俩。
@@ -599,7 +611,7 @@ public class MainViewModel : ViewModelBase
 
         ShowDashboardCommand = new RelayCommand(_ => ShowDashboard());
         ShowEnvironmentsCommand = new RelayCommand(_ => ShowEnvironments());
-        ShowCatalogCommand = new RelayCommand(_ => ShowCatalog());
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):删 ShowCatalogCommand init。
         // v0.6.15:本地节点页命令。ShowLocalNodes 懒构造 LocalNodeListViewModel。
         ShowLocalNodesCommand = new RelayCommand(_ => ShowLocalNodes());
         // v0.6.19 T10:工作流市场命令。ShowWorkflows 懒构造 WorkflowMarketplaceViewModel。
@@ -675,8 +687,8 @@ public class MainViewModel : ViewModelBase
             // v0.6.14 picker redesign:EnvListVM.OpenInstallNodePicker 弹
             // CatalogEntryPickerDialog 需要 catalogRepo(查 catalog 全表) +
             // nodeRepo(按 env 拉 scanned_nodes)+ versionRepo(查 node_versions per-row
-            // version dropdown)。跟 CatalogViewModel 共用同一份 CatalogCacheStore /
-            // 同一 SqliteConnectionFactory → picker 看到的 catalog 跟 Catalog tab 同步,
+            // version dropdown)。跟 CatalogRefreshService 共用同一份 CatalogCacheStore /
+            // 同一 SqliteConnectionFactory → picker 看到的 catalog 跟后台 refresh 同步,
             // scanned_nodes 跟 NodeOperations 读同一份 db。
             var catalogRepo = new CatalogRepository(_catalogCacheStore);
             var nodeRepo = new NodeRepository(_dbFactory);
@@ -706,24 +718,10 @@ public class MainViewModel : ViewModelBase
         CurrentView = _environmentsView;
     }
 
-    private void ShowCatalog()
-    {
-        CurrentSection = MainSection.Catalog;
-        if (_catalogViewModel is null)
-        {
-            var catRepo = new CatalogRepository(_catalogCacheStore);
-            var versionRepo = new NodeVersionRepository(_catalogCacheStore);
-            // v0.6.15: 传 nodeRepo 让 CatalogViewModel 在 Search() 后 populate
-            // 每条 CatalogEntry.IsInLocalNodeDb → XAML "下载"按钮 disabled + "已下载" badge。
-            var catalogNodeRepo = new NodeRepository(_dbFactory);
-            _catalogViewModel = new CatalogViewModel(
-                catRepo, versionRepo, _nodeOps, _catalogRefreshService, _settings, _settingsRepo, _projectRoot,
-                rateLimitState: _rateLimitState, nodeRepo: catalogNodeRepo,
-                versionService: _githubVersionService);
-            _catalogView = new CatalogView { DataContext = _catalogViewModel };
-        }
-        CurrentView = _catalogView;
-    }
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):删 ShowCatalog() —
+    // sidebar 「节点市场」 改走 ShowNodelistView()。Catalog* service(CatalogRepository /
+    // CatalogCacheStore / CatalogFetcher)仍保留,供 env-list picker dialog +
+    // --auto-refresh-catalog CLI flag + ReloadSettingsAfterWizard CatalogAutoRefresh 用。
 
     // v0.6.15:本地节点页 — 跟 ShowCatalog 同款懒构造模式。复用 _dbFactory + _nodeOps +
     // _settings + ErrorBanner;envRepo/nodeRepo 每次 Show 时 new(无状态,无需缓存)。
@@ -855,22 +853,43 @@ public class MainViewModel : ViewModelBase
     }
 
     /// <summary>v1.0.0.x feat/nodelist-redesign:打开节点列表目录 view ——
-    /// 显示 NodesList + Nodesdetail,DownloadAndIngestCommand 一键下载+入库。</summary>
+    /// 显示 NodesList + Nodesdetail,DownloadAndIngestCommand 一键下载+入库。
+    /// v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):sidebar 入口改绑此方法
+    /// 替代原 ShowCatalog;同步设 CurrentSection=MainSection.Nodelist(status bar 显示「节点市场」,
+    /// 之前漏设是 T41/T42 时的 bug,本 fix 顺手补)。
+    /// v1.0.0.x (2026-09-15) T43+user 「空路径自动 seed」:首次进入若 Settings.NodelistDirectory
+    /// 空,VM 自动 seed 到 <projectRoot>/nodelist(走 NodelistDownloader.SeedSubdirectoryName=nodeslist
+    /// 子目录放 custom-node-list.json)。</summary>
     private void ShowNodelistView()
     {
+        CurrentSection = MainSection.Nodelist;
+        // 缓存模式:VM + View 都懒构造一次(同 ShowLocalModels / ShowTemplateManagement);
+        // 切走再回来保留 IngestCommand / StatusText / SearchText 等 VM 状态。
         if (_nodelistViewModel is null)
         {
             // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 全部从 SQLite
             // nodelist_source_config 表读(SSoT),Settings 不再分 GitHub/Custom 二选一。
+            // defaultDirectory 兜底 <projectRoot>/nodelist(VM 永远有非空 fallback)。
+            // onConfiguredDirectoryChanged 在用户改路径时同步写回 Settings(下次启动记住)。
             _nodelistViewModel = new NodelistViewModel(
                 _nodelistDownloader!, _nodelistIngestor!, _nodelistRepo!,
-                _nodelistSourceConfig);
+                defaultDirectory: Path.Combine(_projectRoot, "nodelist"),
+                onConfiguredDirectoryChanged: dir => _settings!.NodelistDirectory = dir,
+                sourceConfig: _nodelistSourceConfig);
             _nodelistViewModel.NodelistDirectory = _settings!.NodelistDirectory;
             var cfg = _nodelistSourceConfig!.Get();
             _nodelistViewModel.Host = cfg.ServerUrl;
             _nodelistViewModel.Token = cfg.ApiToken;
         }
-        CurrentView = new NodelistView { DataContext = _nodelistViewModel };
+        if (_nodelistView is null || !_nodelistView.IsLoaded)
+        {
+            _nodelistView = new NodelistView { DataContext = _nodelistViewModel };
+        }
+        CurrentView = _nodelistView;
+        // v1.0.0.x T43+user 「空路径自动 seed」:首次进节点市场若 NodelistDirectory 空
+        // 自动从网络下载默认 custom-node-list.json 并入库(fire-and-forget,不等完成
+        // 也能看 UI;StatusText 实时更新)。VM 内部用 IsBusy 防重复触发。
+        _ = _nodelistViewModel.EnsureSeededAsync();
     }
 
     // v1.0.0 T3: 本地模型页 — 侧栏新 entry "本地模型"。跟 ShowTemplateManagement
@@ -1365,7 +1384,10 @@ public class MainViewModel : ViewModelBase
         {
             "DashboardView"       => "Dashboard",
             "EnvironmentListView" => "Environments",
-            "CatalogView"         => "Catalog",
+            // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):CatalogView →
+            // NodelistView,持久化名同步改 "Nodelist"(SidebarInfParser 解析 + UiPreferences
+            // 序列化都依赖此返回值)。
+            "NodelistView"        => "Nodelist",
             "SettingsView"        => "Settings",
             "SystemStatusView"    => "SystemStatus",
             _                     => t,
@@ -1399,8 +1421,8 @@ public class MainViewModel : ViewModelBase
     /// 验证只有首次构造时 fire ReloadAsync,后续 click 不重 reload。</summary>
     internal LocalModelsViewModel? CurrentLocalModelsViewModel => _localModelsViewModel;
 
-    /// <summary>测试用:获取当前缓存的 Catalog VM(若有)。</summary>
-    internal CatalogViewModel? CurrentCatalogViewModel => _catalogViewModel;
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):删 CurrentCatalogViewModel
+    // test seam(CatalogViewModel 已删)。
 
     /// <summary>测试用:获取当前缓存的 Settings VM(若有)。</summary>
     internal SettingsViewModel? CurrentSettingsViewModel => _settingsViewModel;
@@ -1418,7 +1440,7 @@ public class MainViewModel : ViewModelBase
     /// <summary>
     /// v0.6.9 T7:Spotlight 选中条目后的导航分发(4 kind)。
     /// Environment → ShowEnvironments + EnvironmentListVM.SelectEnvironment
-    /// Node        → ShowCatalog + CatalogVM.SelectNode(self-fix:env-list 不显示节点)
+    /// Node        → ShowNodelistView(T43 自 Catalog tab 改来,无 SelectNode helper)
     /// SettingsSection → ShowSettings + SettingsVM.ScrollToSection
     /// Command     → reflection 找对应 RelayCommand.Execute
     /// </summary>
@@ -1435,12 +1457,12 @@ public class MainViewModel : ViewModelBase
                 break;
 
             case TargetKind.Node:
-                // self-fix (brief §4.4):节点在 Catalog tab 里显示,不在 env-list。
-                ShowCatalog();
-                if (target.NodeId is not null && _catalogViewModel is not null)
-                {
-                    _catalogViewModel.SelectNode(target.NodeId);
-                }
+                // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):
+                // self-fix:节点入口从 Catalog tab 改到 Nodelist tab。NodelistView 当前
+                // 没有「选中某节点」helper(读 SQLite nodelist_entries 表),先 ShowNodelistView
+                // 即可;后续可加 NodelistViewModel.ScrollToNode(author, repo) 走 author/repo
+                // 精确定位行 + 滚动。
+                ShowNodelistView();
                 break;
 
             case TargetKind.SettingsSection:

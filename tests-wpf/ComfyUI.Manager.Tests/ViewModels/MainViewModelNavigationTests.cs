@@ -76,13 +76,16 @@ public sealed class MainViewModelNavigationTests : IDisposable
     }
 
     [Fact]
-    public void ShowCatalog_UpdatesCurrentSectionAndView()
+    public void ShowNodelist_UpdatesCurrentSectionAndView()
     {
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):sidebar 「节点市场」
+        // 改走 ShowNodelistViewCommand;原 ShowCatalog_UpdatesCurrentSectionAndView 改名 + 断言
+        // MainSection.Nodelist。
         StaFact.RunOnSTA(() =>
         {
             var vm = NewVm();
-            ExecuteAllowingViewConstructionFailure(vm.ShowCatalogCommand);
-            Assert.Equal(MainSection.Catalog, vm.CurrentSection);
+            ExecuteAllowingViewConstructionFailure(vm.ShowNodelistViewCommand);
+            Assert.Equal(MainSection.Nodelist, vm.CurrentSection);
         });
     }
 
@@ -129,7 +132,7 @@ public sealed class MainViewModelNavigationTests : IDisposable
             var vm = NewVm();
             vm.ShowEnvironmentsCommand.Execute(null);
             var firstView = vm.CurrentView;
-            ExecuteAllowingViewConstructionFailure(vm.ShowCatalogCommand);
+            ExecuteAllowingViewConstructionFailure(vm.ShowNodelistViewCommand);
             vm.ShowEnvironmentsCommand.Execute(null);
             Assert.Equal(MainSection.Environments, vm.CurrentSection);
             Assert.Same(firstView, vm.CurrentView);

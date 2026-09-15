@@ -108,8 +108,8 @@ public sealed class MainViewModelSearchNavigationTests : IDisposable
             {
                 // catalog cache store 在测试 env 下为 null → Search NRE,忽略。
             }
-            // MainViewModel.ShowCatalog 在 ctor 抛前同步设了 CurrentSection=MainSection.Catalog。
-            Assert.Equal(MainSection.Catalog, vm.CurrentSection);
+            // MainViewModel.ShowNodelistView 在 ctor 抛前同步设了 CurrentSection=MainSection.Nodelist。
+            Assert.Equal(MainSection.Nodelist, vm.CurrentSection);
         });
     }
 

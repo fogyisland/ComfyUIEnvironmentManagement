@@ -12,66 +12,140 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Toolbar -->
+        <!-- Toolbar(v1.0.0.x 2026-09-15 feat/nodelist-market-redesign T43+user 「左右结构」+「空路径自动 seed」) -->
         <Border Grid.Row="0" Padding="12,8"
                 Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="0,0,0,1">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Left" Text="节点列表目录(NodesList / Nodesdetail)"
-                           FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <TextBlock VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{DynamicResource OnSurfaceVariantBrush}"
-                               Text="{Binding StatusText}" FontSize="11"/>
-                    <Button Content="⬇ 下载并入库" Margin="0,0,8,0"
-                            Style="{StaticResource MaterialButton}"
-                            Command="{Binding DownloadAndIngestCommand}"/>
-                    <Button Content="⤴ 增量入库" Margin="0,0,8,0"
-                            Style="{StaticResource MaterialButton}"
-                            Command="{Binding IngestCommand}"
-                            ToolTip="不下载,只调 NodeRepoQueryService 拉已下载的 json 文件中节点 metadata"/>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock DockPanel.Dock="Left" Text="节点市场"
+                               FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <TextBlock Text="(仓库/作者列表 + 详情)" Margin="12,0,0,0"
+                               VerticalAlignment="Center" Foreground="{DynamicResource OnSurfaceVariantBrush}" FontSize="11"/>
                 </StackPanel>
+
+                <Grid DockPanel.Dock="Top">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="路径:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox  Grid.Column="1" Text="{Binding NodelistDirectory, UpdateSourceTrigger=LostFocus}"
+                              VerticalAlignment="Center" Padding="6,4"
+                              Background="{DynamicResource SurfaceVariantBrush}"
+                              Foreground="{DynamicResource OnSurfaceBrush}"
+                              BorderBrush="{DynamicResource OutlineBrush}"
+                              ToolTip="custom-node-list.json 下载/读取目录。空时使用默认 [projectRoot]/nodelist"/>
+                    <Button   Grid.Column="2" Content="📁 打开"
+                              Command="{Binding OpenFolderCommand}"
+                              Margin="8,0,0,0" Padding="10,4"
+                              Style="{StaticResource MaterialButton}"
+                              ToolTip="在资源管理器中打开 NodelistDirectory"/>
+                    <Button   Grid.Column="3" Content="⬇ 重新下载"
+                              Command="{Binding DownloadAndIngestCommand}"
+                              Margin="16,0,8,0" Padding="10,4"
+                              Style="{StaticResource MaterialButton}"
+                              ToolTip="重新下载 custom-node-list.json 并入库"/>
+                    <Button   Grid.Column="4" Content="⤴ 增量入库"
+                              Command="{Binding IngestCommand}"
+                              Margin="0,0,8,0" Padding="10,4"
+                              Style="{StaticResource MaterialButton}"
+                              ToolTip="不下载,只对已下载的 json 调 NodeRepoQueryService 拉详情"/>
+                    <TextBlock Grid.Column="5" Text="{Binding StatusText}"
+                               VerticalAlignment="Center" Margin="16,0,0,0"
+                               Foreground="{DynamicResource OnSurfaceVariantBrush}" FontSize="11"/>
+                </Grid>
             </DockPanel>
         </Border>
 
-        <DataGrid Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
-                  ItemsSource="{Binding Entries}" Margin="8"
-                  AlternatingRowBackground="{DynamicResource SurfaceVariantBrush}"
-                  Background="{DynamicResource BackgroundBrush}"
-                  Foreground="{DynamicResource OnSurfaceBrush}"
-                  BorderBrush="{DynamicResource OutlineBrush}">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="作者" Binding="{Binding Author}" Width="160"/>
-                <DataGridTextColumn Header="仓库名" Binding="{Binding RepoName}" Width="200"/>
-                <DataGridTextColumn Header="首次入库" Binding="{Binding FirstSeenAt}" Width="180"/>
-                <DataGridTextColumn Header="最近入库" Binding="{Binding LastIngestedAt}" Width="180"/>
-                <DataGridTextColumn Header="来源" Binding="{Binding Source}" Width="100"/>
-                <DataGridTemplateColumn Header="详细版本" Width="*">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <ItemsControl ItemsSource="{Binding DataContext.Details,
-                                RelativeSource={RelativeSource AncestorType=UserControl}}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
+        <!-- 左右结构:左 list + 右 detail -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="200"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="3*" MinWidth="280"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左:列表 -->
+            <Border Grid.Column="0" Margin="8"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="8,6"
+                            Background="{DynamicResource SurfaceVariantBrush}">
+                        <TextBlock Text="{Binding Entries.Count, StringFormat='仓库 / 作者({0})'}"
+                                   FontWeight="Bold" FontSize="12"/>
+                    </Border>
+                    <ListBox ItemsSource="{Binding Entries}"
+                             SelectedItem="{Binding SelectedEntry}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,2">
+                                    <TextBlock Text="{Binding RepoName}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Author}" FontSize="11"
+                                               Foreground="{DynamicResource OnSurfaceVariantBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="4"
+                          HorizontalAlignment="Stretch"
+                          Background="{DynamicResource OutlineBrush}"/>
+
+            <!-- 右:详情 -->
+            <Border Grid.Column="2" Margin="8"
+                    Background="{DynamicResource SurfaceBrush}"
+                    BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1">
+                <DockPanel>
+                    <!-- 头部 -->
+                    <Border DockPanel.Dock="Top" Padding="12,8"
+                            Background="{DynamicResource SurfaceVariantBrush}"
+                            BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="0,0,0,1">
+                        <StackPanel>
+                            <TextBlock Text="{Binding SelectedEntryHeader}" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding SelectedEntryMeta}" FontSize="11" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource OnSurfaceVariantBrush}"/>
+                        </StackPanel>
+                    </Border>
+                    <!-- 版本列表 -->
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Padding="8,6">
+                            <TextBlock Text="{Binding SelectedDetails.Count, StringFormat='版本({0})'}"
+                                       FontWeight="Bold" FontSize="12"/>
+                        </Border>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding SelectedDetails}" Margin="8,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="0,0,0,1" Padding="4,2">
+                                        <Border BorderBrush="{DynamicResource OutlineBrush}"
+                                                BorderThickness="0,0,0,1" Padding="6,4">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Version}" FontWeight="Bold" Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding Version}" FontWeight="Bold"
+                                                           Margin="0,0,12,0" MinWidth="80"/>
                                                 <TextBlock Text="⭐" Margin="0,0,4,0"/>
-                                                <TextBlock Text="{Binding Stars}" Margin="0,0,8,0"/>
-                                                <TextBlock Text="{Binding License}" Margin="0,0,8,0" Foreground="{DynamicResource OnSurfaceVariantBrush}"/>
+                                                <TextBlock Text="{Binding Stars}" Margin="0,0,16,0" MinWidth="60"/>
+                                                <TextBlock Text="{Binding License}"
+                                                           Foreground="{DynamicResource OnSurfaceVariantBrush}"/>
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-            </DataGrid.Columns>
-        </DataGrid>
+                        </ScrollViewer>
+                    </DockPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

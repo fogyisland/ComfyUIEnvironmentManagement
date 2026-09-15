@@ -26,24 +26,70 @@ namespace ComfyUI.Manager.ViewModels;
 /// 8. 一天一次增量入库,用户可手动点按钮
 ///
 /// 简化:只保留"增量入库"按钮 + "下载 + 入库"组合。
+/// v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43)+ user:「左右结构」+ 「空路径自动 seed」
 /// </summary>
 public sealed class NodelistViewModel : ViewModelBase
 {
     private readonly NodelistDownloader _downloader;
     private readonly NodelistIngestor _ingestor;
     private readonly NodelistRepository _repo;
+    private readonly string _defaultDirectory;  // <projectRoot>/nodelist,VM 永远有 fallback 路径
+    private readonly Action<string>? _onConfiguredDirectoryChanged;  // 把有效路径写回 Settings
 
-    public ObservableCollection<EntryRow> Entries { get; } = new();
+    /// <summary>左 list — 作者/仓库名列表。</summary>
+    public ObservableCollection<NodelistEntryRow> Entries { get; } = new();
 
-    /// <summary>每个 entry 关联的 details(版本列表)— 嵌套展示</summary>
-    public ObservableCollection<DetailRow> Details { get; } = new();
+    /// <summary>右 detail — 选中 entry 的版本列表(随 SelectedEntry 联动)。</summary>
+    public ObservableCollection<DetailRow> SelectedDetails { get; } = new();
 
-    private string _nodelistDirectory = "";
+    private NodelistEntryRow? _selectedEntry;
+    /// <summary>左 list 当前选中 — 联动 SelectedDetails + SelectedEntryHeader。</summary>
+    public NodelistEntryRow? SelectedEntry
+    {
+        get => _selectedEntry;
+        set
+        {
+            if (_selectedEntry == value) return;
+            _selectedEntry = value;
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(SelectedEntryHeader));
+            RefreshSelectedDetails();
+        }
+    }
+
+    /// <summary>右 detail 顶部 header 文本("foo / bar" 大字)。</summary>
+    public string SelectedEntryHeader =>
+        _selectedEntry is null
+            ? "(请从左侧选一个 entry)"
+            : $"{_selectedEntry.Author} / {_selectedEntry.RepoName}";
+
+    /// <summary>右 detail 顶部 metadata 文本(FirstSeenAt / Source 等)。</summary>
+    public string SelectedEntryMeta =>
+        _selectedEntry is null
+            ? ""
+            : $"首次入库:{_selectedEntry.FirstSeenAt}    最近入库:{_selectedEntry.LastIngestedAt}    来源:{_selectedEntry.Source}";
+
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):「NodelistDirectory」语义 ——
+    // Settings.NodelistDirectory 若空,fallback 到 _defaultDirectory(<projectRoot>/nodelist);
+    // setter 把 fallback 路径写回 Settings(用户首次 seed 后下次不再触发 seed)。
+    // getter 永远返回非空(VM CanExecute 始终可点)。
+    private string _configuredDirectory = "";
     public string NodelistDirectory
     {
-        get => _nodelistDirectory;
-        set { _nodelistDirectory = value ?? ""; RaisePropertyChanged(); }
+        get => string.IsNullOrWhiteSpace(_configuredDirectory) ? _defaultDirectory : _configuredDirectory;
+        set
+        {
+            var v = value ?? "";
+            if (_configuredDirectory == v) return;
+            _configuredDirectory = v;
+            RaisePropertyChanged();
+            RaisePropertyChanged(nameof(IsNodelistDirectoryCustomized));
+            _onConfiguredDirectoryChanged?.Invoke(v);
+        }
     }
+
+    /// <summary>true = 用户用了非默认路径(Settings 里写了非空值)。false = 走默认 fallback。</summary>
+    public bool IsNodelistDirectoryCustomized => !string.IsNullOrWhiteSpace(_configuredDirectory);
 
     private string _host = "https://api.github.com";
     public string Host
@@ -76,19 +122,29 @@ public sealed class NodelistViewModel : ViewModelBase
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(IsNotBusy));
             DownloadAndIngestCommand.RaiseCanExecuteChanged();
+            IngestCommand.RaiseCanExecuteChanged();
         }
     }
     public bool IsNotBusy => !_isBusy;
+
     // v1.0.0.x feat/nodelist-directory:增量入库 command
     public RelayCommand IngestCommand { get; }
-
-
     public RelayCommand DownloadAndIngestCommand { get; }
+    /// <summary>「📁 打开」按钮 — Explorer / 文件管理器打开当前 NodelistDirectory。</summary>
+    public RelayCommand OpenFolderCommand { get; }
 
+    /// <summary>
+    /// ctor ——
+    /// v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43)+user 「空路径自动 seed」:
+    /// <paramref name="defaultDirectory"/> 兜底 <projectRoot>/nodelist;<paramref name="onConfiguredDirectoryChanged"/>
+    /// 在用户改路径时把有效值写回 Settings(下次启动记住)。
+    /// </summary>
     public NodelistViewModel(
         NodelistDownloader downloader,
         NodelistIngestor ingestor,
         NodelistRepository repo,
+        string defaultDirectory,
+        Action<string>? onConfiguredDirectoryChanged = null,
         // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 从 SQLite 读,
         // Settings 的 NodelistServerUrl/NodelistApiToken 不再直接走(只作 .inf 镜像)。
         // sourceConfig 由 MainViewModel 注入,caller 先设 Host/Token 也可(向后兼容)。
@@ -97,16 +153,29 @@ public sealed class NodelistViewModel : ViewModelBase
         _downloader = downloader;
         _ingestor = ingestor;
         _repo = repo;
+        _defaultDirectory = defaultDirectory;
+        _onConfiguredDirectoryChanged = onConfiguredDirectoryChanged;
         _sourceConfig = sourceConfig;
 
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43) CanExecute 条件:
+        // NodelistDirectory getter 永远非空(fallback 到 defaultDirectory),
+        // 所以按钮总是可点 — 只在 IsBusy 时禁用。修之前「Settings.NodelistDirectory 默认空 → 按钮 silent disabled」bug。
         DownloadAndIngestCommand = new RelayCommand(
             async _ => await DownloadAndIngestAsync(),
-            _ => IsNotBusy && !string.IsNullOrWhiteSpace(NodelistDirectory));
+            _ => IsNotBusy);
+
+        IngestCommand = new RelayCommand(
+            async _ => await IngestOnlyAsync(),
+            _ => IsNotBusy);
+
+        OpenFolderCommand = new RelayCommand(
+            _ => OpenFolder(),
+            _ => !string.IsNullOrWhiteSpace(NodelistDirectory));
     }
 
     private readonly NodelistSourceConfigRepository? _sourceConfig;
 
-    public sealed class EntryRow
+    public sealed class NodelistEntryRow  // 改名 NodelistEntryRow,避免跟 IngestAsync 返回值混淆
     {
         public string Author { get; set; } = "";
         public string RepoName { get; set; } = "";
@@ -122,14 +191,52 @@ public sealed class NodelistViewModel : ViewModelBase
         public string License { get; set; } = "";
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43)+user 「空路径自动 seed」:
+    /// 首次进节点市场时调用 ——
+    /// 1. 若 NodelistDirectory 已配:直接 ReloadAsync 显示 entries;
+    /// 2. 若空:自动 seed 到 defaultDirectory(下载 + 入库),seed 完成后 NodelistDirectory
+    ///    自动 fallback 到 defaultDirectory,setter 走 onConfiguredDirectoryChanged 写回 Settings。
+    /// ShowNodelistView 在 _nodelistViewModel 首次构造后调一次。
+    /// </summary>
+    public async Task EnsureSeededAsync()
+    {
+        if (IsNodelistDirectoryCustomized)
+        {
+            // 已配路径 — 直接 reload
+            await ReloadAsync();
+            return;
+        }
+
+        // 空路径 — 自动 seed 到 defaultDirectory
+        var seedDir = _defaultDirectory;
+        StatusText = $"首次启动:从网络下载默认节点列表 → {seedDir}\\{NodelistDownloader.SeedSubdirectoryName}\\";
+        try
+        {
+            var dl = await _downloader.DownloadDefaultAsync(seedDir);
+            StatusText = $"下载完成 ({dl.SizeBytes / 1024} KB) — 立即入库...";
+
+            // 写回 Settings(下次不再 seed)
+            NodelistDirectory = seedDir;
+
+            await RunIngestAsync(dl.FilePath, $"seed 完成 — 扫 {0}");
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Seed 失败:{ex.Message} — 请检查网络,或在设置里手填 NodelistDirectory";
+        }
+    }
+
+    /// <summary>刷新左 list — SQLite → ObservableCollection。</summary>
     public async Task ReloadAsync()
     {
         var entries = _repo.GetAllEntries();
         Entries.Clear();
-        Details.Clear();
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):左 list 不再嵌套 details —
+        // details 由 SelectedEntry 联动 SelectedDetails 显示。
         foreach (var e in entries)
         {
-            Entries.Add(new EntryRow
+            Entries.Add(new NodelistEntryRow
             {
                 Author = e.Author,
                 RepoName = e.RepoName,
@@ -137,71 +244,74 @@ public sealed class NodelistViewModel : ViewModelBase
                 LastIngestedAt = e.LastIngestedAt ?? "",
                 Source = e.Source,
             });
-            // 加载 detail 一对多
-            foreach (var d in _repo.GetDetailsByAuthor(e.Author, e.RepoName))
+        }
+        // 默认选中第一个
+        if (Entries.Count > 0 && SelectedEntry is null)
+        {
+            SelectedEntry = Entries[0];
+        }
+        await Task.CompletedTask;
+    }
+
+    /// <summary>刷新右 detail — 联动 SelectedEntry。</summary>
+    private void RefreshSelectedDetails()
+    {
+        SelectedDetails.Clear();
+        if (_selectedEntry is null) return;
+        foreach (var d in _repo.GetDetailsByAuthor(_selectedEntry.Author, _selectedEntry.RepoName))
+        {
+            SelectedDetails.Add(new DetailRow
             {
-                Details.Add(new DetailRow
-                {
-                    Version = d.Version,
-                    Stars = d.Stars?.ToString() ?? "",
-                    License = d.License ?? "",
-                });
-            }
+                Version = d.Version,
+                Stars = d.Stars?.ToString() ?? "",
+                License = d.License ?? "",
+            });
         }
     }
 
     // v1.0.0.x feat/nodelist-directory:增量入库(只调 API 不下载)
     private async Task IngestOnlyAsync()
     {
-        if (string.IsNullOrWhiteSpace(NodelistDirectory)) return;
-        var nodelistDir = System.IO.Path.Combine(NodelistDirectory, "nodelist");
-        var jsonFile = System.IO.Path.Combine(nodelistDir, "custom-node-list.json");
+        if (IsBusy) return;
+        var jsonFile = System.IO.Path.Combine(NodelistDirectory, NodelistDownloader.SeedSubdirectoryName, "custom-node-list.json");
         if (!System.IO.File.Exists(jsonFile))
         {
-            StatusText = $"文件不存在: {jsonFile} — 请先点『下载并入库』";
+            StatusText = $"文件不存在: {jsonFile} — 请先点『⬇ 重新下载』";
             return;
         }
-        _isBusy = true;
-        StatusText = "增量入库中...";
-        try
-        {
-            // 调 IngestAsync(forceFull=false 增量),token 来自 Settings.NodelistCustomToken
-            // 在 Ingestor 内计算 host(从 NodelistHostKind)+ token
-            var host = Host;
-            var token = Token;
-            var result = await _ingestor.IngestAsync(
-                jsonFile, host, token, forceFull: false, progress: null, ct: default);
-            StatusText = $"增量入库完成 — 扫 {result.EntriesScanned} 个文件,{result.EntriesScanned} 个节点(新增 {result.EntriesNew},更新 {result.EntriesSkipped},失败 {result.DetailsFailed})";
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"入库失败:{ex.Message}";
-        }
-        finally
-        {
-            _isBusy = false;
-        }
+        await RunIngestAsync(jsonFile, "增量入库");
     }
 
     private async Task DownloadAndIngestAsync()
     {
-        if (string.IsNullOrWhiteSpace(NodelistDirectory)) return;
+        if (IsBusy) return;
         IsBusy = true;
         try
         {
-            // 1. 下载
             StatusText = "下载 default custom-node-list.json...";
             var dl = await _downloader.DownloadDefaultAsync(NodelistDirectory);
             StatusText = $"下载完成 ({dl.SizeBytes / 1024} KB) → {dl.FilePath}";
+            await RunIngestAsync(dl.FilePath, "重新下载 + 入库");
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"失败:{ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
-            // 2. 入库
-            StatusText = "解析 + 入库中...";
+    /// <summary>共用的入库流程 + progress + ReloadAsync + IsBusy 设置。</summary>
+    private async Task RunIngestAsync(string jsonFile, string progressLabel)
+    {
+        IsBusy = true;
+        try
+        {
+            StatusText = $"{progressLabel}:解析 + 入库中...";
             var progress = new Progress<NodelistIngestor.IngestProgress>(p =>
-                StatusText = $"入库中({p.Current}/{p.Total}):{p.Author}/{p.RepoName}");
-            // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 优先读 SQLite
-            // nodelist_source_config(sourceConfig 已注入),回退到 MainViewModel 设的 Host/Token
-            // 属性(老路径,MainViewModel ctor 路径不再调到此分支)。
+                StatusText = $"{progressLabel}({p.Current}/{p.Total}):{p.Author}/{p.RepoName}");
             var (host, token) = _sourceConfig is not null
                 ? ((Func<(string, string)>)(() =>
                 {
@@ -210,9 +320,8 @@ public sealed class NodelistViewModel : ViewModelBase
                 }))()
                 : (Host, Token);
             var result = await _ingestor.IngestAsync(
-                dl.FilePath, host, token, forceFull: false, progress: progress);
-            StatusText = $"入库完成 — 扫 {result.EntriesScanned},新增 {result.EntriesNew},跳过 {result.EntriesSkipped},详情 {result.DetailsWritten}(失败 {result.DetailsFailed})";
-
+                jsonFile, host, token, forceFull: false, progress: progress);
+            StatusText = $"{progressLabel}完成 — 扫 {result.EntriesScanned},新增 {result.EntriesNew},跳过 {result.EntriesSkipped},详情 {result.DetailsWritten}(失败 {result.DetailsFailed})";
             await ReloadAsync();
         }
         catch (Exception ex)
@@ -222,6 +331,27 @@ public sealed class NodelistViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>「📁 打开」按钮 — 调 OS 打开 NodelistDirectory。</summary>
+    private void OpenFolder()
+    {
+        try
+        {
+            var dir = NodelistDirectory;
+            if (string.IsNullOrWhiteSpace(dir)) return;
+            Directory.CreateDirectory(dir);
+            // v1.0.0.x OpenFolderCommand 走 OS 启动 explorer.exe /xdg-open /open <dir>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = dir,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"打开目录失败:{ex.Message}";
         }
     }
 }

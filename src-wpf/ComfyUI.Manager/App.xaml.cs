@@ -38,8 +38,10 @@ public partial class App : Application
     private SplashViewModel? _splashVm;
     // v0.6.15: 进程级 rate limit 单例 —— 所有 stage 的 IsBlocked/MarkBlocked
     // 共享。生命周期 = 进程生命周期;无需 dispose, GC 兜底。传给 MainViewModel
-    // → CatalogViewModel。RateLimitBannerViewModel 共享此 state 显示历史
-    // banner 状态。
+    // → CatalogRefreshService / GitHubVersionService / GitHubCatalogMetadataService。
+    // RateLimitBannerViewModel 共享此 state 显示历史 banner 状态。
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):CatalogViewModel 已删,
+    // 但 service 仍依赖,本字段保留。
     private IRateLimitState? _rateLimitState;
 
     /// <summary>
@@ -562,7 +564,10 @@ public partial class App : Application
             // 而不是全表 ListAll().Where().Count()。
             envRepo: envRepo,
             // v0.6.15: 进程级 rate limit 单例 —— MainViewModel 透传给
-            // CatalogViewModel,触发入口 stage-skip + banner 状态共享。
+            // CatalogRefreshService / GitHubVersionService / GitHubCatalogMetadataService,
+            // 触发 stage-skip + banner 状态共享。
+            // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):CatalogViewModel
+            // 已删,但 service 仍依赖此 state(RefreshAsync 路径),本参数保留。
             rateLimitState: rateLimitState,
             // v0.6.19 T10: 共享 HttpClient — ShowWorkflows 用它构造 3 个 IWorkflowSource
             // + WorkflowDownloader。同一份 60s timeout http,singleton 进程级。
@@ -758,7 +763,10 @@ public partial class App : Application
         // 10 个 RadioButton 命名见 MainWindow.xaml(Gear 等其他按钮不动)。
         ApplyButton(main, "DashboardButton", MainSection.Dashboard);
         ApplyButton(main, "EnvironmentsButton", MainSection.Environments);
-        ApplyButton(main, "CatalogButton", MainSection.Catalog);
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):CatalogButton → NodelistButton,
+        // MainSection.Catalog → MainSection.Nodelist(enum 值跟 MainWindow.xaml RadioButton x:Name
+        // 同步)。
+        ApplyButton(main, "NodelistButton", MainSection.Nodelist);
         ApplyButton(main, "WorkflowsButton", MainSection.Workflows);
         ApplyButton(main, "LocalModelsButton", MainSection.LocalModels);
         ApplyButton(main, "TemplatesButton", MainSection.Templates);

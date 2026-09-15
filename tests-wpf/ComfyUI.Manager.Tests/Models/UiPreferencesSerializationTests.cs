@@ -20,7 +20,9 @@ public class UiPreferencesSerializationTests
             WindowMaximized = true,
             SidebarVisible = false,
             LastSelectedEnvId = "env-abc",
-            LastViewName = "Catalog",
+            // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):LastViewName 持久化值
+            // "Catalog" → "Nodelist"(MainViewModel.ResolveCurrentViewName switch 改名)。
+            LastViewName = "Nodelist",
         };
         var json = JsonSerializer.Serialize(orig, Opts);
         var back = JsonSerializer.Deserialize<UiPreferences>(json, Opts)!;
@@ -31,7 +33,7 @@ public class UiPreferencesSerializationTests
         Assert.True(back.WindowMaximized);
         Assert.False(back.SidebarVisible);
         Assert.Equal("env-abc", back.LastSelectedEnvId);
-        Assert.Equal("Catalog", back.LastViewName);
+        Assert.Equal("Nodelist", back.LastViewName);
     }
 
     [Fact]

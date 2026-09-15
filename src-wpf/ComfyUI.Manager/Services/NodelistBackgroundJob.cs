@@ -104,7 +104,7 @@ public sealed class NodelistBackgroundJob : IDisposable
             _logger?.Warn("NodelistBackgroundJob", "NodelistDirectory 未配置,跳过");
             return false;
         }
-        var jsonPath = Path.Combine(dir, "nodelist", "custom-node-list.json");
+        var jsonPath = Path.Combine(dir, NodelistDownloader.SeedSubdirectoryName, "custom-node-list.json");
         try
         {
             if (!File.Exists(jsonPath))

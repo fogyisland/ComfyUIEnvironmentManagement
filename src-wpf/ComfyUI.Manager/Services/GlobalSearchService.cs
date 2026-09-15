@@ -99,8 +99,11 @@ public sealed class GlobalSearchService : IGlobalSearchService
             });
         }
 
-        // 4. Commands — 静态数组,16 个名字跟 MainViewModel.*Command property 一一对应
+        // 4. Commands — 静态数组,15 个名字跟 MainViewModel.*Command property 一一对应
         //    T7 拿到 CommandName 后用 reflection 或直接绑到对应 Command 触发。
+        //    v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):删 ShowCatalog(14→15 计数
+        //    改 15→14 是误,实际是 Name "ShowCatalog" 改名 "ShowNodelistView",跟新加的
+        //    ShowNodelistViewCommand 一一对应,数组长度不变)。
         foreach (var cmd in Commands)
         {
             index.Add(new SearchEntry
@@ -141,7 +144,10 @@ public sealed class GlobalSearchService : IGlobalSearchService
     {
         ("ShowDashboard",                    "主页 — Dashboard"),
         ("ShowEnvironments",                 "环境"),
-        ("ShowCatalog",                      "节点目录"),
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):ShowCatalog →
+        // ShowNodelistView(Spotlight 命令 lookup 改名,跟 MainViewModel.ShowNodelistViewCommand
+        // 一一对应)。
+        ("ShowNodelistView",                "节点市场"),
         ("ShowSettings",                     "设置"),
         ("OpenBulkUpdate",                   "批量更新"),
         ("ShowSystemStatus",                 "系统状态"),

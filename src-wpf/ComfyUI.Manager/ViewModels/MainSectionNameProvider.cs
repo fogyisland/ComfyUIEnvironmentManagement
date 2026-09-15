@@ -16,7 +16,9 @@ public static class MainSectionNameProvider
     {
         MainSection.Dashboard => Get("SectionName_Dashboard", "主页"),
         MainSection.Environments => Get("SectionName_Environments", "环境"),
-        MainSection.Catalog => Get("SectionName_Catalog", "节点目录"),
+        // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):Catalog → Nodelist,
+        // 显示名改「节点市场」(sidebar RadioButton Content 一致)。
+        MainSection.Nodelist => Get("SectionName_Nodelist", "节点市场"),
         MainSection.LocalNodes => Get("SectionName_LocalNodes", "本地节点"),  // v0.6.15
         MainSection.Workflows => Get("SectionName_Workflows", "工作流市场"),  // v0.6.19 T10
         MainSection.Models => Get("SectionName_Models", "模型市场"),  // v0.6.20 T9

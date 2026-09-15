@@ -72,7 +72,7 @@ public sealed class StatusBarViewModelTests : IDisposable
         var main = NewMainViewModel();
         using var statusBar = new StatusBarViewModel(main);
 
-        ExecuteAllowingViewConstructionFailure(main.ShowCatalogCommand);
+        ExecuteAllowingViewConstructionFailure(main.ShowNodelistViewCommand);
         ExecuteAllowingViewConstructionFailure(main.ShowSystemStatusCommand);
         ExecuteAllowingViewConstructionFailure(main.ShowDashboardCommand);
 
