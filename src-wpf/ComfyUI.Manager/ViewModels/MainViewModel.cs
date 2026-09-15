@@ -875,7 +875,12 @@ public class MainViewModel : ViewModelBase
                 _nodelistDownloader!, _nodelistIngestor!, _nodelistRepo!,
                 defaultDirectory: Path.Combine(_projectRoot, "nodelist"),
                 onConfiguredDirectoryChanged: dir => _settings!.NodelistDirectory = dir,
-                sourceConfig: _nodelistSourceConfig);
+                sourceConfig: _nodelistSourceConfig,
+                // v1.0.0.x (2026-09-15) T43g+user:详情 Action Bar 3 个 button 依赖的 service。
+                // MainViewModel 已在 ctor 注入,这里透传给 VM(避免 VM 自己再 DI 一遍)。
+                browserLauncher: _browserLauncher,
+                envRepo: _envRepo,
+                nodeOps: _nodeOps);
             _nodelistViewModel.NodelistDirectory = _settings!.NodelistDirectory;
             var cfg = _nodelistSourceConfig!.Get();
             _nodelistViewModel.Host = cfg.ServerUrl;

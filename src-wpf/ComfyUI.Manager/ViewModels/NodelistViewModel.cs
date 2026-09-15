@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Views;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -36,11 +37,39 @@ public sealed class NodelistViewModel : ViewModelBase
     private readonly string _defaultDirectory;  // <projectRoot>/nodelist,VM 永远有 fallback 路径
     private readonly Action<string>? _onConfiguredDirectoryChanged;  // 把有效路径写回 Settings
 
+    // v1.0.0.x (2026-09-15) T43g+user:详情 Action Bar 三个按钮依赖的 service。
+    // 全 nullable 保留向后兼容(测试 ctor / 早期 caller 不传),App.xaml.cs 总是传。
+    private readonly IBrowserLauncher? _browserLauncher;
+    private readonly IEnvironmentRepository? _envRepo;
+    private readonly NodeOperations? _nodeOps;
+
     /// <summary>左 list — 作者/仓库名列表(全量,Reload 时从 SQLite 灌入)。</summary>
     public ObservableCollection<NodelistEntryRow> Entries { get; } = new();
 
-    /// <summary>左 list 客户端搜索后的子集 — ListBox 实际绑这个(用户原话"在这里只需要搜索就好了")。</summary>
-    public ObservableCollection<NodelistEntryRow> FilteredEntries { get; } = new();
+    // v1.0.0.x (2026-09-15) T43g+user 「中间实现分页效果,不然耗费大量内存资源」:
+    // T43f 用 FilteredEntries(全量客户端过滤+虚拟滚动),T43g 改成传统分页器。
+    // _allFiltered = search 后的全量,CurrentPageItems = 当前页 50 条切片,绑 XAML。
+    private const int DefaultPageSize = 50;
+    private List<NodelistEntryRow> _allFiltered = new();
+    private int _currentPage = 1;
+
+    /// <summary>左 list 当前页切片 — ListBox 实际绑这个。</summary>
+    public ObservableCollection<NodelistEntryRow> CurrentPageItems { get; } = new();
+
+    /// <summary>当前页码(1-based)。变更通过 GoToPage 触发 LoadCurrentPage + RaisePageProperties。</summary>
+    public int CurrentPage => _currentPage;
+
+    /// <summary>总页数 — _allFiltered 为空时为 1(避免 CanGoPrev 在空状态下莫名可点)。</summary>
+    public int TotalPages => Math.Max(1, (int)Math.Ceiling((double)_allFiltered.Count / DefaultPageSize));
+
+    /// <summary>分页栏文本(「1 / 104 页 (共 5175 条,每页 50 条)」)。</summary>
+    public string PageInfoText => $"{_currentPage} / {TotalPages} 页 (共 {_allFiltered.Count} 条,每页 {DefaultPageSize} 条)";
+
+    /// <summary>「« 首页」「‹ 上一页」CanExecute 条件。</summary>
+    public bool CanGoPrev => _currentPage > 1;
+
+    /// <summary>「下一页 ›」「末页 »」CanExecute 条件。</summary>
+    public bool CanGoNext => _currentPage < TotalPages;
 
     /// <summary>右 detail — 选中 entry 的版本列表(随 SelectedEntry 联动)。</summary>
     public ObservableCollection<DetailRow> SelectedDetails { get; } = new();
@@ -57,6 +86,11 @@ public sealed class NodelistViewModel : ViewModelBase
             RaisePropertyChanged();
             RaisePropertyChanged(nameof(SelectedEntryHeader));
             RefreshSelectedDetails();
+            // v1.0.0.x (2026-09-15) T43g+user:Action Bar 按钮依赖选中项 ——
+            // 选中变化时刷新 3 个 command 的 CanExecute(无选中时禁用)。
+            OpenInBrowserCommand.RaiseCanExecuteChanged();
+            CopyUrlCommand.RaiseCanExecuteChanged();
+            InstallCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -152,11 +186,22 @@ public sealed class NodelistViewModel : ViewModelBase
     public RelayCommand IngestCommand { get; }
     public RelayCommand DownloadAndIngestCommand { get; }
 
+    // v1.0.0.x (2026-09-15) T43g+user:分页器 4 个 command + Action Bar 3 个 command。
+    public RelayCommand FirstPageCommand { get; }
+    public RelayCommand PrevPageCommand { get; }
+    public RelayCommand NextPageCommand { get; }
+    public RelayCommand LastPageCommand { get; }
+    public RelayCommand OpenInBrowserCommand { get; }
+    public RelayCommand CopyUrlCommand { get; }
+    public RelayCommand InstallCommand { get; }
+
     /// <summary>
     /// ctor ——
     /// v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43)+user 「空路径自动 seed」:
     /// <paramref name="defaultDirectory"/> 兜底 <projectRoot>/nodelist;<paramref name="onConfiguredDirectoryChanged"/>
     /// 在用户改路径时把有效值写回 Settings(下次启动记住)。
+    /// v1.0.0.x (2026-09-15) T43g+user:加 3 个 nullable service 注入(浏览器打开 / 环境 / 安装),
+    /// 全部 nullable 保留向后兼容 — 旧 caller 不传也不报错,只是按钮不可用。
     /// </summary>
     public NodelistViewModel(
         NodelistDownloader downloader,
@@ -167,7 +212,14 @@ public sealed class NodelistViewModel : ViewModelBase
         // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 从 SQLite 读,
         // Settings 的 NodelistServerUrl/NodelistApiToken 不再直接走(只作 .inf 镜像)。
         // sourceConfig 由 MainViewModel 注入,caller 先设 Host/Token 也可(向后兼容)。
-        NodelistSourceConfigRepository? sourceConfig = null)
+        NodelistSourceConfigRepository? sourceConfig = null,
+        // v1.0.0.x (2026-09-15) T43g+user 「顶部 header + action bar」:
+        // BrowserLauncher —— 详情「🌐 浏览器打开」按钮走 OpenWithChromeFallback 统一入口。
+        IBrowserLauncher? browserLauncher = null,
+        // EnvironmentRepository —— 详情「📥 一键安装」按钮弹 dialog 选环境用。
+        IEnvironmentRepository? envRepo = null,
+        // NodeOperations —— 详情「📥 一键安装」按钮调 InstallAsync。
+        NodeOperations? nodeOps = null)
     {
         _downloader = downloader;
         _ingestor = ingestor;
@@ -175,6 +227,9 @@ public sealed class NodelistViewModel : ViewModelBase
         _defaultDirectory = defaultDirectory;
         _onConfiguredDirectoryChanged = onConfiguredDirectoryChanged;
         _sourceConfig = sourceConfig;
+        _browserLauncher = browserLauncher;
+        _envRepo = envRepo;
+        _nodeOps = nodeOps;
 
         // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43) CanExecute 条件:
         // NodelistDirectory getter 永远非空(fallback 到 defaultDirectory),
@@ -186,6 +241,23 @@ public sealed class NodelistViewModel : ViewModelBase
         IngestCommand = new RelayCommand(
             async _ => await IngestOnlyAsync(),
             _ => IsNotBusy);
+
+        // v1.0.0.x (2026-09-15) T43g+user:分页器 4 个 button + Action Bar 3 个 button。
+        FirstPageCommand = new RelayCommand(_ => GoToPage(1), _ => CanGoPrev);
+        PrevPageCommand = new RelayCommand(_ => GoToPage(_currentPage - 1), _ => CanGoPrev);
+        NextPageCommand = new RelayCommand(_ => GoToPage(_currentPage + 1), _ => CanGoNext);
+        LastPageCommand = new RelayCommand(_ => GoToPage(TotalPages), _ => CanGoNext);
+
+        // Action Bar —— 无选中项时不可用(IsBusy 也禁用 Install 防止并发)。
+        OpenInBrowserCommand = new RelayCommand(
+            _ => OpenInBrowser(),
+            _ => _selectedEntry is not null);
+        CopyUrlCommand = new RelayCommand(
+            _ => CopyUrl(),
+            _ => _selectedEntry is not null);
+        InstallCommand = new RelayCommand(
+            async _ => await InstallNodeAsync(),
+            _ => _selectedEntry is not null && _envRepo is not null && _nodeOps is not null && IsNotBusy);
     }
 
     private readonly NodelistSourceConfigRepository? _sourceConfig;
@@ -259,7 +331,7 @@ public sealed class NodelistViewModel : ViewModelBase
         }
     }
 
-    /// <summary>刷新左 list — SQLite → Entries,然后走 ApplyFilter 灌 FilteredEntries。</summary>
+    /// <summary>刷新左 list — SQLite → Entries,然后走 ApplyFilter 灌 _allFiltered + CurrentPageItems。</summary>
     public async Task ReloadAsync()
     {
         var entries = _repo.GetAllEntries();
@@ -278,25 +350,26 @@ public sealed class NodelistViewModel : ViewModelBase
             });
         }
         ApplyFilter();
-        // 默认选中第一个(filtered 后)
-        if (FilteredEntries.Count > 0 && SelectedEntry is null)
+        // 默认选中第一个(当前页切片后)
+        if (CurrentPageItems.Count > 0 && SelectedEntry is null)
         {
-            SelectedEntry = FilteredEntries[0];
+            SelectedEntry = CurrentPageItems[0];
         }
         await Task.CompletedTask;
     }
 
-    /// <summary>v1.0.0.x T43f+user:把 Entries 按 SearchText 过滤后灌入 FilteredEntries。
-    /// 客户端过滤(1500 量级毫秒级),用户敲字 → 立即更新 XAML。
+    /// <summary>v1.0.0.x T43g+user:把 Entries 按 SearchText 过滤后灌入 _allFiltered + 重置到第 1 页。
+    /// T43f 用 FilteredEntries(全量+虚拟滚动),T43g 改成 _allFiltered + 切片(传统分页器)。
+    /// 客户端过滤(1500 量级毫秒级),用户敲字 → 立即更新 XAML + ResetPage。
     /// 大小写不敏感,空 = 不过滤。</summary>
     private void ApplyFilter()
     {
         var prevSelected = SelectedEntry;
-        FilteredEntries.Clear();
+        _allFiltered = new List<NodelistEntryRow>();
         var q = (_searchText ?? "").Trim();
         if (q.Length == 0)
         {
-            foreach (var e in Entries) FilteredEntries.Add(e);
+            foreach (var e in Entries) _allFiltered.Add(e);
         }
         else
         {
@@ -305,21 +378,60 @@ public sealed class NodelistViewModel : ViewModelBase
                 if (e.Author.Contains(q, StringComparison.OrdinalIgnoreCase) ||
                     e.RepoName.Contains(q, StringComparison.OrdinalIgnoreCase))
                 {
-                    FilteredEntries.Add(e);
+                    _allFiltered.Add(e);
                 }
             }
         }
+        // search 改变总数,留住当前页可能越界 → 重置第 1 页 + 重新切 CurrentPageItems。
+        _currentPage = 1;
+        LoadCurrentPage();
         // 过滤后若原选中项被过滤掉,清空选中(让 XAML 右侧 detail 也清空)。
-        if (prevSelected is not null && !FilteredEntries.Contains(prevSelected))
+        if (prevSelected is not null && !_allFiltered.Contains(prevSelected))
         {
             SelectedEntry = null;
         }
-        // 通知左 list 标题数字变更(显示"X / Y")
+        // 通知左 list 标题数字 + 分页栏全部变更。
+        RaisePageProperties();
+    }
+
+    /// <summary>当前页切片 → CurrentPageItems。清空再灌(50 条以内,无性能问题)。</summary>
+    private void LoadCurrentPage()
+    {
+        CurrentPageItems.Clear();
+        var start = (_currentPage - 1) * DefaultPageSize;
+        var end = Math.Min(start + DefaultPageSize, _allFiltered.Count);
+        for (int i = start; i < end; i++)
+        {
+            CurrentPageItems.Add(_allFiltered[i]);
+        }
+    }
+
+    /// <summary>跳转到指定页。page 越界或不变 → no-op。Reload + Raise 由调用方负责。</summary>
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > TotalPages || page == _currentPage) return;
+        _currentPage = page;
+        LoadCurrentPage();
+        RaisePageProperties();
+    }
+
+    /// <summary>分页器相关 property + command CanExecute 集中刷新(单方法避免遗漏)。
+    /// ApplyFilter / GoToPage / ReloadAsync 调一次就够。</summary>
+    private void RaisePageProperties()
+    {
         RaisePropertyChanged(nameof(EntriesSummaryText));
+        RaisePropertyChanged(nameof(PageInfoText));
+        RaisePropertyChanged(nameof(TotalPages));
+        RaisePropertyChanged(nameof(CanGoPrev));
+        RaisePropertyChanged(nameof(CanGoNext));
+        FirstPageCommand.RaiseCanExecuteChanged();
+        PrevPageCommand.RaiseCanExecuteChanged();
+        NextPageCommand.RaiseCanExecuteChanged();
+        LastPageCommand.RaiseCanExecuteChanged();
     }
 
     /// <summary>左 list 顶部标题:"仓库/作者 (15 / 1504)"。15=过滤后,1504=总数。</summary>
-    public string EntriesSummaryText => $"仓库 / 作者({FilteredEntries.Count} / {Entries.Count})";
+    public string EntriesSummaryText => $"仓库 / 作者({_allFiltered.Count} / {Entries.Count})";
 
     /// <summary>右 detail 顶部版本列表标题:"版本(N/10)"。N=当前 detail 行数(0-10)。</summary>
     public string SelectedDetailsSummaryText => $"版本({SelectedDetails.Count} / 10)";
@@ -457,6 +569,124 @@ public sealed class NodelistViewModel : ViewModelBase
         catch
         {
             // 静默 — 不影响主流程
+        }
+    }
+
+    // v1.0.0.x (2026-09-15) T43g+user 「详情 Action Bar」(3 个 button) ——
+    // 浏览器打开 + 复制链接 + 一键安装。选 Entry 后 detail 头按钮启用,统一拿 SelectedDetails[0].HtmlUrl。
+
+    /// <summary>从 SelectedDetails 取最新 version 的 html_url(无 detail 时返回 null)。</summary>
+    private string? GetSelectedRepoUrl()
+    {
+        var first = SelectedDetails.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.HtmlUrl));
+        return first?.HtmlUrl;
+    }
+
+    /// <summary>详情「🌐 浏览器打开」—— 走 BrowserLauncher 统一入口(Chrome → Edge → 默认浏览器)。
+    /// 项目反馈 [[feedback-browser-chrome-fallback]] 强制统一,严禁直接 Process.Start。</summary>
+    private void OpenInBrowser()
+    {
+        var url = GetSelectedRepoUrl();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            StatusText = "无仓库链接(未拉过详情)";
+            return;
+        }
+        if (_browserLauncher is null)
+        {
+            // v1.0.0.x T43g:测试 ctor / 早期 caller 没传 BrowserLauncher —— 不静默,告知用户。
+            StatusText = "浏览器打开不可用:未配置 BrowserLauncher";
+            return;
+        }
+        _browserLauncher.OpenWithChromeFallback(url,
+            (code, msg, sev) => StatusText = $"打开浏览器失败:{msg}");
+        StatusText = $"已在浏览器打开:{url}";
+    }
+
+    /// <summary>详情「📋 复制链接」—— 走 System.Windows.Clipboard 静态调用(项目 4 处先例)。
+    /// 异常(如剪贴板被其他程序锁住)→ StatusText 提示,不抛给 XAML。</summary>
+    private void CopyUrl()
+    {
+        var url = GetSelectedRepoUrl();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            StatusText = "无仓库链接";
+            return;
+        }
+        try
+        {
+            System.Windows.Clipboard.SetText(url);
+            StatusText = $"已复制:{url}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"复制失败:{ex.Message}";
+        }
+    }
+
+    /// <summary>详情「📥 一键安装」—— 弹 EnvPickerDialog(复用现有 EnvOption)选环境 → 调
+    /// <see cref="NodeOperations.InstallAsync"/>。StatusText 实时报告进度,IsBusy 期间禁用按钮。
+    /// 无 SelectedEntry / 缺 _envRepo / 缺 _nodeOps 时静默提示,不抛。</summary>
+    private async Task InstallNodeAsync()
+    {
+        if (_selectedEntry is null)
+        {
+            StatusText = "未选中 entry";
+            return;
+        }
+        if (_envRepo is null || _nodeOps is null)
+        {
+            StatusText = "安装未配置:缺少 envRepo / nodeOps 注入";
+            return;
+        }
+        var entry = _selectedEntry;
+        var envs = _envRepo.ListAll();
+        if (envs.Count == 0)
+        {
+            StatusText = "没有可用环境,请先创建 ComfyUI 环境";
+            return;
+        }
+
+        // 弹环境 picker dialog(复用现成 EnvPickerDialog — 单一可测试 seam ShowOverride)。
+        var opts = envs.Select(e => new EnvOption(e.Id, e.Name)).ToList();
+        var picked = EnvPickerDialog.Show($"安装 {entry.Author}/{entry.RepoName} → 选择环境", opts);
+        if (picked is null)
+        {
+            StatusText = "已取消";
+            return;
+        }
+        var env = envs.First(e => e.Id == picked.Id);
+        var repoUrl = $"https://github.com/{entry.Author}/{entry.RepoName}.git";
+        // 默认装最新版本;若用户选了某个 version,把它当 targetTag 传给 git checkout。
+        // DetailRow.Version 可能是 repoName(未拉详情)或 git tag/sha — 仅当形态像 tag 才传,避免假 commit。
+        var rawVersion = SelectedDetails.FirstOrDefault()?.Version;
+        string? targetTag = !string.IsNullOrWhiteSpace(rawVersion) && rawVersion != entry.RepoName
+            ? rawVersion
+            : null;
+
+        IsBusy = true;
+        try
+        {
+            StatusText = $"正在安装 {entry.Author}/{entry.RepoName} → {env.Name}...";
+            var progress = new Progress<string>(line => StatusText = line);
+            var result = await _nodeOps.InstallAsync(
+                envId: env.Id,
+                nodeId: entry.RepoName,
+                repoUrl: repoUrl,
+                targetTag: targetTag,
+                progress: progress);
+            StatusText = result.Success
+                ? $"安装成功:{entry.Author}/{entry.RepoName} → {env.Name} (sha={result.Version ?? "?"})"
+                : $"安装失败:{result.Reason}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"安装异常:{ex.Message}";
+            TryWriteNreDebugLog("InstallNodeAsync", ex);
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 }
