@@ -286,15 +286,31 @@ public sealed class NodelistViewModel : ViewModelBase
     {
         if (IsBusy) return;
         IsBusy = true;
+        Services.NodelistDownloader.DownloadResult? dl = null;
         try
         {
+            // v1.0.0.x (2026-09-15) T43e debug: pin throw site — 隔离每个 await + 每个 setter。
+            // Release build 行号不可靠,把每行 pin 到独立 try/catch 落日志后再 re-throw。
+            TryWriteNreDebugLog("DownloadAndIngestAsync.START", new Exception("entered"));
+            TryWriteNreDebugLog("DownloadAndIngestAsync.PIN_DOWNLOADER",
+                new Exception($"_downloader={(object?)_downloader ?? "null"}"));
+            var dlDir = NodelistDirectory;
+            TryWriteNreDebugLog("DownloadAndIngestAsync.PIN_NODELISTDIR",
+                new Exception($"NodelistDirectory='{dlDir}'"));
             StatusText = "下载 default custom-node-list.json...";
-            var dl = await _downloader.DownloadDefaultAsync(NodelistDirectory);
+            TryWriteNreDebugLog("DownloadAndIngestAsync.BEFORE_DL", new Exception("about to call DownloadDefaultAsync"));
+            dl = await _downloader.DownloadDefaultAsync(dlDir);
+            TryWriteNreDebugLog("DownloadAndIngestAsync.AFTER_DL", new Exception($"download done size={dl.SizeBytes}"));
             StatusText = $"下载完成 ({dl.SizeBytes / 1024} KB) → {dl.FilePath}";
             await RunIngestAsync(dl.FilePath, "重新下载 + 入库");
         }
         catch (Exception ex)
         {
+            // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43e) debug:
+            // Release build 行号是编译器 inline 后位置,不是真正 throw site。
+            // 把 ex.ToString() 完整 stack + source + InnerException 写日志,
+            // 方便 diagnose。临时 Debug.WriteLine + log,后续如有 logger 注入切 logger.Error。
+            TryWriteNreDebugLog("DownloadAndIngestAsync", ex);
             StatusText = $"失败:{ex.Message}";
         }
         finally
@@ -326,6 +342,9 @@ public sealed class NodelistViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43e) debug:
+            // 同 DownloadAndIngestAsync — 把 stack 落盘 nodelist_debug.log。
+            TryWriteNreDebugLog("RunIngestAsync", ex);
             StatusText = $"失败:{ex.Message}";
         }
         finally
@@ -352,6 +371,38 @@ public sealed class NodelistViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusText = $"打开目录失败:{ex.Message}";
+        }
+    }
+
+    // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43e) debug helper:
+    // 把 NRE / 其他异常 stack 落到 <exe>/nodelist_debug.log,append 模式不覆盖历史。
+    // 用户复现后可直接 cat / 截屏发给我做诊断。写文件失败静默(只读盘 / 权限不足
+    // 等不影响主流程)。
+    private static void TryWriteNreDebugLog(string source, Exception ex)
+    {
+        try
+        {
+            var dir = AppContext.BaseDirectory;
+            var path = System.IO.Path.Combine(dir, "nodelist_debug.log");
+            var stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            // v1.0.0.x T43e: 写更完整 context — Exception type + message + stack + InnerException
+            // (Release build 行号不可靠,但 stack 里的方法名能定位是哪个 service / method)。
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"[{stamp}] [{source}] EXCEPTION TYPE: {ex.GetType().FullName}");
+            sb.AppendLine($"[{stamp}] [{source}] MESSAGE: {ex.Message}");
+            sb.AppendLine($"[{stamp}] [{source}] STACK:");
+            sb.AppendLine(ex.StackTrace ?? "(null)");
+            if (ex.InnerException is not null)
+            {
+                sb.AppendLine($"[{stamp}] [{source}] INNER: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}");
+                sb.AppendLine(ex.InnerException.StackTrace ?? "(null)");
+            }
+            sb.AppendLine("--- end ---");
+            System.IO.File.AppendAllText(path, sb.ToString());
+        }
+        catch
+        {
+            // 静默 — 不影响主流程
         }
     }
 }

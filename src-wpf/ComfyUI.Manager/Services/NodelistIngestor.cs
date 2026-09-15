@@ -203,7 +203,22 @@ public sealed class NodelistIngestor
         {
             tasks.Add(ProcessOneAsync(toIngest[i], i, toIngest.Count, currentNew));
         }
-        var results = await Task.WhenAll(tasks);
+        System.Collections.Generic.List<((int NewCount, int DetailFailed, int DetailWritten), int)> results;
+        try
+        {
+            // v1.0.0.x (2026-09-15) T43e debug: granular catch — pin NRE throw site。
+            // Release build 行号不可靠,这里分别 catch 当 Task.WhenAll / 当 Worker 抛,
+            // 把异常原样 re-throw,但先用 _logger 落上下文(processOne 编号 + ex Stack)。
+            var raw = await Task.WhenAll(tasks);
+            results = new System.Collections.Generic.List<((int, int, int), int)>(raw.Length);
+            foreach (var t in raw) results.Add(t);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("nodelist-ingest",
+                $"IngestAsync.WhenAll NRE/异常 pin: type={ex.GetType().FullName} msg={ex.Message} stack={ex.StackTrace}");
+            throw;
+        }
         foreach (var tup in results)
         {
             var r = tup.Item1;

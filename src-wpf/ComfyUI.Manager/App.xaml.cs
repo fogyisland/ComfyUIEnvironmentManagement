@@ -639,6 +639,14 @@ public partial class App : Application
             commonNodeInstaller: commonNodeInstaller,
             // v1.0.0.x (2026-09-05) feat/nodelist-directory
             nodeListScanner: nodeListScanner,
+            // v1.0.0.x feat/nodelist-redesign:nodelist_pipeline 三件套(下载器+入库器+repo)。
+            // 之前(T43)漏传,导致 MainViewModel._nodelistDownloader 留 null → ShowNodelistView
+            // new NodelistViewModel 时 _downloader 是 null → 点「⬇ 重新下载」立刻 NRE
+            // (await _downloader.DownloadDefaultAsync 解引用 null)。
+            // 修法(T43e):把启动期已构造的实例传进来,MainViewModel ctor 不再用默认 null。
+            nodelistRepo: nodelistRepo,
+            nodelistDownloader: nodelistDownloader,
+            nodelistIngestor: nodelistIngestor,
             // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token SSoT
             // MainViewModel → ShowNodelistView 读 SQLite 拿 host/token
             nodelistSourceConfig: nodelistSourceConfigRepo);

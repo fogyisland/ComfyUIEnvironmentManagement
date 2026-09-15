@@ -56,12 +56,62 @@ public sealed class NodelistDownloader
         Directory.CreateDirectory(nodelistDirectory);
         var destFile = Path.Combine(nodelistDirectory, SeedFileName);
 
-        using var resp = await _http.GetAsync(DefaultCustomNodeListUrl, ct);
-        resp.EnsureSuccessStatusCode();
-        var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
-        await File.WriteAllBytesAsync(destFile, bytes, ct);
+        // v1.0.0.x (2026-09-15) T43e debug: granular catch pin NRE throw site。
+        // Release build 行号不可靠;分 GetAsync / ReadAsByteArrayAsync / WriteAllBytesAsync
+        // 三段分别 catch,落 _logger(staging 启动期无 logger 时写文件)。
+        System.Net.Http.HttpResponseMessage resp;
+        try
+        {
+            resp = await _http.GetAsync(DefaultCustomNodeListUrl, ct);
+        }
+        catch (Exception ex)
+        {
+            TryWriteDownloaderDebugLog("GetAsync", ex);
+            throw;
+        }
+        try
+        {
+            resp.EnsureSuccessStatusCode();
+        }
+        catch (Exception ex)
+        {
+            TryWriteDownloaderDebugLog("EnsureSuccessStatusCode", ex);
+            throw;
+        }
+        byte[] bytes;
+        try
+        {
+            bytes = await resp.Content.ReadAsByteArrayAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            TryWriteDownloaderDebugLog("ReadAsByteArrayAsync", ex);
+            throw;
+        }
+        try
+        {
+            await File.WriteAllBytesAsync(destFile, bytes, ct);
+        }
+        catch (Exception ex)
+        {
+            TryWriteDownloaderDebugLog("WriteAllBytesAsync", ex);
+            throw;
+        }
 
         sw.Stop();
         return new DownloadResult(destFile, bytes.Length, DefaultCustomNodeListUrl, sw.Elapsed);
+    }
+
+    private static void TryWriteDownloaderDebugLog(string stage, Exception ex)
+    {
+        try
+        {
+            var dir = AppContext.BaseDirectory;
+            var path = System.IO.Path.Combine(dir, "nodelist_debug.log");
+            var stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            System.IO.File.AppendAllText(path,
+                $"[{stamp}] [Downloader.{stage}] {ex.GetType().FullName}: {ex.Message}\n{ex.StackTrace}\n--- end ---\n");
+        }
+        catch { }
     }
 }
