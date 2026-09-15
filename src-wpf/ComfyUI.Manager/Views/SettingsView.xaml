@@ -239,12 +239,14 @@
                     <!-- v1.0.0.x (2026-09-05) feat/nodelist-redesign:刷新拉取控制 ——
                      用户原话"去掉 github token 这个内容提示刷新时候拉取节点版本,
                      里面有两个复选框:刷新时候拉取节点版本 + 刷新时候拉取 github 元数据 license/stars/tags/readme" -->
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
                     <CheckBox Content="刷新时拉取节点版本" Margin="0,0,16,0" VerticalAlignment="Center"
                               IsChecked="{Binding RefreshFetchVersions, Mode=TwoWay}"/>
                     <CheckBox Content="刷新时拉取 GitHub 元数据(license/stars/tags/readme)" VerticalAlignment="Center"
                               IsChecked="{Binding RefreshFetchMetadata, Mode=TwoWay}"/>
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <TextBlock Text="GitHub Token(只在 GitHub 时用)" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
                                VerticalAlignment="Center"

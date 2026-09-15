@@ -395,6 +395,15 @@ public partial class App : Application
         var nodelistRepo = new NodelistRepository(dbFactory);
         var nodelistDownloader = new NodelistDownloader(http);
         var nodelistIngestor = new NodelistIngestor(nodelistRepo, nodeRepoQuery, logger);
+        // v1.0.0.x (2026-09-05) feat/nodelist-directory:后台 Job ——
+        // 用户原话"每天启动一次,启动时间在启动程序后一个小时走这个流程,
+        // 而且走的是后台执行,不要阻塞前台进程"。
+        var nodelistBackgroundJob = new NodelistBackgroundJob(
+            nodelistDownloader, nodelistIngestor, settings, logger);
+        // 启动后 1 小时首次跑,之后每隔 24 小时跑一次(用户原话"每天")
+        nodelistBackgroundJob.Start(
+            initialDelay: TimeSpan.FromHours(1),
+            period: TimeSpan.FromHours(24));
         // v1.0.0 T11: 通用 template source updater — per-repo-URL, 给
         // TemplateManagementViewModel(ShowTemplateManagement)的每张模板卡
         // "更新源码" 按钮使用。构造时传 gitExe + gitProxy + logger(不是 gitRunner),

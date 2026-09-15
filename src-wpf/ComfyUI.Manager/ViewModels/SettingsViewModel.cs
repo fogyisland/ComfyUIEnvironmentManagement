@@ -627,6 +627,27 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         set { _settings.FetchCatalogMetadata = value; MarkDirty(nameof(FetchCatalogMetadata)); RaisePropertyChanged(); }
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-05) feat/nodelist-redesign:刷新时拉取节点版本号(Nodelist 路径)开关。
+    /// 用户原话"里面有两个复选框:刷新时候拉取节点版本 + 刷新时候拉取 github 元数据 license/stars/tags/readme"。
+    /// 默认 ON,跟 Settings model 默认值对齐。
+    /// </summary>
+    public bool RefreshFetchVersions
+    {
+        get => _settings.RefreshFetchVersions;
+        set { _settings.RefreshFetchVersions = value; MarkDirty(nameof(RefreshFetchVersions)); RaisePropertyChanged(); }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-05) feat/nodelist-redesign:刷新时拉取 GitHub 元数据(License/Stars/Tags/Readme 等)开关。
+    /// 默认 OFF 保持向后兼容(避免没配 token 的用户被 GitHub 限流 60/h)。
+    /// </summary>
+    public bool RefreshFetchMetadata
+    {
+        get => _settings.RefreshFetchMetadata;
+        set { _settings.RefreshFetchMetadata = value; MarkDirty(nameof(RefreshFetchMetadata)); RaisePropertyChanged(); }
+    }
+
     // v0.6.11++ pip mirror
     public List<string> PipMirrorKinds { get; } = new()
     {

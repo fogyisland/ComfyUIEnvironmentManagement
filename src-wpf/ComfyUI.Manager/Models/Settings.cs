@@ -82,7 +82,10 @@ public class Settings
     [JsonPropertyName("nodelist_refresh_metadata")] public bool RefreshFetchMetadata { get; set; } = false;
     [JsonPropertyName("nodelist_custom_host_url")] public string NodelistCustomHostUrl { get; set; } = "";
     [JsonPropertyName("nodelist_custom_token")] public string NodelistCustomToken { get; set; } = "";
-    [JsonPropertyName("nodelist_host_token")] public string NodelistHostToken { get; set; } = ""; // 旧字段,保留兼容
+    [JsonPropertyName("nodelist_host_token")] public string NodelistHostToken { get; set; } = "";
+
+    // v1.0.0.x (2026-09-05) feat/nodelist-directory:最近一次增量入库时间(ISO UTC)
+    [JsonPropertyName("nodelist_last_ingest_at")] public string NodelistLastIngestAt { get; set; } = ""; // 旧字段,保留兼容
     // v1.0.0.x: 系统模板库目录 — 用户配置的共享模板根目录,模板管理页可从此处发现/管理内置模板。
     // 空 = 不启用(沿用 v1.0.0 默认行为)。非空 = 作为系统模板的统一存放根。
     [JsonPropertyName("system_template_library_dir")] public string SystemTemplateLibraryDir { get; set; } = "";
