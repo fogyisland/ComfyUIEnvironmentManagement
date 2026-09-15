@@ -22,6 +22,8 @@ public class CatalogViewModel : ViewModelBase
     private readonly string _projectRoot;
     private readonly NodeRepository? _nodeRepo;
     private readonly GitHubVersionService? _versionService;
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:ApiToken 走 SQLite
+    private readonly NodelistSourceConfigRepository? _nodelistSourceConfig;
     private CancellationTokenSource? _versionsFetchCts;
 
     private List<CatalogEntry> _allEntries = new();
@@ -146,8 +148,13 @@ public class CatalogViewModel : ViewModelBase
         LoadVersionsError = null;
         try
         {
+            // v1.0.0.x (2026-09-15) feat/nodelist-source-config:API token 走 SQLite
+            // nodelist_source_config;未注入 repo 时回退 _settings.GitHubToken
+            // (catalog 拉 GitHub API 用的 OAuth token)。
+            var apiToken = _nodelistSourceConfig?.Get().ApiToken
+                ?? _settings.GitHubToken;
             var result = await _versionService!.FetchVersionsAsync(
-                [(entry.Id, refUrl)], _settings.NodelistCustomToken, ct: ct);
+                [(entry.Id, refUrl)], apiToken, ct: ct);
             // 用户已切换到别的节点 → 丢弃本次结果
             if (ct.IsCancellationRequested || _selected?.Id != entry.Id) return;
             if (result.TryGetValue(entry.Id, out var versions) && versions.Count > 0)
@@ -389,7 +396,9 @@ public class CatalogViewModel : ViewModelBase
         string projectRoot,
         IRateLimitState? rateLimitState = null,
         NodeRepository? nodeRepo = null,
-        GitHubVersionService? versionService = null)
+        GitHubVersionService? versionService = null,
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:可选,未注入回退 Settings
+        NodelistSourceConfigRepository? nodelistSourceConfig = null)
     {
         _repo = repo;
         _versionRepo = versionRepo;
@@ -401,6 +410,7 @@ public class CatalogViewModel : ViewModelBase
         _rateLimitState = rateLimitState;
         _nodeRepo = nodeRepo;
         _versionService = versionService;
+        _nodelistSourceConfig = nodelistSourceConfig;
 
         RefreshCommand = new RelayCommand(_ => _ = RefreshAsync(), _ => !IsBusy);
         CancelRefreshCommand = new RelayCommand(_ => _refreshCts?.Cancel(), _ => IsBusy);

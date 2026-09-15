@@ -43,6 +43,8 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     private readonly NodeListScanner? _nodeListScanner;
     // v1.0.0.x feat/nodelist-directory:NodelistSync 依赖 —— App.xaml.cs 注入共享实例。
     private readonly NodelistSync? _nodelistSync;
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:SaveCommand 镜像写 + ScanNodeListAsync 读
+    private readonly NodelistSourceConfigRepository? _nodelistSourceConfig;
     private readonly CancellationTokenSource _addPythonInterpreterCts = new();
     private Settings _settings;
 
@@ -146,7 +148,9 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         // v1.0.0.x feat/nodelist-directory:EnvsRoot 用于 NodelistSync 扫描源根
         string? envsRoot = null,
         // v1.0.0.x feat/nodelist-directory:NodeRepoQueryService — node repo metadata
-        NodeRepoQueryService? nodeRepoQuery = null)
+        NodeRepoQueryService? nodeRepoQuery = null,
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:SaveCommand 镜像写 + ScanNodeListAsync 读
+        NodelistSourceConfigRepository? nodelistSourceConfig = null)
     {
         _repo = repo;
         _proxy = proxy;
@@ -156,6 +160,7 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         _envRepo = envRepo;
         _syncService = syncService;
         _commonNodeInstaller = commonNodeInstaller;
+        _nodelistSourceConfig = nodelistSourceConfig;
         // v1.0.0.x (2026-09-05) feat/nodelist-directory
         _nodeListScanner = nodeListScanner;
         EnvsRoot = envsRoot ?? "";
@@ -415,6 +420,31 @@ public class SettingsViewModel : ViewModelBase, IDisposable
                     || Dirty[nameof(ControlnetDir)]
                     || Dirty[nameof(DefaultModelsDirectory)];
                 _repo.Save(_settings);
+                // v1.0.0.x (2026-09-15) feat/nodelist-source-config:镜像写 SQLite
+                // nodelist_source_config 表(host/token/refresh 字段)。失败仅 warn 不
+                // throw(.inf 已落盘,SQLite 镜像失败下次启动 Get() 返默认值 host/token
+                // 空 → BG job / Scanner 自动 skip,用户手动重保存即可)。
+                if (_nodelistSourceConfig is not null)
+                {
+                    try
+                    {
+                        _nodelistSourceConfig.Upsert(
+                            _settings.NodelistServerUrl,
+                            _settings.NodelistApiToken,
+                            _settings.RefreshFetchVersions,
+                            _settings.RefreshFetchMetadata);
+                    }
+                    catch (Exception ex)
+                    {
+                        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:
+                        // 镜像写失败仅 Debug 输出,不 throw(.inf 已落盘,SQLite 镜像
+                        // 失败下次启动 Get() 返默认值 host/token 空 → BG job /
+                        // Scanner 自动 skip,用户手动重保存即可)。
+                        Debug.WriteLine(
+                            $"[SettingsViewModel.SaveCommand] nodelist_source_config 镜像写失败:" +
+                            $".inf 已保存,下次启动 host/token 将为空。{ex.Message}");
+                    }
+                }
                 ClearDirty();
                 // v1.0.0.x: EnvsDir 改了 → 触发 EnvDirectoryScanner 扫新目录 auto-import
                 // env。可空 callback,没注入就直接跳过(测试路径)。
@@ -595,14 +625,25 @@ public class SettingsViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// GitHub PAT 用于 catalog 刷新时拉各节点最新 release 版本号。空 = 不拉。
-    /// View 端用 PasswordBox,不在 XAML 里直接 TwoWay bind(string 类型会明文显示)。
-    /// 由 View 的 PasswordChanged 事件反向写入此属性并 persist。
+    /// v1.0.0.x (2026-09-15) feat/nodelist-source-config:节点查询 API Token。
+    /// View 端用 PasswordBox 包装,不在 XAML 里直接 TwoWay bind(string 类型会明文显示)。
+    /// 由 View 的 PasswordChanged 事件反向写入此属性并 persist。镜像写 SQLite 在
+    /// SaveCommand 末尾统一做(失败 try/catch warn 不 throw)。
     /// </summary>
-    public string GitHubToken
+    public string NodelistApiToken
     {
-        get => _settings.NodelistCustomToken;
-        set { _settings.NodelistCustomToken = value ?? ""; MarkDirty(nameof(GitHubToken)); }
+        get => _settings.NodelistApiToken;
+        set { _settings.NodelistApiToken = value ?? ""; MarkDirty(nameof(NodelistApiToken)); }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-15) feat/nodelist-source-config:节点查询服务器 URL。
+    /// Custom 是唯一形态(GitHub kind 已删除),无 kind 二选一。
+    /// </summary>
+    public string NodelistServerUrl
+    {
+        get => _settings.NodelistServerUrl;
+        set { _settings.NodelistServerUrl = value ?? ""; MarkDirty(nameof(NodelistServerUrl)); RaisePropertyChanged(); }
     }
 
     /// <summary>
@@ -674,34 +715,8 @@ public class SettingsViewModel : ViewModelBase, IDisposable
             RaisePropertyChanged();
         }
     }
-    // v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom 互斥 RadioButton
-    // 选 GitHub 时 disable custom URL/token,反之亦然。
-    public bool IsGitHubSelected
-    {
-        get => _settings.NodelistHostKind == Models.NodelistHostKind.GitHub;
-        set
-        {
-            if (value) SetNodelistHostKind(Models.NodelistHostKind.GitHub);
-            RaisePropertyChanged();
-        }
-    }
-    public bool IsCustomSelected
-    {
-        get => _settings.NodelistHostKind == Models.NodelistHostKind.Custom;
-        set
-        {
-            if (value) SetNodelistHostKind(Models.NodelistHostKind.Custom);
-            RaisePropertyChanged();
-        }
-    }
-    private void SetNodelistHostKind(Models.NodelistHostKind kind)
-    {
-        if (_settings.NodelistHostKind == kind) return;
-        _settings.NodelistHostKind = kind;
-        MarkDirty(nameof(NodelistHostKind));
-        RaisePropertyChanged(nameof(IsGitHubSelected));
-        RaisePropertyChanged(nameof(IsCustomSelected));
-    }
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:GitHub kind 完全删除,
+    // 不再需要 IsGitHubSelected / IsCustomSelected / SetNodelistHostKind(Custom 是唯一形态)。
     public bool IsCustomPipMirrorSelected
         => string.Equals(_settings.PipMirror, "custom", System.StringComparison.OrdinalIgnoreCase);
 
@@ -1764,19 +1779,15 @@ public class SettingsViewModel : ViewModelBase, IDisposable
         });
         try
         {
-            // v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom token 互斥 —
-            // 用户原话"和 github token 属于互斥"。按 host kind 选对应 token 字段。
-            var token = _settings.NodelistHostKind == Models.NodelistHostKind.GitHub
-                ? _settings.NodelistCustomToken
-                : _settings.NodelistCustomToken;
+            // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 单一字段,
+            // 从 SQLite nodelist_source_config 表读(GitHub kind 已删除)。
+            var cfg = _nodelistSourceConfig?.Get()
+                ?? new NodelistSourceConfigRepository.Config("custom", "", "", true, false, "");
             var result = await _nodeListScanner.ScanAsync(
                 _settings.NodelistDirectory, progress,
-                token,
-                _settings.NodelistHostKind,
-                _settings.NodelistHostKind == NodelistHostKind.GitHub
-                    ? "https://api.github.com" : _settings.NodelistCustomHostUrl,
-                token,
-                _nodeRepoQuery);
+                host: cfg.ServerUrl,
+                apiToken: cfg.ApiToken,
+                repoQuery: _nodeRepoQuery);
             TotalNodes = result.UniqueNodes;
             ScanStatusText = $"扫描完成 — 共 {result.FilesScanned} 个文件,{result.UniqueNodes} 个节点";
             ScanStatusText += $" (新增 {result.NewNodes},更新 {result.UpdatedNodes},失败 {result.FetchFailures})";

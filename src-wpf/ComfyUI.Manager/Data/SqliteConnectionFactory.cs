@@ -236,7 +236,21 @@ public sealed class SqliteConnectionFactory
                     ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS ix_nodelist_details_entry
-                ON nodelist_details(author, repo_name);";
+                ON nodelist_details(author, repo_name);
+            -- v1.0.0.x: 节点查询源配置(替代 settings.inf 4 个字段)。
+            -- 单例行 id=1(CHECK 约束),host/token 读取都从这拿。
+            -- Settings.SaveCommand 镜像写;BackgroundJob / Scanner / NodelistViewModel 读。
+            CREATE TABLE IF NOT EXISTS nodelist_source_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                source TEXT NOT NULL DEFAULT 'custom',
+                server_url TEXT NOT NULL DEFAULT '',
+                api_token TEXT NOT NULL DEFAULT '',
+                refresh_versions INTEGER NOT NULL DEFAULT 1,
+                refresh_metadata INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS ix_nodelist_source_config_updated
+                ON nodelist_source_config(updated_at);";
         cmd.ExecuteNonQuery();
 
         // 增量升级:旧 db 没有 base_python_path / python_version 列 → ALTER TABLE ADD COLUMN。
@@ -303,6 +317,14 @@ public sealed class SqliteConnectionFactory
                     (id, name, root_path, comfyui_layout, base_python_path, python_version)
                 VALUES
                     ('', '(local download)', '', 'standalone', '', '')";
+            sentinel.ExecuteNonQuery();
+        }
+
+        // v1.0.0.x: nodelist_source_config 单例行 sentinel(id=1)。
+        // 对齐 environments(id='','(local download)') pattern — 保证 Get() 永远能读到 1 行。
+        using (var sentinel = conn.CreateCommand())
+        {
+            sentinel.CommandText = @"INSERT OR IGNORE INTO nodelist_source_config (id) VALUES (1)";
             sentinel.ExecuteNonQuery();
         }
     }

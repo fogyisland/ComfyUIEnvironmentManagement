@@ -88,16 +88,23 @@ public sealed class NodelistViewModel : ViewModelBase
     public NodelistViewModel(
         NodelistDownloader downloader,
         NodelistIngestor ingestor,
-        NodelistRepository repo)
+        NodelistRepository repo,
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 从 SQLite 读,
+        // Settings 的 NodelistServerUrl/NodelistApiToken 不再直接走(只作 .inf 镜像)。
+        // sourceConfig 由 MainViewModel 注入,caller 先设 Host/Token 也可(向后兼容)。
+        NodelistSourceConfigRepository? sourceConfig = null)
     {
         _downloader = downloader;
         _ingestor = ingestor;
         _repo = repo;
+        _sourceConfig = sourceConfig;
 
         DownloadAndIngestCommand = new RelayCommand(
             async _ => await DownloadAndIngestAsync(),
             _ => IsNotBusy && !string.IsNullOrWhiteSpace(NodelistDirectory));
     }
+
+    private readonly NodelistSourceConfigRepository? _sourceConfig;
 
     public sealed class EntryRow
     {
@@ -192,8 +199,18 @@ public sealed class NodelistViewModel : ViewModelBase
             StatusText = "解析 + 入库中...";
             var progress = new Progress<NodelistIngestor.IngestProgress>(p =>
                 StatusText = $"入库中({p.Current}/{p.Total}):{p.Author}/{p.RepoName}");
+            // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 优先读 SQLite
+            // nodelist_source_config(sourceConfig 已注入),回退到 MainViewModel 设的 Host/Token
+            // 属性(老路径,MainViewModel ctor 路径不再调到此分支)。
+            var (host, token) = _sourceConfig is not null
+                ? ((Func<(string, string)>)(() =>
+                {
+                    var cfg = _sourceConfig.Get();
+                    return (cfg.ServerUrl, cfg.ApiToken);
+                }))()
+                : (Host, Token);
             var result = await _ingestor.IngestAsync(
-                dl.FilePath, Host, Token, forceFull: false, progress: progress);
+                dl.FilePath, host, token, forceFull: false, progress: progress);
             StatusText = $"入库完成 — 扫 {result.EntriesScanned},新增 {result.EntriesNew},跳过 {result.EntriesSkipped},详情 {result.DetailsWritten}(失败 {result.DetailsFailed})";
 
             await ReloadAsync();

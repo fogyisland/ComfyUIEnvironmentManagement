@@ -395,11 +395,13 @@ public partial class App : Application
         var nodelistRepo = new NodelistRepository(dbFactory);
         var nodelistDownloader = new NodelistDownloader(http);
         var nodelistIngestor = new NodelistIngestor(nodelistRepo, nodeRepoQuery, logger);
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token SSoT
+        var nodelistSourceConfigRepo = new NodelistSourceConfigRepository(dbFactory);
         // v1.0.0.x (2026-09-05) feat/nodelist-directory:后台 Job ——
         // 用户原话"每天启动一次,启动时间在启动程序后一个小时走这个流程,
         // 而且走的是后台执行,不要阻塞前台进程"。
         var nodelistBackgroundJob = new NodelistBackgroundJob(
-            nodelistDownloader, nodelistIngestor, settings, logger);
+            nodelistDownloader, nodelistIngestor, nodelistSourceConfigRepo, settings, logger);
         // 启动后 1 小时首次跑,之后每隔 24 小时跑一次(用户原话"每天")
         nodelistBackgroundJob.Start(
             initialDelay: TimeSpan.FromHours(1),
@@ -594,7 +596,10 @@ public partial class App : Application
             // gitProxy + logger,行为跟 RequirementsInstaller.AutoInstallCommonNodesAsync 一致。
             commonNodeInstaller: commonNodeInstaller,
             // v1.0.0.x (2026-09-05) feat/nodelist-directory
-            nodeListScanner: nodeListScanner);
+            nodeListScanner: nodeListScanner,
+            // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token SSoT
+            // MainViewModel → ShowNodelistView 读 SQLite 拿 host/token
+            nodelistSourceConfig: nodelistSourceConfigRepo);
 
         // v1.0.0.x: 用户覆盖本地路径 repo factory
 

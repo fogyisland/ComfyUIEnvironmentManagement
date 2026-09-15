@@ -23,8 +23,10 @@ public sealed class NodeListScanner
     // v1.0.0.x (2026-09-05) feat/nodelist-directory:云端节点仓库查询
     private readonly NodeRepoQueryService? _repoQuery;
     private readonly AppLogger? _logger;
-    // v1.0.0.x feat/nodelist-directory:Settings 引用(读 host/token 配置)
-    private readonly Settings? _settings;
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:GitHub kind 已删除,
+    // Settings.NodelistHostKind/NodelistCustomHostUrl/NodelistHostToken 全部废弃。
+    // host + token 改由 caller 从 SQLite nodelist_source_config 表读,通过 ScanAsync
+    // 入参 host + apiToken 传入。
 
     public NodeListScanner(
         NodeRepository nodeRepo,
@@ -57,11 +59,10 @@ public sealed class NodeListScanner
     public async Task<ScanResult> ScanAsync(
         string directory,
         IProgress<ScanProgress>? progress = null,
-        string? githubToken = null,
-        // v1.0.0.x feat/nodelist-directory:host + token + Settings 注入
-        NodelistHostKind hostKind = NodelistHostKind.GitHub,
-        string? customHostUrl = null,
-        string? hostToken = null,
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host + apiToken 由 caller
+        // 从 SQLite nodelist_source_config 表读出传入,不再用 GitHub/Custom 二选一。
+        string host = "",
+        string? apiToken = null,
         NodeRepoQueryService? repoQuery = null,
         CancellationToken ct = default)
     {
@@ -111,15 +112,14 @@ public sealed class NodeListScanner
             return new ScanResult(files.Count, 0, 0, 0, 0, 0, 0, sw.Elapsed);
         }
 
-        // 4. 拉 GitHub metadata
+        // 4. 拉 GitHub metadata(apiToken 可能被 GitHubVersionService 用作 X-API-Key 或留空)
         var idList = nodes.Select(kv => (kv.Key, kv.Value.Reference)).ToList();
-        var versions = await _versionService.FetchVersionsAsync(idList, githubToken, ct: ct);
+        var versions = await _versionService.FetchVersionsAsync(idList, apiToken ?? "", ct: ct);
 
         // 4.5 拉 repo metadata(NodeRepoQueryService,GET {host}/api/v1/repos/{author}/{repo})
         //     解析 description/stars/license 等存到 ScanMeta(JSON 序列化)
-        var host = hostKind == NodelistHostKind.Custom
-            ? ResolveCustomHost(directory)
-            : "https://api.github.com";
+        //     v1.0.0.x feat/nodelist-source-config:host 由 caller 从 SQLite 传入。
+        host = host.TrimEnd('/');
         var repoMetas = new Dictionary<string, NodeRepoQueryService.RepoMetadata>();
         if (_repoQuery is not null && !string.IsNullOrWhiteSpace(host))
         {
@@ -128,7 +128,7 @@ public sealed class NodeListScanner
                 ct.ThrowIfCancellationRequested();
                 var parts = kv.Key.Split('/', 2);
                 if (parts.Length != 2) continue;
-                var meta = await _repoQuery.FetchRepoMetadataAsync(host, githubToken, parts[0], parts[1], ct);
+                var meta = await _repoQuery.FetchRepoMetadataAsync(host, apiToken, parts[0], parts[1], ct);
                 if (meta is not null) repoMetas[kv.Key] = meta;
             }
         }
@@ -180,14 +180,6 @@ public sealed class NodeListScanner
         return new ScanResult(
             files.Count, nodes.Count, nodes.Count,
             newCount, updatedCount, 0, failCount, sw.Elapsed);
-    }
-
-    // v1.0.0.x feat/nodelist-directory:resolve custom host URL
-    private string ResolveCustomHost(string nodelistDirectory)
-    {
-        if (!string.IsNullOrWhiteSpace(_settings?.NodelistCustomHostUrl))
-            return _settings.NodelistCustomHostUrl;
-        return "";
     }
 
     // v1.0.0.x feat/nodelist-directory:merge scan_meta + repo metadata

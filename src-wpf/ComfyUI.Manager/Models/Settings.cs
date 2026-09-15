@@ -11,14 +11,9 @@ public enum CatalogViewMode
 }
 
 // v1.0.0.x (2026-09-05) feat/nodelist-directory:节点查询 host 类型。
-// 用户原话"2 选 1,采用下拉菜单:第一个直接选择 github,可以添加源,其他源,TOken"。
-// GitHub = api.github.com(默认,NodeRepoQueryService 拼 {host}/api/v1/repos/{author}/{repo})
-// Custom = 用户填自定义 URL(NodelistCustomHostUrl)
-public enum NodelistHostKind
-{
-    GitHub,
-    Custom,
-}
+// v1.0.0.x (2026-09-15) feat/nodelist-source-config:GitHub kind 删除(限流不可用),
+// 未来全部走自定义网站。NodelistHostKind enum 已废弃 → 枚举不再保留,改成单一字段。
+// 历史 commit 上有 enum 时请参考 git log;v1.0.0.x 之后 Settings.cs 不再需要 host_kind 维度。
 
 // v0.6.11++ pip mirror:用户选 global pip 镜像(影响 ComfyUI/Manager 依赖安装,
 // BED 不受影响 — 走 pytorch.org)。string 持久化以便老 settings.json 容错:
@@ -66,23 +61,20 @@ public class Settings
     // 用户手动点"扫描节点列表"→ NodeListScanner 解析所有 json,提取 author/title,
     // 调 GitHubVersionService.FetchVersionsAsync 拉 metadata,写 scanned_nodes 表。
     [JsonPropertyName("nodelist_directory")] public string NodelistDirectory { get; set; } = "";
-    // v1.0.0.x (2026-09-05) feat/nodelist-directory:节点查询 host 选择 ——
-    // 用户原话"2 选 1,采用下拉菜单:第一个直接选择 github,可以添加源,其他源,TOken"。
-    // HostKind = GitHub (默认,api.github.com) 或 Custom(用户填 URL)。
-    // v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub token 和 Custom server 互斥 —
-    // 用户原话"和 github token 属于互斥"。设 GitHub 时 disable Custom URL+token,反之亦然。
-    // 旧字段 nodelist_host_token 一次性保留(向后兼容 — 旧 settings 读到后,
-    // 根据 NodelistHostKind 自动迁移到对应的新字段)。
-    [JsonPropertyName("nodelist_host_kind")] public NodelistHostKind NodelistHostKind { get; set; } = NodelistHostKind.GitHub;
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:节点查询源配置(单一 Custom 形态,
+    // GitHub kind 因限流已删除)。host + token 单一字段,真值持久化到 SQLite
+    // nodelist_source_config 表(SSoT),这两个 .inf 字段仅作镜像以维持向后兼容加载。
+    // 老 .inf 的 nodelist_host_kind / nodelist_host_token / nodelist_custom_host_url /
+    // nodelist_custom_token JSON key 在 InfSettingsSerializer 反序列化时会被静默忽略,
+    // 旧值不会自动迁移到 NodelistServerUrl(用户明示"未来都不走 GitHub,完全砍掉",所以
+    // 不做兼容迁移,丢失可接受)。用户首次保存后即可填新值。
+    [JsonPropertyName("nodelist_server_url")] public string NodelistServerUrl { get; set; } = "";
+    [JsonPropertyName("nodelist_api_token")] public string NodelistApiToken { get; set; } = "";
     // v1.0.0.x (2026-09-05) feat/nodelist-redesign:刷新时拉取控制(双复选框,独立)
     // 用户原话"去掉 github token 这个内容,提示刷新时候拉取节点版本,里面有两个复选框:
     // 刷新时候拉取节点版本 + 刷新时候拉取 github 元数据 license/stars/tags/readme"
-    // GitHub PAT 字段删除(改走 NodelistCustomToken 单一字段,按 host kind 选 base URL)
     [JsonPropertyName("nodelist_refresh_versions")] public bool RefreshFetchVersions { get; set; } = true;
     [JsonPropertyName("nodelist_refresh_metadata")] public bool RefreshFetchMetadata { get; set; } = false;
-    [JsonPropertyName("nodelist_custom_host_url")] public string NodelistCustomHostUrl { get; set; } = "";
-    [JsonPropertyName("nodelist_custom_token")] public string NodelistCustomToken { get; set; } = "";
-    [JsonPropertyName("nodelist_host_token")] public string NodelistHostToken { get; set; } = "";
 
     // v1.0.0.x (2026-09-05) feat/nodelist-directory:最近一次增量入库时间(ISO UTC)
     [JsonPropertyName("nodelist_last_ingest_at")] public string NodelistLastIngestAt { get; set; } = ""; // 旧字段,保留兼容
@@ -231,9 +223,13 @@ public class Settings
     public string ActiveDownloadSourceName { get; set; } = "";
 
     // —— GitHub API:配置后刷新 catalog 时同步拉各节点最新 release —
-    // v1.0.0.x (2026-09-05) feat/nodelist-redesign:删全局 GitHubToken 字段。
-    // 用户原话"去掉 github token",GitHub PAT 改走 NodelistCustomToken(NodelistHostKind=GitHub
-    // 或 Custom 都从这一个 token 字段读,Host 决定走哪个 base URL)。
+    // v1.0.0.x (2026-09-05) feat/nodelist-redesign:全局 GitHubToken 字段从
+    // SettingsView 移除(节点源走自定义 server,不再直接调 GitHub)。
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:节点源 host/token 完全
+    // 走 SQLite nodelist_source_config;**catalog 拉各节点 release/license/stars 等
+    // metadata 仍调 GitHub API**,需要这个 OAuth token(空 = 未鉴权,rate limit 60/h)。
+    [JsonPropertyName("github_token")]
+    public string GitHubToken { get; set; } = "";
 
     // v0.6.11 T3: 开关 gate 控制 refresh 时是否拉节点版本号。默认 OFF 保持向后兼容
     // (避免没配 token 的用户被 GitHub 限流 60/h);开启时会用 GitHubToken(空 = 未鉴权)
@@ -324,9 +320,20 @@ public class Settings
         // —— 节点源 ——
         target.ActiveQuerySourceName = source.ActiveQuerySourceName;
         target.ActiveDownloadSourceName = source.ActiveDownloadSourceName;
-        // v1.0.0.x (2026-09-05) feat/nodelist-redesign:删 GitHubToken/Fetch* 字段,统一走 NodelistCustomToken + RefreshFetchVersions/Metadata
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:删 GitHub kind 字段,
+        // 统一走 NodelistServerUrl + NodelistApiToken + RefreshFetchVersions/Metadata。
+        target.NodelistDirectory = source.NodelistDirectory;
+        target.NodelistServerUrl = source.NodelistServerUrl;
+        target.NodelistApiToken = source.NodelistApiToken;
+        target.NodelistLastIngestAt = source.NodelistLastIngestAt;
         target.RefreshFetchVersions = source.RefreshFetchVersions;
         target.RefreshFetchMetadata = source.RefreshFetchMetadata;
+        // v0.6.13-B Catalog metadata 开关 + v0.6.11 T3 version 开关 ——
+        // 0cb2b6e8 nodelist-redesign 删字段时连带删了这两行 CopyInto,导致
+        // SettingsFetchCatalogMetadataTests.CopyInto_CopiesFetchCatalogMetadata 失败;
+        // 顺手修。跟 nodelist 无关,纯 catalog 拉取开关。
+        target.FetchNodeVersionsOnRefresh = source.FetchNodeVersionsOnRefresh;
+        target.FetchCatalogMetadata = source.FetchCatalogMetadata;
         // —— Python ——
         target.ActivePythonInterpreterName = source.ActivePythonInterpreterName;
         // —— Pip mirror ——

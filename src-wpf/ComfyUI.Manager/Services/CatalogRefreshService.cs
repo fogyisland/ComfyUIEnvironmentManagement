@@ -30,6 +30,9 @@ public class CatalogRefreshService
     private readonly AppLogger? _logger;
     private readonly GitHubCatalogMetadataService? _metadataService;
     private readonly CatalogHttpCacheStore? _httpCacheStore;  // v0.6.14
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:ApiToken 从 SQLite
+    // nodelist_source_config 读,Settings 字段已废弃。
+    private readonly NodelistSourceConfigRepository? _nodelistSourceConfig;
 
     public CatalogRefreshService(
         CatalogFetcher fetcher,
@@ -39,7 +42,9 @@ public class CatalogRefreshService
         NodeVersionRepository? versionRepo = null,
         AppLogger? logger = null,
         GitHubCatalogMetadataService? metadataService = null,
-        CatalogHttpCacheStore? httpCacheStore = null)  // v0.6.14
+        CatalogHttpCacheStore? httpCacheStore = null,  // v0.6.14
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:API token 走 SQLite
+        NodelistSourceConfigRepository? nodelistSourceConfig = null)
     {
         _fetcher = fetcher;
         _repo = repo;
@@ -49,6 +54,7 @@ public class CatalogRefreshService
         _logger = logger;
         _metadataService = metadataService;
         _httpCacheStore = httpCacheStore;
+        _nodelistSourceConfig = nodelistSourceConfig;
     }
 
     public virtual async Task<RefreshResult> RefreshAsync(
@@ -218,8 +224,14 @@ public class CatalogRefreshService
                     // v0.6.14.1:FetchVersionsAsync 撞 rate limit 时**不抛**,改
                     // return partial result + logger.Warn("version-rate-limit", ...)。
                     // 这里仍然保留 catch 防其他异常(网络/反序列化)。
+                    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:API token
+                    // 走 SQLite nodelist_source_config;测试/旧 caller 没注入 repo
+                    // 时回退到 _settings.GitHubToken(catalog 拉 GitHub API 用的
+                    // OAuth token,空 = 未鉴权 60/h 限流)。
+                    var apiToken = _nodelistSourceConfig?.Get().ApiToken
+                        ?? _settings.GitHubToken;
                     versions = await _versionService.FetchVersionsAsync(
-                        nodes, _settings.NodelistCustomToken, versionProgress,
+                        nodes, apiToken, versionProgress,
                         rateLimitProgress, rateLimitState, _logger, ct);
                 }
                 catch (RateLimitException ex)

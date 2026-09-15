@@ -218,67 +218,38 @@
                        Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="600"
                        HorizontalAlignment="Left" />
 
-            <!-- v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom 互斥 token —
-                 用户原话"和 github token 属于互斥"。用单一 GroupName RadioButton 让用户
-                 2 选 1:GitHub = 默认(api.github.com + NodelistGitHubToken) 或
-                 Custom(自定义 URL + NodelistCustomToken)。选 GitHub 时 disable custom 字段,
-                 选 Custom 时 disable github 字段。IsEnabled 双向绑定 host kind 互斥。 -->
+            <!-- v1.0.0.x (2026-09-15) feat/nodelist-source-config:GitHub kind 已删除
+                 (限流不可用),Custom 是唯一形态。单 host URL + 单 API Token + 2 CheckBox。
+                 真值持久化到 SQLite nodelist_source_config 表(SSoT),.inf 这两个字段
+                 仅作镜像以维持向后兼容加载。 -->
             <StackPanel Margin="0,12,0,4">
-                <TextBlock Text="节点查询源(2 选 1)" FontWeight="SemiBold" Margin="0,4,0,4"/>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <RadioButton Content="GitHub(api.github.com)"
-                                 GroupName="NodelistHostKind"
-                                 IsChecked="{Binding IsGitHubSelected, Mode=TwoWay}"
-                                 Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <RadioButton Content="自定义服务器"
-                                 GroupName="NodelistHostKind"
-                                 IsChecked="{Binding IsCustomSelected, Mode=TwoWay}"
-                                 Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock Text="节点查询源(自定义服务器)" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                    <TextBlock Text="服务器 URL" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[NodelistServerUrl], Converter={StaticResource BoolToVisibility}}"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <!-- v1.0.0.x (2026-09-05) feat/nodelist-redesign:刷新拉取控制 ——
-                     用户原话"去掉 github token 这个内容提示刷新时候拉取节点版本,
-                     里面有两个复选框:刷新时候拉取节点版本 + 刷新时候拉取 github 元数据 license/stars/tags/readme" -->
+                <TextBox Text="{Binding NodelistServerUrl, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                    <TextBlock Text="API Token" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource WarningBrush}"
+                               ToolTip="尚未保存"
+                               Visibility="{Binding Dirty[NodelistApiToken], Converter={StaticResource BoolToVisibility}}"/>
                 </StackPanel>
+                <TextBox Text="{Binding NodelistApiToken, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource MaterialTextBox}"/>
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
                     <CheckBox Content="刷新时拉取节点版本" Margin="0,0,16,0" VerticalAlignment="Center"
                               IsChecked="{Binding RefreshFetchVersions, Mode=TwoWay}"/>
                     <CheckBox Content="刷新时拉取 GitHub 元数据(license/stars/tags/readme)" VerticalAlignment="Center"
                               IsChecked="{Binding RefreshFetchMetadata, Mode=TwoWay}"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                <TextBlock Text="GitHub Token(只在 GitHub 时用)" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource WarningBrush}"
-                               ToolTip="尚未保存"
-                               Visibility="{Binding Dirty[NodelistGitHubToken], Converter={StaticResource BoolToVisibility}}"/>
-                </StackPanel>
-                <TextBox Text="{Binding NodelistGitHubToken, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}"
-                         IsEnabled="{Binding IsGitHubSelected}"/>
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                    <TextBlock Text="自定义服务器 URL" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource WarningBrush}"
-                               ToolTip="尚未保存"
-                               Visibility="{Binding Dirty[NodelistCustomHostUrl], Converter={StaticResource BoolToVisibility}}"/>
-                </StackPanel>
-                <TextBox Text="{Binding NodelistCustomHostUrl, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}"
-                         IsEnabled="{Binding IsCustomSelected}"/>
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
-                    <TextBlock Text="自定义服务器 Token" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock Text="⚠" FontSize="11" Margin="6,0,0,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource WarningBrush}"
-                               ToolTip="尚未保存"
-                               Visibility="{Binding Dirty[NodelistCustomToken], Converter={StaticResource BoolToVisibility}}"/>
-                </StackPanel>
-                <TextBox Text="{Binding NodelistCustomToken, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialTextBox}"
-                         IsEnabled="{Binding IsCustomSelected}"/>
             </StackPanel>
 
             <TextBlock x:Name="SectionForgePaths" Text="Forge 模型目录" FontSize="16" FontWeight="Bold" Margin="0,24,0,8" />

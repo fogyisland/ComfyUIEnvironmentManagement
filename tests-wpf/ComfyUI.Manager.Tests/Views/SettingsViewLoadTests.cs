@@ -186,14 +186,17 @@ public class SettingsViewLoadTests
     }
 
     /// <summary>
-    /// v0.6.14.1 hotfix:SettingsView 加载时 SyncTokenFromViewModel 把 VM 里的
-    /// GitHubToken 推到 PasswordBox,但 PasswordBox.Password = X 会触发
-    /// PasswordChanged → OnGitHubTokenChanged → VM 调 MarkDirty("GitHubToken")
-    /// → 每次打开 Settings 都显示 ⚠"尚未保存"(用户报告)。期望:PasswordBox 灌入
-    /// 之后 vm.Dirty["GitHubToken"] 必须为 false。
+    /// v0.6.14.1 hotfix 测试:SettingsView 加载时 PasswordBox 灌入 VM token 不应
+    /// 标 dirty(回环 bug,每次打开 Settings 都显示 ⚠"尚未保存")。
+    ///
+    /// v1.0.0.x (2026-09-15) feat/nodelist-source-config:GitHub kind 已删除,
+    /// 节点查询源 host/token 改走 NodelistApiToken / NodelistServerUrl,真值持久化
+    /// 到 SQLite nodelist_source_config 表。本测试改测 NodelistApiToken:
+    /// 模拟"用户已经保存过 token":Settings 实例直接持有 token,SettingsView 加载
+    /// 不应标 Dirty["NodelistApiToken"]。
     /// </summary>
     [Fact]
-    public void SettingsView_WithPresetGitHubToken_DataContextSet_DoesNotMarkDirty()
+    public void SettingsView_WithPresetNodelistApiToken_DataContextSet_DoesNotMarkDirty()
     {
         Exception? caught = null;
 
@@ -205,27 +208,25 @@ public class SettingsViewLoadTests
                 // 模拟"用户已经保存过 token":Settings 实例直接持有 token
                 var shared = new ComfyUI.Manager.Models.Settings
                 {
-                    GitHubToken = "ghp_test_preexisting",
+                    NodelistApiToken = "nodelist_test_preexisting",
                 };
                 var repo = new SettingsRepository(Path.Combine(Path.GetTempPath(),
                     $"settings-token-{Guid.NewGuid():N}.json"));
                 var vm = new SettingsViewModel(repo, HttpProxyConfig.Disabled,
                     new FakeValidator(), sharedSettings: shared);
-                Assert.Equal("ghp_test_preexisting", vm.GitHubToken);
-                Assert.False(vm.Dirty["GitHubToken"]);  // 刚构造,没动过
+                Assert.Equal("nodelist_test_preexisting", vm.NodelistApiToken);
+                Assert.False(vm.Dirty["NodelistApiToken"]);  // 刚构造,没动过
 
                 // 设 DataContext → 触发 SettingsView.DataContextChanged →
-                // SyncTokenFromViewModel → PasswordBox.Password = vm.GitHubToken
+                // TextBox.Text = vm.NodelistApiToken(setter 不应回标 dirty)
                 var v = new SettingsView { DataContext = vm };
                 v.Measure(new Size(800, 600));
                 v.Arrange(new Rect(0, 0, 800, 600));
                 v.UpdateLayout();
 
-                // 关键断言:PasswordBox 灌入后,VM 不应被标 dirty
-                Assert.Equal("ghp_test_preexisting",
-                    v.GitHubTokenBox.Password);  // 确认 sync 真的跑了
-                Assert.False(vm.Dirty["GitHubToken"],
-                    "SyncTokenFromViewModel 不应把 GitHubToken 标 dirty(回环 bug)");
+                // 关键断言:view load 后,VM 不应被标 dirty(回环 bug)
+                Assert.False(vm.Dirty["NodelistApiToken"],
+                    "SettingsView 加载不应把 NodelistApiToken 标 dirty(回环 bug)");
             }
             catch (Exception ex) { caught = ex; }
         });
@@ -236,7 +237,7 @@ public class SettingsViewLoadTests
         if (caught is not null)
         {
             throw new Exception(
-                $"SettingsView GitHubToken dirty-guard test failed: " +
+                $"SettingsView NodelistApiToken dirty-guard test failed: " +
                 $"{caught.GetType().FullName}: {caught.Message}\n" +
                 $"--- InnerException ---\n{caught.InnerException}\n" +
                 $"--- StackTrace ---\n{caught.StackTrace}",

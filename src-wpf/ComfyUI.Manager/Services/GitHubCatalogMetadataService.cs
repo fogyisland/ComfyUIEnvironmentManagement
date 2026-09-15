@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 
 namespace ComfyUI.Manager.Services;
@@ -35,14 +36,21 @@ public class GitHubCatalogMetadataService
     private readonly MetadataCache _cache;
     private readonly Settings _settings;
     private readonly AppLogger? _logger;
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:ApiToken 走 SQLite
+    private readonly NodelistSourceConfigRepository? _nodelistSourceConfig;
 
     public GitHubCatalogMetadataService(
-        HttpClient http, MetadataCache cache, Settings settings, AppLogger? logger = null)
+        HttpClient http, MetadataCache cache, Settings settings,
+        AppLogger? logger = null,
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:可选注入,
+        // 未注入时回退到 _settings.NodelistApiToken(向后兼容旧测试)。
+        NodelistSourceConfigRepository? nodelistSourceConfig = null)
     {
         _http = http;
         _cache = cache;
         _settings = settings;
         _logger = logger;
+        _nodelistSourceConfig = nodelistSourceConfig;
     }
 
     /// <summary>
@@ -200,8 +208,13 @@ public class GitHubCatalogMetadataService
             try
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
-                if (!string.IsNullOrEmpty(_settings.NodelistCustomToken))
-                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.NodelistCustomToken);
+                // v1.0.0.x (2026-09-15) feat/nodelist-source-config:API token
+                // 走 SQLite nodelist_source_config;未注入 repo 时回退
+                // _settings.GitHubToken(catalog 拉 GitHub API 用的 OAuth token)。
+                var apiToken = _nodelistSourceConfig?.Get().ApiToken
+                    ?? _settings.GitHubToken;
+                if (!string.IsNullOrEmpty(apiToken))
+                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
                 req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
                 using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
 

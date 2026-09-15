@@ -116,7 +116,8 @@ public class FirstRunWizardViewModelTests : IDisposable
         vm.InstallPath = _projectRoot;
         Assert.True(vm.NextCommand.CanExecute(null));
         vm.NextCommand.Execute(null);
-        Assert.Equal(FirstRunWizardStep.Python, vm.CurrentStep);
+        // v1.0.0.x (2026-09-03) T34:3 步 → 6 步 wizard,Python step 改名 PythonGit。
+        Assert.Equal(FirstRunWizardStep.PythonGit, vm.CurrentStep);
     }
 
     [Fact]

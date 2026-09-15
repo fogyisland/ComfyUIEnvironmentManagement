@@ -28,7 +28,8 @@ public class ComfyUICoursesViewModelTests
         Assert.False(string.IsNullOrEmpty(vm.Course51CTO));
         Assert.False(string.IsNullOrEmpty(vm.CourseShenYeCG));
         Assert.False(string.IsNullOrEmpty(vm.CourseYihuu));
-        Assert.False(string.IsNullOrEmpty(vm.CourseUdemy));
+        // v1.0.0.x (2026-09-05):用户决策去掉 Udemy 在课程更新这部分内容,
+        // CourseUdemy property 已删,本断言同步移除。
     }
 
     [Fact]

@@ -60,6 +60,8 @@ public class MainViewModel : ViewModelBase
     private readonly NodelistRepository? _nodelistRepo;
     private readonly NodelistDownloader? _nodelistDownloader;
     private readonly NodelistIngestor? _nodelistIngestor;
+    // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token SSoT
+    private readonly NodelistSourceConfigRepository? _nodelistSourceConfig;
     // v1.0.0.x feat/nodelist-redesign:cache 的 NodelistViewModel + View
     private NodelistViewModel? _nodelistViewModel;
     private NodelistView? _nodelistView;
@@ -324,12 +326,11 @@ public class MainViewModel : ViewModelBase
             _settings.DefaultModelsDirectory = disk.DefaultModelsDirectory;
             _settings.WorkflowsDirectory = disk.WorkflowsDirectory;
             _settings.LogDirectory = disk.LogDirectory;
-            // v1.0.0.x (2026-09-05) feat/nodelist-redesign:同步 wizard 写的新字段
+            // v1.0.0.x (2026-09-15) feat/nodelist-source-config:同步 wizard 写的新字段
+            // (GitHub kind 字段已删,统一走 NodelistServerUrl + NodelistApiToken)
             _settings.NodelistDirectory = disk.NodelistDirectory;
-            _settings.NodelistHostKind = disk.NodelistHostKind;
-            _settings.NodelistCustomHostUrl = disk.NodelistCustomHostUrl;
-
-            _settings.NodelistCustomToken = disk.NodelistCustomToken;
+            _settings.NodelistServerUrl = disk.NodelistServerUrl;
+            _settings.NodelistApiToken = disk.NodelistApiToken;
             _settings.RefreshFetchVersions = disk.RefreshFetchVersions;
             _settings.RefreshFetchMetadata = disk.RefreshFetchMetadata;
 
@@ -517,6 +518,8 @@ public class MainViewModel : ViewModelBase
         NodelistRepository? nodelistRepo = null,
         NodelistDownloader? nodelistDownloader = null,
         NodelistIngestor? nodelistIngestor = null,
+        // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token SSoT — ShowNodelistView 读
+        NodelistSourceConfigRepository? nodelistSourceConfig = null,
         // v1.0.0.x:SettingsView「下载到本地节点目录」按钮依赖 — 透传给 SettingsViewModel。
         // 共享 App.xaml.cs 已构造的实例(同 gitRunner + gitProxy + logger),避免重复创建。
         CommonNodeInstaller? commonNodeInstaller = null,
@@ -568,6 +571,7 @@ public class MainViewModel : ViewModelBase
         _nodelistRepo = nodelistRepo;
         _nodelistDownloader = nodelistDownloader;
         _nodelistIngestor = nodelistIngestor;
+        _nodelistSourceConfig = nodelistSourceConfig;
         _commonNodeInstaller = commonNodeInstaller;
         // v1.0.0.x:Forge BED installer — 透传给 EnvListVM(见 _forgeBaseEnvInstaller 字段注释)。
         _forgeBaseEnvInstaller = forgeBaseEnvInstaller;
@@ -856,17 +860,15 @@ public class MainViewModel : ViewModelBase
     {
         if (_nodelistViewModel is null)
         {
+            // v1.0.0.x (2026-09-15) feat/nodelist-source-config:host/token 全部从 SQLite
+            // nodelist_source_config 表读(SSoT),Settings 不再分 GitHub/Custom 二选一。
             _nodelistViewModel = new NodelistViewModel(
-                _nodelistDownloader!, _nodelistIngestor!, _nodelistRepo!);
+                _nodelistDownloader!, _nodelistIngestor!, _nodelistRepo!,
+                _nodelistSourceConfig);
             _nodelistViewModel.NodelistDirectory = _settings!.NodelistDirectory;
-            // v1.0.0.x (2026-09-05) feat/nodelist-redesign:GitHub/Custom token 互斥 —
-            // 用户原话"和 github token 属于互斥"。GitHub kind 用 NodelistGitHubToken,
-            // Custom kind 用 NodelistCustomToken(老的 NodelistHostToken 自动迁移)。
-            _nodelistViewModel.Host = _settings.NodelistHostKind == NodelistHostKind.GitHub
-                ? "https://api.github.com" : _settings.NodelistCustomHostUrl;
-            _nodelistViewModel.Token = _settings.NodelistHostKind == NodelistHostKind.GitHub
-                ? _settings.NodelistCustomToken
-                : _settings.NodelistCustomToken;
+            var cfg = _nodelistSourceConfig!.Get();
+            _nodelistViewModel.Host = cfg.ServerUrl;
+            _nodelistViewModel.Token = cfg.ApiToken;
         }
         CurrentView = new NodelistView { DataContext = _nodelistViewModel };
     }
@@ -1107,7 +1109,10 @@ public class MainViewModel : ViewModelBase
                 nodeRepoQuery: _nodeRepoQuery,
                 // v1.0.0.x feat/nodelist-directory:EnvsRoot = ComfyUI 安装根
                 // (= _projectRoot,Release 模式 = exe 目录)。
-                envsRoot: _projectRoot);
+                envsRoot: _projectRoot,
+                // v1.0.0.x (2026-09-15) feat/nodelist-source-config:SaveCommand 镜像写 +
+                // ScanNodeListAsync 读 SQLite nodelist_source_config。
+                nodelistSourceConfig: _nodelistSourceConfig);
             CurrentView = SettingsViewFactory is null
                 ? new SettingsView { DataContext = _settingsViewModel }
                 : SettingsViewFactory(_settingsViewModel) as SettingsView;
