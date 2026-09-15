@@ -212,6 +212,28 @@ public sealed class SqliteConnectionFactory
                 last_ingested_at TEXT,
                 -- 是否在最新 json 中还在(source=json / source=user_added)
                 source TEXT NOT NULL DEFAULT 'json',
+                -- v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(22 个新列,数组/对象走 JSON 字符串)。
+                -- 字符串/数字字段直接存;数组(pip/tags/preemptions/files/badges)/对象(dependencies)用 JsonSerializer.Serialize。
+                -- raw_stars 跟 nodelist_details.stars 区分(前者来自 ComfyUI-Manager 自维护,
+                -- 后者来自 GitHub API stargazers_count)。raw_license 跟 nodelist_details.license 区分。
+                id TEXT,                       -- ComfyUI-Manager 节点 ID (e.g. comfyui-impact-pack)
+                reference TEXT,                -- 主仓库 URL (通常 https://github.com/{author}/{repo})
+                reference2 TEXT,               -- 备用仓库 URL(部分条目才有)
+                files_json TEXT,               -- JSON array of URLs
+                install_type TEXT,             -- git-clone / unzip / copy
+                pip_json TEXT,                 -- JSON array of pip requirements
+                apt_dependency TEXT,           -- apt 包列表(raw 字段本身可能是 string 或 array,字符串拼接存)
+                dependencies_json TEXT,        -- JSON object/array of misc deps
+                preemptions_json TEXT,         -- JSON array of preemption packs(需要预装)
+                nodename_pattern TEXT,         -- nodename 检测 pattern
+                nickname TEXT,                 -- 节点昵称(少数条目)
+                category TEXT,                 -- 类别(少数条目)
+                tags_json TEXT,                -- JSON array,raw tags(跟 GitHub API topics 不同源)
+                last_update TEXT,              -- ISO date(raw JSON 自己维护)
+                raw_stars INTEGER,             -- ComfyUI-Manager 自维护的 stars(可能跟 GitHub API 不一致)
+                badges_json TEXT,              -- JSON array of badges
+                js_path TEXT,                  -- JS 路径(部分条目才有)
+                raw_license TEXT,              -- raw license 字符串(跟 GitHub API license.spdx_id 不同源)
                 PRIMARY KEY (author, repo_name)
             );
             CREATE INDEX IF NOT EXISTS ix_nodelist_entries_repo
@@ -289,6 +311,30 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "nodelist_details", "open_issues", "INTEGER");
         EnsureColumn(conn, "nodelist_details", "topics", "TEXT");
         EnsureColumn(conn, "scanned_nodes", "repository_url", "TEXT");
+
+        // v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(22 个新列)。
+        // Ingestor 之前只解析 author + title 两个字段,其它 22 个全丢。
+        // 用户反馈"分析出当前 API 得出的所有内容字段,在数据库为这些数据建立必要字段并解析" —
+        // 现把 custom-node-list.json 全部 distinct 字段入库(数组/对象走 JSON 字符串)。
+        // 新列都允许 NULL(老 DB backfill 时无值),后续 IngestAsync 会重新填充。
+        EnsureColumn(conn, "nodelist_entries", "id", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "reference", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "reference2", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "files_json", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "install_type", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "pip_json", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "apt_dependency", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "dependencies_json", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "preemptions_json", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "nodename_pattern", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "nickname", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "category", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "tags_json", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "last_update", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "raw_stars", "INTEGER");
+        EnsureColumn(conn, "nodelist_entries", "badges_json", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "js_path", "TEXT");
+        EnsureColumn(conn, "nodelist_entries", "raw_license", "TEXT");
 
         // v0.6.11:支持 (env_id, package, source) 三元组唯一 — 让 download(env_id='', source='download')
         // 不与 env 装(env_id='env-1', source='env')同名包冲突,两个 download 同包也能独立存在。

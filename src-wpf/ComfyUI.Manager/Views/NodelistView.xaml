@@ -210,6 +210,135 @@
                                     <TextBlock Text="{Binding SelectedDetailsSummaryText}"
                                                FontWeight="Bold" FontSize="12"/>
                                 </Border>
+                                <!-- v1.0.0.x (2026-09-15) T43h+user:「数据源」debug panel —
+                                     折叠避免污染主 UI;展开看到所有 raw JSON 解析字段 + 跳弹窗查看完整 GitHub API JSON。
+                                     字段来源:NodelistEntryRow 18 新属性(T43h 全量入库)。
+                                     首次默认折叠(IsExpanded=False),点 header 展开。 -->
+                                <Expander DockPanel.Dock="Top" Margin="0,4,0,8" IsExpanded="False"
+                                          Background="{DynamicResource SurfaceVariantBrush}"
+                                          BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1">
+                                    <Expander.Header>
+                                        <TextBlock FontWeight="SemiBold" FontSize="12"
+                                                   Text="🔍 数据源(raw JSON 解析字段 + GitHub API 元信息)"/>
+                                    </Expander.Header>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="320">
+                                        <StackPanel Margin="8">
+                                            <!-- 标量字段 -->
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="ID:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.Id, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="Install Type:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.InstallType, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2" TextWrapping="Wrap">
+                                                <Run Text="Reference:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.Reference, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2" TextWrapping="Wrap">
+                                                <Run Text="Reference2:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.Reference2, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="Category:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.Category, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="Nickname:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.Nickname, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="Last Update (raw):" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.LastUpdate, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="Raw Stars (ComfyUI-Manager 维护):" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.RawStars, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="Raw License:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.RawLicense, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="JS Path:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.JsPath, Mode=OneWay}"/>
+                                            </TextBlock>
+                                            <TextBlock FontSize="11" Margin="0,2">
+                                                <Run Text="Nodename Pattern:" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding SelectedEntry.NodenamePattern, Mode=OneWay}"/>
+                                            </TextBlock>
+
+                                            <!-- 数组字段 — tag pills -->
+                                            <TextBlock FontSize="11" Margin="0,6,0,0" FontWeight="SemiBold" Text="Pip 依赖:"/>
+                                            <ItemsControl ItemsSource="{Binding SelectedEntry.PipList}" Margin="0,2,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource TagPillBorder}">
+                                                            <TextBlock Text="{Binding}" FontSize="10"
+                                                                       Foreground="{DynamicResource OnSurfaceBrush}"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <TextBlock FontSize="11" Margin="0,6,0,0" FontWeight="SemiBold" Text="Raw Tags:"/>
+                                            <ItemsControl ItemsSource="{Binding SelectedEntry.TagsList}" Margin="0,2,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource TagPillBorder}">
+                                                            <TextBlock Text="{Binding}" FontSize="10"
+                                                                       Foreground="{DynamicResource OnSurfaceBrush}"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <TextBlock FontSize="11" Margin="0,6,0,0" FontWeight="SemiBold"
+                                                       Text="Preemptions(需要预装的 pack):"/>
+                                            <ItemsControl ItemsSource="{Binding SelectedEntry.PreemptionsList}" Margin="0,2,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource TagPillBorder}">
+                                                            <TextBlock Text="{Binding}" FontSize="10"
+                                                                       Foreground="{DynamicResource OnSurfaceBrush}"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <TextBlock FontSize="11" Margin="0,6,0,0" FontWeight="SemiBold" Text="Badges:"/>
+                                            <ItemsControl ItemsSource="{Binding SelectedEntry.BadgesList}" Margin="0,2,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource TagPillBorder}">
+                                                            <TextBlock Text="{Binding}" FontSize="10"
+                                                                       Foreground="{DynamicResource OnSurfaceBrush}"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- 查看完整 GitHub API 响应按钮 -->
+                                            <Button Content="📄 查看完整 GitHub API 响应 (raw_json)"
+                                                    Command="{Binding ShowRawJsonCommand}"
+                                                    Margin="0,8,0,0" Padding="8,3"
+                                                    Style="{StaticResource MaterialButton}"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Expander>
                                 <!-- 版本列表 ItemsControl — 每个 version 一个 card(原 T43f 模板) -->
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl ItemsSource="{Binding SelectedDetails}" Margin="0,0,0,8">

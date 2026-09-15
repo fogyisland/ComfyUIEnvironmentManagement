@@ -91,6 +91,9 @@ public sealed class NodelistViewModel : ViewModelBase
             OpenInBrowserCommand.RaiseCanExecuteChanged();
             CopyUrlCommand.RaiseCanExecuteChanged();
             InstallCommand.RaiseCanExecuteChanged();
+            // v1.0.0.x T43h:ShowRawJsonCommand 依赖 SelectedDetails[0].RawJson,
+            // 选中变化后 RefreshSelectedDetails 已重填 SelectedDetails,这里刷 CanExecute。
+            ShowRawJsonCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -100,11 +103,22 @@ public sealed class NodelistViewModel : ViewModelBase
             ? "(请从左侧选一个 entry)"
             : $"{_selectedEntry.Author} / {_selectedEntry.RepoName}";
 
-    /// <summary>右 detail 顶部 metadata 文本(FirstSeenAt / Source 等)。</summary>
-    public string SelectedEntryMeta =>
-        _selectedEntry is null
-            ? ""
-            : $"首次入库:{_selectedEntry.FirstSeenAt}    最近入库:{_selectedEntry.LastIngestedAt}    来源:{_selectedEntry.Source}";
+    /// <summary>右 detail 顶部 metadata 文本。
+    /// v1.0.0.x T43h+user:在原有 FirstSeenAt/LastIngestedAt/Source 上追加 Host/FetchedAt
+    /// 元信息 — 详情来源(GitHub/GitLab)+ 最近一次拉取时间,提供数据来源透明度。</summary>
+    public string SelectedEntryMeta
+    {
+        get
+        {
+            if (_selectedEntry is null) return "";
+            var firstDetail = SelectedDetails.FirstOrDefault();
+            if (firstDetail is null)
+                return $"首次入库:{_selectedEntry.FirstSeenAt}    最近入库:{_selectedEntry.LastIngestedAt}    来源:{_selectedEntry.Source}";
+            var hostStr = string.IsNullOrWhiteSpace(firstDetail.Host) ? "github" : firstDetail.Host;
+            var fetchedStr = string.IsNullOrWhiteSpace(firstDetail.FetchedAt) ? "?" : firstDetail.FetchedAt;
+            return $"Host:{hostStr}    详情拉取:{fetchedStr}    首次入库:{_selectedEntry.FirstSeenAt}    最近入库:{_selectedEntry.LastIngestedAt}    来源:{_selectedEntry.Source}";
+        }
+    }
 
     // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):「NodelistDirectory」语义 ——
     // Settings.NodelistDirectory 若空,fallback 到 _defaultDirectory(<projectRoot>/nodelist);
@@ -194,6 +208,9 @@ public sealed class NodelistViewModel : ViewModelBase
     public RelayCommand OpenInBrowserCommand { get; }
     public RelayCommand CopyUrlCommand { get; }
     public RelayCommand InstallCommand { get; }
+    // v1.0.0.x (2026-09-15) T43h+user:debug panel 「📄 查看完整 GitHub API 响应」按钮
+    // — 弹 RawJsonDialog 显示 SelectedDetails[0].RawJson(整段 JSON 给调试 / 验证用)。
+    public RelayCommand ShowRawJsonCommand { get; }
 
     /// <summary>
     /// ctor ——
@@ -258,6 +275,10 @@ public sealed class NodelistViewModel : ViewModelBase
         InstallCommand = new RelayCommand(
             async _ => await InstallNodeAsync(),
             _ => _selectedEntry is not null && _envRepo is not null && _nodeOps is not null && IsNotBusy);
+        // v1.0.0.x T43h+user:RawJson 弹窗 command — CanExecute 要求 SelectedDetails[0] 有 raw_json。
+        ShowRawJsonCommand = new RelayCommand(
+            _ => ShowRawJsonDialog(),
+            _ => SelectedDetails.FirstOrDefault()?.RawJson is { Length: > 0 });
     }
 
     private readonly NodelistSourceConfigRepository? _sourceConfig;
@@ -269,6 +290,41 @@ public sealed class NodelistViewModel : ViewModelBase
         public string FirstSeenAt { get; set; } = "";
         public string LastIngestedAt { get; set; } = "";
         public string Source { get; set; } = "";
+
+        // v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(18 列)。
+        // 由 NodelistRepository.GetAllEntries 读 SQLite 填充,UI 在「数据源」Expander 展示。
+        public string? Id { get; set; }
+        public string? InstallType { get; set; }
+        public string? PipJson { get; set; }
+        public string? TagsJson { get; set; }
+        public string? PreemptionsJson { get; set; }
+        public string? Category { get; set; }
+        public string? Nickname { get; set; }
+        public string? LastUpdate { get; set; }
+        public int? RawStars { get; set; }
+        public string? RawLicense { get; set; }
+        public string? Reference { get; set; }
+        public string? Reference2 { get; set; }
+        public string? FilesJson { get; set; }
+        public string? BadgesJson { get; set; }
+        public string? JsPath { get; set; }
+        public string? AptDependency { get; set; }
+        public string? DependenciesJson { get; set; }
+        public string? NodenamePattern { get; set; }
+
+        // Computed: 反序列化 JSON 字符串数组给 XAML 用(避免 XAML 写 string.Split)。
+        // 解析失败/空字符串都返空数组,UI ItemsControl 走 0-count 路径不报错。
+        public IReadOnlyList<string> PipList => DeserializeStringArray(PipJson);
+        public IReadOnlyList<string> TagsList => DeserializeStringArray(TagsJson);
+        public IReadOnlyList<string> PreemptionsList => DeserializeStringArray(PreemptionsJson);
+        public IReadOnlyList<string> BadgesList => DeserializeStringArray(BadgesJson);
+
+        private static IReadOnlyList<string> DeserializeStringArray(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return Array.Empty<string>();
+            try { return System.Text.Json.JsonSerializer.Deserialize<string[]>(json) ?? Array.Empty<string>(); }
+            catch { return Array.Empty<string>(); }
+        }
     }
 
     /// <summary>v1.0.0.x T43f+user:右边详情一行 — 显示单个 version 的全部仓库字段。
@@ -293,6 +349,10 @@ public sealed class NodelistViewModel : ViewModelBase
         public string? Host { get; set; }
         // 拆 Topics 给 XAML 用(避免 XAML 写 string.Split)。
         public IReadOnlyList<string> TopicTags { get; set; } = Array.Empty<string>();
+        // v1.0.0.x (2026-09-15) T43h+user:fetched_at + raw_json 已有 nodelist_details 列,
+        // 现在 DetailRow 暴露给 UI —「数据源」Expander 的「查看完整 JSON」按钮用 RawJson 弹窗。
+        public string? FetchedAt { get; set; }
+        public string? RawJson { get; set; }
     }
 
     /// <summary>
@@ -463,6 +523,10 @@ public sealed class NodelistViewModel : ViewModelBase
                     : d.Topics.Split(',', StringSplitOptions.RemoveEmptyEntries |
                                      StringSplitOptions.TrimEntries),
                 Host = d.Host,
+                // v1.0.0.x T43h+user:FetchedAt 给 SelectedEntryMeta 显示;RawJson 给 debug panel
+                // 「查看完整 GitHub API 响应」按钮弹 RawJsonDialog。
+                FetchedAt = d.FetchedAt,
+                RawJson = d.RawJson,
             });
         }
         RaisePropertyChanged(nameof(SelectedDetailsSummaryText));
@@ -580,6 +644,25 @@ public sealed class NodelistViewModel : ViewModelBase
     {
         var first = SelectedDetails.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.HtmlUrl));
         return first?.HtmlUrl;
+    }
+
+    // v1.0.0.x (2026-09-15) T43h+user:debug panel 「📄 查看完整 GitHub API 响应」按钮 —
+    // 弹 RawJsonDialog 显示 SelectedDetails[0].RawJson(整段 JSON 给调试 / 验证用)。
+    // RawJsonDialog 走标准 ShowDialog() 模式(无 CloseRequested 复杂度,只读 + 关闭按钮)。
+    private void ShowRawJsonDialog()
+    {
+        var firstDetail = SelectedDetails.FirstOrDefault();
+        var rawJson = firstDetail?.RawJson;
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            StatusText = "无 raw_json(该 entry 未拉过 GitHub API 详情)";
+            return;
+        }
+        var dlg = new Views.RawJsonDialog(rawJson)
+        {
+            Owner = System.Windows.Application.Current?.MainWindow
+        };
+        dlg.ShowDialog();
     }
 
     /// <summary>详情「🌐 浏览器打开」—— 走 BrowserLauncher 统一入口(Chrome → Edge → 默认浏览器)。

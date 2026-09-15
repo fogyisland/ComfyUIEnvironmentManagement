@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ComfyUI.Manager.Data;
 using System.IO;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,20 @@ using System.Threading.Tasks;
 using System.Linq;
 
 namespace ComfyUI.Manager.Services;
+
+/// <summary>
+/// 全量入库时序列化数组/对象的 JSON 选项。
+/// 关掉 JavaScriptEncoder.Default 的 HTML 转义,避免 "torch>=2.0" 的 '>' 被存成 ">"(读回 pip pill 不直观,
+/// 也跟用户用 Python 习惯读的字符串字面值不一致)。
+/// </summary>
+internal static class NodelistJsonOptions
+{
+    public static readonly JsonSerializerOptions Raw = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = false,
+    };
+}
 
 /// <summary>
 /// v1.0.0.x (2026-09-05) feat/nodelist-redesign:节点入库器。
@@ -96,8 +111,11 @@ public sealed class NodelistIngestor
             return new IngestResult(0, 0, 0, 0, 0, sw.Elapsed);
         }
 
-        // 2. 提取 author+repo_name(去重)
+        // 2. 提取 author+repo_name(去重)+ v1.0.0.x T43h 全量 ParseEntry(24 个 raw JSON 字段)。
+        // 之前只解析 author + title;T43h+user 反馈"分析出当前 API 得出的所有内容字段,在数据库
+        // 为这些数据建立必要字段并解析",现在一次性把所有 distinct 字段入库。数组/对象走 JSON 字符串。
         var pairs = new HashSet<(string Author, string RepoName)>();
+        var parsedEntries = new Dictionary<(string Author, string RepoName), ParsedNodelistEntry>();
         foreach (var entry in arr.EnumerateArray())
         {
             if (!entry.TryGetProperty("author", out var a) ||
@@ -105,7 +123,10 @@ public sealed class NodelistIngestor
             var author = a.GetString();
             var repo = t.GetString();
             if (string.IsNullOrWhiteSpace(author) || string.IsNullOrWhiteSpace(repo)) continue;
-            pairs.Add((author!, repo!));
+            var key = (author!, repo!);
+            pairs.Add(key);
+            // v1.0.0.x T43h:ParseEntry 处理所有 24 个 raw JSON 字段;若重复 entry(同 author+repo),后写覆盖。
+            parsedEntries[key] = ParseEntry(entry, author!, repo!);
         }
 
         // 3. 对比数据库现有 keys,只 upsert 新增(增量)
@@ -155,10 +176,39 @@ public sealed class NodelistIngestor
             }
 
             int localNew = 0, localDetail = 0, localDetailFailed = 0;
-            // 3a. upsert entry
+            // 3a. upsert entry(全量 23 列)
             try
             {
-                _repo.UpsertEntry(author, repoName, source: "json");
+                // v1.0.0.x T43h:parsedEntries 在 line 102 ParseEntry 时填充。forceFull 模式下
+                // 老 entry 已 DELETE,但 parsedEntries dictionary 还在 → 新写时直接传。
+                parsedEntries.TryGetValue(kvp, out var parsed);
+                if (parsed is null)
+                {
+                    _logger?.Warn("nodelist-ingest", $"parsed entry missing for {author}/{repoName}");
+                    return ((0, 0, 0), currentNew);
+                }
+                _repo.UpsertEntry(
+                    author: parsed.Author,
+                    repoName: parsed.RepoName,
+                    source: "json",
+                    id: parsed.Id,
+                    reference: parsed.Reference,
+                    reference2: parsed.Reference2,
+                    filesJson: parsed.FilesJson,
+                    installType: parsed.InstallType,
+                    pipJson: parsed.PipJson,
+                    aptDependency: parsed.AptDependency,
+                    dependenciesJson: parsed.DependenciesJson,
+                    preemptionsJson: parsed.PreemptionsJson,
+                    nodenamePattern: parsed.NodenamePattern,
+                    nickname: parsed.Nickname,
+                    category: parsed.Category,
+                    tagsJson: parsed.TagsJson,
+                    lastUpdate: parsed.LastUpdate,
+                    rawStars: parsed.RawStars,
+                    badgesJson: parsed.BadgesJson,
+                    jsPath: parsed.JsPath,
+                    rawLicense: parsed.RawLicense);
                 localNew = 1;
             }
             catch (Exception ex)
@@ -253,5 +303,109 @@ public sealed class NodelistIngestor
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
             ?.GetValue(_repo) as SqliteConnectionFactory;
         return f?.Open() ?? throw new InvalidOperationException("SqliteConnectionFactory missing");
+    }
+
+    // v1.0.0.x (2026-09-15) T43h+user:全量 raw JSON 解析(24 字段)。之前 Ingestor 只解析
+    // author + title;现在 Ingestor.ParseEntry 把 custom-node-list.json 每个 entry 全部
+    // distinct 字段抽出来,数组/对象走 JsonSerializer.Serialize 存 JSON 字符串。
+    private sealed record ParsedNodelistEntry(
+        string Author,
+        string RepoName,
+        string? Id,
+        string? Reference,
+        string? Reference2,
+        string? FilesJson,
+        string? InstallType,
+        string? PipJson,
+        string? AptDependency,
+        string? DependenciesJson,
+        string? PreemptionsJson,
+        string? NodenamePattern,
+        string? Nickname,
+        string? Category,
+        string? TagsJson,
+        string? LastUpdate,
+        int? RawStars,
+        string? BadgesJson,
+        string? JsPath,
+        string? RawLicense);
+
+    /// <summary>
+    /// 解析单条 entry — 提取所有 24 个 distinct raw JSON 字段。
+    /// 数组/对象类型(JsonArrayToString/JsonObjectOrArrayToString)走 JsonSerializer.Serialize 存字符串。
+    /// 缺失字段返回 null(老 DB backfill 列用 NULL,UI 显示空)。
+    /// </summary>
+    private static ParsedNodelistEntry ParseEntry(JsonElement entry, string author, string repoName)
+    {
+        return new ParsedNodelistEntry(
+            Author: author,
+            RepoName: repoName,
+            Id: TryGetString(entry, "id"),
+            Reference: TryGetString(entry, "reference"),
+            Reference2: TryGetString(entry, "reference2"),
+            FilesJson: JsonArrayToString(entry, "files"),
+            InstallType: TryGetString(entry, "install_type"),
+            PipJson: JsonArrayToString(entry, "pip"),
+            AptDependency: TryGetStringOrJoinedArray(entry, "apt_dependency"),
+            DependenciesJson: JsonObjectOrArrayToString(entry, "dependencies"),
+            PreemptionsJson: JsonArrayToString(entry, "preemptions"),
+            NodenamePattern: TryGetString(entry, "nodename_pattern"),
+            Nickname: TryGetString(entry, "nickname"),
+            Category: TryGetString(entry, "category"),
+            TagsJson: JsonArrayToString(entry, "tags"),
+            LastUpdate: TryGetString(entry, "last_update"),
+            RawStars: TryGetInt(entry, "stars"),
+            BadgesJson: JsonArrayToString(entry, "badges"),
+            JsPath: TryGetString(entry, "js_path"),
+            RawLicense: TryGetString(entry, "license"));
+    }
+
+    private static string? TryGetString(JsonElement obj, string field)
+    {
+        if (obj.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String)
+        {
+            var s = v.GetString();
+            return string.IsNullOrEmpty(s) ? null : s;
+        }
+        return null;
+    }
+
+    private static int? TryGetInt(JsonElement obj, string field)
+    {
+        if (obj.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n))
+            return n;
+        return null;
+    }
+
+    private static string? JsonArrayToString(JsonElement obj, string field)
+    {
+        if (!obj.TryGetProperty(field, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.Array) return JsonSerializer.Serialize(v, NodelistJsonOptions.Raw);
+        if (v.ValueKind == JsonValueKind.String) return JsonSerializer.Serialize(new[] { v.GetString() }, NodelistJsonOptions.Raw);
+        return null;
+    }
+
+    private static string? JsonObjectOrArrayToString(JsonElement obj, string field)
+    {
+        if (obj.TryGetProperty(field, out var v) &&
+            (v.ValueKind == JsonValueKind.Object || v.ValueKind == JsonValueKind.Array))
+            return JsonSerializer.Serialize(v, NodelistJsonOptions.Raw);
+        return null;
+    }
+
+    /// <summary>
+    /// apt_dependency 在 raw JSON 里有时是 string(如 "libgl1")有时是 array(["libgl1","libglib2.0-0"])。
+    /// 一律转成 JSON 字符串存(数组走 JsonArrayToString,字符串保持原值用 JSON 字符串字面量)。
+    /// </summary>
+    private static string? TryGetStringOrJoinedArray(JsonElement obj, string field)
+    {
+        if (!obj.TryGetProperty(field, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.String)
+        {
+            var s = v.GetString();
+            return string.IsNullOrEmpty(s) ? null : JsonSerializer.Serialize(s, NodelistJsonOptions.Raw);
+        }
+        if (v.ValueKind == JsonValueKind.Array) return JsonSerializer.Serialize(v, NodelistJsonOptions.Raw);
+        return null;
     }
 }
