@@ -163,6 +163,47 @@ public sealed class NodelistViewModel : ViewModelBase
         private set { _statusText = value; RaisePropertyChanged(); }
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-16) T43i+user 「入库过程中加日志记录,我希望看到进度和日志」:
+    /// 入库滚动日志。ConsolePanel Lines 绑定。cap 500 行(跟 LogViewerViewModel 一致),
+    /// AppendLog 自动 RemoveAt(0) 滚动裁掉最旧行。
+    /// </summary>
+    public ObservableCollection<string> LogLines { get; } = new();
+
+    public const int MaxLogLines = 500;
+
+    /// <summary>
+    /// 控制入库日志 Border 显隐。入库启动时 = true(自动展开),完成时 = false(自动折叠,
+    /// 用户原话"完成时折叠")。用户点 ConsolePanel 关闭按钮会置 false(日志保留,下次启动再展开)。
+    /// </summary>
+    public bool IsLogPanelVisible
+    {
+        get => _isLogPanelVisible;
+        private set
+        {
+            if (_isLogPanelVisible == value) return;
+            _isLogPanelVisible = value;
+            RaisePropertyChanged();
+        }
+    }
+    private bool _isLogPanelVisible;
+
+    private void AppendLog(string line)
+    {
+        LogLines.Add(line);
+        while (LogLines.Count > MaxLogLines)
+            LogLines.RemoveAt(0);
+    }
+
+    private void ClearLogs() => LogLines.Clear();
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-16) T43i+user:View Code-behind 点 ConsolePanel ✕ 关闭按钮时调用。
+    /// 只设 IsLogPanelVisible=false(日志保留在 LogLines 集合),下次入库启动
+    /// 会再次自动展开。Set 保持 private,view 走 method 走单点入口。
+    /// </summary>
+    public void CloseLogPanel() => IsLogPanelVisible = false;
+
     // v1.0.0.x (2026-09-15) T43f+user:左 list 顶部 search TextBox 绑定 ——
     // 模糊匹配 author / repo_name(用户原话"在这里只需要搜索就好了")。
     // 输入立即生效(LostFocus 性能差;N=1500 in-memory filter 毫秒级)。
@@ -195,6 +236,21 @@ public sealed class NodelistViewModel : ViewModelBase
         }
     }
     public bool IsNotBusy => !_isBusy;
+
+    // v1.0.0.x (2026-09-16) T43h+user:后台入库标志位 —— 跟 IsBusy 解耦,只用来 disable
+    // 「⤴ 增量入库」按钮自己(防重入),不再 disable Install/分页/搜索等其他按钮。
+    // 用户原话"采用后台任务 不要影响到前台操作,避免前台程序不能动"——
+    // 任何后台入库期间,前台继续可滚动/搜索/选条目/点安装。
+    private bool _isIngesting;
+    public bool IsIngesting
+    {
+        get => _isIngesting;
+        private set
+        {
+            _isIngesting = value;
+            IngestCommand.RaiseCanExecuteChanged();
+        }
+    }
 
     // v1.0.0.x feat/nodelist-directory:增量入库 command
     public RelayCommand IngestCommand { get; }
@@ -255,9 +311,12 @@ public sealed class NodelistViewModel : ViewModelBase
             async _ => await DownloadAndIngestAsync(),
             _ => IsNotBusy);
 
+        // v1.0.0.x (2026-09-16) T43h+user:增量入库 CanExecute 只看 IsIngesting(后台跑期间禁用自己防重入),
+        // 不再联动 IsBusy —— IsBusy 现在只控制「⬇ 重新下载」+「📥 一键安装」(下载/安装是前台流程,
+        // 需要联动避免并发);前台其他操作(分页/搜索/选条目/复制/浏览器打开)都不受影响。
         IngestCommand = new RelayCommand(
-            async _ => await IngestOnlyAsync(),
-            _ => IsNotBusy);
+            _ => StartBackgroundIngest(),
+            _ => !IsIngesting);
 
         // v1.0.0.x (2026-09-15) T43g+user:分页器 4 个 button + Action Bar 3 个 button。
         FirstPageCommand = new RelayCommand(_ => GoToPage(1), _ => CanGoPrev);
@@ -274,6 +333,9 @@ public sealed class NodelistViewModel : ViewModelBase
             _ => _selectedEntry is not null);
         InstallCommand = new RelayCommand(
             async _ => await InstallNodeAsync(),
+            // v1.0.0.x (2026-09-16) T43h+user:InstallCommand 不再联动 IsBusy —— 后台入库期间
+            // 用户可以正常点「📥 一键安装」(NodeOperations 走自己的环境目录,不写 nodelist_entries,
+            // 跟后台 ingest 无冲突)。IsBusy 留给 IsNotBusy → false 时(下载中)防止跟「📥 一键安装」并发。
             _ => _selectedEntry is not null && _envRepo is not null && _nodeOps is not null && IsNotBusy);
         // v1.0.0.x T43h+user:RawJson 弹窗 command — CanExecute 要求 SelectedDetails[0] 有 raw_json。
         ShowRawJsonCommand = new RelayCommand(
@@ -292,8 +354,10 @@ public sealed class NodelistViewModel : ViewModelBase
         public string Source { get; set; } = "";
 
         // v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(18 列)。
+        // v1.0.0.x (2026-09-16) T43i.1+user:加 Description(19 列),raw JSON 顶层节点作者自填描述。
         // 由 NodelistRepository.GetAllEntries 读 SQLite 填充,UI 在「数据源」Expander 展示。
         public string? Id { get; set; }
+        public string? Description { get; set; }   // T43i.1+user
         public string? InstallType { get; set; }
         public string? PipJson { get; set; }
         public string? TagsJson { get; set; }
@@ -301,8 +365,6 @@ public sealed class NodelistViewModel : ViewModelBase
         public string? Category { get; set; }
         public string? Nickname { get; set; }
         public string? LastUpdate { get; set; }
-        public int? RawStars { get; set; }
-        public string? RawLicense { get; set; }
         public string? Reference { get; set; }
         public string? Reference2 { get; set; }
         public string? FilesJson { get; set; }
@@ -407,6 +469,9 @@ public sealed class NodelistViewModel : ViewModelBase
                 FirstSeenAt = e.FirstSeenAt,
                 LastIngestedAt = e.LastIngestedAt ?? "",
                 Source = e.Source,
+                // v1.0.0.x (2026-09-16) T43i.1+user:把 raw JSON 顶层 description 字段
+                // 透传给 row(其它 18 列 T43h 字段透传留待后续 task 集中处理)。
+                Description = e.Description,
             });
         }
         ApplyFilter();
@@ -532,17 +597,27 @@ public sealed class NodelistViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedDetailsSummaryText));
     }
 
-    // v1.0.0.x feat/nodelist-directory:增量入库(只调 API 不下载)
-    private async Task IngestOnlyAsync()
+    // v1.0.0.x (2026-09-16) T43h+user:「⤴ 增量入库」后台化 ——
+    // 用户原话"采用后台任务 不要影响到前台操作,避免前台程序不能动"。
+    // 实现:Task.Run 把 IngestAsync 切到 threadpool,前台继续响应分页/搜索/选条目/安装等。
+    // IsIngesting 只控制按钮自己禁用(防重入),不再 disable 其他按钮(交给 IsBusy 管)。
+    // 进度通过 Progress<T> 自动 marshal 回 UI 线程更新 StatusText(不阻塞后台 worker)。
+    // 整个流程不依赖 await —— RelayCommand.Execute 返回 void 即可,fire-and-forget。
+    private void StartBackgroundIngest()
     {
-        if (IsBusy) return;
+        if (IsIngesting) return;
         var jsonFile = System.IO.Path.Combine(NodelistDirectory, NodelistDownloader.SeedFileName);
         if (!System.IO.File.Exists(jsonFile))
         {
             StatusText = $"文件不存在: {jsonFile} — 请先点『⬇ 重新下载』";
             return;
         }
-        await RunIngestAsync(jsonFile, "增量入库");
+        IsIngesting = true;
+        StatusText = "⏳ 后台入库启动中...";
+        // Task.Run 切后台线程 —— 不阻塞 UI 线程。
+        // 不等待 — IngestCommand.Execute 是 void,fire-and-forget;
+        // 异常由 RunIngestBackgroundAsync 内部 catch + 落 nodelist_debug.log(不外抛)。
+        _ = Task.Run(async () => await RunIngestBackgroundAsync(jsonFile, "增量入库"));
     }
 
     private async Task DownloadAndIngestAsync()
@@ -576,9 +651,98 @@ public sealed class NodelistViewModel : ViewModelBase
         IsBusy = true;
         try
         {
-            StatusText = $"{progressLabel}:解析 + 入库中...";
-            var progress = new Progress<NodelistIngestor.IngestProgress>(p =>
-                StatusText = $"{progressLabel}({p.Current}/{p.Total}):{p.Author}/{p.RepoName}");
+            await RunIngestCoreAsync(jsonFile, progressLabel, isBackground: false);
+            await ReloadAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-16) T43h+user:后台入库 —— 跟 RunIngestAsync 一样的入库流程,
+    /// 但只翻 IsIngesting 标志位(给「⤴ 增量入库」按钮用),不动 IsBusy(留给前台流程用)。
+    /// 进度通过 Progress<T> 让 Ingestor 自动 marshal 回 UI 线程,后台 worker 不阻塞。
+    /// 完成后再 ReloadAsync 一次让用户看到新增 entry。
+    /// </summary>
+    private async Task RunIngestBackgroundAsync(string jsonFile, string progressLabel)
+    {
+        IsIngesting = true;
+        try
+        {
+            await RunIngestCoreAsync(jsonFile, progressLabel, isBackground: true);
+            await ReloadAsync();
+        }
+        finally
+        {
+            IsIngesting = false;
+        }
+    }
+
+    /// <summary>
+    /// 共用的入库核心(下载 + 入库 / 后台入库 都走这个):
+    /// 1. Progress&lt;NodelistIngestor.IngestProgress&gt;(VM 在 UI 线程 new,自动 marshal 回 UI)
+    /// 2. 拉 host/token(从 SQLite source config 或 fallback 到 Host/Token)
+    /// 3. await IngestAsync(后台 worker 不会跨线程 dispatch UI)
+    /// </summary>
+    private async Task RunIngestCoreAsync(string jsonFile, string progressLabel, bool isBackground)
+    {
+        try
+        {
+            StatusText = isBackground
+                ? $"⏳ 后台入库({progressLabel}):解析 + 入库中..."
+                : $"{progressLabel}:解析 + 入库中...";
+            var progress = new Progress<NodelistIngestor.IngestEvent>(evt =>
+            {
+                switch (evt.Kind)
+                {
+                    case NodelistIngestor.IngestEventKind.Started:
+                        ClearLogs();
+                        IsLogPanelVisible = true;
+                        AppendLog($"── 入库启动 — 共 {evt.Total} 条 entry ──");
+                        StatusText = isBackground
+                            ? $"⏳ 后台入库(0/{evt.Total}):开始..."
+                            : $"{progressLabel}(0/{evt.Total}):开始...";
+                        break;
+
+                    case NodelistIngestor.IngestEventKind.EntryUpserted:
+                        AppendLog($"[新] {evt.Author}/{evt.RepoName}  ({evt.Current}/{evt.Total})");
+                        StatusText = isBackground
+                            ? $"⏳ 后台入库({evt.Current}/{evt.Total}):{evt.Author}/{evt.RepoName}"
+                            : $"{progressLabel}({evt.Current}/{evt.Total}):{evt.Author}/{evt.RepoName}";
+                        break;
+
+                    case NodelistIngestor.IngestEventKind.EntrySkipped:
+                        AppendLog($"[已存在] {evt.Author}/{evt.RepoName}  ({evt.Current}/{evt.Total})");
+                        StatusText = isBackground
+                            ? $"⏳ 后台入库({evt.Current}/{evt.Total} 跳过):{evt.Author}/{evt.RepoName}"
+                            : $"{progressLabel}({evt.Current}/{evt.Total} 跳过):{evt.Author}/{evt.RepoName}";
+                        break;
+
+                    case NodelistIngestor.IngestEventKind.EntryFailed:
+                        AppendLog($"✗ entry 失败:{evt.Author}/{evt.RepoName} — {evt.Message}");
+                        break;
+
+                    case NodelistIngestor.IngestEventKind.DetailFetched:
+                        AppendLog($"  详情 ✓ {evt.Author}/{evt.RepoName}");
+                        break;
+
+                    case NodelistIngestor.IngestEventKind.DetailFailed:
+                        AppendLog($"  详情 ✗ {evt.Author}/{evt.RepoName} — {evt.Message}");
+                        break;
+
+                    case NodelistIngestor.IngestEventKind.Completed:
+                        var r = evt.Result!;
+                        AppendLog($"── 完成 — 扫 {r.EntriesScanned},新增 {r.EntriesNew},跳过 {r.EntriesSkipped}," +
+                                  $"详情写入 {r.DetailsWritten}(失败 {r.DetailsFailed}),耗时 {r.Elapsed:hh\\:mm\\:ss} ──");
+                        IsLogPanelVisible = false;  // 完成时折叠(用户原话)
+                        StatusText = isBackground
+                            ? $"✓ 后台入库完成 — 扫 {r.EntriesScanned},新增 {r.EntriesNew},跳过 {r.EntriesSkipped},详情 {r.DetailsWritten}(失败 {r.DetailsFailed})"
+                            : $"{progressLabel}完成 — 扫 {r.EntriesScanned},新增 {r.EntriesNew},跳过 {r.EntriesSkipped},详情 {r.DetailsWritten}(失败 {r.DetailsFailed})";
+                        break;
+                }
+            });
             var (host, token) = _sourceConfig is not null
                 ? ((Func<(string, string)>)(() =>
                 {
@@ -586,21 +750,22 @@ public sealed class NodelistViewModel : ViewModelBase
                     return (cfg.ServerUrl, cfg.ApiToken);
                 }))()
                 : (Host, Token);
+            // v1.0.0.x (2026-09-16) T43i+user:Completed event 已在 IngestAsync 内部 Report(result),
+            // VM lambda 已写「── 完成 — ...」行 + 设 IsLogPanelVisible=false + 更新 StatusText。
+            // 这里不再二次处理 result(避免重复);保留 var 让后续调试可用。
             var result = await _ingestor.IngestAsync(
                 jsonFile, host, token, forceFull: false, progress: progress);
-            StatusText = $"{progressLabel}完成 — 扫 {result.EntriesScanned},新增 {result.EntriesNew},跳过 {result.EntriesSkipped},详情 {result.DetailsWritten}(失败 {result.DetailsFailed})";
-            await ReloadAsync();
+            _ = result;
         }
         catch (Exception ex)
         {
             // v1.0.0.x (2026-09-15) T43e 修复完成后保留日志 fallback —
             // 任何后续 NRE / 异常都先落 nodelist_debug.log,Release stack 不可靠。
+            // T43i+user:catch 路径也写一条日志到 LogLines,让用户看到「整体失败」。
             TryWriteNreDebugLog("RunIngestAsync", ex);
+            AppendLog($"✗ 整体失败:{ex.Message}");
             StatusText = $"失败:{ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
+            IsLogPanelVisible = false;
         }
     }
 

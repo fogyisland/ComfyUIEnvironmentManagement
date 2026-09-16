@@ -212,13 +212,15 @@ public sealed class SqliteConnectionFactory
                 last_ingested_at TEXT,
                 -- 是否在最新 json 中还在(source=json / source=user_added)
                 source TEXT NOT NULL DEFAULT 'json',
-                -- v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(22 个新列,数组/对象走 JSON 字符串)。
+                -- v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(数组/对象走 JSON 字符串)。
                 -- 字符串/数字字段直接存;数组(pip/tags/preemptions/files/badges)/对象(dependencies)用 JsonSerializer.Serialize。
-                -- raw_stars 跟 nodelist_details.stars 区分(前者来自 ComfyUI-Manager 自维护,
-                -- 后者来自 GitHub API stargazers_count)。raw_license 跟 nodelist_details.license 区分。
                 id TEXT,                       -- ComfyUI-Manager 节点 ID (e.g. comfyui-impact-pack)
                 reference TEXT,                -- 主仓库 URL (通常 https://github.com/{author}/{repo})
                 reference2 TEXT,               -- 备用仓库 URL(部分条目才有)
+                -- v1.0.0.x (2026-09-16) T43i.1+user 「把 author / title / reference / description 入库」:
+                -- raw description 字段(节点作者自填,跟 nodelist_details.description
+                -- 区分 —— 那个是 GitHub API metadata.description;两者并存,可能略不同)。
+                description TEXT,              -- raw JSON 顶层 description(节点作者自填)
                 files_json TEXT,               -- JSON array of URLs
                 install_type TEXT,             -- git-clone / unzip / copy
                 pip_json TEXT,                 -- JSON array of pip requirements
@@ -230,10 +232,8 @@ public sealed class SqliteConnectionFactory
                 category TEXT,                 -- 类别(少数条目)
                 tags_json TEXT,                -- JSON array,raw tags(跟 GitHub API topics 不同源)
                 last_update TEXT,              -- ISO date(raw JSON 自己维护)
-                raw_stars INTEGER,             -- ComfyUI-Manager 自维护的 stars(可能跟 GitHub API 不一致)
                 badges_json TEXT,              -- JSON array of badges
                 js_path TEXT,                  -- JS 路径(部分条目才有)
-                raw_license TEXT,              -- raw license 字符串(跟 GitHub API license.spdx_id 不同源)
                 PRIMARY KEY (author, repo_name)
             );
             CREATE INDEX IF NOT EXISTS ix_nodelist_entries_repo
@@ -320,6 +320,9 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "nodelist_entries", "id", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "reference", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "reference2", "TEXT");
+        // v1.0.0.x (2026-09-16) T43i.1+user 「把 description 入库」:backfill 老 DB
+        // — 加 description 列,老 entry 取 NULL,下次入库会被刷新填上。
+        EnsureColumn(conn, "nodelist_entries", "description", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "files_json", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "install_type", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "pip_json", "TEXT");
@@ -331,10 +334,14 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "nodelist_entries", "category", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "tags_json", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "last_update", "TEXT");
-        EnsureColumn(conn, "nodelist_entries", "raw_stars", "INTEGER");
         EnsureColumn(conn, "nodelist_entries", "badges_json", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "js_path", "TEXT");
-        EnsureColumn(conn, "nodelist_entries", "raw_license", "TEXT");
+
+        // v1.0.0.x (2026-09-16) T43i.2.1-fix+user「raw_stars/raw_license 列 0% 覆盖率,删掉」:
+        // 老 DB 已经 ship 过(staging release),必须 ALTER TABLE DROP COLUMN 清掉。
+        // EnsureColumnDropped 幂等:列不存在 → 抛错 → catch 吞,新 DB 不会重复 DROP。
+        EnsureColumnDropped(conn, "nodelist_entries", "raw_stars");
+        EnsureColumnDropped(conn, "nodelist_entries", "raw_license");
 
         // v0.6.11:支持 (env_id, package, source) 三元组唯一 — 让 download(env_id='', source='download')
         // 不与 env 装(env_id='env-1', source='env')同名包冲突,两个 download 同包也能独立存在。
@@ -413,5 +420,24 @@ public sealed class SqliteConnectionFactory
         using var alter = conn.CreateCommand();
         alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {type}";
         alter.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-16) T43i.2.1-fix:反向 EnsureColumn —— 老 DB 已经 ship 过某列,
+    /// schema 演化要 drop 该列时用。SQLite 3.35+ 支持 ALTER TABLE ... DROP COLUMN。
+    /// 幂等:列不存在时抛 SqliteException,吞掉(SQLITE_ERROR 1 = "no such column")。
+    /// </summary>
+    private static void EnsureColumnDropped(SqliteConnection conn, string table, string column)
+    {
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"ALTER TABLE {table} DROP COLUMN {column}";
+            cmd.ExecuteNonQuery();
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 1)
+        {
+            // SQLITE_ERROR "no such column" → 已 drop 过,忽略
+        }
     }
 }

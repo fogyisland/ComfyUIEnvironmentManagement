@@ -314,10 +314,8 @@ public sealed class NodelistIngestor
                     category: parsed.Category,
                     tagsJson: parsed.TagsJson,
                     lastUpdate: parsed.LastUpdate,
-                    rawStars: parsed.RawStars,
                     badgesJson: parsed.BadgesJson,
-                    jsPath: parsed.JsPath,
-                    rawLicense: parsed.RawLicense);
+                    jsPath: parsed.JsPath);
                 localNew = 1;
             }
             catch (Exception ex)
@@ -440,10 +438,8 @@ public sealed class NodelistIngestor
                     category: parsed.Category,
                     tagsJson: parsed.TagsJson,
                     lastUpdate: parsed.LastUpdate,
-                    rawStars: parsed.RawStars,
                     badgesJson: parsed.BadgesJson,
-                    jsPath: parsed.JsPath,
-                    rawLicense: parsed.RawLicense);
+                    jsPath: parsed.JsPath);
                 // v1.0.0.x (2026-09-16) T43i+user fix:UpdateOnlyAsync 处理「已存在」entry 字段刷新,
                 // **不算 NewCount**(EntriesNew metric 只统计真正新增的 entry,用户看 StatusText
                 // 时区分「新写的」vs「已存在更新的」)。EntriesSkipped metric 走 line 442 公式
@@ -561,10 +557,8 @@ public sealed class NodelistIngestor
         string? Category,
         string? TagsJson,
         string? LastUpdate,
-        int? RawStars,
         string? BadgesJson,
-        string? JsPath,
-        string? RawLicense);
+        string? JsPath);
 
     /// <summary>
     /// 解析单条 entry — 提取所有 24 个 distinct raw JSON 字段。
@@ -596,10 +590,8 @@ public sealed class NodelistIngestor
             Category: TryGetString(entry, "category"),
             TagsJson: JsonArrayToString(entry, "tags"),
             LastUpdate: TryGetString(entry, "last_update"),
-            RawStars: TryGetInt(entry, "stars"),
             BadgesJson: JsonArrayToString(entry, "badges"),
-            JsPath: TryGetString(entry, "js_path"),
-            RawLicense: TryGetString(entry, "license"));
+            JsPath: TryGetString(entry, "js_path"));
     }
 
     private static string? TryGetString(JsonElement obj, string field)

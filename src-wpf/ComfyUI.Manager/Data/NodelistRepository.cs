@@ -35,9 +35,14 @@ public sealed class NodelistRepository
         // v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库(22 字段)。
         // 字符串/数字直接存;数组(pip/tags/preemptions/files/badges)/对象(dependencies)
         // 走 JsonSerializer.Serialize 存 JSON 字符串。Ingestor 在 line 100 阶段 ParseEntry。
+        // v1.0.0.x (2026-09-16) T43i.1+user 「把 author/title/reference/description 入库」:
+        // description 也入库(用户原话"加上 author title reference description 字段")。
+        // 跟 nodelist_details.description 区分(那个是 GitHub API metadata.description,
+        // raw 是节点作者自填;两者并存,UI 优先显示 raw)。
         string? Id,
         string? Reference,
         string? Reference2,
+        string? Description,        // T43i.1+user:raw JSON 顶层 description
         string? FilesJson,
         string? InstallType,
         string? PipJson,
@@ -49,10 +54,8 @@ public sealed class NodelistRepository
         string? Category,
         string? TagsJson,
         string? LastUpdate,
-        int? RawStars,
         string? BadgesJson,
-        string? JsPath,
-        string? RawLicense);
+        string? JsPath);
 
     public sealed record Detail(
         string Author,
@@ -89,13 +92,13 @@ public sealed class NodelistRepository
                  id, reference, reference2, files_json, install_type,
                  pip_json, apt_dependency, dependencies_json, preemptions_json,
                  nodename_pattern, nickname, category, tags_json,
-                 last_update, raw_stars, badges_json, js_path, raw_license)
+                 last_update, badges_json, js_path)
             VALUES
                 (@author, @repo, @now, @now, @source,
                  @id, @reference, @reference2, @filesJson, @installType,
                  @pipJson, @aptDependency, @dependenciesJson, @preemptionsJson,
                  @nodenamePattern, @nickname, @category, @tagsJson,
-                 @lastUpdate, @rawStars, @badgesJson, @jsPath, @rawLicense)
+                 @lastUpdate, @badgesJson, @jsPath)
             ON CONFLICT(author, repo_name) DO UPDATE SET
                 last_ingested_at = excluded.last_ingested_at,
                 id = excluded.id,
@@ -112,10 +115,8 @@ public sealed class NodelistRepository
                 category = excluded.category,
                 tags_json = excluded.tags_json,
                 last_update = excluded.last_update,
-                raw_stars = excluded.raw_stars,
                 badges_json = excluded.badges_json,
-                js_path = excluded.js_path,
-                raw_license = excluded.raw_license";
+                js_path = excluded.js_path";
         cmd.Parameters.AddWithValue("@author", author);
         cmd.Parameters.AddWithValue("@repo", repoName);
         cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
@@ -137,47 +138,47 @@ public sealed class NodelistRepository
         cmd.Parameters.AddWithValue("@category", DBNull.Value);
         cmd.Parameters.AddWithValue("@tagsJson", DBNull.Value);
         cmd.Parameters.AddWithValue("@lastUpdate", DBNull.Value);
-        cmd.Parameters.AddWithValue("@rawStars", DBNull.Value);
         cmd.Parameters.AddWithValue("@badgesJson", DBNull.Value);
         cmd.Parameters.AddWithValue("@jsPath", DBNull.Value);
-        cmd.Parameters.AddWithValue("@rawLicense", DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 
     /// <summary>
     /// v1.0.0.x T43h+user:全量入库 UpsertEntry — Ingestor 解析 raw JSON 24 字段后调用。
     /// 18 个新列由 caller 提供(数组/对象已 JsonSerializer.Serialize 成字符串)。
-    /// 老 DB backfill 时这 18 列为 NULL(由 EnsureColumn 加,初始无值)。
+    /// v1.0.0.x T43i.1+user:加 description(19 列),raw JSON 顶层节点作者自填描述。
+    /// 老 DB backfill 时这 19 列为 NULL(由 EnsureColumn 加,初始无值)。
     /// </summary>
     public void UpsertEntry(
         string author, string repoName, string source,
-        string? id, string? reference, string? reference2, string? filesJson,
-        string? installType, string? pipJson, string? aptDependency,
+        string? id, string? reference, string? reference2, string? description,
+        string? filesJson, string? installType, string? pipJson, string? aptDependency,
         string? dependenciesJson, string? preemptionsJson,
         string? nodenamePattern, string? nickname, string? category,
-        string? tagsJson, string? lastUpdate, int? rawStars,
-        string? badgesJson, string? jsPath, string? rawLicense)
+        string? tagsJson, string? lastUpdate,
+        string? badgesJson, string? jsPath)
     {
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO nodelist_entries
                 (author, repo_name, first_seen_at, last_ingested_at, source,
-                 id, reference, reference2, files_json, install_type,
+                 id, reference, reference2, description, files_json, install_type,
                  pip_json, apt_dependency, dependencies_json, preemptions_json,
                  nodename_pattern, nickname, category, tags_json,
-                 last_update, raw_stars, badges_json, js_path, raw_license)
+                 last_update, badges_json, js_path)
             VALUES
                 (@author, @repo, @now, @now, @source,
-                 @id, @reference, @reference2, @filesJson, @installType,
+                 @id, @reference, @reference2, @description, @filesJson, @installType,
                  @pipJson, @aptDependency, @dependenciesJson, @preemptionsJson,
                  @nodenamePattern, @nickname, @category, @tagsJson,
-                 @lastUpdate, @rawStars, @badgesJson, @jsPath, @rawLicense)
+                 @lastUpdate, @badgesJson, @jsPath)
             ON CONFLICT(author, repo_name) DO UPDATE SET
                 last_ingested_at = excluded.last_ingested_at,
                 id = excluded.id,
                 reference = excluded.reference,
                 reference2 = excluded.reference2,
+                description = excluded.description,
                 files_json = excluded.files_json,
                 install_type = excluded.install_type,
                 pip_json = excluded.pip_json,
@@ -189,10 +190,8 @@ public sealed class NodelistRepository
                 category = excluded.category,
                 tags_json = excluded.tags_json,
                 last_update = excluded.last_update,
-                raw_stars = excluded.raw_stars,
                 badges_json = excluded.badges_json,
-                js_path = excluded.js_path,
-                raw_license = excluded.raw_license";
+                js_path = excluded.js_path";
         cmd.Parameters.AddWithValue("@author", author);
         cmd.Parameters.AddWithValue("@repo", repoName);
         cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
@@ -200,6 +199,7 @@ public sealed class NodelistRepository
         cmd.Parameters.AddWithValue("@id", (object?)id ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@reference", (object?)reference ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@reference2", (object?)reference2 ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@description", (object?)description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@filesJson", (object?)filesJson ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@installType", (object?)installType ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@pipJson", (object?)pipJson ?? DBNull.Value);
@@ -211,10 +211,8 @@ public sealed class NodelistRepository
         cmd.Parameters.AddWithValue("@category", (object?)category ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@tagsJson", (object?)tagsJson ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@lastUpdate", (object?)lastUpdate ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@rawStars", (object?)rawStars ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@badgesJson", (object?)badgesJson ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@jsPath", (object?)jsPath ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@rawLicense", (object?)rawLicense ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 
@@ -273,12 +271,13 @@ public sealed class NodelistRepository
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
         // v1.0.0.x T43h+user:SELECT 23 列(5 旧 + 18 新 raw JSON 字段)。
+        // v1.0.0.x T43i.1+user:加 description → 24 列(5 旧 + 19 新 raw JSON 字段)。
         // 老 DB backfill 后新列全 NULL,Read 通过 IsDBNull 兜底返回 null。
         cmd.CommandText = @"SELECT author, repo_name, first_seen_at, last_ingested_at, source,
-                id, reference, reference2, files_json, install_type,
+                id, reference, reference2, description, files_json, install_type,
                 pip_json, apt_dependency, dependencies_json, preemptions_json,
                 nodename_pattern, nickname, category, tags_json,
-                last_update, raw_stars, badges_json, js_path, raw_license
+                last_update, badges_json, js_path
             FROM nodelist_entries ORDER BY author, repo_name";
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -292,21 +291,20 @@ public sealed class NodelistRepository
                 reader.IsDBNull(5) ? null : reader.GetString(5),         // id
                 reader.IsDBNull(6) ? null : reader.GetString(6),         // reference
                 reader.IsDBNull(7) ? null : reader.GetString(7),         // reference2
-                reader.IsDBNull(8) ? null : reader.GetString(8),         // files_json
-                reader.IsDBNull(9) ? null : reader.GetString(9),         // install_type
-                reader.IsDBNull(10) ? null : reader.GetString(10),       // pip_json
-                reader.IsDBNull(11) ? null : reader.GetString(11),       // apt_dependency
-                reader.IsDBNull(12) ? null : reader.GetString(12),       // dependencies_json
-                reader.IsDBNull(13) ? null : reader.GetString(13),       // preemptions_json
-                reader.IsDBNull(14) ? null : reader.GetString(14),       // nodename_pattern
-                reader.IsDBNull(15) ? null : reader.GetString(15),       // nickname
-                reader.IsDBNull(16) ? null : reader.GetString(16),       // category
-                reader.IsDBNull(17) ? null : reader.GetString(17),       // tags_json
-                reader.IsDBNull(18) ? null : reader.GetString(18),       // last_update
-                reader.IsDBNull(19) ? null : reader.GetInt32(19),        // raw_stars
+                reader.IsDBNull(8) ? null : reader.GetString(8),         // description (T43i.1)
+                reader.IsDBNull(9) ? null : reader.GetString(9),         // files_json
+                reader.IsDBNull(10) ? null : reader.GetString(10),       // install_type
+                reader.IsDBNull(11) ? null : reader.GetString(11),       // pip_json
+                reader.IsDBNull(12) ? null : reader.GetString(12),       // apt_dependency
+                reader.IsDBNull(13) ? null : reader.GetString(13),       // dependencies_json
+                reader.IsDBNull(14) ? null : reader.GetString(14),       // preemptions_json
+                reader.IsDBNull(15) ? null : reader.GetString(15),       // nodename_pattern
+                reader.IsDBNull(16) ? null : reader.GetString(16),       // nickname
+                reader.IsDBNull(17) ? null : reader.GetString(17),       // category
+                reader.IsDBNull(18) ? null : reader.GetString(18),       // tags_json
+                reader.IsDBNull(19) ? null : reader.GetString(19),       // last_update
                 reader.IsDBNull(20) ? null : reader.GetString(20),       // badges_json
-                reader.IsDBNull(21) ? null : reader.GetString(21),       // js_path
-                reader.IsDBNull(22) ? null : reader.GetString(22)));     // raw_license
+                reader.IsDBNull(21) ? null : reader.GetString(21)));     // js_path
         }
         return list;
     }

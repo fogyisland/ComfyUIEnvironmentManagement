@@ -44,6 +44,7 @@ public class NodelistRepositoryTests : IDisposable
             id: "comfyui-manager",
             reference: "https://github.com/ltdrdata/ComfyUI-Manager",
             reference2: "https://github.com/ltdrdata/ComfyUI-Manager-Utils",
+            description: "ComfyUI Manager for installing custom nodes",  // T43i.1+user
             filesJson: "[\"https://example.com/a.zip\"]",
             installType: "git-clone",
             pipJson: "[\"torch>=2.0\",\"numpy\"]",
@@ -55,10 +56,8 @@ public class NodelistRepositoryTests : IDisposable
             category: "Core",
             tagsJson: "[\"management\",\"core\"]",
             lastUpdate: "2024-01-15",
-            rawStars: 999,
             badgesJson: "[\"verified\",\"featured\"]",
-            jsPath: "js/manager.js",
-            rawLicense: "GPL-3.0");
+            jsPath: "js/manager.js");
 
         var entries = _repo.GetAllEntries();
         Assert.Single(entries);
@@ -66,6 +65,7 @@ public class NodelistRepositoryTests : IDisposable
         Assert.Equal("comfyui-manager", e.Id);
         Assert.Equal("https://github.com/ltdrdata/ComfyUI-Manager", e.Reference);
         Assert.Equal("https://github.com/ltdrdata/ComfyUI-Manager-Utils", e.Reference2);
+        Assert.Equal("ComfyUI Manager for installing custom nodes", e.Description);  // T43i.1+user
         Assert.Equal("[\"https://example.com/a.zip\"]", e.FilesJson);
         Assert.Equal("git-clone", e.InstallType);
         Assert.Equal("[\"torch>=2.0\",\"numpy\"]", e.PipJson);
@@ -77,10 +77,8 @@ public class NodelistRepositoryTests : IDisposable
         Assert.Equal("Core", e.Category);
         Assert.Equal("[\"management\",\"core\"]", e.TagsJson);
         Assert.Equal("2024-01-15", e.LastUpdate);
-        Assert.Equal(999, e.RawStars);
         Assert.Equal("[\"verified\",\"featured\"]", e.BadgesJson);
         Assert.Equal("js/manager.js", e.JsPath);
-        Assert.Equal("GPL-3.0", e.RawLicense);
     }
 
     [Fact]
@@ -89,20 +87,18 @@ public class NodelistRepositoryTests : IDisposable
         // 老 entry 只填 author + repo,其它字段全 null — EnsureColumn backfill 时状态。
         _repo.UpsertEntry(
             author: "foo", repoName: "bar", source: "json",
-            id: null, reference: null, reference2: null, filesJson: null,
+            id: null, reference: null, reference2: null, description: null, filesJson: null,
             installType: null, pipJson: null, aptDependency: null,
             dependenciesJson: null, preemptionsJson: null,
             nodenamePattern: null, nickname: null, category: null,
-            tagsJson: null, lastUpdate: null, rawStars: null,
-            badgesJson: null, jsPath: null, rawLicense: null);
+            tagsJson: null, lastUpdate: null,
+            badgesJson: null, jsPath: null);
 
         var entries = _repo.GetAllEntries();
         Assert.Single(entries);
         var e = entries[0];
         Assert.Null(e.Id);
         Assert.Null(e.PipJson);
-        Assert.Null(e.RawStars);
-        Assert.Null(e.RawLicense);
         Assert.Null(e.TagsJson);
     }
 
@@ -113,21 +109,21 @@ public class NodelistRepositoryTests : IDisposable
         _repo.UpsertEntry(
             "a", "b", "json",
             id: "v1", installType: "git-clone", pipJson: "[\"torch\"]",
-            reference: null, reference2: null, filesJson: null,
+            reference: null, reference2: null, description: null, filesJson: null,
             aptDependency: null, dependenciesJson: null, preemptionsJson: null,
             nodenamePattern: null, nickname: null, category: null,
-            tagsJson: null, lastUpdate: null, rawStars: null,
-            badgesJson: null, jsPath: null, rawLicense: null);
+            tagsJson: null, lastUpdate: null,
+            badgesJson: null, jsPath: null);
 
         // 第 2 次入库(同 PK):id="v2",pip 变 — ON CONFLICT DO UPDATE 应覆盖
         _repo.UpsertEntry(
             "a", "b", "json",
             id: "v2", installType: "unzip", pipJson: "[\"numpy\"]",
-            reference: null, reference2: null, filesJson: null,
+            reference: null, reference2: null, description: null, filesJson: null,
             aptDependency: null, dependenciesJson: null, preemptionsJson: null,
             nodenamePattern: null, nickname: null, category: null,
-            tagsJson: null, lastUpdate: null, rawStars: null,
-            badgesJson: null, jsPath: null, rawLicense: null);
+            tagsJson: null, lastUpdate: null,
+            badgesJson: null, jsPath: null);
 
         var entries = _repo.GetAllEntries();
         Assert.Single(entries);

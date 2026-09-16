@@ -117,10 +117,8 @@ public class NodelistIngestorTests : IDisposable
         Assert.Equal("Core", e.Category);
         Assert.Equal("[\"management\",\"core\"]", e.TagsJson);
         Assert.Equal("2024-01-15", e.LastUpdate);
-        Assert.Equal(999, e.RawStars);
         Assert.Equal("[\"verified\",\"featured\"]", e.BadgesJson);
         Assert.Equal("js/manager.js", e.JsPath);
-        Assert.Equal("GPL-3.0", e.RawLicense);
     }
 
     [Fact]
@@ -153,8 +151,6 @@ public class NodelistIngestorTests : IDisposable
         Assert.Null(e.InstallType);
         Assert.Null(e.PipJson);
         Assert.Null(e.TagsJson);
-        Assert.Null(e.RawStars);
-        Assert.Null(e.RawLicense);
     }
 
     [Fact]
