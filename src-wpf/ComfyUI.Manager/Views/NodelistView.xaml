@@ -387,6 +387,14 @@
                                                                 <Run Text="🌿 Branch:"/>
                                                                 <Run Text="{Binding DefaultBranch, Mode=OneWay}"/>
                                                             </TextBlock>
+                                                            <TextBlock Margin="0,0,12,0" FontSize="11">
+                                                                <Run Text="🏷 Latest:"/>
+                                                                <Run Text="{Binding LatestReleaseTag, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                            </TextBlock>
+                                                            <TextBlock Margin="0,0,12,0" FontSize="11">
+                                                                <Run Text="📦 Releases:"/>
+                                                                <Run Text="{Binding ReleaseCount, Mode=OneWay}"/>
+                                                            </TextBlock>
                                                         </WrapPanel>
 
                                                         <!-- 时间:Updated At / Pushed At -->
@@ -407,6 +415,42 @@
                                                                 <ItemsPanelTemplate>
                                                                     <WrapPanel/>
                                                                 </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Style="{StaticResource TagPillBorder}">
+                                                                        <TextBlock Text="{Binding}" FontSize="10"
+                                                                                   Foreground="{DynamicResource OnSurfaceBrush}"/>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                        <!-- v1.0.0.x user「云端其实是有这个功能」+ B 方案:
+                                                             raw_json 解析的 branches/recentReleases 给 UI 显示。
+                                                             跟 Topics pills 同样 ItemsControl + TagPillBorder 模式。
+                                                             Release tag 比 branch 名更突出,绿色背景(branches 用灰)。 -->
+                                                        <TextBlock FontSize="11" Margin="0,6,0,0" FontWeight="SemiBold"
+                                                                   Text="🌿 分支:"/>
+                                                        <ItemsControl ItemsSource="{Binding BranchNames}" Margin="0,2,0,0">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Style="{StaticResource TagPillBorder}">
+                                                                        <TextBlock Text="{Binding}" FontSize="10"
+                                                                                   Foreground="{DynamicResource OnSurfaceBrush}"/>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                        <TextBlock FontSize="11" Margin="0,6,0,0" FontWeight="SemiBold"
+                                                                   Text="🚀 最近版本:"/>
+                                                        <ItemsControl ItemsSource="{Binding RecentReleases}" Margin="0,2,0,0">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
                                                             </ItemsControl.ItemsPanel>
                                                             <ItemsControl.ItemTemplate>
                                                                 <DataTemplate>

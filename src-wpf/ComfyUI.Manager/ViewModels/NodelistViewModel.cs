@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -413,6 +414,124 @@ public sealed class NodelistViewModel : ViewModelBase
         // 现在 DetailRow 暴露给 UI —「数据源」Expander 的「查看完整 JSON」按钮用 RawJson 弹窗。
         public string? FetchedAt { get; set; }
         public string? RawJson { get; set; }
+
+        // v1.0.0.x (2026-09-16) user「云端其实是有这个功能,只是没有写入」+ 选 B 方案:
+        // API 返回的 branches/recentReleases/releaseCount/latestRelease 都在 raw_json 里,
+        // 不开 schema 新列,直接 RawJson 懒解析给 UI 用。
+        // - LatestReleaseTag:recentReleases[0].tag_name(也试 latestRelease.tag_name)
+        // - ReleaseCount:repository.releaseCount(API 直给,无 release 时 = 0)
+        // - BranchNames:repository.branches[].name
+        // - RecentReleases:recentReleases[] 简化为 "{tag_name} ({published_at 前 10 字符})"
+        // RawJson 为 null/非 JSON/无 repository → 全部空值(UI 走 0-count 路径)。
+        public string? LatestReleaseTag { get; set; }
+        public int? ReleaseCount { get; set; }
+        public IReadOnlyList<string> BranchNames { get; set; } = Array.Empty<string>();
+        public IReadOnlyList<string> RecentReleases { get; set; } = Array.Empty<string>();
+
+        /// <summary>v1.0.0.x user「云端其实是有这个功能,只是没有写入」+ 选 B 方案:
+        /// 从 raw_json 懒解析 branches/recentReleases/releaseCount/latestRelease 4 字段。
+        /// 不写 SQLite,启动时一次 parse,详情面板直接显示。
+        /// Null/空 raw_json / 非 JSON / 无 repository 嵌套 → 全部空值(UI 走 0-count 路径)。</summary>
+        public void RefreshFromRawJson()
+        {
+            var (branches, releases, count, latest) = ParseRawJson(RawJson);
+            BranchNames = branches;
+            RecentReleases = releases;
+            ReleaseCount = count;
+            LatestReleaseTag = latest;
+        }
+
+        private static (IReadOnlyList<string> Branches, IReadOnlyList<string> Releases,
+                        int? ReleaseCount, string? LatestTag) ParseRawJson(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return (Array.Empty<string>(), Array.Empty<string>(), null, null);
+            try
+            {
+                using var doc = JsonDocument.Parse(raw);
+                var root = doc.RootElement;
+                // API 返回 { "repository": { branches/recentReleases/releaseCount/latestRelease, ... } }
+                // GitHub 原生顶层没有 branches/releases → 顶层格式时只算 releaseCount fallback。
+                JsonElement repoEl = root.ValueKind == JsonValueKind.Object &&
+                                     root.TryGetProperty("repository", out var r) &&
+                                     r.ValueKind == JsonValueKind.Object
+                    ? r : root;
+
+                // branches[] → 只取 .name
+                var branches = new List<string>();
+                if (repoEl.ValueKind == JsonValueKind.Object &&
+                    repoEl.TryGetProperty("branches", out var brEl) &&
+                    brEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var b in brEl.EnumerateArray())
+                    {
+                        if (b.ValueKind == JsonValueKind.Object &&
+                            b.TryGetProperty("name", out var nameEl) &&
+                            nameEl.ValueKind == JsonValueKind.String)
+                        {
+                            var n = nameEl.GetString();
+                            if (!string.IsNullOrWhiteSpace(n)) branches.Add(n);
+                        }
+                    }
+                }
+
+                // recentReleases[] → "{tag_name} (YYYY-MM-DD)" 简短展示
+                var releases = new List<string>();
+                if (repoEl.ValueKind == JsonValueKind.Object &&
+                    repoEl.TryGetProperty("recentReleases", out var rrEl) &&
+                    rrEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var rel in rrEl.EnumerateArray())
+                    {
+                        if (rel.ValueKind != JsonValueKind.Object) continue;
+                        string? tag = rel.TryGetProperty("tag_name", out var tn) &&
+                                      tn.ValueKind == JsonValueKind.String
+                            ? tn.GetString() : null;
+                        string? published = rel.TryGetProperty("published_at", out var pa) &&
+                                            pa.ValueKind == JsonValueKind.String
+                            ? pa.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(tag)) continue;
+                        var dateShort = published is { Length: >= 10 } ? published[..10] : "";
+                        releases.Add(string.IsNullOrEmpty(dateShort) ? tag : $"{tag} ({dateShort})");
+                    }
+                }
+
+                // releaseCount:repository.releaseCount 直接 int(API 已 aggregate 过)
+                int? count = null;
+                if (repoEl.ValueKind == JsonValueKind.Object &&
+                    repoEl.TryGetProperty("releaseCount", out var rcEl) &&
+                    rcEl.ValueKind == JsonValueKind.Number &&
+                    rcEl.TryGetInt32(out var rcInt))
+                {
+                    count = rcInt;
+                }
+                // 当 releaseCount 缺失但 recentReleases 已知长度 → 兜底
+                if (count is null && releases.Count > 0) count = releases.Count;
+
+                // latestRelease.tag_name 优先,空则取 recentReleases[0].tag_name
+                string? latestTag = null;
+                if (repoEl.ValueKind == JsonValueKind.Object &&
+                    repoEl.TryGetProperty("latestRelease", out var lrEl) &&
+                    lrEl.ValueKind == JsonValueKind.Object &&
+                    lrEl.TryGetProperty("tag_name", out var ltn) &&
+                    ltn.ValueKind == JsonValueKind.String)
+                {
+                    latestTag = ltn.GetString();
+                }
+                if (string.IsNullOrWhiteSpace(latestTag) && releases.Count > 0)
+                {
+                    var first = releases[0];
+                    var spaceIdx = first.IndexOf(' ');
+                    latestTag = spaceIdx > 0 ? first[..spaceIdx] : first;
+                }
+
+                return (branches, releases, count, latestTag);
+            }
+            catch
+            {
+                return (Array.Empty<string>(), Array.Empty<string>(), null, null);
+            }
+        }
     }
 
     /// <summary>
@@ -591,6 +710,10 @@ public sealed class NodelistViewModel : ViewModelBase
                 FetchedAt = d.FetchedAt,
                 RawJson = d.RawJson,
             });
+            // v1.0.0.x user「云端其实是有这个功能」+ B 方案:raw_json 懒解析
+            // branches/recentReleases/releaseCount/latestRelease 给 UI 用。
+            // 不写 SQLite,启动 O(1) parse,DetailRow 直接显示。
+            SelectedDetails[^1].RefreshFromRawJson();
         }
         RaisePropertyChanged(nameof(SelectedDetailsSummaryText));
     }
