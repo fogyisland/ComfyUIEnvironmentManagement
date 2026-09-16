@@ -166,7 +166,12 @@ public partial class App : Application
         // SettingsDefaults.Apply 还在 launcher 构造之后,但 Apply 只动 path 类字段,
         // 不会改 ComfyUiStartupTimeoutSeconds,所以顺序安全。
         // v0.6.16: db path 也走 LocalDataPaths 注入 —— state.db 落 <projectRoot>/.manager/。
+        // v1.0.0.x T45:state.db factory (default SchemaKind.State) —— environments / scanned_nodes /
+        // process_state / version_history / dep_records / nodelist_* 共 8 表。
         var dbFactory = new SqliteConnectionFactory(localPaths);
+        // v1.0.0.x T45:model.db factory (SchemaKind.Model) —— local_model_files / local_model_overrides /
+        // civitai_card_cache 共 3 表,本地模型纯缓存。
+        var modelFactory = new SqliteConnectionFactory(localPaths, SchemaKind.Model);
         // v1.0.0 T3:legacy env rows get backfilled with current Settings.Templates["ComfyUI"]
         // snapshot (G6). Fallback to fresh defaults if user has no ComfyUI template entry.
         var envRepo = new EnvironmentRepository(dbFactory, () =>
@@ -657,15 +662,15 @@ public partial class App : Application
 
         // v1.0.0.x: 用户覆盖本地路径 repo factory — MainViewModel 在 ShowLocalModels 懒构造
         // LocalModelsViewModel 时调 factory 拿 repo(透传给 LocalModelsViewModel 的 _overridesRepo)。
-        // 复用同一份 dbFactory(SqliteConnectionFactory)— schema 在 SqliteConnectionFactory.InitSchemaIfMissing
-        // 里已 CREATE local_model_overrides 表。
-        _mainVm.SetLocalModelOverridesFactory(() => new LocalModelOverridesRepository(dbFactory));
+        // v1.0.0.x T45:LocalModelOverridesRepository 注入 modelFactory(读 model.db)——
+        _mainVm.SetLocalModelOverridesFactory(() => new LocalModelOverridesRepository(modelFactory));
         // v1.0.0.x: CivitAI 详情缓存 repo — 同模式,持久化到 SQLite civitai_card_cache。
-        _mainVm.SetCivitaiCacheRepoFactory(() => new CivitaiCardCacheRepository(dbFactory));
+        _mainVm.SetCivitaiCacheRepoFactory(() => new CivitaiCardCacheRepository(modelFactory));
         // v1.0.0.x: scan 结果 per-file cache repo — 同模式,持久化到 SQLite local_model_files。
         // view 打开 → LoadFromDb() 立即读 DB 出卡(用户原话「后续不需要直接读」);
         // 手动刷新 → ReloadAsync 走 mtime-based 增量 diff,新/改文件重 hash + 入库。
-        _mainVm.SetLocalModelFilesRepoFactory(() => new LocalModelFilesRepository(dbFactory));
+        // v1.0.0.x T45:LocalModelFilesRepository 注入 modelFactory(读 model.db)。
+        _mainVm.SetLocalModelFilesRepoFactory(() => new LocalModelFilesRepository(modelFactory));
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
