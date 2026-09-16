@@ -6,66 +6,112 @@ using ComfyUI.Manager.Infrastructure;
 namespace ComfyUI.Manager.Data;
 
 /// <summary>
+/// v1.0.0.x T45:SqliteConnectionFactory 内部区分 schema 种类 ——
+/// State 走 state.db(原 state.db 8 表,seed 类 + env state)，
+/// Model 走 model.db(新文件,本地模型纯缓存 3 表)。
+/// 同一个 factory class 根据 ctor 传的 kind 决定 _dbPath + InitSchema 路径,
+/// 避免 magic string 散落各处。
+/// </summary>
+public enum SchemaKind
+{
+    State,
+    Model,
+}
+
+/// <summary>
 /// SqliteConnectionFactory:用户数据表 db (environments / scanned_nodes /
 /// process_state / version_history / nodes 等)。路径由 <see cref="LocalDataPaths"/>
-/// 提供(默认 &lt;projectRoot&gt;/.manager/state.db;旧版 %APPDATA%/ComfyUI-Manager/state.db
+/// 提供(默认 <projectRoot>/.manager/state.db;旧版 %APPDATA%/ComfyUI-Manager/state.db
 /// 由 <see cref="LocalDataMigrationService"/> 一次性迁过来)。
 ///
 /// 升级兼容:首次 v0.6.4 启动时,如果旧的 catalog.db 存在且 state.db 不存在,
 /// 自动 File.Move(catalog.db → state.db),把旧 db 里残留的 user 表带过去。
 /// 旧 db 里的 catalog_cache 会被丢弃(用户主动去 Settings 重新刷新)。
+///
+/// v1.0.0.x T45: 拆出 SchemaKind 枚举 ——
+///   • SchemaKind.State  → <configDir>/state.db(8 表:environments / scanned_nodes /
+///     version_history / dep_records / process_state / nodelist_entries /
+///     nodelist_details / nodelist_source_config + ix_scanned_nodes_env_pkg_source
+///     + ix_nodelist_entries_repo + ix_nodelist_details_entry + ix_nodelist_source_config_updated)
+///   • SchemaKind.Model  → <configDir>/model.db(3 表:local_model_files /
+///     local_model_overrides / civitai_card_cache + ix_local_model_files_source_id)
+/// 老 wire 不传 SchemaKind 自动走 state(向后兼容)。
 /// </summary>
 public sealed class SqliteConnectionFactory
 {
     private readonly string _dbPath;
+    private readonly SchemaKind _kind;
 
     public string DbPath => _dbPath;
 
     /// <summary>
-    /// 生产 DI 入口 —— 接受 <see cref="LocalDataPaths"/> 提供 db 路径。
+    /// 生产 DI 入口(默认 State,向后兼容老 wire —— 不传 SchemaKind 自动走 state)。
     /// </summary>
     public SqliteConnectionFactory(LocalDataPaths paths)
+        : this(paths, SchemaKind.State) { }
+
+    /// <summary>
+    /// v1.0.0.x T45:生产 DI 显式 schema 入口。
+    /// Model 三 repository(LocalModelFiles/Overrides/CivitaiCardCache)用这条 ctor 注入 model.db factory。
+    /// </summary>
+    public SqliteConnectionFactory(LocalDataPaths paths, SchemaKind kind)
+        : this(kind switch
+        {
+            SchemaKind.State => paths.StateDbFile,
+            SchemaKind.Model => paths.ModelDbFile,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown SchemaKind"),
+        }, kind)
     {
-        _dbPath = ResolveDbPath(paths.StateDbFile);
     }
 
     /// <summary>
-    /// 测试 seam —— 显式传入 db 路径。生产代码走 LocalDataPaths ctor。
+    /// 测试 seam —— 显式传入 db 路径 + schema kind。生产代码走 LocalDataPaths ctor。
     /// </summary>
     public SqliteConnectionFactory(string dbPath)
+        : this(dbPath, SchemaKind.State) { }
+
+    /// <summary>
+    /// v1.0.0.x T45:测试 seam 显式 kind(测 model 表用)。
+    /// </summary>
+    public SqliteConnectionFactory(string dbPath, SchemaKind kind)
     {
-        _dbPath = dbPath;
+        _dbPath = ResolveDbPath(dbPath, kind);
+        _kind = kind;
     }
 
     /// <summary>
-    /// Resolves the user-db path. If a legacy <c>catalog.db</c> is present
-    /// and <c>state.db</c> is not, renames it. Caller should not rename the
-    /// file out from under running SQLite connections.
+    /// Resolves the db path for the given schema. For State kind, handles the legacy
+    /// catalog.db → state.db rename (v0.6.4); for Model kind, just ensures parent dir exists.
+    /// Caller should not rename the file out from under running SQLite connections.
     /// </summary>
-    private static string ResolveDbPath(string newPath)
+    private static string ResolveDbPath(string newPath, SchemaKind kind)
     {
-        var overridePath = Environment.GetEnvironmentVariable("COMFY_MGR_DB_PATH");
-        if (!string.IsNullOrWhiteSpace(overridePath))
+        if (kind == SchemaKind.State)
         {
-            return overridePath;
+            var overridePath = Environment.GetEnvironmentVariable("COMFY_MGR_DB_PATH");
+            if (!string.IsNullOrWhiteSpace(overridePath))
+            {
+                return overridePath;
+            }
         }
 
         var dir = Path.GetDirectoryName(newPath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-        var legacyPath = Path.Combine(dir ?? "", "catalog.db");
-        if (!File.Exists(newPath) && File.Exists(legacyPath))
+        if (kind == SchemaKind.State)
         {
-            // 一次性升级迁移:旧 catalog.db 含混合表,移到 state.db
-            // 后旧 db 的 catalog_cache 会被丢弃(用户从 Settings 重新拉)。
-            try { File.Move(legacyPath, newPath); }
-            catch { /* 容错:rename 失败时仍用旧 db(下次启动再试) */ }
+            var legacyPath = Path.Combine(dir ?? "", "catalog.db");
+            if (!File.Exists(newPath) && File.Exists(legacyPath))
+            {
+                try { File.Move(legacyPath, newPath); }
+                catch { /* 容错:rename 失败时仍用旧 db(下次启动再试) */ }
+            }
         }
         return newPath;
     }
 
     /// <summary>
-    /// Opens a new SqliteConnection with user-table schema ensured.
+    /// Opens a new SqliteConnection with schema ensured for this factory's kind.
     /// Caller owns disposal.
     /// </summary>
     public SqliteConnection Open()
@@ -81,11 +127,25 @@ public sealed class SqliteConnectionFactory
         return conn;
     }
 
+    private void InitSchemaIfMissing(SqliteConnection conn)
+    {
+        switch (_kind)
+        {
+            case SchemaKind.State:
+                InitStateSchema(conn);
+                break;
+            case SchemaKind.Model:
+                InitModelSchema(conn);
+                break;
+        }
+    }
+
     /// <summary>
-    /// CREATE TABLE IF NOT EXISTS for all user tables WPF reads from.
-    /// Mirrors the schema in <c>tests-wpf/.../Fakes/TestDb.cs</c>.
+    /// CREATE TABLE IF NOT EXISTS for state.db (8 表 + EnsureColumn/EnsureColumnDropped 增量升级
+    /// + A1111 cleanup + sentinel INSERT)。原 SqliteConnectionFactory.InitSchemaIfMissing 完整迁移,
+    /// 一行不改 —— T45 仅做拆分,不动 state schema 行为。
     /// </summary>
-    private static void InitSchemaIfMissing(SqliteConnection conn)
+    private void InitStateSchema(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
@@ -150,55 +210,6 @@ public sealed class SqliteConnectionFactory
                 port INTEGER NOT NULL,
                 started_at TIMESTAMP NOT NULL
             );
-            -- v1.0.0.x: 用户为本地模型手设的本地绝对路径覆盖(默认 = scanner 推算的 FullPath)。
-            -- key = DownloadedModel.SourceId;UI 在 LocalModelsView 显示 + 提供编辑 dialog。
-            -- Phase B (后续): EnvCreatorService / ProcessLauncher 用 override_path 替代扫描路径做 junction。
-            CREATE TABLE IF NOT EXISTS local_model_overrides (
-                source_id TEXT PRIMARY KEY,
-                override_path TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            -- v1.0.0.x:用户手动查询 CivitAI 后的详情缓存。Toolbar「🔎 CivitAI 查询」
-            -- 按钮命中后写一行;LocalModelsViewModel.GroupToCards / ReloadAsync 启动时
-            -- LoadAll → 覆盖到对应 LocalModelCard.MatchedDetail (MatchSource=UserQuery)。
-            -- 应用重启后无刷新动作即可看到上次结果(用户原话:「在没有刷新之前就以上次
-            -- 获取的数据为准,除非手动刷新」)。
-            -- detail_json 存 JSON 序列化的 CivitAiDetailDto(SqliteConnectionFactory 不
-            -- 知道该类型,repository 内部用 System.Text.Json 反序列化)。
-            CREATE TABLE IF NOT EXISTS civitai_card_cache (
-                source_id TEXT PRIMARY KEY,
-                detail_json TEXT NOT NULL,
-                fetched_at TEXT NOT NULL
-            );
-            -- v1.0.0.x:本地模型 scan 结果 per-file cache。Primary key = FullPath
-            -- (每个磁盘文件 1 行;SourceId groups 多 version/file 进同一 card)。
-            -- 用途:第一次手动 ReloadAsync 跑 full scan + 入库;后续 view 打开直接读此表
-            -- 不再扫文件系统(用户原话「一次刷新就入库,后续不需要直接读」)。
-            -- 手动刷新走 mtime-based diff:新增 / mtime 变 → 重新 hash + match;未变 → skip。
-            -- matched_detail_json / hash / match_source 跟 civitai_card_cache 不同 ——
-            -- 这里存 scanner 自动 hash-match 阶段产物(可能为空,因为匹配有概率失败或未跑);
-            -- civitai_card_cache 专存用户主动查询结果(UserQuery 优先级最高)。
-            -- file_mtime 是 diff key(scanner 用 ISO 8601 UTC,跟 scanned_at 同样格式)。
-            CREATE TABLE IF NOT EXISTS local_model_files (
-                file_path TEXT PRIMARY KEY,
-                source_id TEXT NOT NULL,
-                source_version_id TEXT NOT NULL,
-                subfolder_name TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-                title TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                source TEXT NOT NULL,
-                hash TEXT,
-                match_source TEXT,
-                matched_detail_json TEXT,
-                preview_image_path TEXT,
-                downloaded_at TEXT NOT NULL,
-                file_mtime TEXT NOT NULL,
-                scanned_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS ix_local_model_files_source_id
-                ON local_model_files(source_id);
-
             -- v1.0.0.x (2026-09-05) feat/nodelist-redesign:节点列表目录
             -- NodesList = 节点 owner+repo_name 列表(Nodesdetail FK 父)
             -- Nodesdetail = 拉云端 /api/v1/repos/{owner}/{repo} 拿的 metadata
@@ -407,6 +418,68 @@ public sealed class SqliteConnectionFactory
             sentinel.CommandText = @"INSERT OR IGNORE INTO nodelist_source_config (id) VALUES (1)";
             sentinel.ExecuteNonQuery();
         }
+    }
+
+    /// <summary>
+    /// v1.0.0.x T45:CREATE TABLE IF NOT EXISTS for model.db (3 表 + 1 索引)。
+    /// 装本地模型 scan / override / CivitAI 缓存,纯用户机器本地缓存,不能作为 seed 跨用户分发。
+    /// FK 全部移除(没有跨 db FK 概念),一致性靠 application-level 保证。
+    /// </summary>
+    private static void InitModelSchema(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            -- v1.0.0.x:本地模型 scan 结果 per-file cache。Primary key = FullPath
+            -- (每个磁盘文件 1 行;SourceId groups 多 version/file 进同一 card)。
+            -- 用途:第一次手动 ReloadAsync 跑 full scan + 入库;后续 view 打开直接读此表
+            -- 不再扫文件系统(用户原话「一次刷新就入库,后续不需要直接读」)。
+            -- 手动刷新走 mtime-based diff:新增 / mtime 变 → 重新 hash + match;未变 → skip。
+            -- matched_detail_json / hash / match_source 跟 civitai_card_cache 不同 ——
+            -- 这里存 scanner 自动 hash-match 阶段产物(可能为空,因为匹配有概率失败或未跑);
+            -- civitai_card_cache 专存用户主动查询结果(UserQuery 优先级最高)。
+            -- file_mtime 是 diff key(scanner 用 ISO 8601 UTC,跟 scanned_at 同样格式)。
+            CREATE TABLE IF NOT EXISTS local_model_files (
+                file_path TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                source_version_id TEXT NOT NULL,
+                subfolder_name TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                source TEXT NOT NULL,
+                hash TEXT,
+                match_source TEXT,
+                matched_detail_json TEXT,
+                preview_image_path TEXT,
+                downloaded_at TEXT NOT NULL,
+                file_mtime TEXT NOT NULL,
+                scanned_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS ix_local_model_files_source_id
+                ON local_model_files(source_id);
+
+            -- v1.0.0.x: 用户为本地模型手设的本地绝对路径覆盖(默认 = scanner 推算的 FullPath)。
+            -- key = DownloadedModel.SourceId;UI 在 LocalModelsView 显示 + 提供编辑 dialog。
+            -- Phase B (后续): EnvCreatorService / ProcessLauncher 用 override_path 替代扫描路径做 junction。
+            CREATE TABLE IF NOT EXISTS local_model_overrides (
+                source_id TEXT PRIMARY KEY,
+                override_path TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            -- v1.0.0.x:用户手动查询 CivitAI 后的详情缓存。Toolbar「🔎 CivitAI 查询」
+            -- 按钮命中后写一行;LocalModelsViewModel.GroupToCards / ReloadAsync 启动时
+            -- LoadAll → 覆盖到对应 LocalModelCard.MatchedDetail (MatchSource=UserQuery)。
+            -- 应用重启后无刷新动作即可看到上次结果(用户原话:「在没有刷新之前就以上次
+            -- 获取的数据为准,除非手动刷新」)。
+            -- detail_json 存 JSON 序列化的 CivitAiDetailDto(SqliteConnectionFactory 不
+            -- 知道该类型,repository 内部用 System.Text.Json 反序列化)。
+            CREATE TABLE IF NOT EXISTS civitai_card_cache (
+                source_id TEXT PRIMARY KEY,
+                detail_json TEXT NOT NULL,
+                fetched_at TEXT NOT NULL
+            )";
+        cmd.ExecuteNonQuery();
     }
 
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string type)
