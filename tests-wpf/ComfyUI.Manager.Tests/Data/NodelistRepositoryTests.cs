@@ -116,4 +116,146 @@ public class NodelistRepositoryTests : IDisposable
         Assert.Equal("unzip", entries[0].InstallType);
         Assert.Equal("[\"numpy\"]", entries[0].PipJson);
     }
+
+    // v1.0.0.x (2026-09-16) T43i.4+user「无变动不写入数据库」+ user「增加一个 release
+    // 就更改 没有任何变动则不写入数据库」:新增 4 个单测覆盖 entry 的增量 upsert 行为 —
+    // 内容完全相同时整个 UPDATE 跳过(包括 last_ingested_at 也不动,跟用户原话
+    // 「无变动不写入」严格对齐)。Detail 端 raw_json 哈希对比行为类似,在
+    // NodelistDetailIncrementalTests 单独覆盖。
+
+    [Fact]
+    public void UpsertEntry_NoChange_DoesNotUpdateLastIngestedAt()
+    {
+        // 第 1 次入库 — 11 个 raw JSON 列都给值
+        _repo.UpsertEntry(
+            "a", "b", "json",
+            id: "v1", reference: "https://github.com/a/b",
+            reference2: null, description: "test",
+            filesJson: "[\"x.zip\"]", installType: "git-clone",
+            pipJson: "[\"torch\"]", preemptionsJson: null,
+            nodenamePattern: null, category: null,
+            tagsJson: "[\"core\"]", jsPath: null);
+
+        var firstRead = ReadEntryTimestamps(_factory, "a", "b");
+        Assert.NotNull(firstRead.firstSeen);
+        Assert.NotNull(firstRead.lastIngested);
+
+        // 睡 50ms 让时钟前进
+        System.Threading.Thread.Sleep(50);
+
+        // 第 2 次入库 — 内容完全相同
+        _repo.UpsertEntry(
+            "a", "b", "json",
+            id: "v1", reference: "https://github.com/a/b",
+            reference2: null, description: "test",
+            filesJson: "[\"x.zip\"]", installType: "git-clone",
+            pipJson: "[\"torch\"]", preemptionsJson: null,
+            nodenamePattern: null, category: null,
+            tagsJson: "[\"core\"]", jsPath: null);
+
+        var secondRead = ReadEntryTimestamps(_factory, "a", "b");
+        // last_ingested_at 必须保持原值(无变动不写入)
+        Assert.Equal(firstRead.lastIngested, secondRead.lastIngested);
+        // first_seen_at 当然不变
+        Assert.Equal(firstRead.firstSeen, secondRead.firstSeen);
+    }
+
+    [Fact]
+    public void UpsertEntry_AnyColumnChange_UpdatesLastIngestedAt()
+    {
+        // 第 1 次入库
+        _repo.UpsertEntry(
+            "a", "b", "json",
+            id: "v1", reference: "https://github.com/a/b",
+            reference2: null, description: "test",
+            filesJson: null, installType: "git-clone",
+            pipJson: null, preemptionsJson: null,
+            nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
+
+        var firstRead = ReadEntryTimestamps(_factory, "a", "b");
+
+        System.Threading.Thread.Sleep(50);
+
+        // 第 2 次入库 — 只改 1 列(任何列)
+        _repo.UpsertEntry(
+            "a", "b", "json",
+            id: "v1", reference: "https://github.com/a/b",
+            reference2: null, description: "test (改了一下)",
+            filesJson: null, installType: "git-clone",
+            pipJson: null, preemptionsJson: null,
+            nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
+
+        var secondRead = ReadEntryTimestamps(_factory, "a", "b");
+        // last_ingested_at 必须更新
+        Assert.NotEqual(firstRead.lastIngested, secondRead.lastIngested);
+        // first_seen_at 不变(永远是首次入库时间)
+        Assert.Equal(firstRead.firstSeen, secondRead.firstSeen);
+        // 内容真的更新了
+        Assert.Equal("test (改了一下)", _repo.GetAllEntries()[0].Description);
+    }
+
+    [Fact]
+    public void UpsertEntry_NullVsNull_DoesNotCountAsChange()
+    {
+        // 第 1 次入库 — 全 null
+        _repo.UpsertEntry(
+            "a", "b", "json",
+            id: null, reference: null, reference2: null, description: null,
+            filesJson: null, installType: null, pipJson: null,
+            preemptionsJson: null, nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
+
+        var firstRead = ReadEntryTimestamps(_factory, "a", "b");
+
+        System.Threading.Thread.Sleep(50);
+
+        // 第 2 次入库 — 同样全 null
+        _repo.UpsertEntry(
+            "a", "b", "json",
+            id: null, reference: null, reference2: null, description: null,
+            filesJson: null, installType: null, pipJson: null,
+            preemptionsJson: null, nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
+
+        var secondRead = ReadEntryTimestamps(_factory, "a", "b");
+        // null vs null 应该判定为 same
+        Assert.Equal(firstRead.lastIngested, secondRead.lastIngested);
+    }
+
+    [Fact]
+    public void UpsertEntry_NewEntry_Inserts()
+    {
+        // 不存在 entry → INSERT(注意 last_ingested_at 应被填为 now)
+        _repo.UpsertEntry(
+            "new", "entry", "json",
+            id: "new-entry", reference: null, reference2: null, description: null,
+            filesJson: null, installType: null, pipJson: null,
+            preemptionsJson: null, nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
+
+        var entries = _repo.GetAllEntries();
+        Assert.Single(entries);
+        Assert.Equal("new", entries[0].Author);
+        Assert.Equal("entry", entries[0].RepoName);
+        Assert.Equal("new-entry", entries[0].Id);
+        Assert.NotNull(ReadEntryTimestamps(_factory, "new", "entry").firstSeen);
+    }
+
+    private static (string? firstSeen, string? lastIngested) ReadEntryTimestamps(
+        SqliteConnectionFactory factory, string author, string repoName)
+    {
+        using var conn = factory.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"SELECT first_seen_at, last_ingested_at FROM nodelist_entries
+            WHERE author = @a AND repo_name = @r";
+        cmd.Parameters.AddWithValue("@a", author);
+        cmd.Parameters.AddWithValue("@r", repoName);
+        using var rdr = cmd.ExecuteReader();
+        Assert.True(rdr.Read());
+        return (
+            rdr.IsDBNull(0) ? null : rdr.GetString(0),
+            rdr.IsDBNull(1) ? null : rdr.GetString(1));
+    }
 }

@@ -81,49 +81,23 @@ public sealed class NodelistRepository
     {
         using var conn = _factory.Open();
         using var cmd = conn.CreateCommand();
-        // v1.0.0.x T43h+user:全量字段入库 — ON CONFLICT 时只更新 last_ingested_at 和
-        // 18 个新 raw JSON 列(不覆盖 first_seen_at,因为这是首次入库时间戳)。
-        cmd.CommandText = @"
-            INSERT INTO nodelist_entries
+        // v1.0.0.x (2026-09-16) T43i.4+user「无变动不写入」:3 参简版不再用 ON CONFLICT 覆盖
+        // 18 列 —— 直接调 12 参 UpsertEntry,所有 null 入 DBNull,12 参版本负责对比逻辑。
+        cmd.CommandText = @"INSERT INTO nodelist_entries
                 (author, repo_name, first_seen_at, last_ingested_at, source,
-                 id, reference, reference2, files_json, install_type,
-                 pip_json, preemptions_json, nodename_pattern, category, tags_json, js_path)
+                 id, reference, reference2, description, files_json, install_type,
+                 pip_json, preemptions_json, nodename_pattern, category,
+                 tags_json, js_path)
             VALUES
                 (@author, @repo, @now, @now, @source,
-                 @id, @reference, @reference2, @filesJson, @installType,
-                 @pipJson, @preemptionsJson, @nodenamePattern, @category, @tagsJson, @jsPath)
-            ON CONFLICT(author, repo_name) DO UPDATE SET
-                last_ingested_at = excluded.last_ingested_at,
-                id = excluded.id,
-                reference = excluded.reference,
-                reference2 = excluded.reference2,
-                files_json = excluded.files_json,
-                install_type = excluded.install_type,
-                pip_json = excluded.pip_json,
-                preemptions_json = excluded.preemptions_json,
-                nodename_pattern = excluded.nodename_pattern,
-                category = excluded.category,
-                tags_json = excluded.tags_json,
-                js_path = excluded.js_path";
+                 NULL, NULL, NULL, NULL, NULL, NULL,
+                 NULL, NULL, NULL, NULL,
+                 NULL, NULL)
+            ON CONFLICT(author, repo_name) DO NOTHING";
         cmd.Parameters.AddWithValue("@author", author);
         cmd.Parameters.AddWithValue("@repo", repoName);
         cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
         cmd.Parameters.AddWithValue("@source", source);
-        // v1.0.0.x T43h:18 个新 raw JSON 列。null 入 DBNull(老 DB 未填时为 NULL)。
-        // 入参由 Ingestor 在 line 100 ParseEntry 时填充。这里留默认 null —
-        // 调用方(ProcessOneAsync)用 18 参数重载,这里只覆盖原 (author, repo, source) 三参入口。
-        // v1.0.0.x (2026-09-16) T43i.2.2-fix:5 个 ≤0.017% 覆盖率列的 DBNull AddWithValue 移除。
-        cmd.Parameters.AddWithValue("@id", DBNull.Value);
-        cmd.Parameters.AddWithValue("@reference", DBNull.Value);
-        cmd.Parameters.AddWithValue("@reference2", DBNull.Value);
-        cmd.Parameters.AddWithValue("@filesJson", DBNull.Value);
-        cmd.Parameters.AddWithValue("@installType", DBNull.Value);
-        cmd.Parameters.AddWithValue("@pipJson", DBNull.Value);
-        cmd.Parameters.AddWithValue("@preemptionsJson", DBNull.Value);
-        cmd.Parameters.AddWithValue("@nodenamePattern", DBNull.Value);
-        cmd.Parameters.AddWithValue("@category", DBNull.Value);
-        cmd.Parameters.AddWithValue("@tagsJson", DBNull.Value);
-        cmd.Parameters.AddWithValue("@jsPath", DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 
@@ -143,79 +117,211 @@ public sealed class NodelistRepository
         string? tagsJson, string? jsPath)
     {
         using var conn = _factory.Open();
+        // v1.0.0.x (2026-09-16) T43i.4+user「无变动不写入数据库」:
+        // 先 SELECT 11 个 raw JSON 列(id/reference/reference2/description/files_json/
+        // install_type/pip_json/preemptions_json/nodename_pattern/category/tags_json/
+        // js_path)对比 caller 给的值 ——
+        // - 行不存在 → INSERT 新行(填 first_seen_at + last_ingested_at + 11 列)
+        // - 行存在 + 11 列内容完全相同 → 跳过(什么都不写,last_ingested_at 也不动)
+        // - 行存在 + 11 列任一不同 → UPDATE 11 列 + last_ingested_at(保持 first_seen_at 不变)
+        //
+        // 实现:用 COALESCE 把 NULL 转空字符串方便 string.Equals,但 pip_json 等 JSON 字段
+        // 不能用空串 → 改成 NullOrEqualsIsDbNull 手动 null-safe equals。Semantic 简单:
+        // 两个都 null / 两个 string 相等 → same;任一不同 → diff。
+        //
+        // 性能:每个 entry 一次 SELECT + 一次可能的 UPDATE。新增 entry:2 round trip(SELECT 后 INSERT)
+        // 改 entry:2 round trip。无变化 entry:1 round trip(SELECT)。5942 entry 全扫描 ≈ 6000 SELECT。
+        // SQLite WAL + 索引 (author, repo_name) PK 查询 < 0.1ms/次,总开销可接受。
+        var existing = SelectEntryRawJsonColumns(conn, author, repoName);
+        bool isNew = existing is null;
+        var incoming = new EntryRawJsonColumns(
+            id, reference, reference2, description, filesJson, installType, pipJson,
+            preemptionsJson, nodenamePattern, category, tagsJson, jsPath);
+        bool hasChanges = isNew || !EntryRawJsonColumnsEqual(existing!, incoming);
+
+        using var cmd = conn.CreateCommand();
+        if (isNew)
+        {
+            // 新 entry:INSERT 全部列
+            cmd.CommandText = @"
+                INSERT INTO nodelist_entries
+                    (author, repo_name, first_seen_at, last_ingested_at, source,
+                     id, reference, reference2, description, files_json, install_type,
+                     pip_json, preemptions_json, nodename_pattern, category,
+                     tags_json, js_path)
+                VALUES
+                    (@author, @repo, @now, @now, @source,
+                     @id, @reference, @reference2, @description, @filesJson, @installType,
+                     @pipJson, @preemptionsJson, @nodenamePattern, @category,
+                     @tagsJson, @jsPath)";
+            cmd.Parameters.AddWithValue("@author", author);
+            cmd.Parameters.AddWithValue("@repo", repoName);
+            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue("@source", source);
+            cmd.Parameters.AddWithValue("@id", (object?)id ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@reference", (object?)reference ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@reference2", (object?)reference2 ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@description", (object?)description ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@filesJson", (object?)filesJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@installType", (object?)installType ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@pipJson", (object?)pipJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@preemptionsJson", (object?)preemptionsJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@nodenamePattern", (object?)nodenamePattern ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@category", (object?)category ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@tagsJson", (object?)tagsJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@jsPath", (object?)jsPath ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+        }
+        else if (hasChanges)
+        {
+            // 内容变化:UPDATE 11 列 + last_ingested_at(first_seen_at 不改)
+            cmd.CommandText = @"
+                UPDATE nodelist_entries SET
+                    last_ingested_at = @now,
+                    id = @id,
+                    reference = @reference,
+                    reference2 = @reference2,
+                    description = @description,
+                    files_json = @filesJson,
+                    install_type = @installType,
+                    pip_json = @pipJson,
+                    preemptions_json = @preemptionsJson,
+                    nodename_pattern = @nodenamePattern,
+                    category = @category,
+                    tags_json = @tagsJson,
+                    js_path = @jsPath
+                WHERE author = @author AND repo_name = @repo";
+            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue("@id", (object?)id ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@reference", (object?)reference ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@reference2", (object?)reference2 ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@description", (object?)description ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@filesJson", (object?)filesJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@installType", (object?)installType ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@pipJson", (object?)pipJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@preemptionsJson", (object?)preemptionsJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@nodenamePattern", (object?)nodenamePattern ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@category", (object?)category ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@tagsJson", (object?)tagsJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@jsPath", (object?)jsPath ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@author", author);
+            cmd.Parameters.AddWithValue("@repo", repoName);
+            cmd.ExecuteNonQuery();
+        }
+        // else: 内容无变化 → 不发 SQL,啥都不写
+    }
+
+    /// <summary>v1.0.0.x T43i.4+user:11 个 raw JSON 列变更对比载体。
+    /// 跟 NodelistRepository 同文件命名空间,private — 仅 UpsertEntry 内部用。</summary>
+    private sealed record EntryRawJsonColumns(
+        string? Id, string? Reference, string? Reference2, string? Description,
+        string? FilesJson, string? InstallType, string? PipJson,
+        string? PreemptionsJson, string? NodenamePattern, string? Category,
+        string? TagsJson, string? JsPath);
+
+    /// <summary>v1.0.0.x T43i.4+user:SELECT 现有 entry 的 11 个 raw JSON 列 ——
+    /// 行不存在返 null,存在返 EntryRawJsonColumns(SQL NULL → C# null)。</summary>
+    private static EntryRawJsonColumns? SelectEntryRawJsonColumns(
+        SqliteConnection conn, string author, string repoName)
+    {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO nodelist_entries
-                (author, repo_name, first_seen_at, last_ingested_at, source,
-                 id, reference, reference2, description, files_json, install_type,
-                 pip_json, preemptions_json, nodename_pattern, category,
-                 tags_json, js_path)
-            VALUES
-                (@author, @repo, @now, @now, @source,
-                 @id, @reference, @reference2, @description, @filesJson, @installType,
-                 @pipJson, @preemptionsJson, @nodenamePattern, @category,
-                 @tagsJson, @jsPath)
-            ON CONFLICT(author, repo_name) DO UPDATE SET
-                last_ingested_at = excluded.last_ingested_at,
-                id = excluded.id,
-                reference = excluded.reference,
-                reference2 = excluded.reference2,
-                description = excluded.description,
-                files_json = excluded.files_json,
-                install_type = excluded.install_type,
-                pip_json = excluded.pip_json,
-                preemptions_json = excluded.preemptions_json,
-                nodename_pattern = excluded.nodename_pattern,
-                category = excluded.category,
-                tags_json = excluded.tags_json,
-                js_path = excluded.js_path";
-        cmd.Parameters.AddWithValue("@author", author);
-        cmd.Parameters.AddWithValue("@repo", repoName);
-        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
-        cmd.Parameters.AddWithValue("@source", source);
-        cmd.Parameters.AddWithValue("@id", (object?)id ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@reference", (object?)reference ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@reference2", (object?)reference2 ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@description", (object?)description ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@filesJson", (object?)filesJson ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@installType", (object?)installType ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@pipJson", (object?)pipJson ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@preemptionsJson", (object?)preemptionsJson ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@nodenamePattern", (object?)nodenamePattern ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@category", (object?)category ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@tagsJson", (object?)tagsJson ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@jsPath", (object?)jsPath ?? DBNull.Value);
-        cmd.ExecuteNonQuery();
+            SELECT id, reference, reference2, description, files_json, install_type,
+                   pip_json, preemptions_json, nodename_pattern, category, tags_json, js_path
+            FROM nodelist_entries
+            WHERE author = @a AND repo_name = @r";
+        cmd.Parameters.AddWithValue("@a", author);
+        cmd.Parameters.AddWithValue("@r", repoName);
+        using var rdr = cmd.ExecuteReader();
+        if (!rdr.Read()) return null;
+        string? Get(int i) => rdr.IsDBNull(i) ? null : rdr.GetString(i);
+        return new EntryRawJsonColumns(
+            Get(0), Get(1), Get(2), Get(3), Get(4), Get(5),
+            Get(6), Get(7), Get(8), Get(9), Get(10), Get(11));
     }
+
+    /// <summary>v1.0.0.x T43i.4+user:11 个 raw JSON 列内容对比 ——
+    /// 两边都 null / 两边 string 相等 → same;任一不同 → diff。
+    /// 用 string.Equals(Ordinal) 而非 ReferenceEquals。</summary>
+    private static bool EntryRawJsonColumnsEqual(EntryRawJsonColumns a, EntryRawJsonColumns b)
+    {
+        return StringEq(a.Id, b.Id)
+            && StringEq(a.Reference, b.Reference)
+            && StringEq(a.Reference2, b.Reference2)
+            && StringEq(a.Description, b.Description)
+            && StringEq(a.FilesJson, b.FilesJson)
+            && StringEq(a.InstallType, b.InstallType)
+            && StringEq(a.PipJson, b.PipJson)
+            && StringEq(a.PreemptionsJson, b.PreemptionsJson)
+            && StringEq(a.NodenamePattern, b.NodenamePattern)
+            && StringEq(a.Category, b.Category)
+            && StringEq(a.TagsJson, b.TagsJson)
+            && StringEq(a.JsPath, b.JsPath);
+    }
+
+    private static bool StringEq(string? x, string? y)
+        => x is null ? y is null : y is not null && x.Equals(y, StringComparison.Ordinal);
 
     public void UpsertDetail(Detail d)
     {
         using var conn = _factory.Open();
+        // v1.0.0.x (2026-09-16) T43i.4+user「无变动不写入数据库」+ user「增加一个 release
+        // 就更改」:raw_json 是云端 API 完整响应,branches/recentReleases/releaseCount/
+        // latestRelease 都嵌在里面。新 release / 新 branch = raw_json 内容变化 → UPDATE
+        // 整行(13 数据列 + fetched_at)。raw_json 完全相同 → 跳过,啥都不写。
+        //
+        // 实现:先 SELECT 现有 raw_json,跟 d.RawJson StringEquals(Ordinal) 对比。
+        // - 行不存在 → INSERT 全部 18 列
+        // - 行存在 + raw_json 相同 → 跳过
+        // - 行存在 + raw_json 不同 → UPDATE 整行
+        var existingRaw = SelectDetailRawJson(conn, d.Author, d.RepoName, d.Version);
+        bool isNew = existingRaw is null;
+        bool hasChanges = isNew || !StringEq(existingRaw, d.RawJson);
+
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            INSERT INTO nodelist_details
-                (author, repo_name, version, description, stars, watchers, forks, license,
-                 default_branch, updated_at, pushed_at, html_url, language, open_issues,
-                 topics, raw_json, host, fetched_at)
-            VALUES (@author, @repo, @ver, @desc, @stars, @watchers, @forks, @lic,
-                    @branch, @updated, @pushed, @url, @lang, @issues,
-                    @topics, @raw, @host, @now)
-            ON CONFLICT(author, repo_name, version) DO UPDATE SET
-                description = excluded.description,
-                stars = excluded.stars,
-                watchers = excluded.watchers,
-                forks = excluded.forks,
-                license = excluded.license,
-                default_branch = excluded.default_branch,
-                updated_at = excluded.updated_at,
-                pushed_at = excluded.pushed_at,
-                html_url = excluded.html_url,
-                language = excluded.language,
-                open_issues = excluded.open_issues,
-                topics = excluded.topics,
-                raw_json = excluded.raw_json,
-                host = excluded.host,
-                fetched_at = excluded.fetched_at";
+        if (isNew)
+        {
+            cmd.CommandText = @"
+                INSERT INTO nodelist_details
+                    (author, repo_name, version, description, stars, watchers, forks, license,
+                     default_branch, updated_at, pushed_at, html_url, language, open_issues,
+                     topics, raw_json, host, fetched_at)
+                VALUES (@author, @repo, @ver, @desc, @stars, @watchers, @forks, @lic,
+                        @branch, @updated, @pushed, @url, @lang, @issues,
+                        @topics, @raw, @host, @now)";
+            AddDetailParameters(cmd, d);
+            cmd.ExecuteNonQuery();
+        }
+        else if (hasChanges)
+        {
+            cmd.CommandText = @"
+                UPDATE nodelist_details SET
+                    description = @desc,
+                    stars = @stars,
+                    watchers = @watchers,
+                    forks = @forks,
+                    license = @lic,
+                    default_branch = @branch,
+                    updated_at = @updated,
+                    pushed_at = @pushed,
+                    html_url = @url,
+                    language = @lang,
+                    open_issues = @issues,
+                    topics = @topics,
+                    raw_json = @raw,
+                    host = @host,
+                    fetched_at = @now
+                WHERE author = @author AND repo_name = @repo AND version = @ver";
+            AddDetailParameters(cmd, d);
+            cmd.ExecuteNonQuery();
+        }
+        // else: raw_json 完全相同 → 不发 SQL,啥都不写(用户原话「无变动不写入」)
+    }
+
+    /// <summary>v1.0.0.x T43i.4+user:把 Detail 18 个字段绑成 NodelistRepository.Detail 的 SqliteCommand parameters。
+    /// INSERT 和 UPDATE 共用 — 字段语义对等。</summary>
+    private static void AddDetailParameters(SqliteCommand cmd, Detail d)
+    {
         cmd.Parameters.AddWithValue("@author", d.Author);
         cmd.Parameters.AddWithValue("@repo", d.RepoName);
         cmd.Parameters.AddWithValue("@ver", d.Version);
@@ -234,7 +340,20 @@ public sealed class NodelistRepository
         cmd.Parameters.AddWithValue("@raw", (object?)d.RawJson ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@host", d.Host);
         cmd.Parameters.AddWithValue("@now", d.FetchedAt);
-        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>v1.0.0.x T43i.4+user:SELECT 现有 detail 的 raw_json ——
+    /// 行不存在返 null,存在返 raw_json string(SQL NULL → C# null)。</summary>
+    private static string? SelectDetailRawJson(SqliteConnection conn, string author, string repoName, string version)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"SELECT raw_json FROM nodelist_details
+            WHERE author = @a AND repo_name = @r AND version = @v";
+        cmd.Parameters.AddWithValue("@a", author);
+        cmd.Parameters.AddWithValue("@r", repoName);
+        cmd.Parameters.AddWithValue("@v", version);
+        var result = cmd.ExecuteScalar();
+        return result is null or DBNull ? null : (string)result;
     }
 
     public List<Entry> GetAllEntries()
