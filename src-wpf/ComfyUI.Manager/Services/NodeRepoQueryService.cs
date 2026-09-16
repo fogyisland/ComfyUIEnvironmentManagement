@@ -29,6 +29,31 @@ namespace ComfyUI.Manager.Services;
 /// </summary>
 public sealed class NodeRepoQueryService
 {
+    /// <summary>
+    /// v1.0.0.x (2026-09-16) T43i.2-fix+user「不行 还是返回 null」:
+    /// 用户上游 raw JSON 的 reference URL 真有大量指向 GitHub 上不存在的 repo
+    /// (chrisgoringe/Use Everywhere (UE Nodes) 等),API 返 404。
+    /// 原 FetchRepoMetadataAsync 把 404 + Parse 失败 + 网络异常都吞成 null,IngestAsync
+    /// 没法区分,统一报「metadata returned null」,用户看不出来是上游数据问题还是我们 bug。
+    ///
+    /// 现在 404 → 抛 RepoNotFoundException(带 owner/repo 给日志),Parse 失败 + 网络异常
+    /// 保留 catch + return null(代码 bug,不该 surface 给用户)。
+    /// IngestAsync catch 分别报:
+    /// - 404 → "repository not found on GitHub"
+    /// - null → "metadata parse failed (上游格式异常)"
+    /// </summary>
+    public sealed class RepoNotFoundException : Exception
+    {
+        public string Owner { get; }
+        public string Repo { get; }
+        public RepoNotFoundException(string owner, string repo)
+            : base($"repository not found on GitHub: {owner}/{repo}")
+        {
+            Owner = owner;
+            Repo = repo;
+        }
+    }
+
     public sealed record RepoMetadata(
         string Owner,
         string Repo,
@@ -109,18 +134,28 @@ public sealed class NodeRepoQueryService
                 _counter.AddOrUpdate(host.TrimEnd('/'), 1, (_, n) => n + 1);
                 if (!resp.IsSuccessStatusCode)
                 {
-                    // 404 缓存 null 避免重复 404
+                    // v1.0.0.x (2026-09-16) T43i.2-fix+user:
+                    // 404 缓存 null 避免重复 404,然后抛 RepoNotFoundException 让 IngestAsync
+                    // 在日志里明确报「repository not found」而不是泛泛的「metadata returned null」。
+                    // 用户原话「提交的数据中有比较多的错误」+「之前提交在网站上返回的是 repo not
+                    // found」 —— 这些 404 完全是上游 raw JSON 提交者填错 reference URL,
+                    // 我们代码逻辑没错,只是要让日志让用户看出来是上游问题。
                     _cache[key] = null;
-                    return null;
+                    throw new RepoNotFoundException(owner, repo);
                 }
                 var raw = await resp.Content.ReadAsStringAsync(ct);
                 var meta = Parse(owner, repo, host, raw);
                 _cache[key] = meta;
                 return meta;
             }
+            catch (RepoNotFoundException)
+            {
+                // 上游 repo 不存在:已 cache null,异常继续 throw 让 IngestAsync catch 报明确 msg
+                throw;
+            }
             catch
             {
-                // 异常不缓存
+                // 网络异常 / 解析异常:不缓存,return null(IngestAsync 报「metadata returned null」)
                 return null;
             }
         }
@@ -147,44 +182,82 @@ public sealed class NodeRepoQueryService
 
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _hostGates = new();
 
-    private static RepoMetadata? Parse(string owner, string repo, string host, string raw)
+    // v1.0.0.x (2026-09-16) T43i.2-fix+user「怎么这么多 null 的」:从 private 改成 internal
+// 以便 Tests 单元测试覆盖,验证嵌套 repository.* + camelCase 字段解析逻辑。
+internal static RepoMetadata? Parse(string owner, string repo, string host, string raw)
     {
         try
         {
             using var doc = JsonDocument.Parse(raw);
             var root = doc.RootElement;
-            var desc = TryGetString(root, "description");
-            var stars = TryGetInt(root, "stargazers_count");
-            var watchers = TryGetInt(root, "subscribers_count") ?? TryGetInt(root, "watchers_count");
-            var forks = TryGetInt(root, "forks_count");
-            var license = root.TryGetProperty("license", out var lic) && lic.ValueKind == JsonValueKind.Object
-                ? TryGetString(lic, "spdx_id") ?? TryGetString(lic, "name")
-                : null;
-            var defaultBranch = TryGetString(root, "default_branch");
+
+            // v1.0.0.x (2026-09-16) T43i.2-fix+user「怎么这么多 null 的」:
+            // 用户自定义 API(github.pudafo.com / 自建 host)返回格式是嵌套
+            //   { "fetch_status": "ok", "repository": { "stars": N, "pushedAt": "...", "language": "...", ... } }
+            // 字段名是 camelCase(pushedAt / defaultBranch / updatedAt / releaseCount)。
+            // 而 GitHub 原生 API 顶层平铺 + snake_case(stargazers_count / pushed_at / default_branch)。
+            // 原 Parse 只认 GitHub 原生格式 → 用户自定义 API 上所有字段取不到 → return null(被外层
+            // 当成「metadata 返回 null」,但实际 200 OK + 数据全在)。
+            //
+            // 修复:优先从 `repository` 嵌套取(用户自定义 API 格式),如果 `repository` 不存在再
+            // 走 GitHub 原生顶层格式。两种格式字段名映射见 inline 注释。
+            JsonElement dataRoot = root.TryGetProperty("repository", out var repoEl) &&
+                                   repoEl.ValueKind == JsonValueKind.Object
+                ? repoEl
+                : root;
+
+            var desc = TryGetString(dataRoot, "description");
+            // stars:自定义 API "stars",GitHub 原生 "stargazers_count"
+            var stars = TryGetInt(dataRoot, "stars") ?? TryGetInt(root, "stargazers_count");
+            // watchers:自定义 API "watchers",GitHub 原生 "subscribers_count" 或 "watchers_count"
+            var watchers = TryGetInt(dataRoot, "watchers")
+                          ?? TryGetInt(root, "subscribers_count")
+                          ?? TryGetInt(root, "watchers_count");
+            // forks:两种格式同名,但自定义 API 在 dataRoot,GitHub 原生在 root
+            var forks = TryGetInt(dataRoot, "forks") ?? TryGetInt(root, "forks_count");
+            // license:自定义 API 是 string(如 "MIT" / "GPL-3.0"),
+            //         GitHub 原生是 object { spdx_id, name }
+            string? license = null;
+            if (dataRoot.TryGetProperty("license", out var licEl))
+            {
+                if (licEl.ValueKind == JsonValueKind.String)
+                    license = licEl.GetString();
+                else if (licEl.ValueKind == JsonValueKind.Object)
+                    license = TryGetString(licEl, "spdx_id") ?? TryGetString(licEl, "name");
+            }
+            // default_branch:自定义 API "defaultBranch",GitHub 原生 "default_branch"
+            var defaultBranch = TryGetString(dataRoot, "defaultBranch")
+                                ?? TryGetString(root, "default_branch");
+            // updated_at:自定义 API "updatedAt",GitHub 原生 "updated_at"
+            var updatedStr = TryGetString(dataRoot, "updatedAt") ?? TryGetString(root, "updated_at");
             DateTime? updated = null;
-            var updatedStr = TryGetString(root, "updated_at");
             if (!string.IsNullOrEmpty(updatedStr) && DateTime.TryParse(updatedStr, out var dt))
-            {
                 updated = dt;
-            }
+            // pushed_at:自定义 API "pushedAt",GitHub 原生 "pushed_at"
+            var pushedStr = TryGetString(dataRoot, "pushedAt") ?? TryGetString(root, "pushed_at");
             DateTime? pushed = null;
-            var pushedStr = TryGetString(root, "pushed_at");
             if (!string.IsNullOrEmpty(pushedStr) && DateTime.TryParse(pushedStr, out var pdt))
-            {
                 pushed = pdt;
+            // html_url:GitHub 原生有,自定义 API 没有 → 用 {host} 拼 {owner}/{repo} 兜底
+            var htmlUrl = TryGetString(dataRoot, "html_url") ?? TryGetString(root, "html_url");
+            if (string.IsNullOrEmpty(htmlUrl) && !string.IsNullOrEmpty(host))
+            {
+                // 兜底:GitHub repo URL 永远是 github.com/{owner}/{repo}
+                // (即使 query host 是自定义 API,GitHub 真实 URL 还是 github.com)
+                htmlUrl = $"https://github.com/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}";
             }
-            var htmlUrl = TryGetString(root, "html_url");
-            var language = TryGetString(root, "language");
-            var openIssues = TryGetInt(root, "open_issues_count");
-            // topics[] → comma-joined string for XAML binding(VM 在 detail 视图再 string.Split)。
-            // 例:["image","controlnet"] → "image,controlnet"。
-            // 用 ',' 而不是 ' ' 是因为部分 tag 可能含空格("stable diffusion"),空格分隔会撞。
+            // language:同名
+            var language = TryGetString(dataRoot, "language") ?? TryGetString(root, "language");
+            // open_issues_count:GitHub 原生有,自定义 API 没有 → null
+            var openIssues = TryGetInt(dataRoot, "open_issues_count") ?? TryGetInt(root, "open_issues_count");
+            // topics[]:同名,两种格式都在 dataRoot/root 同位置
             string? topics = null;
-            if (root.TryGetProperty("topics", out var topicsEl) &&
-                topicsEl.ValueKind == JsonValueKind.Array)
+            var topicsSrc = dataRoot.TryGetProperty("topics", out var topicsEl) ? topicsEl
+                           : (root.TryGetProperty("topics", out var topicsRoot) ? topicsRoot : default);
+            if (topicsSrc.ValueKind == JsonValueKind.Array)
             {
                 var tagList = new List<string>();
-                foreach (var t in topicsEl.EnumerateArray())
+                foreach (var t in topicsSrc.EnumerateArray())
                 {
                     if (t.ValueKind == JsonValueKind.String)
                     {
