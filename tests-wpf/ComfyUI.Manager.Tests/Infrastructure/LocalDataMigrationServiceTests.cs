@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using Xunit;
 
@@ -186,5 +188,176 @@ public sealed class LocalDataMigrationServiceTests : IDisposable
         Assert.True(ran);
         Assert.True(File.Exists(Path.Combine(paths.Directory, "state.db")));
         Assert.False(Directory.Exists(Path.Combine(paths.Directory, "subdir")));
+    }
+
+    // ============== v1.0.0.x T45 model.db 迁移测试 ==============
+
+    [Fact]
+    public async Task MigrateModelTables_NoStateDb_NoOp()
+    {
+        // 全新装(没 state.db),直接 skip。
+        var projectRoot = NewProjectRoot(_scratchRoot);
+        var (paths, _) = MakeService(projectRoot);
+
+        var stateFactory = new SqliteConnectionFactory(paths.StateDbFile);
+        var modelFactory = new SqliteConnectionFactory(paths.ModelDbFile, SchemaKind.Model);
+        var migration = new LocalDataMigrationService(paths, logger: null,
+            _fakeAppDataDir, _fakeLegacyManagerDir);
+
+        await migration.MigrateModelTablesToSeparateDbAsync(stateFactory, modelFactory, null);
+
+        Assert.False(File.Exists(paths.StateDbFile));
+        Assert.False(File.Exists(paths.ModelDbFile));
+    }
+
+    [Fact]
+    public async Task MigrateModelTables_NoModelTablesInStateDb_NoOp()
+    {
+        // state.db 已存在但没 model 表(只装 T45 之后才会出现的情况)→ skip。
+        var projectRoot = NewProjectRoot(_scratchRoot);
+        var (paths, _) = MakeService(projectRoot);
+        // 先 InitStateSchema(state factory 第一次 Open 自动建 8 表 —— 没 model 表)
+        var stateFactory = new SqliteConnectionFactory(paths.StateDbFile);
+        using (var _ = stateFactory.Open()) { } // trigger InitSchema
+
+        var modelFactory = new SqliteConnectionFactory(paths.ModelDbFile, SchemaKind.Model);
+        var migration = new LocalDataMigrationService(paths, logger: null,
+            _fakeAppDataDir, _fakeLegacyManagerDir);
+
+        await migration.MigrateModelTablesToSeparateDbAsync(stateFactory, modelFactory, null);
+
+        // state.db 不应被破坏(env 表还在);model.db 不应被建(因为没 model 表要迁)
+        using (var verify = stateFactory.Open())
+        using (var cmd = verify.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM environments";
+            Assert.True(cmd.ExecuteScalar() is not null);
+        }
+        Assert.False(File.Exists(paths.ModelDbFile));
+    }
+
+    [Fact]
+    public async Task MigrateModelTables_StateHasModelTables_RowsMovedAndStateTablesDropped()
+    {
+        // 模拟老 user:state.db 已有 local_model_files / local_model_overrides / civitai_card_cache
+        // 各 1 行 → 迁移后 model.db 各有 1 行,state.db 这 3 表消失。
+        var projectRoot = NewProjectRoot(_scratchRoot);
+        var (paths, _) = MakeService(projectRoot);
+        var stateFactory = new SqliteConnectionFactory(paths.StateDbFile);
+        using (var seed = stateFactory.Open())
+        {
+            // 手动建 3 张老 schema 表 + 各插 1 行(state factory 默认走 State schema,
+            // 不会自动建这 3 张 —— 模拟 T45 之前 user 老 state.db 的真实情况)
+            using (var c = seed.CreateCommand())
+            {
+                c.CommandText = @"
+                    CREATE TABLE local_model_files (
+                        file_path TEXT PRIMARY KEY, source_id TEXT NOT NULL,
+                        source_version_id TEXT NOT NULL, subfolder_name TEXT NOT NULL,
+                        file_name TEXT NOT NULL, title TEXT NOT NULL,
+                        kind TEXT NOT NULL, source TEXT NOT NULL, hash TEXT,
+                        match_source TEXT, matched_detail_json TEXT,
+                        preview_image_path TEXT, downloaded_at TEXT NOT NULL,
+                        file_mtime TEXT NOT NULL, scanned_at TEXT NOT NULL
+                    );
+                    INSERT INTO local_model_files VALUES
+                        ('/models/x.safetensors', 'civitai:42@v1', 'v1', 'loras', 'x.safetensors',
+                         'X', 'LORA', 'Local', NULL, NULL, NULL, NULL, '2025-01-01', '2025-01-01', '2025-01-01');
+                    CREATE TABLE local_model_overrides (
+                        source_id TEXT PRIMARY KEY, override_path TEXT NOT NULL, updated_at TEXT NOT NULL
+                    );
+                    INSERT INTO local_model_overrides VALUES
+                        ('civitai:42@v1', '/override/x.safetensors', '2025-01-01');
+                    CREATE TABLE civitai_card_cache (
+                        source_id TEXT PRIMARY KEY, detail_json TEXT NOT NULL, fetched_at TEXT NOT NULL
+                    );
+                    INSERT INTO civitai_card_cache VALUES
+                        ('civitai:42@v1', '{}', '2025-01-01');";
+                c.ExecuteNonQuery();
+            }
+        }
+
+        var modelFactory = new SqliteConnectionFactory(paths.ModelDbFile, SchemaKind.Model);
+        var migration = new LocalDataMigrationService(paths, logger: null,
+            _fakeAppDataDir, _fakeLegacyManagerDir);
+
+        await migration.MigrateModelTablesToSeparateDbAsync(stateFactory, modelFactory, null);
+
+        // model.db 应有 1 行各表
+        Assert.True(File.Exists(paths.ModelDbFile));
+        using (var m = modelFactory.Open())
+        using (var cmd = m.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM local_model_files";
+            Assert.Equal(1L, Convert.ToInt64(cmd.ExecuteScalar()));
+            cmd.CommandText = "SELECT COUNT(*) FROM local_model_overrides";
+            Assert.Equal(1L, Convert.ToInt64(cmd.ExecuteScalar()));
+            cmd.CommandText = "SELECT COUNT(*) FROM civitai_card_cache";
+            Assert.Equal(1L, Convert.ToInt64(cmd.ExecuteScalar()));
+        }
+
+        // state.db 这 3 表应消失(env 表还在)
+        using (var s = stateFactory.Open())
+        using (var cmd = s.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_model_files'";
+            Assert.Equal(0L, Convert.ToInt64(cmd.ExecuteScalar()));
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_model_overrides'";
+            Assert.Equal(0L, Convert.ToInt64(cmd.ExecuteScalar()));
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='civitai_card_cache'";
+            Assert.Equal(0L, Convert.ToInt64(cmd.ExecuteScalar()));
+            // env 表还在 —— InitStateSchema 的 sentinel INSERT 让其有 1 行(id='',
+            // '(local download)'),所以这里查表存在用 sqlite_master 而非行数。
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='environments'";
+            Assert.Equal(1L, Convert.ToInt64(cmd.ExecuteScalar()));
+        }
+    }
+
+    [Fact]
+    public async Task MigrateModelTables_AlreadyMigrated_Idempotent()
+    {
+        // 跑两次 → 第二次检测 state.db 没 model 表 → skip。
+        var projectRoot = NewProjectRoot(_scratchRoot);
+        var (paths, _) = MakeService(projectRoot);
+        var stateFactory = new SqliteConnectionFactory(paths.StateDbFile);
+        using (var seed = stateFactory.Open())
+        {
+            using var c = seed.CreateCommand();
+            c.CommandText = @"
+                CREATE TABLE local_model_files (
+                    file_path TEXT PRIMARY KEY, source_id TEXT NOT NULL,
+                    source_version_id TEXT NOT NULL, subfolder_name TEXT NOT NULL,
+                    file_name TEXT NOT NULL, title TEXT NOT NULL,
+                    kind TEXT NOT NULL, source TEXT NOT NULL, hash TEXT,
+                    match_source TEXT, matched_detail_json TEXT,
+                    preview_image_path TEXT, downloaded_at TEXT NOT NULL,
+                    file_mtime TEXT NOT NULL, scanned_at TEXT NOT NULL
+                );
+                INSERT INTO local_model_files VALUES
+                    ('/x', 's', 'v', 's', 'f', 't', 'LORA', 'Local', NULL, NULL, NULL, NULL,
+                     '2025-01-01', '2025-01-01', '2025-01-01');";
+            c.ExecuteNonQuery();
+        }
+        var modelFactory = new SqliteConnectionFactory(paths.ModelDbFile, SchemaKind.Model);
+        var migration = new LocalDataMigrationService(paths, logger: null,
+            _fakeAppDataDir, _fakeLegacyManagerDir);
+
+        await migration.MigrateModelTablesToSeparateDbAsync(stateFactory, modelFactory, null);
+        var rowsAfterFirst = 0L;
+        using (var m = modelFactory.Open())
+        using (var cmd = m.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM local_model_files";
+            rowsAfterFirst = Convert.ToInt64(cmd.ExecuteScalar());
+        }
+
+        // 第二次跑:state.db 没表 → skip → model.db 行数不变
+        await migration.MigrateModelTablesToSeparateDbAsync(stateFactory, modelFactory, null);
+        using (var m = modelFactory.Open())
+        using (var cmd = m.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM local_model_files";
+            Assert.Equal(rowsAfterFirst, Convert.ToInt64(cmd.ExecuteScalar()));
+        }
     }
 }
