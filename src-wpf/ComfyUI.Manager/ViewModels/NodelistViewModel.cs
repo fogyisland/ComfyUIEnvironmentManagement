@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using ComfyUI.Manager.Data;
+using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Views;
 
@@ -43,6 +44,10 @@ public sealed class NodelistViewModel : ViewModelBase
     private readonly IBrowserLauncher? _browserLauncher;
     private readonly IEnvironmentRepository? _envRepo;
     private readonly NodeOperations? _nodeOps;
+    // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
+    // 「💾 下载到本地」按钮调 _nodeOps.DownloadAsync(localDir=..., ...),
+    // localDir 来自 _settings.LocalNodeDirectory(用户配置 LocalNodes 目录)。
+    private readonly Settings? _settings;
 
     /// <summary>左 list — 作者/仓库名列表(全量,Reload 时从 SQLite 灌入)。</summary>
     public ObservableCollection<NodelistEntryRow> Entries { get; } = new();
@@ -88,10 +93,12 @@ public sealed class NodelistViewModel : ViewModelBase
             RaisePropertyChanged(nameof(SelectedEntryHeader));
             RefreshSelectedDetails();
             // v1.0.0.x (2026-09-15) T43g+user:Action Bar 按钮依赖选中项 ——
-            // 选中变化时刷新 3 个 command 的 CanExecute(无选中时禁用)。
+            // 选中变化时刷新 4 个 command 的 CanExecute(无选中时禁用)。
+            // v1.0.0.x (2026-09-16) T43i.5 新增 DownloadToLocalCommand(💾 下载到本地)。
             OpenInBrowserCommand.RaiseCanExecuteChanged();
             CopyUrlCommand.RaiseCanExecuteChanged();
             InstallCommand.RaiseCanExecuteChanged();
+            DownloadToLocalCommand.RaiseCanExecuteChanged();
             // v1.0.0.x T43h:ShowRawJsonCommand 依赖 SelectedDetails[0].RawJson,
             // 选中变化后 RefreshSelectedDetails 已重填 SelectedDetails,这里刷 CanExecute。
             ShowRawJsonCommand.RaiseCanExecuteChanged();
@@ -234,6 +241,10 @@ public sealed class NodelistViewModel : ViewModelBase
             RaisePropertyChanged(nameof(IsNotBusy));
             DownloadAndIngestCommand.RaiseCanExecuteChanged();
             IngestCommand.RaiseCanExecuteChanged();
+            // v1.0.0.x (2026-09-16) T43i.5+user:DownloadToLocalCommand CanExecute 联动 IsNotBusy
+            // (防 git clone 并发),这里跟 InstallCommand 同样需要刷新 CanExecute。
+            // 注:InstallCommand 同款联动但此处未显式刷新(T43g 既有行为,跟本任务无关不擅自改)。
+            DownloadToLocalCommand.RaiseCanExecuteChanged();
         }
     }
     public bool IsNotBusy => !_isBusy;
@@ -265,6 +276,10 @@ public sealed class NodelistViewModel : ViewModelBase
     public RelayCommand OpenInBrowserCommand { get; }
     public RelayCommand CopyUrlCommand { get; }
     public RelayCommand InstallCommand { get; }
+    // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
+    // 「💾 下载到本地」按钮,跟「📥 一键安装」并存 —— 后者装到 env 的 custom_nodes/,
+    // 前者装到 Settings.LocalNodeDirectory 下的 LocalNodes 目录(本地节点,无 env)。
+    public RelayCommand DownloadToLocalCommand { get; }
     // v1.0.0.x (2026-09-15) T43h+user:debug panel 「📄 查看完整 GitHub API 响应」按钮
     // — 弹 RawJsonDialog 显示 SelectedDetails[0].RawJson(整段 JSON 给调试 / 验证用)。
     public RelayCommand ShowRawJsonCommand { get; }
@@ -293,7 +308,11 @@ public sealed class NodelistViewModel : ViewModelBase
         // EnvironmentRepository —— 详情「📥 一键安装」按钮弹 dialog 选环境用。
         IEnvironmentRepository? envRepo = null,
         // NodeOperations —— 详情「📥 一键安装」按钮调 InstallAsync。
-        NodeOperations? nodeOps = null)
+        NodeOperations? nodeOps = null,
+        // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
+        // 「💾 下载到本地」按钮调 NodeOperations.DownloadAsync,目标目录 = _settings.LocalNodeDirectory。
+        // Settings 仅在 DownloadToLocalAsync 里读 LocalNodeDirectory,可空(老 wire 不传也能编)。
+        Settings? settings = null)
     {
         _downloader = downloader;
         _ingestor = ingestor;
@@ -304,6 +323,7 @@ public sealed class NodelistViewModel : ViewModelBase
         _browserLauncher = browserLauncher;
         _envRepo = envRepo;
         _nodeOps = nodeOps;
+        _settings = settings;
 
         // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43) CanExecute 条件:
         // NodelistDirectory getter 永远非空(fallback 到 defaultDirectory),
@@ -338,6 +358,14 @@ public sealed class NodelistViewModel : ViewModelBase
             // 用户可以正常点「📥 一键安装」(NodeOperations 走自己的环境目录,不写 nodelist_entries,
             // 跟后台 ingest 无冲突)。IsBusy 留给 IsNotBusy → false 时(下载中)防止跟「📥 一键安装」并发。
             _ => _selectedEntry is not null && _envRepo is not null && _nodeOps is not null && IsNotBusy);
+        // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
+        // 「💾 下载到本地」按钮调 _nodeOps.DownloadAsync,把选中 entry git clone 到
+        // _settings.LocalNodeDirectory/<repoName>,完成后 NodeOperations 内部 upsert 一条
+        // scanned_nodes(Source="download", EnvId="") 让 LocalNodes 面板立即可见。
+        // CanExecute 同 Install:需选中 + 注入存在 + IsNotBusy(防 git clone 并发)。
+        DownloadToLocalCommand = new RelayCommand(
+            async _ => await DownloadToLocalAsync(),
+            _ => _selectedEntry is not null && _nodeOps is not null && _settings is not null && IsNotBusy);
         // v1.0.0.x T43h+user:RawJson 弹窗 command — CanExecute 要求 SelectedDetails[0] 有 raw_json。
         ShowRawJsonCommand = new RelayCommand(
             _ => ShowRawJsonDialog(),
@@ -1052,6 +1080,67 @@ public sealed class NodelistViewModel : ViewModelBase
         {
             StatusText = $"安装异常:{ex.Message}";
             TryWriteNreDebugLog("InstallNodeAsync", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>详情「💾 下载到本地」—— 把选中 entry git clone 到
+    /// <c>Settings.LocalNodeDirectory/&lt;repoName&gt;</c>(本地节点,跟 env 的 custom_nodes/ 解耦)。
+    /// 调 <see cref="NodeOperations.DownloadAsync"/>,完成后 NodeOperations 内部会 upsert 一条
+    /// <c>scanned_nodes</c>(Source="download", EnvId=""),LocalNodes 面板立即可见。
+    /// 失败时返回 <c>NodeOperationResult.Fail(reason)</c> 转译到 StatusText。
+    /// 无 SelectedEntry / 缺 _nodeOps / 缺 _settings 时静默提示,不抛。
+    /// IsBusy 联动同 InstallNodeAsync:防止跟「📥 一键安装」/「⬇ 重新下载」并发(都写磁盘)。</summary>
+    private async Task DownloadToLocalAsync()
+    {
+        if (_selectedEntry is null)
+        {
+            StatusText = "未选中 entry";
+            return;
+        }
+        if (_nodeOps is null || _settings is null)
+        {
+            StatusText = "下载未配置:缺少 nodeOps / settings 注入";
+            return;
+        }
+        var entry = _selectedEntry;
+        var localDir = _settings.LocalNodeDirectory;
+        if (string.IsNullOrWhiteSpace(localDir))
+        {
+            StatusText = "未配置本地节点目录(Settings.LocalNodeDirectory),请先在 Settings 填写";
+            return;
+        }
+        var repoUrl = $"https://github.com/{entry.Author}/{entry.RepoName}.git";
+
+        IsBusy = true;
+        try
+        {
+            StatusText = $"正在下载 {entry.Author}/{entry.RepoName} → LocalNodes ...";
+            var progress = new Progress<string>(line => StatusText = line);
+            // 复用 NodeOperations.DownloadAsync(line 283):它会 mkdir + git clone,
+            // 然后 upsert ScannedNode(Source="download", EnvId="") — LocalNodeService 立刻可见。
+            // targetTag 选 SelectedDetails[0].Version 跟 InstallNodeAsync 同样策略(只传真 tag)。
+            var rawVersion = SelectedDetails.FirstOrDefault()?.Version;
+            string? targetTag = !string.IsNullOrWhiteSpace(rawVersion) && rawVersion != entry.RepoName
+                ? rawVersion
+                : null;
+            var result = await _nodeOps.DownloadAsync(
+                localDir: localDir,
+                nodeId: entry.RepoName,
+                repoUrl: repoUrl,
+                targetTag: targetTag,
+                progress: progress);
+            StatusText = result.Success
+                ? $"下载成功:{entry.Author}/{entry.RepoName} → {localDir}\\{entry.RepoName} (sha={result.Version ?? "?"})"
+                : $"下载失败:{result.Reason}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"下载异常:{ex.Message}";
+            TryWriteNreDebugLog("DownloadToLocalAsync", ex);
         }
         finally
         {

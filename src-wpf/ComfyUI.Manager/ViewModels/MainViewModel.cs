@@ -880,7 +880,10 @@ public class MainViewModel : ViewModelBase
                 // MainViewModel 已在 ctor 注入,这里透传给 VM(避免 VM 自己再 DI 一遍)。
                 browserLauncher: _browserLauncher,
                 envRepo: _envRepo,
-                nodeOps: _nodeOps);
+                nodeOps: _nodeOps,
+                // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
+                // 「💾 下载到本地」按钮从 _settings.LocalNodeDirectory 读目标目录。
+                settings: _settings);
             _nodelistViewModel.NodelistDirectory = _settings!.NodelistDirectory;
             var cfg = _nodelistSourceConfig!.Get();
             _nodelistViewModel.Host = cfg.ServerUrl;

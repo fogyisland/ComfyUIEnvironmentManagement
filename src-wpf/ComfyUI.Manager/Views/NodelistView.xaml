@@ -175,7 +175,8 @@
             <!-- 右:详情(顶部 header + meta + ActionBar + TabControl,默认折叠未选状态)
                  v1.0.0.x (2026-09-15) T43g+user 「右边详情空旷」:从单一版本 cards 列表
                  改成 4 行结构(顶部 header / meta / ActionBar / TabControl),
-                 TabControl 含「版本管理」「插件说明」「依赖配置」3 个 tab。 -->
+                 TabControl 含「版本管理」「插件说明」2 个 tab(T43i.5 删「依赖配置」placeholder:
+                 依赖安装走 Action Bar「📥 一键安装」按钮,不在 TabControl 里占位)。 -->
             <Border Grid.Column="2" Margin="8"
                     Background="{DynamicResource SurfaceBrush}"
                     BorderBrush="{DynamicResource OutlineBrush}" BorderThickness="1">
@@ -192,9 +193,10 @@
                     </Border>
 
                     <!-- v1.0.0.x T43g+user:Action Bar ——
-                         3 个 button:📥 一键安装 / 🌐 浏览器打开 / 📋 复制链接。
+                         4 个 button:📥 一键安装 / 🌐 浏览器打开 / 📋 复制链接 / 💾 下载到本地。
                          无选中项时全部 disabled(由 command CanExecute 控制)。
-                         一键安装弹 EnvPickerDialog,环境 picker 完成后调 NodeOperations.InstallAsync。 -->
+                         一键安装弹 EnvPickerDialog,环境 picker 完成后调 NodeOperations.InstallAsync。
+                         下载到本地调 NodeOperations.DownloadAsync,git clone 到 Settings.LocalNodeDirectory/<repoName>。 -->
                     <Border DockPanel.Dock="Top" Padding="12,6">
                         <StackPanel Orientation="Horizontal">
                             <Button Content="📥 一键安装" Command="{Binding InstallCommand}"
@@ -206,16 +208,24 @@
                                     Style="{StaticResource MaterialButton}"
                                     ToolTip="Chrome → Edge → 默认浏览器 fallback"/>
                             <Button Content="📋 复制链接" Command="{Binding CopyUrlCommand}"
-                                    Padding="10,4"
+                                    Margin="0,0,8,0" Padding="10,4"
                                     Style="{StaticResource MaterialButton}"
                                     ToolTip="复制 html_url 到剪贴板"/>
+                            <!-- v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点
+                                 LocalNodes 下面」:把选中 entry git clone 到 Settings.LocalNodeDirectory
+                                 下的 LocalNodes 目录(跟 env 的 custom_nodes/ 解耦),完成后 NodeOperations
+                                 内部 upsert scanned_nodes(Source="download", EnvId="") 让 LocalNodes 面板可见。 -->
+                            <Button Content="💾 下载到本地" Command="{Binding DownloadToLocalCommand}"
+                                    Padding="10,4"
+                                    Style="{StaticResource MaterialButton}"
+                                    ToolTip="git clone 到 Settings.LocalNodeDirectory 下的 LocalNodes 目录"/>
                         </StackPanel>
                     </Border>
 
                     <!-- v1.0.0.x T43g+user:TabControl ——
-                         「版本管理」(复用 T43f 14 字段版本 cards)/「插件说明」(占位 README 暂未提供)
-                         /「依赖配置」(占位 requirements.txt 暂未抓)3 个 tab。
-                         后两个 tab 内容空,等后续 T43h 抓 raw README + requirements 再补。 -->
+                         「版本管理」(复用 T43f 14 字段版本 cards)/「插件说明」(T43i.4+user 填 description)。
+                         T43i.5 删「依赖配置」placeholder —— 依赖安装走 Action Bar「📥 一键安装」按钮更顺手,
+                         TabControl 不再为它占位。 -->
                     <TabControl Margin="8,0,8,8">
                         <TabItem Header="版本管理">
                             <DockPanel>
@@ -470,16 +480,16 @@
                             </DockPanel>
                         </TabItem>
                         <TabItem Header="插件说明">
-                            <!-- v1.0.0.x T43g:占位 tab,内容由后续 T43h 抓 raw README 后渲染(Markdown)。 -->
-                            <TextBlock TextWrapping="Wrap" Margin="12" FontSize="12"
-                                       Foreground="{DynamicResource OnSurfaceVariantBrush}"
-                                       Text="README 内容暂未提供 — 后续 T43h 抓 raw README 渲染"/>
-                        </TabItem>
-                        <TabItem Header="依赖配置">
-                            <!-- v1.0.0.x T43g:占位 tab,后续 T43h 拉 requirements.txt 展示 + 可一键安装依赖。 -->
-                            <TextBlock TextWrapping="Wrap" Margin="12" FontSize="12"
-                                       Foreground="{DynamicResource OnSurfaceVariantBrush}"
-                                       Text="requirements.txt 暂未抓取 — 后续 T43h 拉 requirements_url 解析"/>
+                            <!-- v1.0.0.x (2026-09-16) T43i.4+user「插件说明似乎没有将 description 显示出来」:
+                                 显示 SelectedEntry.Description — raw JSON 顶层 description 字段(T43i.1 入库,
+                                 nodelist_entries.description,5924/5924 entry 有值)。
+                                 等后续 T43h 抓 raw README 渲染后再升级成 Markdown viewer。
+                                 ScrollViewer 包 TextBlock 让长 description 可滚动。 -->
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <TextBlock Text="{Binding SelectedEntry.Description, Mode=OneWay}"
+                                           TextWrapping="Wrap" Margin="12" FontSize="12"
+                                           Foreground="{DynamicResource OnSurfaceBrush}"/>
+                            </ScrollViewer>
                         </TabItem>
                     </TabControl>
                 </DockPanel>
