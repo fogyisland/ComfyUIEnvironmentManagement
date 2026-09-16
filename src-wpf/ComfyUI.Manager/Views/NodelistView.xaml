@@ -156,7 +156,7 @@
                                     <TextBlock FontSize="10" Margin="0,2,0,0"
                                                Foreground="{DynamicResource OnSurfaceVariantBrush}">
                                         <Run Text="最近入库:"/>
-                                        <Run Text="{Binding LastIngestedAt, Mode=OneWay}"/>
+                                        <Run Text="{Binding LastIngestedAt, Mode=OneWay, Converter={StaticResource IsoDateTimeConverter}}"/>
                                         <Run Text="  来源:"/>
                                         <Run Text="{Binding Source, Mode=OneWay}"/>
                                     </TextBlock>
@@ -411,11 +411,11 @@
                                                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                                             <TextBlock FontSize="11" Margin="0,0,16,0">
                                                                 <Run Text="📅 Updated:"/>
-                                                                <Run Text="{Binding UpdatedAt, Mode=OneWay}"/>
+                                                                <Run Text="{Binding UpdatedAt, Mode=OneWay, Converter={StaticResource IsoDateTimeConverter}}"/>
                                                             </TextBlock>
                                                             <TextBlock FontSize="11">
                                                                 <Run Text="📅 Pushed:"/>
-                                                                <Run Text="{Binding PushedAt, Mode=OneWay}"/>
+                                                                <Run Text="{Binding PushedAt, Mode=OneWay, Converter={StaticResource IsoDateTimeConverter}}"/>
                                                             </TextBlock>
                                                         </StackPanel>
 

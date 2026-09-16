@@ -117,7 +117,10 @@ public sealed class NodelistViewModel : ViewModelBase
 
     /// <summary>右 detail 顶部 metadata 文本。
     /// v1.0.0.x T43h+user:在原有 FirstSeenAt/LastIngestedAt/Source 上追加 Host/FetchedAt
-    /// 元信息 — 详情来源(GitHub/GitLab)+ 最近一次拉取时间,提供数据来源透明度。</summary>
+    /// 元信息 — 详情来源(GitHub/GitLab)+ 最近一次拉取时间,提供数据来源透明度。
+    /// v1.0.0.x (2026-09-16) T43i.7+user「时间格式 中间的 T 去掉」:SQLite 存 .NET ISO 8601
+    /// (中间有 T + 时区后缀),UI 拼接前走 FormatDateTime helper 转 "yyyy-MM-dd HH:mm:ss"。
+    /// 解析失败/null/空 → 原样输出(避免吞信息)。</summary>
     public string SelectedEntryMeta
     {
         get
@@ -125,11 +128,26 @@ public sealed class NodelistViewModel : ViewModelBase
             if (_selectedEntry is null) return "";
             var firstDetail = SelectedDetails.FirstOrDefault();
             if (firstDetail is null)
-                return $"首次入库:{_selectedEntry.FirstSeenAt}    最近入库:{_selectedEntry.LastIngestedAt}    来源:{_selectedEntry.Source}";
+                return $"首次入库:{FormatDateTime(_selectedEntry.FirstSeenAt)}    最近入库:{FormatDateTime(_selectedEntry.LastIngestedAt)}    来源:{_selectedEntry.Source}";
             var hostStr = string.IsNullOrWhiteSpace(firstDetail.Host) ? "github" : firstDetail.Host;
-            var fetchedStr = string.IsNullOrWhiteSpace(firstDetail.FetchedAt) ? "?" : firstDetail.FetchedAt;
-            return $"Host:{hostStr}    详情拉取:{fetchedStr}    首次入库:{_selectedEntry.FirstSeenAt}    最近入库:{_selectedEntry.LastIngestedAt}    来源:{_selectedEntry.Source}";
+            var fetchedStr = string.IsNullOrWhiteSpace(firstDetail.FetchedAt) ? "?" : FormatDateTime(firstDetail.FetchedAt);
+            return $"Host:{hostStr}    详情拉取:{fetchedStr}    首次入库:{FormatDateTime(_selectedEntry.FirstSeenAt)}    最近入库:{FormatDateTime(_selectedEntry.LastIngestedAt)}    来源:{_selectedEntry.Source}";
         }
+    }
+
+    /// <summary>v1.0.0.x (2026-09-16) T43i.7:把 ISO 8601 字符串去 T + 去时区 + 去亚秒精度。
+    /// 跟 XAML 的 IsoDateTimeConverter 一致,VM 拼接 SelectedEntryMeta 时复用(避免
+    /// XAML binding 解决不了的 string 拼接场景)。</summary>
+    private static string FormatDateTime(string? iso)
+    {
+        if (string.IsNullOrWhiteSpace(iso)) return "";
+        if (!DateTime.TryParse(iso, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var dt))
+        {
+            return iso;  // 解析失败 → 原样输出(脏数据总比丢信息好)
+        }
+        return dt.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43):「NodelistDirectory」语义 ——
@@ -620,6 +638,13 @@ public sealed class NodelistViewModel : ViewModelBase
         // details 由 SelectedEntry 联动 SelectedDetails 显示。
         foreach (var e in entries)
         {
+            // v1.0.0.x (2026-09-16) bug fix:之前只填 6 个字段(Author/RepoName/FirstSeenAt/
+            // LastIngestedAt/Source/Description),13 个 T43h raw JSON 字段全没复制 → XAML
+            // 「数据源」Expander 绑的 SelectedEntry.Id/InstallType/Reference/Reference2/
+            // Category/JsPath/NodenamePattern/PipList/TagsList/PreemptionsList 全是空
+            // (POCO 没 INPC,后赋值不重画)。NodelistEntryRow 没 INPC → 必须在 Add 之前
+            // 把所有字段全填好。Repository GetAllEntries 已经 SELECT 全部 19 列,
+            // 这里只漏了映射。
             Entries.Add(new NodelistEntryRow
             {
                 Author = e.Author,
@@ -627,9 +652,18 @@ public sealed class NodelistViewModel : ViewModelBase
                 FirstSeenAt = e.FirstSeenAt,
                 LastIngestedAt = e.LastIngestedAt ?? "",
                 Source = e.Source,
-                // v1.0.0.x (2026-09-16) T43i.1+user:把 raw JSON 顶层 description 字段
-                // 透传给 row(其它 18 列 T43h 字段透传留待后续 task 集中处理)。
-                Description = e.Description,
+                Description = e.Description,            // T43i.1+user
+                Id = e.Id,
+                InstallType = e.InstallType,
+                Reference = e.Reference,
+                Reference2 = e.Reference2,
+                FilesJson = e.FilesJson,
+                PipJson = e.PipJson,
+                TagsJson = e.TagsJson,
+                PreemptionsJson = e.PreemptionsJson,
+                Category = e.Category,
+                JsPath = e.JsPath,
+                NodenamePattern = e.NodenamePattern,
             });
         }
         ApplyFilter();
@@ -726,7 +760,7 @@ public sealed class NodelistViewModel : ViewModelBase
         if (_selectedEntry is null) return;
         foreach (var d in _repo.GetDetailsByAuthor(_selectedEntry.Author, _selectedEntry.RepoName))
         {
-            SelectedDetails.Add(new DetailRow
+            var row = new DetailRow
             {
                 Version = d.Version,
                 Description = d.Description,
@@ -750,11 +784,18 @@ public sealed class NodelistViewModel : ViewModelBase
                 // 「查看完整 GitHub API 响应」按钮弹 RawJsonDialog。
                 FetchedAt = d.FetchedAt,
                 RawJson = d.RawJson,
-            });
+            };
             // v1.0.0.x user「云端其实是有这个功能」+ B 方案:raw_json 懒解析
             // branches/recentReleases/releaseCount/latestRelease 给 UI 用。
             // 不写 SQLite,启动 O(1) parse,DetailRow 直接显示。
-            SelectedDetails[^1].RefreshFromRawJson();
+            //
+            // v1.0.0.x (2026-09-16) bug fix:必须在 Add **之前**调 RefreshFromRawJson —
+            // DetailRow POCO 没有 INotifyPropertyChanged,Add 进去后 WPF OneWay binding 第一次
+            // 拿到的是默认值就画完,后续 setter 默默改 POCO 字段 UI 永远不重画(用户报
+            // 「raw json 解析这里为零」就是这个原因)。Topics/TopicTags 在 object initializer
+            // 里就算好才正常显示 —— 同款模式。parser 逻辑(/tmp/parse_test) 已独立验证正确。
+            row.RefreshFromRawJson();
+            SelectedDetails.Add(row);
         }
         RaisePropertyChanged(nameof(SelectedDetailsSummaryText));
     }
