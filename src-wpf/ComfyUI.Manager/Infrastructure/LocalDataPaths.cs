@@ -46,6 +46,12 @@ public sealed class LocalDataPaths
 
     // —— state.db + 缓存(原 .manager/ 内容,现合并到 config/) ——
     public string StateDbFile => Path.Combine(Directory, "state.db");
+    /// <summary>
+    /// v1.0.0.x T45:本地模型专用 db 文件路径(放 config/ 跟 state.db 同目录)。
+    /// 装 LocalModelFilesRepository / LocalModelOverridesRepository / CivitaiCardCacheRepository
+    /// 三张表(用户机器本地缓存,跟磁盘 1:1 绑死,不能作为 seed 跨用户分发)。
+    /// </summary>
+    public string ModelDbFile => Path.Combine(Directory, "model.db");
     public string PyTorchCatalogCacheFile => Path.Combine(Directory, "pytorch_catalog_cache.json");
     public string PyTorchVersionsCacheFile => Path.Combine(Directory, "pytorch_versions_cache.json");
     public string ReleaseCacheFile => Path.Combine(Directory, "release_cache.json");
