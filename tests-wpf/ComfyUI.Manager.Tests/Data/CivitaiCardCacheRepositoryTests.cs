@@ -31,7 +31,7 @@ public class CivitaiCardCacheRepositoryTests
     public void LoadAll_EmptyDb_ReturnsEmptyDictionary()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         Assert.Empty(repo.LoadAll());
     }
 
@@ -39,7 +39,7 @@ public class CivitaiCardCacheRepositoryTests
     public void Upsert_ThenLoadAll_ReturnsEntry()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         var detail = MakeFakeDetail(42);
         repo.Upsert("civitai:42@12345", detail);
         var dict = repo.LoadAll();
@@ -53,7 +53,7 @@ public class CivitaiCardCacheRepositoryTests
     public void Upsert_ExistingKey_OverwritesDetail()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         repo.Upsert("k", MakeFakeDetail(1));
         repo.Upsert("k", MakeFakeDetail(2));
         var dict = repo.LoadAll();
@@ -66,7 +66,7 @@ public class CivitaiCardCacheRepositoryTests
     {
         // 反序列化对 record positional + IReadOnlyList<string> 必须保留 Tags / Versions / ImageUrls 内容。
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         var detail = MakeFakeDetail(7);
         repo.Upsert("k", detail);
         var loaded = repo.LoadAll()["k"];
@@ -81,7 +81,7 @@ public class CivitaiCardCacheRepositoryTests
     public void Delete_RemovesEntry()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         repo.Upsert("a", MakeFakeDetail(1));
         repo.Upsert("b", MakeFakeDetail(2));
         repo.Delete("a");
@@ -95,7 +95,7 @@ public class CivitaiCardCacheRepositoryTests
     public void Delete_NonExistentKey_NoError()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         repo.Delete("never-existed");   // 不抛
         Assert.Empty(repo.LoadAll());
     }
@@ -104,7 +104,7 @@ public class CivitaiCardCacheRepositoryTests
     public void Upsert_EmptySourceId_NoOp()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         repo.Upsert("", MakeFakeDetail());
         repo.Upsert(null!, MakeFakeDetail());  // nullable 守卫
         Assert.Empty(repo.LoadAll());
@@ -114,7 +114,7 @@ public class CivitaiCardCacheRepositoryTests
     public void Upsert_NullDetail_Throws()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         // ArgumentNullException 让 VM 走错误日志路径 — 不是悄悄吞(避免重复 bug 沉默)。
         Assert.Throws<System.ArgumentNullException>(() => repo.Upsert("k", null!));
     }
@@ -124,7 +124,7 @@ public class CivitaiCardCacheRepositoryTests
     {
         // 模拟 DB 行损坏(运维写脏、迁移失败):一行 JSON 烂 + 一行正常 → LoadAll 跳过烂行,正常行仍在。
         using var db = new TestDb();
-        var factory = db.Factory;
+        var factory = db.ModelFactory;
         // 先写一条正常行
         new CivitaiCardCacheRepository(factory).Upsert("good", MakeFakeDetail(99));
         // 再用 raw SQL 写一条损坏 JSON
@@ -146,7 +146,7 @@ public class CivitaiCardCacheRepositoryTests
     {
         // 防御性:DB 某行 source_id 为空 → 不返回(避免后续 GroupBy 误匹配)。
         using var db = new TestDb();
-        var factory = db.Factory;
+        var factory = db.ModelFactory;
         using (var conn = factory.Open())
         using (var cmd = conn.CreateCommand())
         {
@@ -162,7 +162,7 @@ public class CivitaiCardCacheRepositoryTests
     public void Upsert_DifferentKeys_AllPersisted()
     {
         using var db = new TestDb();
-        var repo = new CivitaiCardCacheRepository(db.Factory);
+        var repo = new CivitaiCardCacheRepository(db.ModelFactory);
         repo.Upsert("a", MakeFakeDetail(1));
         repo.Upsert("b", MakeFakeDetail(2));
         repo.Upsert("c", MakeFakeDetail(3));

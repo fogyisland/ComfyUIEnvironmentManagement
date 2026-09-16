@@ -35,7 +35,7 @@ public class LocalModelFilesRepositoryTests
     public void LoadAll_EmptyDb_ReturnsEmpty()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         Assert.Empty(repo.LoadAll());
     }
 
@@ -43,7 +43,7 @@ public class LocalModelFilesRepositoryTests
     public void Upsert_ThenLoadAll_ReturnsFile()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         var m = MakeFile(@"D:\models\x.safetensors");
         repo.Upsert(m, "2025-01-01T00:00:00.0000000Z");
 
@@ -60,7 +60,7 @@ public class LocalModelFilesRepositoryTests
     public void Upsert_SamePath_Overwrites()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         var m = MakeFile(@"D:\models\x.safetensors");
         repo.Upsert(m, "2025-01-01T00:00:00.0000000Z");
 
@@ -77,7 +77,7 @@ public class LocalModelFilesRepositoryTests
     public void Delete_RemovesRow()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(@"D:\a.safetensors"), "t1");
         repo.Upsert(MakeFile(@"D:\b.safetensors"), "t2");
         repo.Delete(@"D:\a.safetensors");
@@ -88,7 +88,7 @@ public class LocalModelFilesRepositoryTests
     public void LoadAllPaths_ReturnsAllPaths()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(@"D:\a.safetensors"), "t1");
         repo.Upsert(MakeFile(@"D:\b.safetensors"), "t2");
         var paths = repo.LoadAllPaths();
@@ -101,7 +101,7 @@ public class LocalModelFilesRepositoryTests
     public void LoadAllMtimes_ReturnsAllMtimes()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(@"D:\a.safetensors"), "t1");
         repo.Upsert(MakeFile(@"D:\b.safetensors"), "t2");
         var mt = repo.LoadAllMtimes();
@@ -115,7 +115,7 @@ public class LocalModelFilesRepositoryTests
     {
         // 增量 diff 路径:DB 有 [a, b, c],scan 现在只看到 [a, c] → 应删 b
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(@"D:\a.safetensors"), "t");
         repo.Upsert(MakeFile(@"D:\b.safetensors"), "t");
         repo.Upsert(MakeFile(@"D:\c.safetensors"), "t");
@@ -137,7 +137,7 @@ public class LocalModelFilesRepositoryTests
     {
         // 用户清空目录 / 切到空目录 → 删所有 cache(否则下次 LoadFromDb 还能读到 stale rows)
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(@"D:\a.safetensors"), "t");
         repo.Upsert(MakeFile(@"D:\b.safetensors"), "t");
 
@@ -150,7 +150,7 @@ public class LocalModelFilesRepositoryTests
     public void Upsert_EmptyFullPath_NoOp()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(""), "t");
         Assert.Empty(repo.LoadAll());
     }
@@ -159,7 +159,7 @@ public class LocalModelFilesRepositoryTests
     public void Upsert_EmptyMtime_NoOp()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(@"D:\x.safetensors"), "");
         Assert.Empty(repo.LoadAll());
     }
@@ -168,7 +168,7 @@ public class LocalModelFilesRepositoryTests
     public void Upsert_Null_Throws()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         Assert.Throws<ArgumentNullException>(() => repo.Upsert(null!, "t"));
     }
 
@@ -177,7 +177,7 @@ public class LocalModelFilesRepositoryTests
     {
         // matched_detail_json 序列化 — GroupToCards 重新 hydrate 时 MatchedDetail 非 null
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         var detail = new CivitAiDetailDto(42, "M", "u", "SDXL", "d",
             new[] { "t1" },
             new[] { new CivitAiVersionDto("v1", "SDXL", null) },
@@ -204,7 +204,7 @@ public class LocalModelFilesRepositoryTests
     public void Clear_DeletesAllRows()
     {
         using var db = new TestDb();
-        var repo = new LocalModelFilesRepository(db.Factory);
+        var repo = new LocalModelFilesRepository(db.ModelFactory);
         repo.Upsert(MakeFile(@"D:\a.safetensors"), "t");
         repo.Upsert(MakeFile(@"D:\b.safetensors"), "t");
         var n = repo.Clear();

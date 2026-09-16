@@ -6,26 +6,43 @@ using Microsoft.Data.Sqlite;
 namespace ComfyUI.Manager.Tests.Fakes;
 
 /// <summary>
-/// TestDb:creates a throwaway SQLite file with the M4 schema so repository
-/// reads have real tables to hit. Mirrors the subset of
-/// <c>src/comfy_mgr/db/connection.py</c> the WPF repositories query.
-/// Dispose deletes the temp file.
+/// TestDb:creates throwaway SQLite files with the v1.0.0.x T45 split schemas so repository
+/// reads have real tables to hit. T45 exposes TWO factories:
+/// - <see cref="Factory"/> → SchemaKind.State (state.db content: 8 state 表 + tests 测的
+///   environments / scanned_nodes / catalog_cache 等)
+/// - <see cref="ModelFactory"/> → SchemaKind.Model (model.db content: 3 model 表,给
+///   LocalModel*Repository / CivitaiCardCacheRepository 用)
+/// Dispose deletes both temp files.
 /// </summary>
 public sealed class TestDb : IDisposable
 {
     public string Path { get; }
+    public string ModelPath { get; }
     public SqliteConnectionFactory Factory { get; }
+    public SqliteConnectionFactory ModelFactory { get; }
 
     public TestDb()
     {
+        var baseName = $"comfy-mgr-test-{Guid.NewGuid():N}";
         Path = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(),
-            $"comfy-mgr-test-{Guid.NewGuid():N}.db");
-        Factory = new SqliteConnectionFactory(Path);
-        InitSchema();
+            $"{baseName}.db");
+        ModelPath = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            $"{baseName}-model.db");
+
+        // v1.0.0.x T45:state factory 默认走 SchemaKind.State —— 跟老 wire 一致,
+        // 现有 env/node/catalog 测试不动 factory 类型。
+        Factory = new SqliteConnectionFactory(Path, SchemaKind.State);
+        // model factory 走 model schema —— LocalModelFilesRepository 等用它。
+        ModelFactory = new SqliteConnectionFactory(ModelPath, SchemaKind.Model);
+
+        InitStateSchema();
+        // Model factory 的 InitSchema 在 SqliteConnectionFactory.Open() 内自跑,
+        // 不用这里手动建表(保持跟生产路径一致 —— 让 factory 自己负责 schema)。
     }
 
-    private void InitSchema()
+    private void InitStateSchema()
     {
         using var conn = new SqliteConnection($"Data Source={Path}");
         conn.Open();
@@ -59,14 +76,6 @@ public sealed class TestDb : IDisposable
                 bed_status TEXT,
                 bed_failed_reason TEXT,
                 notes TEXT,
-                -- v1.0.0.x (2026-09-03) T33:TestDb hardcoded schema 之前 drift 跟 production,
-                -- 缺 template_kind + template_config_snapshot 列 → EnvironmentRepository.ListAll
-                -- SELECT 这两列抛 ""no such column"" SqliteException,所有 EnvRows 加载失败。
-                -- 同步 SqliteConnectionFactory.cs:215-216 EnsureColumn 加的列。
-                -- 关键:TestDb 之前还缺 base_python_path / python_version / notes ——
-                -- 这些列在 production CREATE TABLE(line 105-106 + EnvironmentRepository.cs:182)
-                -- 跟 template_kind 间有 column 顺序,reader.GetString(19) 假设第 20 个 column = template_kind。
-                -- TestDb 必须保持跟 production 完全相同的 column 顺序。
                 template_kind TEXT NOT NULL DEFAULT 'ComfyUI',
                 template_config_snapshot TEXT
             );
@@ -125,7 +134,6 @@ public sealed class TestDb : IDisposable
             );";
         cmd.ExecuteNonQuery();
 
-        // v0.6.11:与 SqliteConnectionFactory 一致的 (env_id, package, source) 三元组唯一索引
         using (var idx = conn.CreateCommand())
         {
             idx.CommandText =
@@ -141,6 +149,7 @@ public sealed class TestDb : IDisposable
         {
             SqliteConnection.ClearAllPools();
             if (File.Exists(Path)) File.Delete(Path);
+            if (File.Exists(ModelPath)) File.Delete(ModelPath);
         }
         catch { /* best-effort temp cleanup */ }
     }

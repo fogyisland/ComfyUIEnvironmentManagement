@@ -14,7 +14,7 @@ public class LocalModelOverridesRepositoryTests
     public void LoadAll_EmptyDb_ReturnsEmptyDictionary()
     {
         using var db = new TestDb();
-        var repo = new LocalModelOverridesRepository(db.Factory);
+        var repo = new LocalModelOverridesRepository(db.ModelFactory);
         Assert.Empty(repo.LoadAll());
     }
 
@@ -22,7 +22,7 @@ public class LocalModelOverridesRepositoryTests
     public void Upsert_ThenLoadAll_ReturnsEntry()
     {
         using var db = new TestDb();
-        var repo = new LocalModelOverridesRepository(db.Factory);
+        var repo = new LocalModelOverridesRepository(db.ModelFactory);
         repo.Upsert("civitai:42@12345", @"D:\custom\my-model.safetensors");
         var dict = repo.LoadAll();
         Assert.Single(dict);
@@ -33,7 +33,7 @@ public class LocalModelOverridesRepositoryTests
     public void Upsert_ExistingKey_Overwrites()
     {
         using var db = new TestDb();
-        var repo = new LocalModelOverridesRepository(db.Factory);
+        var repo = new LocalModelOverridesRepository(db.ModelFactory);
         repo.Upsert("k", @"D:\first");
         repo.Upsert("k", @"D:\second");
         Assert.Equal(@"D:\second", repo.LoadAll()["k"]);
@@ -43,7 +43,7 @@ public class LocalModelOverridesRepositoryTests
     public void Upsert_NullPath_DeletesRow()
     {
         using var db = new TestDb();
-        var repo = new LocalModelOverridesRepository(db.Factory);
+        var repo = new LocalModelOverridesRepository(db.ModelFactory);
         repo.Upsert("k", @"D:\first");
         repo.Upsert("k", null);
         Assert.Empty(repo.LoadAll());
@@ -53,7 +53,7 @@ public class LocalModelOverridesRepositoryTests
     public void Upsert_EmptyPath_DeletesRow()
     {
         using var db = new TestDb();
-        var repo = new LocalModelOverridesRepository(db.Factory);
+        var repo = new LocalModelOverridesRepository(db.ModelFactory);
         repo.Upsert("k", @"D:\first");
         repo.Upsert("k", "");
         Assert.Empty(repo.LoadAll());
@@ -63,7 +63,7 @@ public class LocalModelOverridesRepositoryTests
     public void Delete_RemovesEntry()
     {
         using var db = new TestDb();
-        var repo = new LocalModelOverridesRepository(db.Factory);
+        var repo = new LocalModelOverridesRepository(db.ModelFactory);
         repo.Upsert("a", @"D:\a");
         repo.Upsert("b", @"D:\b");
         repo.Delete("a");
@@ -76,7 +76,7 @@ public class LocalModelOverridesRepositoryTests
     {
         // 防御性:DB 某行 source_id 为空 → 不返回(避免后续 GroupBy 误匹配)。
         using var db = new TestDb();
-        var factory = db.Factory;
+        var factory = db.ModelFactory;
         using (var conn = factory.Open())
         using (var cmd = conn.CreateCommand())
         {
@@ -92,7 +92,7 @@ public class LocalModelOverridesRepositoryTests
     public void Upsert_EmptySourceId_NoOp()
     {
         using var db = new TestDb();
-        var repo = new LocalModelOverridesRepository(db.Factory);
+        var repo = new LocalModelOverridesRepository(db.ModelFactory);
         repo.Upsert("", @"D:\foo");
         Assert.Empty(repo.LoadAll());
     }
