@@ -197,6 +197,16 @@ public partial class App : Application
         int cleaned = AppLogger.CleanupOlderThan(logsDir, 30);
         logger.Info("app-startup", $"App 启动 cleaned={cleaned} logsDir={logsDir}");
 
+        // v1.0.0.x T45:state.db → model.db 一次性迁移(老 user 升级场景)。
+        // 必须在 stateFactory/modelFactory 都构造完后调 —— stateFactory.Open 探表,
+        // modelFactory.Open 自跑 InitModelSchema 建空表。
+        // 任何异常 service 内部 try/catch 吞 + 写 warn log(用户决策:release 会清空,失败没关系)。
+        // OnStartup 是 void,用 .GetAwaiter().GetResult() 阻塞等 —— 跟其他 startup
+        // async 调用(EnvStartupStopper / EnvOrphanReaper / EnvDirectoryScanner)一致。
+        new LocalDataMigrationService(localPaths, logger: logger)
+            .MigrateModelTablesToSeparateDbAsync(dbFactory, modelFactory, logger)
+            .GetAwaiter().GetResult();
+
         // v0.6.5.8: 启动 reconciliation — 把上次未装完的 "installing" 行翻成
         // "failed" + "上次未完成"。必须先于 MainViewModel.Load(),否则 UI 看到
         // ⏳ 装中 几秒后变 ❌ 闪烁。
