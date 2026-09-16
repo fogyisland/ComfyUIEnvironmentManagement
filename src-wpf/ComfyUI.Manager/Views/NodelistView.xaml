@@ -259,14 +259,6 @@
                                                 <Run Text="{Binding SelectedEntry.Category, Mode=OneWay}"/>
                                             </TextBlock>
                                             <TextBlock FontSize="11" Margin="0,2">
-                                                <Run Text="Nickname:" FontWeight="SemiBold"/>
-                                                <Run Text="{Binding SelectedEntry.Nickname, Mode=OneWay}"/>
-                                            </TextBlock>
-                                            <TextBlock FontSize="11" Margin="0,2">
-                                                <Run Text="Last Update (raw):" FontWeight="SemiBold"/>
-                                                <Run Text="{Binding SelectedEntry.LastUpdate, Mode=OneWay}"/>
-                                            </TextBlock>
-                                            <TextBlock FontSize="11" Margin="0,2">
                                                 <Run Text="JS Path:" FontWeight="SemiBold"/>
                                                 <Run Text="{Binding SelectedEntry.JsPath, Mode=OneWay}"/>
                                             </TextBlock>
@@ -322,20 +314,10 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
 
-                                            <TextBlock FontSize="11" Margin="0,6,0,0" FontWeight="SemiBold" Text="Badges:"/>
-                                            <ItemsControl ItemsSource="{Binding SelectedEntry.BadgesList}" Margin="0,2,0,0">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Style="{StaticResource TagPillBorder}">
-                                                            <TextBlock Text="{Binding}" FontSize="10"
-                                                                       Foreground="{DynamicResource OnSurfaceBrush}"/>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
+                                            <!-- v1.0.0.x (2026-09-16) T43i.2.2-fix:删 Badges: TextBlock + 整个
+                                                 WrapPanel ItemsControl —— BadgesJson 列(1/5942 entry)删了,
+                                                 BadgesList computed property 也删了,XAML 绑源没了。
+                                                 详情面板「数据源」expander 不再展示 Badges 字段。 -->
 
                                             <!-- 查看完整 GitHub API 响应按钮 -->
                                             <Button Content="📄 查看完整 GitHub API 响应 (raw_json)"

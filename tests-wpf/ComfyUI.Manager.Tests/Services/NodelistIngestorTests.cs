@@ -11,11 +11,10 @@ namespace ComfyUI.Manager.Tests.Services;
 
 /// <summary>
 /// v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量解析测试。
-/// 验证 Ingestor.ParseEntry 把 custom-node-list.json entry 全部 24 个 distinct 字段
-/// 抽出来,数组/对象走 JsonSerializer.Serialize 字符串存储。
-///
-/// 测试策略:在临时目录写一个手工构造的 JSON(包含所有 24 字段变体),
-/// 跑 IngestAsync 后查 SQLite 验证 18 个新列内容正确。
+/// v1.0.0.x (2026-09-16) T43i.2.2-fix:删 5 个 ≤0.017% 覆盖率列,测试同步瘦身。
+/// 验证 Ingestor.ParseEntry 把 custom-node-list.json entry 抽出来,
+/// 数组/对象走 JsonSerializer.Serialize 字符串存储。
+/// 测试策略:在临时目录写一个手工 JSON,跑 IngestAsync 后查 SQLite 验证列内容正确。
 /// </summary>
 public class NodelistIngestorTests : IDisposable
 {
@@ -46,9 +45,12 @@ public class NodelistIngestorTests : IDisposable
     }
 
     [Fact]
-    public async Task IngestAsync_ParsesAll24RawJsonFields_Writes18NewColumns()
+    public async Task IngestAsync_ParsesRawJsonFields_WritesRemainingColumns()
     {
-        // 写一个手工 JSON,包含所有 24 个 distinct 字段变体。
+        // 写一个手工 JSON,包含 raw JSON distinct 字段变体。
+        // v1.0.0.x (2026-09-16) T43i.2.2-fix:删 apt_dependency/nickname/last_update/
+        // badges(dependencies 还保留,因为后续可以走 JsonObjectOrArrayToString,
+        // 只是列没了;本测试不 assert 它)。
         var json = """
             {
               "custom_nodes": [
@@ -62,17 +64,12 @@ public class NodelistIngestorTests : IDisposable
                   "install_type": "git-clone",
                   "description": "ComfyUI Manager",
                   "pip": ["torch>=2.0", "numpy"],
-                  "apt_dependency": ["libgl1", "libglib2.0-0"],
-                  "dependencies": {"foo": "bar", "n": 1},
                   "preemptions": ["SAMLoader", "InspirePack"],
                   "nodename_pattern": "Inspire$",
-                  "nickname": "Manager",
                   "category": "Core",
                   "tags": ["management", "core"],
                   "version": "1.0.0",
-                  "last_update": "2024-01-15",
                   "stars": 999,
-                  "badges": ["verified", "featured"],
                   "js_path": "js/manager.js",
                   "license": "GPL-3.0"
                 }
@@ -98,26 +95,17 @@ public class NodelistIngestorTests : IDisposable
         Assert.Equal("ltdrdata", e.Author);
         Assert.Equal("ComfyUI-Manager", e.RepoName);
 
-        // 18 个新列全部 assert
+        // raw JSON 列全部 assert(T43i.2.2-fix 后剩 14 列,删 5)
         Assert.Equal("comfyui-manager", e.Id);
         Assert.Equal("https://github.com/ltdrdata/ComfyUI-Manager", e.Reference);
         Assert.Equal("https://github.com/ltdrdata/ComfyUI-Manager-Utils", e.Reference2);
         Assert.Equal("[\"https://example.com/a.zip\",\"https://example.com/b.zip\"]", e.FilesJson);
         Assert.Equal("git-clone", e.InstallType);
         Assert.Equal("[\"torch>=2.0\",\"numpy\"]", e.PipJson);
-        // apt_dependency 是 array → JsonArrayToString
-        Assert.Contains("libgl1", e.AptDependency);
-        Assert.Contains("libglib2.0-0", e.AptDependency);
-        // dependencies 是 object → JsonObjectOrArrayToString
-        Assert.Contains("foo", e.DependenciesJson);
-        Assert.Contains("bar", e.DependenciesJson);
         Assert.Equal("[\"SAMLoader\",\"InspirePack\"]", e.PreemptionsJson);
         Assert.Equal("Inspire$", e.NodenamePattern);
-        Assert.Equal("Manager", e.Nickname);
         Assert.Equal("Core", e.Category);
         Assert.Equal("[\"management\",\"core\"]", e.TagsJson);
-        Assert.Equal("2024-01-15", e.LastUpdate);
-        Assert.Equal("[\"verified\",\"featured\"]", e.BadgesJson);
         Assert.Equal("js/manager.js", e.JsPath);
     }
 
@@ -151,25 +139,6 @@ public class NodelistIngestorTests : IDisposable
         Assert.Null(e.InstallType);
         Assert.Null(e.PipJson);
         Assert.Null(e.TagsJson);
-    }
-
-    [Fact]
-    public async Task IngestAsync_AptDependencyAsString_SerializedAsJsonStringLiteral()
-    {
-        // apt_dependency 是 string(部分条目这样)
-        // v1.0.0.x T43i.2-fix:加 reference(现在 100% entry 必须有 reference 才能入库)
-        var json = """
-            { "custom_nodes": [ { "author": "a", "title": "b", "reference": "https://github.com/a/b", "apt_dependency": "libgl1" } ] }
-            """;
-        var jsonPath = Path.Combine(_tempDir, "custom-node-list.json");
-        await File.WriteAllTextAsync(jsonPath, json);
-
-        await _ingestor.IngestAsync(jsonPath, "github.com", null,
-            forceFull: true, progress: null, ct: CancellationToken.None);
-
-        var e = _repo.GetAllEntries()[0];
-        // 字符串 apt_dependency 应被 JsonSerializer.Serialize 成 JSON string literal
-        Assert.Equal("\"libgl1\"", e.AptDependency);
     }
 
     [Fact]

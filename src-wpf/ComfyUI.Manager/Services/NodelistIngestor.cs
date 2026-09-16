@@ -306,15 +306,10 @@ public sealed class NodelistIngestor
                     filesJson: parsed.FilesJson,
                     installType: parsed.InstallType,
                     pipJson: parsed.PipJson,
-                    aptDependency: parsed.AptDependency,
-                    dependenciesJson: parsed.DependenciesJson,
                     preemptionsJson: parsed.PreemptionsJson,
                     nodenamePattern: parsed.NodenamePattern,
-                    nickname: parsed.Nickname,
                     category: parsed.Category,
                     tagsJson: parsed.TagsJson,
-                    lastUpdate: parsed.LastUpdate,
-                    badgesJson: parsed.BadgesJson,
                     jsPath: parsed.JsPath);
                 localNew = 1;
             }
@@ -430,15 +425,10 @@ public sealed class NodelistIngestor
                     filesJson: parsed.FilesJson,
                     installType: parsed.InstallType,
                     pipJson: parsed.PipJson,
-                    aptDependency: parsed.AptDependency,
-                    dependenciesJson: parsed.DependenciesJson,
                     preemptionsJson: parsed.PreemptionsJson,
                     nodenamePattern: parsed.NodenamePattern,
-                    nickname: parsed.Nickname,
                     category: parsed.Category,
                     tagsJson: parsed.TagsJson,
-                    lastUpdate: parsed.LastUpdate,
-                    badgesJson: parsed.BadgesJson,
                     jsPath: parsed.JsPath);
                 // v1.0.0.x (2026-09-16) T43i+user fix:UpdateOnlyAsync 处理「已存在」entry 字段刷新,
                 // **不算 NewCount**(EntriesNew metric 只统计真正新增的 entry,用户看 StatusText
@@ -538,6 +528,8 @@ public sealed class NodelistIngestor
     // RepoOwner 是新加的字段——从 reference URL 解析的 GitHub owner,跟 GitHub API 完全一致。
     // Author 保留 raw JSON `author`(用于 UI 显示"节点作者"语义),跟 GitHub owner 可能不同
     // (11% entry author 字段跟 reference owner 不一致)。
+    // v1.0.0.x (2026-09-16) T43i.2.2-fix:删 5 个 ≤0.017% 覆盖率 raw JSON 字段
+    // (apt_dependency/dependencies/nickname/last_update/badges)。
     private sealed record ParsedNodelistEntry(
         string Author,
         string RepoOwner,           // T43i.2-fix:从 reference 解析的 GitHub owner(入库到 author 列 —— 因为 GitHub API 用 owner 查 metadata)
@@ -549,25 +541,22 @@ public sealed class NodelistIngestor
         string? FilesJson,
         string? InstallType,
         string? PipJson,
-        string? AptDependency,
-        string? DependenciesJson,
         string? PreemptionsJson,
         string? NodenamePattern,
-        string? Nickname,
         string? Category,
         string? TagsJson,
-        string? LastUpdate,
-        string? BadgesJson,
         string? JsPath);
 
     /// <summary>
-    /// 解析单条 entry — 提取所有 24 个 distinct raw JSON 字段。
-    /// 数组/对象类型(JsonArrayToString/JsonObjectOrArrayToString)走 JsonSerializer.Serialize 存字符串。
+    /// 解析单条 entry — 提取所有 distinct raw JSON 字段。
+    /// 数组/对象类型走 JsonSerializer.Serialize 存字符串。
     /// 缺失字段返回 null(老 DB backfill 列用 NULL,UI 显示空)。
     ///
     /// v1.0.0.x (2026-09-16) T43i.2-fix:author/repoOwner/repoName 三个参数都从调用方传入
     /// (在 IngestAsync 主流程用 TryParseGitHubOwnerRepo 解析 reference 拿到 owner/repo,
     /// author 从 raw JSON `author` 字段拿用于显示)。
+    /// v1.0.0.x (2026-09-16) T43i.2.2-fix:删 5 个 ≤0.017% 覆盖率字段(apt_dependency/
+    /// dependencies/nickname/last_update/badges)。
     /// </summary>
     private static ParsedNodelistEntry ParseEntry(JsonElement entry, string author, string repoOwner, string repoName)
     {
@@ -582,15 +571,10 @@ public sealed class NodelistIngestor
             FilesJson: JsonArrayToString(entry, "files"),
             InstallType: TryGetString(entry, "install_type"),
             PipJson: JsonArrayToString(entry, "pip"),
-            AptDependency: TryGetStringOrJoinedArray(entry, "apt_dependency"),
-            DependenciesJson: JsonObjectOrArrayToString(entry, "dependencies"),
             PreemptionsJson: JsonArrayToString(entry, "preemptions"),
             NodenamePattern: TryGetString(entry, "nodename_pattern"),
-            Nickname: TryGetString(entry, "nickname"),
             Category: TryGetString(entry, "category"),
             TagsJson: JsonArrayToString(entry, "tags"),
-            LastUpdate: TryGetString(entry, "last_update"),
-            BadgesJson: JsonArrayToString(entry, "badges"),
             JsPath: TryGetString(entry, "js_path"));
     }
 
@@ -675,27 +659,10 @@ public sealed class NodelistIngestor
         return null;
     }
 
-    private static string? JsonObjectOrArrayToString(JsonElement obj, string field)
-    {
-        if (obj.TryGetProperty(field, out var v) &&
-            (v.ValueKind == JsonValueKind.Object || v.ValueKind == JsonValueKind.Array))
-            return JsonSerializer.Serialize(v, NodelistJsonOptions.Raw);
-        return null;
-    }
-
-    /// <summary>
-    /// apt_dependency 在 raw JSON 里有时是 string(如 "libgl1")有时是 array(["libgl1","libglib2.0-0"])。
-    /// 一律转成 JSON 字符串存(数组走 JsonArrayToString,字符串保持原值用 JSON 字符串字面量)。
-    /// </summary>
-    private static string? TryGetStringOrJoinedArray(JsonElement obj, string field)
-    {
-        if (!obj.TryGetProperty(field, out var v)) return null;
-        if (v.ValueKind == JsonValueKind.String)
-        {
-            var s = v.GetString();
-            return string.IsNullOrEmpty(s) ? null : JsonSerializer.Serialize(s, NodelistJsonOptions.Raw);
-        }
-        if (v.ValueKind == JsonValueKind.Array) return JsonSerializer.Serialize(v, NodelistJsonOptions.Raw);
-        return null;
-    }
+    // v1.0.0.x (2026-09-16) T43i.2.2-fix:删 2 个 orphan private helper —— 它们只被
+    // apt_dependency / dependencies(各 1/5942 entry)这 2 个被删字段调用。helper 没了 caller
+    // 就成 dead code,反而误导后续维护者以为还在用。
+    //   - JsonObjectOrArrayToString:dependencies (object) 序列化
+    //   - TryGetStringOrJoinedArray:apt_dependency (string 或 array) 双形态序列化
+    // JsonArrayToString(line 上方)保留 —— 仍被 pip/tags/preemptions/files 用。
 }

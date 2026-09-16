@@ -7,7 +7,8 @@ namespace ComfyUI.Manager.Tests.Data;
 
 /// <summary>
 /// v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库 roundtrip 测试。
-/// 验证 NodelistRepository.UpsertEntry 18 个新列写入 + GetAllEntries 读取一致,
+/// v1.0.0.x (2026-09-16) T43i.2.2-fix:删 5 个 ≤0.017% 覆盖率列,测试同步瘦身。
+/// 验证 NodelistRepository.UpsertEntry raw JSON 列写入 + GetAllEntries 读取一致,
 /// 数组/对象走 JsonSerializer.Serialize 字符串存储。
 /// </summary>
 public class NodelistRepositoryTests : IDisposable
@@ -48,15 +49,10 @@ public class NodelistRepositoryTests : IDisposable
             filesJson: "[\"https://example.com/a.zip\"]",
             installType: "git-clone",
             pipJson: "[\"torch>=2.0\",\"numpy\"]",
-            aptDependency: "\"libgl1\"",
-            dependenciesJson: "{\"foo\":\"bar\"}",
             preemptionsJson: "[\"SAMLoader\",\"InspirePack\"]",
             nodenamePattern: "Inspire$",
-            nickname: "Manager",
             category: "Core",
             tagsJson: "[\"management\",\"core\"]",
-            lastUpdate: "2024-01-15",
-            badgesJson: "[\"verified\",\"featured\"]",
             jsPath: "js/manager.js");
 
         var entries = _repo.GetAllEntries();
@@ -69,15 +65,10 @@ public class NodelistRepositoryTests : IDisposable
         Assert.Equal("[\"https://example.com/a.zip\"]", e.FilesJson);
         Assert.Equal("git-clone", e.InstallType);
         Assert.Equal("[\"torch>=2.0\",\"numpy\"]", e.PipJson);
-        Assert.Equal("\"libgl1\"", e.AptDependency);
-        Assert.Equal("{\"foo\":\"bar\"}", e.DependenciesJson);
         Assert.Equal("[\"SAMLoader\",\"InspirePack\"]", e.PreemptionsJson);
         Assert.Equal("Inspire$", e.NodenamePattern);
-        Assert.Equal("Manager", e.Nickname);
         Assert.Equal("Core", e.Category);
         Assert.Equal("[\"management\",\"core\"]", e.TagsJson);
-        Assert.Equal("2024-01-15", e.LastUpdate);
-        Assert.Equal("[\"verified\",\"featured\"]", e.BadgesJson);
         Assert.Equal("js/manager.js", e.JsPath);
     }
 
@@ -88,11 +79,9 @@ public class NodelistRepositoryTests : IDisposable
         _repo.UpsertEntry(
             author: "foo", repoName: "bar", source: "json",
             id: null, reference: null, reference2: null, description: null, filesJson: null,
-            installType: null, pipJson: null, aptDependency: null,
-            dependenciesJson: null, preemptionsJson: null,
-            nodenamePattern: null, nickname: null, category: null,
-            tagsJson: null, lastUpdate: null,
-            badgesJson: null, jsPath: null);
+            installType: null, pipJson: null, preemptionsJson: null,
+            nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
 
         var entries = _repo.GetAllEntries();
         Assert.Single(entries);
@@ -110,20 +99,16 @@ public class NodelistRepositoryTests : IDisposable
             "a", "b", "json",
             id: "v1", installType: "git-clone", pipJson: "[\"torch\"]",
             reference: null, reference2: null, description: null, filesJson: null,
-            aptDependency: null, dependenciesJson: null, preemptionsJson: null,
-            nodenamePattern: null, nickname: null, category: null,
-            tagsJson: null, lastUpdate: null,
-            badgesJson: null, jsPath: null);
+            preemptionsJson: null, nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
 
         // 第 2 次入库(同 PK):id="v2",pip 变 — ON CONFLICT DO UPDATE 应覆盖
         _repo.UpsertEntry(
             "a", "b", "json",
             id: "v2", installType: "unzip", pipJson: "[\"numpy\"]",
             reference: null, reference2: null, description: null, filesJson: null,
-            aptDependency: null, dependenciesJson: null, preemptionsJson: null,
-            nodenamePattern: null, nickname: null, category: null,
-            tagsJson: null, lastUpdate: null,
-            badgesJson: null, jsPath: null);
+            preemptionsJson: null, nodenamePattern: null, category: null,
+            tagsJson: null, jsPath: null);
 
         var entries = _repo.GetAllEntries();
         Assert.Single(entries);

@@ -213,7 +213,11 @@ public sealed class SqliteConnectionFactory
                 -- 是否在最新 json 中还在(source=json / source=user_added)
                 source TEXT NOT NULL DEFAULT 'json',
                 -- v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(数组/对象走 JSON 字符串)。
-                -- 字符串/数字字段直接存;数组(pip/tags/preemptions/files/badges)/对象(dependencies)用 JsonSerializer.Serialize。
+                -- 字符串/数字字段直接存;数组(pip/tags/preemptions/files)/对象(dependencies)
+                -- 用 JsonSerializer.Serialize。
+                -- v1.0.0.x (2026-09-16) T43i.2.2-fix:删 5 个 ≤0.017% 覆盖率列
+                -- (apt_dependency/dependencies_json/nickname/last_update/badges_json)
+                -- —— 它们在 raw JSON 各仅 1/5942 entry 出现,纯 dead code。
                 id TEXT,                       -- ComfyUI-Manager 节点 ID (e.g. comfyui-impact-pack)
                 reference TEXT,                -- 主仓库 URL (通常 https://github.com/{author}/{repo})
                 reference2 TEXT,               -- 备用仓库 URL(部分条目才有)
@@ -224,15 +228,10 @@ public sealed class SqliteConnectionFactory
                 files_json TEXT,               -- JSON array of URLs
                 install_type TEXT,             -- git-clone / unzip / copy
                 pip_json TEXT,                 -- JSON array of pip requirements
-                apt_dependency TEXT,           -- apt 包列表(raw 字段本身可能是 string 或 array,字符串拼接存)
-                dependencies_json TEXT,        -- JSON object/array of misc deps
                 preemptions_json TEXT,         -- JSON array of preemption packs(需要预装)
                 nodename_pattern TEXT,         -- nodename 检测 pattern
-                nickname TEXT,                 -- 节点昵称(少数条目)
                 category TEXT,                 -- 类别(少数条目)
                 tags_json TEXT,                -- JSON array,raw tags(跟 GitHub API topics 不同源)
-                last_update TEXT,              -- ISO date(raw JSON 自己维护)
-                badges_json TEXT,              -- JSON array of badges
                 js_path TEXT,                  -- JS 路径(部分条目才有)
                 PRIMARY KEY (author, repo_name)
             );
@@ -326,15 +325,10 @@ public sealed class SqliteConnectionFactory
         EnsureColumn(conn, "nodelist_entries", "files_json", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "install_type", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "pip_json", "TEXT");
-        EnsureColumn(conn, "nodelist_entries", "apt_dependency", "TEXT");
-        EnsureColumn(conn, "nodelist_entries", "dependencies_json", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "preemptions_json", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "nodename_pattern", "TEXT");
-        EnsureColumn(conn, "nodelist_entries", "nickname", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "category", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "tags_json", "TEXT");
-        EnsureColumn(conn, "nodelist_entries", "last_update", "TEXT");
-        EnsureColumn(conn, "nodelist_entries", "badges_json", "TEXT");
         EnsureColumn(conn, "nodelist_entries", "js_path", "TEXT");
 
         // v1.0.0.x (2026-09-16) T43i.2.1-fix+user「raw_stars/raw_license 列 0% 覆盖率,删掉」:
@@ -342,6 +336,21 @@ public sealed class SqliteConnectionFactory
         // EnsureColumnDropped 幂等:列不存在 → 抛错 → catch 吞,新 DB 不会重复 DROP。
         EnsureColumnDropped(conn, "nodelist_entries", "raw_stars");
         EnsureColumnDropped(conn, "nodelist_entries", "raw_license");
+        // v1.0.0.x (2026-09-16) T43i.2.2-fix+user「5 个 raw JSON 列 ≤0.017% 覆盖率,删掉」:
+        // 跟 raw_stars/raw_license 同样的处理 —— 老 DB 还在这 5 列,InitSchemaIfMissing
+        // 末尾 ALTER TABLE DROP COLUMN 清掉;EnsureColumnDropped 幂等,新 DB CREATE TABLE
+        // 不会再建这些列,SqliteException SqliteErrorCode=1 (no such column) 吞掉。
+        // 覆盖率统计(5942 entry 全扫):
+        //   apt_dependency     1/5942  paulo-coronado/comfy_clip_blip_node
+        //   dependencies_json  1/5942  PaoloC68/ComfyUI-PuLID-Flux-Chroma
+        //   nickname           1/5942  sinanzoo2nd/ComfyUI-Seed-Wildcard-Pack
+        //   last_update        1/5942  PaoloC68/ComfyUI-PuLID-Flux-Chroma
+        //   badges_json        1/5942  PaoloC68/ComfyUI-PuLID-Flux-Chroma
+        EnsureColumnDropped(conn, "nodelist_entries", "apt_dependency");
+        EnsureColumnDropped(conn, "nodelist_entries", "dependencies_json");
+        EnsureColumnDropped(conn, "nodelist_entries", "nickname");
+        EnsureColumnDropped(conn, "nodelist_entries", "last_update");
+        EnsureColumnDropped(conn, "nodelist_entries", "badges_json");
 
         // v0.6.11:支持 (env_id, package, source) 三元组唯一 — 让 download(env_id='', source='download')
         // 不与 env 装(env_id='env-1', source='env')同名包冲突,两个 download 同包也能独立存在。

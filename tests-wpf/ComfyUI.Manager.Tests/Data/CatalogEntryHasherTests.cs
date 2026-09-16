@@ -61,8 +61,12 @@ public class CatalogEntryHasherTests
     [Fact]
     public void ComputeHash_RawMetadataSkippedKeysDoNotAffectHash()
     {
-        // apt_dependency/badges/files/js_path/last_update/nickname/nodename_pattern/
-        // pip/preemptions/reference2/version — 这些字段变,hash 不变
+        // files/js_path/nodename_pattern/pip/preemptions/reference2/version —
+        // 这些字段变,hash 不变
+        // v1.0.0.x (2026-09-16) T43i.2.2-fix:apt_dependency/badges/last_update/nickname
+        // 这 4 个键从 nodelist_entries 表删了 → 从 hash-skipped 列表也移除(它们即便出现在
+        // RawMetadata 也不再影响 nodelist schema;但若未来 CatalogEntryHasher 又加回,
+        // 它们仍是「不应进 hash」的元数据)。
         var entry1 = new CatalogEntry
         {
             Package = "pkg-x",

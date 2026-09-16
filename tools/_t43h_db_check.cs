@@ -5,7 +5,9 @@ var dbPath = @"release/staging/ComfyUI Manager/config/state.db";
 using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
 conn.Open();
 
-// 1) Schema check — should have 23 columns (5 original + 18 new)
+// 1) Schema check — v1.0.0.x (2026-09-16) T43i.2.2-fix:删 5 个 ≤0.017% 覆盖率列
+//    (apt_dependency/dependencies_json/nickname/last_update/badges_json)→ 17 列。
+//    跟 T43i.2.1-fix 删 raw_stars/raw_license 一脉相承,共删 7 列。
 using (var cmd = conn.CreateCommand())
 {
     cmd.CommandText = "PRAGMA table_info(nodelist_entries)";
@@ -17,19 +19,18 @@ using (var cmd = conn.CreateCommand())
         n++;
         Console.WriteLine($"  {rdr["name"]} ({rdr["type"]}){(rdr["notnull"].ToString() == "1" ? " NOT NULL" : "")}{(rdr["dflt_value"] is not DBNull ? " DEFAULT " + rdr["dflt_value"] : "")}");
     }
-    Console.WriteLine($"Total: {n} columns (expected 23 = 5 original + 18 new)");
+    Console.WriteLine($"Total: {n} columns (expected 17 = 5 original + description + 11 remaining raw JSON)");
 }
 
-// 2) Sample 1 entry with all 18 new columns populated
+// 2) Sample 1 entry with all remaining raw JSON columns populated
 Console.WriteLine();
 Console.WriteLine("=== Sample entry: 0-bill-0 / ComfyUI-BILL-Concept_Isolator-Captioner ===");
 using (var cmd = conn.CreateCommand())
 {
     cmd.CommandText = @"
         SELECT author, repo_name, id, install_type, reference, reference2,
-               files_json, pip_json, apt_dependency, dependencies_json,
-               preemptions_json, nodename_pattern, nickname, category,
-               tags_json, last_update, badges_json, js_path
+               files_json, pip_json, preemptions_json, nodename_pattern,
+               category, tags_json, js_path
         FROM nodelist_entries
         WHERE author = '0-bill-0'
         LIMIT 1";

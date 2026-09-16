@@ -355,6 +355,9 @@ public sealed class NodelistViewModel : ViewModelBase
 
         // v1.0.0.x (2026-09-15) T43h+user:raw JSON 全量入库字段(18 列)。
         // v1.0.0.x (2026-09-16) T43i.1+user:加 Description(19 列),raw JSON 顶层节点作者自填描述。
+        // v1.0.0.x (2026-09-16) T43i.2.2-fix:删 5 个 ≤0.017% 覆盖率 raw JSON 字段
+        // (Nickname/LastUpdate/BadgesJson/AptDependency/DependenciesJson) ——
+        // 它们在 nodelist_entries 表被删,对应 POCO 属性也清掉。
         // 由 NodelistRepository.GetAllEntries 读 SQLite 填充,UI 在「数据源」Expander 展示。
         public string? Id { get; set; }
         public string? Description { get; set; }   // T43i.1+user
@@ -363,23 +366,18 @@ public sealed class NodelistViewModel : ViewModelBase
         public string? TagsJson { get; set; }
         public string? PreemptionsJson { get; set; }
         public string? Category { get; set; }
-        public string? Nickname { get; set; }
-        public string? LastUpdate { get; set; }
         public string? Reference { get; set; }
         public string? Reference2 { get; set; }
         public string? FilesJson { get; set; }
-        public string? BadgesJson { get; set; }
         public string? JsPath { get; set; }
-        public string? AptDependency { get; set; }
-        public string? DependenciesJson { get; set; }
         public string? NodenamePattern { get; set; }
 
         // Computed: 反序列化 JSON 字符串数组给 XAML 用(避免 XAML 写 string.Split)。
         // 解析失败/空字符串都返空数组,UI ItemsControl 走 0-count 路径不报错。
+        // v1.0.0.x (2026-09-16) T43i.2.2-fix:BadgesList 依赖已删的 BadgesJson,一并移除。
         public IReadOnlyList<string> PipList => DeserializeStringArray(PipJson);
         public IReadOnlyList<string> TagsList => DeserializeStringArray(TagsJson);
         public IReadOnlyList<string> PreemptionsList => DeserializeStringArray(PreemptionsJson);
-        public IReadOnlyList<string> BadgesList => DeserializeStringArray(BadgesJson);
 
         private static IReadOnlyList<string> DeserializeStringArray(string? json)
         {
