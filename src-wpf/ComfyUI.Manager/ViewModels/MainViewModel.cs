@@ -883,7 +883,11 @@ public class MainViewModel : ViewModelBase
                 nodeOps: _nodeOps,
                 // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
                 // 「💾 下载到本地」按钮从 _settings.LocalNodeDirectory 读目标目录。
-                settings: _settings);
+                settings: _settings,
+                // v1.0.0.x (2026-09-16) T43i.6+user「激活 venv + 在 venv 中执行 pip install」:
+                // 「📥 一键安装」步骤 2 接 InstallNodeRequirementsAsync,在 env 自己的 venv
+                // python 里跑 pip install -r requirements.txt。
+                requirementsInstaller: _requirementsInstaller);
             _nodelistViewModel.NodelistDirectory = _settings!.NodelistDirectory;
             var cfg = _nodelistSourceConfig!.Get();
             _nodelistViewModel.Host = cfg.ServerUrl;

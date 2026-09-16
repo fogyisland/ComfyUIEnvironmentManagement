@@ -48,6 +48,10 @@ public sealed class NodelistViewModel : ViewModelBase
     // 「💾 下载到本地」按钮调 _nodeOps.DownloadAsync(localDir=..., ...),
     // localDir 来自 _settings.LocalNodeDirectory(用户配置 LocalNodes 目录)。
     private readonly Settings? _settings;
+    // v1.0.0.x (2026-09-16) T43i.6+user「一键安装要在 venv 中 pip install requirements.txt」:
+    // 步骤 2(git clone 成功后)接一步 InstallNodeRequirementsAsync(env, targetDir, ...)
+    // 走 env 自己的 venv python,过滤 torch 行,无 requirements.txt 自动 skip。
+    private readonly RequirementsInstaller? _requirementsInstaller;
 
     /// <summary>左 list — 作者/仓库名列表(全量,Reload 时从 SQLite 灌入)。</summary>
     public ObservableCollection<NodelistEntryRow> Entries { get; } = new();
@@ -312,7 +316,12 @@ public sealed class NodelistViewModel : ViewModelBase
         // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
         // 「💾 下载到本地」按钮调 NodeOperations.DownloadAsync,目标目录 = _settings.LocalNodeDirectory。
         // Settings 仅在 DownloadToLocalAsync 里读 LocalNodeDirectory,可空(老 wire 不传也能编)。
-        Settings? settings = null)
+        Settings? settings = null,
+        // v1.0.0.x (2026-09-16) T43i.6+user「一键安装要在 venv 中 pip install requirements.txt」:
+        // 「📥 一键安装」git clone 成功后接 InstallNodeRequirementsAsync(env, targetDir, ...),
+        // 走 env 自己的 venv python,过滤 torch 行,无 requirements.txt 自动 skip。
+        // 可空 — 老 wire 编译过,但 CanExecute 把它当必要条件之一(老 wire 按钮 silent disabled)。
+        RequirementsInstaller? requirementsInstaller = null)
     {
         _downloader = downloader;
         _ingestor = ingestor;
@@ -324,6 +333,7 @@ public sealed class NodelistViewModel : ViewModelBase
         _envRepo = envRepo;
         _nodeOps = nodeOps;
         _settings = settings;
+        _requirementsInstaller = requirementsInstaller;
 
         // v1.0.0.x (2026-09-15) feat/nodelist-market-redesign (T43) CanExecute 条件:
         // NodelistDirectory getter 永远非空(fallback 到 defaultDirectory),
@@ -357,7 +367,10 @@ public sealed class NodelistViewModel : ViewModelBase
             // v1.0.0.x (2026-09-16) T43h+user:InstallCommand 不再联动 IsBusy —— 后台入库期间
             // 用户可以正常点「📥 一键安装」(NodeOperations 走自己的环境目录,不写 nodelist_entries,
             // 跟后台 ingest 无冲突)。IsBusy 留给 IsNotBusy → false 时(下载中)防止跟「📥 一键安装」并发。
-            _ => _selectedEntry is not null && _envRepo is not null && _nodeOps is not null && IsNotBusy);
+            // v1.0.0.x (2026-09-16) T43i.6:加 _requirementsInstaller 联动 — 安装流程第 2 步
+            // 需要在 env 的 venv python 里跑 pip install,缺这个注入就 disable 按钮(防 silent NRE)。
+            _ => _selectedEntry is not null && _envRepo is not null && _nodeOps is not null
+                && _requirementsInstaller is not null && IsNotBusy);
         // v1.0.0.x (2026-09-16) T43i.5+user「下载到本地是下载到本地的节点 LocalNodes 下面」:
         // 「💾 下载到本地」按钮调 _nodeOps.DownloadAsync,把选中 entry git clone 到
         // _settings.LocalNodeDirectory/<repoName>,完成后 NodeOperations 内部 upsert 一条
@@ -1021,9 +1034,13 @@ public sealed class NodelistViewModel : ViewModelBase
         }
     }
 
-    /// <summary>详情「📥 一键安装」—— 弹 EnvPickerDialog(复用现有 EnvOption)选环境 → 调
-    /// <see cref="NodeOperations.InstallAsync"/>。StatusText 实时报告进度,IsBusy 期间禁用按钮。
-    /// 无 SelectedEntry / 缺 _envRepo / 缺 _nodeOps 时静默提示,不抛。</summary>
+    /// <summary>详情「📥 一键安装」—— 弹 EnvPickerDialog 选环境 → 调 <see cref="NodeOperations.InstallAsync"/>
+    /// (git clone 到 env 的 custom_nodes/&lt;nodeId&gt;) → 调 <see cref="RequirementsInstaller.InstallNodeRequirementsAsync"/>
+    /// 在 env 自己的 venv python 里 <c>pip install -r requirements.txt</c>(过滤 torch 行,无 requirements.txt 自动 skip)。
+    /// StatusText 实时报告进度,IsBusy 期间禁用按钮。pip 失败时弹 dialog 让用户决定要不要回滚删除目录。
+    /// 无 SelectedEntry / 缺 _envRepo / 缺 _nodeOps / 缺 _requirementsInstaller 时静默提示,不抛。
+    /// <para>v1.0.0.x (2026-09-16) T43i.6+user「激活 venv + 在 venv 中执行 pip install」+ Q2 (b) 弹 dialog 回滚:
+    /// 之前只 git clone,缺 pip install;现在两段流程绑定,语义对齐「一键安装」字面意思。</para></summary>
     private async Task InstallNodeAsync()
     {
         if (_selectedEntry is null)
@@ -1031,9 +1048,9 @@ public sealed class NodelistViewModel : ViewModelBase
             StatusText = "未选中 entry";
             return;
         }
-        if (_envRepo is null || _nodeOps is null)
+        if (_envRepo is null || _nodeOps is null || _requirementsInstaller is null)
         {
-            StatusText = "安装未配置:缺少 envRepo / nodeOps 注入";
+            StatusText = "安装未配置:缺少 envRepo / nodeOps / requirementsInstaller 注入";
             return;
         }
         var entry = _selectedEntry;
@@ -1060,21 +1077,70 @@ public sealed class NodelistViewModel : ViewModelBase
         string? targetTag = !string.IsNullOrWhiteSpace(rawVersion) && rawVersion != entry.RepoName
             ? rawVersion
             : null;
+        // 早算 targetDir — 步骤 2 pip install 要用(InstallAsync 内部会算但结果不返)。
+        // env.CustomNodesPath 为空时 InstallAsync 自身会返 Fail,这里不重判。
+        var targetDir = Path.Combine(env.CustomNodesPath ?? "", entry.RepoName);
 
         IsBusy = true;
         try
         {
             StatusText = $"正在安装 {entry.Author}/{entry.RepoName} → {env.Name}...";
             var progress = new Progress<string>(line => StatusText = line);
+
+            // 步骤 1:git clone 到 env 的 custom_nodes/<repoName>。
             var result = await _nodeOps.InstallAsync(
                 envId: env.Id,
                 nodeId: entry.RepoName,
                 repoUrl: repoUrl,
                 targetTag: targetTag,
                 progress: progress);
-            StatusText = result.Success
-                ? $"安装成功:{entry.Author}/{entry.RepoName} → {env.Name} (sha={result.Version ?? "?"})"
-                : $"安装失败:{result.Reason}";
+            if (!result.Success)
+            {
+                // git 失败 → 不弹回滚 dialog(目录本来就没 clone 下来),直接报 reason。
+                StatusText = $"安装失败(克隆):{result.Reason}";
+                return;
+            }
+
+            // 步骤 2:在 env 自己的 venv python 里 pip install -r requirements.txt。
+            // 节点无 requirements.txt → InstallNodeRequirementsAsync 返 Success(reason="节点无 requirements.txt"),
+            // 我们把它翻成"已复制 无需要安装额外库";有 requirements.txt 失败 → 弹回滚 dialog。
+            StatusText = $"已克隆,正在 {env.Name} 的 venv 中 pip install requirements.txt...";
+            var reqResult = await _requirementsInstaller.InstallNodeRequirementsAsync(
+                env, targetDir, progress);
+
+            if (reqResult.Success)
+            {
+                // 区分"真装成功" vs "无 requirements.txt skip"
+                var noReqs = reqResult.Reason?.Contains("节点无 requirements.txt") == true;
+                if (noReqs)
+                {
+                    StatusText = $"已复制到 {env.Name} 无需安装额外库:{entry.Author}/{entry.RepoName} (sha={result.Version ?? "?"})";
+                }
+                else
+                {
+                    StatusText = $"安装完成:{entry.Author}/{entry.RepoName} → {env.Name} "
+                        + $"(已装 {reqResult.InstalledCount} 个包,sha={result.Version ?? "?"})";
+                }
+                return;
+            }
+
+            // pip 失败 → Q2 (b) 弹回滚 dialog
+            var reason = reqResult.Reason ?? "未知原因";
+            var rollback = ShowConfirmDialog(
+                $"git clone 已成功到\n{targetDir}\n"
+                + $"但在 {env.Name} 的 venv 中 pip install 失败:\n{reason}\n\n"
+                + "是否回滚(删除已克隆目录)?\n"
+                + "选「否」保留目录(可手动到该目录跑 pip install 修复)。",
+                "依赖安装失败");
+            if (rollback)
+            {
+                TryDeleteNodeDir(targetDir, entry.RepoName);
+                StatusText = $"已回滚:{entry.Author}/{entry.RepoName} 目录已删除 (pip 失败:{reason})";
+            }
+            else
+            {
+                StatusText = $"已复制但 pip 失败 → {env.Name}:{reason} (目录保留:{targetDir})";
+            }
         }
         catch (Exception ex)
         {
@@ -1084,6 +1150,41 @@ public sealed class NodelistViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Test seam — unit tests set this to intercept the rollback confirmation dialog
+    /// (which would call MessageBox.Show and hang in test context). Returns true = rollback.
+    /// </summary>
+    public Func<string, string, bool>? ShowConfirmDialogOverride { get; set; }
+
+    /// <summary>v1.0.0.x (2026-09-16) T43i.6+user:pip install 失败时弹回滚 dialog。
+    /// 默认 <see cref="MessageBox.Show(..., YesNo)"/>,测试可 override。跟 EnvironmentListViewModel
+    /// 既有 <c>ShowConfirmDialogOverride</c> 模式对齐(EnvironmentListViewModel.cs:323)。</summary>
+    private bool ShowConfirmDialog(string message, string title)
+    {
+        if (ShowConfirmDialogOverride is not null) return ShowConfirmDialogOverride(message, title);
+        var result = MessageBox.Show(
+            message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        return result == MessageBoxResult.Yes;
+    }
+
+    /// <summary>v1.0.0.x (2026-09-16) T43i.6:删除已克隆但 pip 失败的节点目录。
+    /// best-effort,失败不抛(留给 git 重新克隆时 NodeOperations.InstallAsync 自己返 Fail "目录已存在")。</summary>
+    private void TryDeleteNodeDir(string targetDir, string nodeId)
+    {
+        try
+        {
+            if (Directory.Exists(targetDir))
+            {
+                Directory.Delete(targetDir, recursive: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            // 不抛 — StatusText 已在主路径报告,这里只 warn log
+            TryWriteNreDebugLog("TryDeleteNodeDir", ex);
         }
     }
 
