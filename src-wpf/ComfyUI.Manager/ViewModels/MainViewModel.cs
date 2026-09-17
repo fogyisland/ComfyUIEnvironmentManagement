@@ -947,6 +947,12 @@ public class MainViewModel : ViewModelBase
     internal void SetStarredModelsRepoFactory(Func<StarredModelsRepository> factory)
         => _starredModelsRepoFactory = factory;
 
+    // v1.0.0.x (2026-09-17) T47:T6 UI 状态 K-V 持久化 repo factory — model_settings 表。
+    // App.xaml.cs OnStartup 注入 factory 创建 LocalModelSettingsRepository 实例。
+    internal Func<LocalModelSettingsRepository>? _localModelSettingsRepoFactory;
+    internal void SetLocalModelSettingsRepoFactory(Func<LocalModelSettingsRepository> factory)
+        => _localModelSettingsRepoFactory = factory;
+
     private void ShowLocalModels()
     {
         CurrentSection = MainSection.LocalModels;
@@ -993,7 +999,10 @@ public class MainViewModel : ViewModelBase
                 // 工厂未注入(测试 ctor 路径)→ null → 命令 execute 是 no-op,UI 弹 ContextMenu
                 // 仍能弹但点不响应。生产 wire 见 App.xaml.cs OnStartup。
                 _localModelOperationsFactory?.Invoke(),
-                _starredModelsRepoFactory?.Invoke());
+                _starredModelsRepoFactory?.Invoke(),
+                // v1.0.0.x (2026-09-17) T47:T6 UI 状态 K-V 持久化 repo(model_settings 表) —
+                // ViewMode + StarsOnlyFilter 启动还原 + setter 写回。
+                _localModelSettingsRepoFactory?.Invoke());
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);

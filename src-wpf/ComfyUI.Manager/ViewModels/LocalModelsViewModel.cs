@@ -13,6 +13,7 @@ using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Services.Civitai;
 using ComfyUI.Manager.Views;
+using ComfyUI.Manager.Views.LocalModels;
 
 namespace ComfyUI.Manager.ViewModels;
 
@@ -52,6 +53,10 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     // 用户的同一文件可能路径大小写略有不同 — ignore case 更稳)。
     private readonly HashSet<string> _starredPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _lookupsInFlight = new();
+    // v1.0.0.x (2026-09-17) T47:LocalModels UI 状态 K-V 持久化 — model_settings 表。
+    // 启动从 _settings.GetOrDefault() 还原 ViewMode + StarsOnlyFilter,
+    // setter 写回 _settings.Set()。nullable 兼容老测试 ctor 路径(直接传 null 不 wire)。
+    private readonly LocalModelSettingsRepository? _localModelsSettings;
     // v1.0.0.x: Toolbar「🔎 CivitAI 查询」选中目标。点 card → SelectedCard = card;
     // toolbar 按钮 IsEnabled 跟 SelectedCard 走;Source != "Local" / 选 null 时 disable。
     private LocalModelCard? _selectedCard;
@@ -212,6 +217,47 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     /// 生产路径不调,保持 zero overhead。</summary>
     internal Action? FilterAppliedCallback { get; set; }
 
+    // ===== v1.0.0.x (2026-09-17) T47:T6 视图模式 + Star 过滤持久化 =====
+
+    /// <summary>v1.0.0.x T47:T6 视图模式 enum — 启动从 model_settings.localmodels.view_mode 还原,
+    /// setter 立即写回 DB。ContentControl.ContentTemplateSelector 拿这个值路由 3 个 DataTemplate。
+    /// 不用 SetProperty helper:项目 LocalModelsViewModel.cs 100% 用显式
+    /// <c>PropertyChanged?.Invoke(this, new(nameof(X)))</c> pattern(0 SetProperty 命中)。</summary>
+    private ViewMode _activeViewMode = ViewMode.Cards;
+
+    /// <summary>v1.0.0.x T47:ContentControl.ContentTemplateSelector 绑这个值路由
+    /// Cards / List / Thumbnails 3 个 DataTemplate。setter 不触发 ApplyFilter ——
+    /// 视图切换只换 container,Filter 内容不变,无重算必要。</summary>
+    public ViewMode ActiveViewMode
+    {
+        get => _activeViewMode;
+        set
+        {
+            if (_activeViewMode == value) return;
+            _activeViewMode = value;
+            PropertyChanged?.Invoke(this, new(nameof(ActiveViewMode)));
+            _localModelsSettings?.Set("localmodels.view_mode", value.ToString());
+        }
+    }
+
+    private bool _starsOnlyFilter;
+
+    /// <summary>v1.0.0.x T47:T6 toolbar ⭐ checkbox 绑这个值 — 只显示 IsStarred 的卡片。
+    /// setter 触发 ApplyFilter(第 3 维交集 — Search ∩ Kind ∩ StarsOnly),
+    /// 同时写回 model_settings.localmodels.stars_only。</summary>
+    public bool StarsOnlyFilter
+    {
+        get => _starsOnlyFilter;
+        set
+        {
+            if (_starsOnlyFilter == value) return;
+            _starsOnlyFilter = value;
+            PropertyChanged?.Invoke(this, new(nameof(StarsOnlyFilter)));
+            _localModelsSettings?.Set("localmodels.stars_only", value ? "true" : "false");
+            ApplyFilter();
+        }
+    }
+
     /// <summary>v1.0.0.x T46:测试用 — 注入 Func,SearchText setter 启防抖 timer 时调它代替
     /// 真实 DispatcherTimer。返回 IDisposable handle(setter 再被调时 Dispose 取消旧 timer)。
     /// 生产路径 = null,ctor lazy-new 一个 DispatcherTimer。</summary>
@@ -254,7 +300,11 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         // nullable 兼容老测试 ctor 路径(直接传 null 不 wire) — MainViewModel.ShowLocalModels
         // 在 App 启动后通过 factory 注入。
         LocalModelOperations? ops = null,
-        StarredModelsRepository? stars = null)
+        StarredModelsRepository? stars = null,
+        // v1.0.0.x (2026-09-17) T47:T6 UI 状态 K-V 持久化 repo — model_settings 表。
+        // 命名避开 ctor 第 1 参 <see cref="Settings"/> (同名会编译报 CS1744)。
+        // nullable 兼容老测试 ctor 路径(直接传 null 不 wire)。
+        LocalModelSettingsRepository? localModelsSettings = null)
     {
         _settings = settings;
         _scanner = scanner;
@@ -273,6 +323,23 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         // 注入 factory 创建的 instance。
         _ops = ops;
         _stars = stars;
+        // v1.0.0.x T47:T6 UI 状态 K-V 持久化 repo 注入。老 ctor 调用路径(null)→ setter 静默 no-op。
+        _localModelsSettings = localModelsSettings;
+        // v1.0.0.x T47:T6 启动从 model_settings 还原 ViewMode + StarsOnlyFilter。
+        // Enum.TryParse 失败(老值 / DB 损坏)→ fallback 到 default 走 _activeViewMode = Cards 初始值。
+        if (_localModelsSettings is not null)
+        {
+            var viewModeStr = _localModelsSettings.GetOrDefault("localmodels.view_mode", nameof(ViewMode.Cards));
+            if (Enum.TryParse<ViewMode>(viewModeStr, out var vm2))
+            {
+                _activeViewMode = vm2;
+            }
+            var starsOnlyStr = _localModelsSettings.GetOrDefault("localmodels.stars_only", "false");
+            if (bool.TryParse(starsOnlyStr, out var so))
+            {
+                _starsOnlyFilter = so;
+            }
+        }
         if (stars is not null)
         {
             try
@@ -784,16 +851,20 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     private void ApplyFilter()
     {
         // v1.0.0.x T46:SearchText + kind chip 双过滤(原 chip-only 逻辑)。
+        // v1.0.0.x (2026-09-17) T47:T6 加第 3 维 StarsOnly — Search ∩ Kind ∩ StarsOnly 交集。
         // FilteredModels.Clear() + Add 模式保留 — ObservableCollection 重建路径稳定,
         // View 端 Clear-then-Add 不会闪。
         FilteredModels.Clear();
         var search = _searchText;
         var hasSearch = !string.IsNullOrEmpty(search);
         var kindFilter = _activeChip?.Kind;
+        var starsOnly = _starsOnlyFilter;
         foreach (var c in _allCards)
         {
             if (kindFilter is not null && c.Kind != kindFilter) continue;
             if (hasSearch && c.SearchableText.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            // v1.0.0.x T47:T6 第 3 维 — toolbar ⭐ checkbox 开启时只保留 IsStarred 卡。
+            if (starsOnly && !c.IsStarred) continue;
             FilteredModels.Add(c);
         }
         // 防抖路径触发时计 1 次(RebuildCardsAndChips / chip 切换路径不算)。

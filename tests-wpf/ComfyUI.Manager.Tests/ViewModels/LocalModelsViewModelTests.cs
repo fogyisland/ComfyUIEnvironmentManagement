@@ -10,6 +10,7 @@ using ComfyUI.Manager.Services;
 using ComfyUI.Manager.Services.Civitai;
 using ComfyUI.Manager.Tests.Fakes;
 using ComfyUI.Manager.ViewModels;
+using ComfyUI.Manager.Views.LocalModels;
 using Moq;
 using Xunit;
 
@@ -622,6 +623,208 @@ public sealed class LocalModelsViewModelTests
     }
 
     private sealed class NoopDisposableForTest : IDisposable { public void Dispose() { } }
+
+    // -------- v1.0.0.x (2026-09-17) T47:T6 ViewMode + StarsOnlyFilter 持久化 tests --------
+
+    /// <summary>helper — 创建 VM,注入 LocalModelSettingsRepository(走 TestDb.ModelFactory),
+    /// 但不 _stops/_stars/ops 让 ctor 不抛,只校验 settings 持久化路径。</summary>
+    private static (LocalModelsViewModel vm, LocalModelSettingsRepository settings)
+        CreateVmWithSettings(TestDb db)
+    {
+        var settings = new LocalModelSettingsRepository(db.ModelFactory);
+        var vm = new LocalModelsViewModel(
+            SettingsWith(@"Z:\fake"), new FakeScanner(),
+            ops: null, stars: null, localModelsSettings: settings)
+        {
+            // SearchText setter 1ms 防抖 — 测试用即时 fake timer 模拟"1ms 到时"。
+            // 同 LocalModelsViewModelSearchTests.FakeImmediateTimer pattern。
+            FilterTimerFactory = (action, _) => new FakeImmediateTimer(action),
+        };
+        return (vm, settings);
+    }
+
+    /// <summary>helper — 构造 5 张 DownloadedModel 给 scanner 当 seed(stars repo
+    /// 单独 Upsert idx 0 + idx 2)。</summary>
+    private static List<DownloadedModel> MakeStarredCards(int total)
+    {
+        var list = new List<DownloadedModel>();
+        for (int i = 0; i < total; i++)
+        {
+            list.Add(new DownloadedModel
+            {
+                Title = $"m{i}",
+                Kind = ModelKind.Checkpoint,
+                Source = "Local",
+                SourceId = $"star-task6:{i}",
+                SourceVersionId = "v1",
+                DownloadedAt = DateTime.Now.AddMinutes(-i),
+                FullPath = $@"D:\star_task6_{i}.safetensors",
+            });
+        }
+        return list;
+    }
+
+    /// <summary>helper — 构造 mixed 卡片用于 3 维交集测试:
+    /// 4 cards,1 个同时满足 starred + "anime" searchable + LORA(idx 0)。</summary>
+    private static (LocalModelsViewModel vm, LocalModelSettingsRepository settings)
+        CreateVmWithMixedCardsForIntersect(TestDb db)
+    {
+        var entries = new List<DownloadedModel>
+        {
+            // idx 0 — starred + "anime" + LORA(满足全部 3 维)
+            new() { Title = "anime-lora", Kind = ModelKind.LORA, Source = "Local",
+                    SourceId = "x:0", SourceVersionId = "v1",
+                    DownloadedAt = DateTime.Now, FullPath = @"D:\x0.safetensors" },
+            // idx 1 — starred but not anime, LORA
+            new() { Title = "other-lora", Kind = ModelKind.LORA, Source = "Local",
+                    SourceId = "x:1", SourceVersionId = "v1",
+                    DownloadedAt = DateTime.Now.AddMinutes(-1), FullPath = @"D:\x1.safetensors" },
+            // idx 2 — anime but not starred, Checkpoint
+            new() { Title = "anime-cp", Kind = ModelKind.Checkpoint, Source = "Local",
+                    SourceId = "x:2", SourceVersionId = "v1",
+                    DownloadedAt = DateTime.Now.AddMinutes(-2), FullPath = @"D:\x2.safetensors" },
+            // idx 3 — LORA but not anime, not starred
+            new() { Title = "no-match", Kind = ModelKind.LORA, Source = "Local",
+                    SourceId = "x:3", SourceVersionId = "v1",
+                    DownloadedAt = DateTime.Now.AddMinutes(-3), FullPath = @"D:\x3.safetensors" },
+        };
+        var settings = new LocalModelSettingsRepository(db.ModelFactory);
+        var stars = new StarredModelsRepository(db.ModelFactory);
+        stars.Add(@"D:\x0.safetensors");
+        stars.Add(@"D:\x1.safetensors");
+
+        var fake = new FakeScanner { Entries = entries };
+        var vm = new LocalModelsViewModel(
+            SettingsWith(@"Z:\fake"), fake,
+            ops: null, stars: stars, localModelsSettings: settings)
+        {
+            FilterTimerFactory = (action, _) => new FakeImmediateTimer(action),
+        };
+        vm.ReloadAsync().GetAwaiter().GetResult();
+        return (vm, settings);
+    }
+
+    /// <summary>FakeImmediateTimer — 测试用,模拟 1ms DispatcherTimer 防抖 Tick。
+    /// 跟 <see cref="LocalModelsViewModelSearchTests.FakeImmediateTimer"/> 同 pattern,
+    /// 这里复制一份(同 namespace 已 internal 化,但跨 test class 用 internal 不便)。</summary>
+    private sealed class FakeImmediateTimer : IDisposable
+    {
+        private readonly Action _action;
+        private bool _disposed;
+        public FakeImmediateTimer(Action action)
+        {
+            _action = action;
+            _action();
+        }
+        public void Dispose() => _disposed = true;
+    }
+
+    [Fact]
+    public void ViewMode_DefaultsToCards()
+    {
+        // arrange:全新 VM,settings repo 空(no persistence record)
+        using var db = new TestDb();
+        var (vm, _) = CreateVmWithSettings(db);
+
+        // assert
+        Assert.Equal(ViewMode.Cards, vm.ActiveViewMode);
+    }
+
+    [Fact]
+    public void ViewMode_SetToList_FiresPropertyChanged()
+    {
+        using var db = new TestDb();
+        var (vm, _) = CreateVmWithSettings(db);
+        var fired = false;
+        vm.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(vm.ActiveViewMode)) fired = true;
+        };
+
+        vm.ActiveViewMode = ViewMode.List;
+
+        Assert.True(fired);
+        Assert.Equal(ViewMode.List, vm.ActiveViewMode);
+    }
+
+    [Fact]
+    public void ViewMode_Changed_PersistsToSettingsRepo()
+    {
+        using var db = new TestDb();
+        var (vm, settings) = CreateVmWithSettings(db);
+
+        vm.ActiveViewMode = ViewMode.Thumbnails;
+
+        Assert.Equal("Thumbnails", settings.Get("localmodels.view_mode"));
+    }
+
+    [Fact]
+    public void ViewMode_OnStartup_LoadsFromSettingsRepo()
+    {
+        using var db = new TestDb();
+        var settings = new LocalModelSettingsRepository(db.ModelFactory);
+        settings.Set("localmodels.view_mode", "List");
+
+        var vm = new LocalModelsViewModel(
+            SettingsWith(@"Z:\fake"), new FakeScanner(),
+            ops: null, stars: null, localModelsSettings: settings)
+        {
+            FilterTimerFactory = (action, _) => new FakeImmediateTimer(action),
+        };
+
+        Assert.Equal(ViewMode.List, vm.ActiveViewMode);
+    }
+
+    [Fact]
+    public void StarsOnly_ToggledOn_FiltersListToStarred()
+    {
+        // arrange:5 cards,2 starred(用 FakeScanner 出 5 条,stars repo pre-mark 2 条)
+        using var db = new TestDb();
+        var entries = MakeStarredCards(5);
+        var settings = new LocalModelSettingsRepository(db.ModelFactory);
+        var stars = new StarredModelsRepository(db.ModelFactory);
+        stars.Add(@"D:\star_task6_0.safetensors");
+        stars.Add(@"D:\star_task6_2.safetensors");
+
+        var fake = new FakeScanner { Entries = entries };
+        var vm = new LocalModelsViewModel(
+            SettingsWith(@"Z:\fake"), fake,
+            ops: null, stars: stars, localModelsSettings: settings)
+        {
+            FilterTimerFactory = (action, _) => new FakeImmediateTimer(action),
+        };
+        vm.ReloadAsync().GetAwaiter().GetResult();
+
+        // 先 assert:5 卡片都加载,2 张 starred
+        Assert.Equal(5, vm.FilteredModels.Count);
+        Assert.Equal(2, vm.FilteredModels.Count(c => c.IsStarred));
+
+        // act:开启 StarsOnly
+        vm.StarsOnlyFilter = true;
+
+        // assert:只剩 2 张 starred
+        Assert.Equal(2, vm.FilteredModels.Count);
+        Assert.All(vm.FilteredModels, c => Assert.True(c.IsStarred));
+    }
+
+    [Fact]
+    public void SearchText_And_StarsOnly_And_Kind_Intersect()
+    {
+        using var db = new TestDb();
+        var (vm, _) = CreateVmWithMixedCardsForIntersect(db);
+
+        // 默认 activeChip = "全部" — 不动 kind,先把 StarsOnly 开启,验证只剩 2 starred
+        vm.StarsOnlyFilter = true;
+        Assert.Equal(2, vm.FilteredModels.Count);
+
+        // 再加 Search 过滤 "anime" — 只剩 idx 0(同时 starred + anime)
+        vm.SearchText = "anime";
+        Assert.Single(vm.FilteredModels);
+
+        // 再加 KindFilter = LORA(idx 0 也是 LORA)— 还是 Single
+        vm.ActiveChip = vm.KindChips.Single(c => c.Kind == ModelKind.LORA);
+        Assert.Single(vm.FilteredModels);
+    }
 }
 
 internal sealed class FakeScanner : ModelFilesystemScanner

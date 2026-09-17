@@ -2,6 +2,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.ViewModels;
+using ComfyUI.Manager.Views.LocalModels;
 
 namespace ComfyUI.Manager.Views;
 
@@ -23,6 +24,22 @@ public sealed partial class LocalModelsView : UserControl
         if (sender is RadioButton rb && rb.Tag is KindChip chip && DataContext is LocalModelsViewModel vm)
         {
             vm.ActiveChip = chip;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-17) T47:T6 ViewMode segmented button click handler — 把 sender.Tag (ViewMode)
+    /// 写回 VM.ActiveViewMode。XAML 走 OneWay IsChecked + Checked event pattern(同 KindChip precedent):
+    /// VM → RadioButton.IsChecked 用 EnumEqualsConverter OneWay 反射选中态高亮,
+    /// RadioButton.Checked → 这里改 VM(ConvertBack 走 Binding.DoNothing)。
+    /// 这样不需要在 ConvertBack 拿 RadioButton.Tag 强制转回 enum — RadioButton 的 Tag 早绑
+    /// 在 XAML (Tag="{x:Static views:ViewMode.Cards}" 等),handler 拿 sender.Tag cast 即可。
+    /// </summary>
+    private void ViewModeRadio_Checked(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is ViewMode mode && DataContext is LocalModelsViewModel vm)
+        {
+            vm.ActiveViewMode = mode;
         }
     }
 

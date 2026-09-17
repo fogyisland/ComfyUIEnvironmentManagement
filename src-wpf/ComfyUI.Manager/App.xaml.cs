@@ -703,6 +703,9 @@ public partial class App : Application
                 ? Task.FromResult<MatchResult?>(null)
                 : _mainVm.CivitaiMatcherOrchestrator.MatchAsync(model, ct),
             new ProgressDialogService()));
+        // v1.0.0.x (2026-09-17) T47:T6 UI 状态 K-V 持久化 repo 注入 — model_settings 表,
+        // ViewMode + StarsOnlyFilter 启动还原 / setter 写回。共享 modelFactory(model.db)。
+        _mainVm.SetLocalModelSettingsRepoFactory(() => new LocalModelSettingsRepository(modelFactory));
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);

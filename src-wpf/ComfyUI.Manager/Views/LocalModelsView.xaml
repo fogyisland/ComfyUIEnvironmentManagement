@@ -141,6 +141,51 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <!-- v1.0.0.x (2026-09-17) T47:T6 ViewMode segmented button + ⭐ StarsOnly checkbox。
+                     位置:KindChips 后面,🔄/CivitAI 前面 — 跟现有 KindChipRadioStyle 对齐
+                     (背景透明 + 鼠标悬停 SurfaceVariantBrush + 选中态同款描边)。
+                     RadioButton 走 OneWay IsChecked + Checked event handler pattern(同 KindChip)。
+                     ConvertBack 走 EnumEqualsConverter 返 Binding.DoNothing(OneWay)。 -->
+                <StackPanel Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <RadioButton GroupName="ViewMode"
+                                 Content="▦ Cards" Margin="0,0,4,0"
+                                 Tag="{x:Static views:ViewMode.Cards}"
+                                 Checked="ViewModeRadio_Checked"
+                                 Style="{StaticResource KindChipRadioStyle}">
+                        <RadioButton.IsChecked>
+                            <Binding Path="ActiveViewMode" Mode="OneWay"
+                                     Converter="{StaticResource EnumEqualsConverter}"
+                                     ConverterParameter="Cards" />
+                        </RadioButton.IsChecked>
+                    </RadioButton>
+                    <RadioButton GroupName="ViewMode"
+                                 Content="☰ List" Margin="0,0,4,0"
+                                 Tag="{x:Static views:ViewMode.List}"
+                                 Checked="ViewModeRadio_Checked"
+                                 Style="{StaticResource KindChipRadioStyle}">
+                        <RadioButton.IsChecked>
+                            <Binding Path="ActiveViewMode" Mode="OneWay"
+                                     Converter="{StaticResource EnumEqualsConverter}"
+                                     ConverterParameter="List" />
+                        </RadioButton.IsChecked>
+                    </RadioButton>
+                    <RadioButton GroupName="ViewMode"
+                                 Content="▦▦ Thumbnails" Margin="0,0,4,0"
+                                 Tag="{x:Static views:ViewMode.Thumbnails}"
+                                 Checked="ViewModeRadio_Checked"
+                                 Style="{StaticResource KindChipRadioStyle}">
+                        <RadioButton.IsChecked>
+                            <Binding Path="ActiveViewMode" Mode="OneWay"
+                                     Converter="{StaticResource EnumEqualsConverter}"
+                                     ConverterParameter="Thumbnails" />
+                        </RadioButton.IsChecked>
+                    </RadioButton>
+                    <!-- v1.0.0.x (2026-09-17) T47:T6 ⭐ checkbox — 只显示 IsStarred 卡。
+                         TwoWay 走 VM.StarsOnlyFilter 直接 setter(TwoWay binding 让 UI checkbox toggle
+                         反向触发 VM,不需要单独的 Click handler)。 -->
+                    <CheckBox Content="⭐ Star" Margin="8,0,0,0" VerticalAlignment="Center"
+                              IsChecked="{Binding StarsOnlyFilter, Mode=TwoWay}" />
+                </StackPanel>
             </DockPanel>
         </Border>
 
