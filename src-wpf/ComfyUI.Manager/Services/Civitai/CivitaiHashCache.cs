@@ -19,6 +19,13 @@ namespace ComfyUI.Manager.Services.Civitai;
 ///     sha256 TEXT NOT NULL,
 ///     PRIMARY KEY (path, size_bytes, mtime_utc_ticks)
 ///   );
+///   CREATE TABLE file_tensor_hashes (
+///     path TEXT NOT NULL,
+///     size_bytes INTEGER NOT NULL,
+///     mtime_utc_ticks INTEGER NOT NULL,
+///     tensor_sha256 TEXT NOT NULL,
+///     PRIMARY KEY (path, size_bytes, mtime_utc_ticks)
+///   );
 /// </summary>
 public sealed class CivitaiHashCache : IDisposable
 {
@@ -28,6 +35,13 @@ public sealed class CivitaiHashCache : IDisposable
             size_bytes INTEGER NOT NULL,
             mtime_utc_ticks INTEGER NOT NULL,
             sha256 TEXT NOT NULL,
+            PRIMARY KEY (path, size_bytes, mtime_utc_ticks)
+        );
+        CREATE TABLE IF NOT EXISTS file_tensor_hashes (
+            path TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            mtime_utc_ticks INTEGER NOT NULL,
+            tensor_sha256 TEXT NOT NULL,
             PRIMARY KEY (path, size_bytes, mtime_utc_ticks)
         );";
 
@@ -85,6 +99,49 @@ public sealed class CivitaiHashCache : IDisposable
         catch (Exception ex)
         {
             _logger?.Warn("civitai-hash-cache", $"⚠ SQLite store error: {ex.Message}");
+        }
+    }
+
+    // v1.0.0.x T46: tensor-only SHA256 cache (table file_tensor_hashes).
+    // Separate from full-file API so .gguf/.ckpt/.pt fallback (full file) stays
+    // intact and tensor-only safetensors hash lives in its own keyspace.
+
+    public string? LookupByTensorHash(string filePath, long sizeBytes, long mtimeUtcTicks)
+    {
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT tensor_sha256 FROM file_tensor_hashes " +
+                              "WHERE path = $p AND size_bytes = $s AND mtime_utc_ticks = $m LIMIT 1";
+            cmd.Parameters.AddWithValue("$p", filePath);
+            cmd.Parameters.AddWithValue("$s", sizeBytes);
+            cmd.Parameters.AddWithValue("$m", mtimeUtcTicks);
+            var result = cmd.ExecuteScalar();
+            return result is string s ? s : null;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("civitai-hash-cache", $"⚠ SQLite tensor lookup error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public void StoreByTensorHash(string filePath, long sizeBytes, long mtimeUtcTicks, string tensorSha256)
+    {
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "INSERT OR REPLACE INTO file_tensor_hashes (path, size_bytes, mtime_utc_ticks, tensor_sha256) " +
+                              "VALUES ($p, $s, $m, $h)";
+            cmd.Parameters.AddWithValue("$p", filePath);
+            cmd.Parameters.AddWithValue("$s", sizeBytes);
+            cmd.Parameters.AddWithValue("$m", mtimeUtcTicks);
+            cmd.Parameters.AddWithValue("$h", tensorSha256);
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn("civitai-hash-cache", $"⚠ SQLite tensor store error: {ex.Message}");
         }
     }
 

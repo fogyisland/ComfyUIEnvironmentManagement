@@ -68,4 +68,33 @@ public sealed class CivitaiHashCacheTests : IDisposable
         _cache.Clear();
         Assert.Null(_cache.Lookup("C:\\models\\foo.safetensors", 12345, 1700000000000));
     }
+
+    // v1.0.0.x T46: tensor-only SHA256 cache (table file_tensor_hashes).
+    // Mirrors Store/Lookup but with a separate table so the full-file API stays
+    // intact for .gguf/.ckpt/.pt fallback.
+
+    [Fact]
+    public void LookupByTensorHash_HitMatch_ReturnsStoredHash()
+    {
+        _cache.StoreByTensorHash(@"C:\fake\model.safetensors", 1024, 12345L, "ABCD1234");
+        var hit = _cache.LookupByTensorHash(@"C:\fake\model.safetensors", 1024, 12345L);
+        Assert.Equal("ABCD1234", hit);
+    }
+
+    [Fact]
+    public void LookupByTensorHash_MtimeMismatch_ReturnsNull()
+    {
+        _cache.StoreByTensorHash(@"C:\fake\model.safetensors", 1024, 12345L, "ABCD1234");
+        var miss = _cache.LookupByTensorHash(@"C:\fake\model.safetensors", 1024, 99999L);
+        Assert.Null(miss);
+    }
+
+    [Fact]
+    public void StoreByTensorHash_OverwriteOnDuplicate_Succeeds()
+    {
+        _cache.StoreByTensorHash(@"C:\fake\model.safetensors", 1024, 12345L, "OLDHASH");
+        _cache.StoreByTensorHash(@"C:\fake\model.safetensors", 1024, 12345L, "NEWHASH");
+        var hit = _cache.LookupByTensorHash(@"C:\fake\model.safetensors", 1024, 12345L);
+        Assert.Equal("NEWHASH", hit);
+    }
 }
