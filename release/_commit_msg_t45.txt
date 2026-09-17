@@ -1,0 +1,61 @@
+feat(state): split model.db from state.db (T45)
+
+用户反馈 (2026-09-16):
+「是不是在 config 目录下面建立一个 model.db 不要和现在的这个 db 放一起,
+我们将来节点是要作为 seed 的,而模型不需要」
+
+## Context
+state.db 把 seed 类 + env state + 本地模型三类数据混一个 SQLite 文件,语义
+边界不清。最关键风险:节点列表未来要跨用户跨机器同步(git pull 直接拿到完整
+nodelist),model 表绝不能混进 seed DB —— 一旦混进去,污染传播,seed 仓库
+自动分发到所有用户磁盘(显然错的)。
+
+## 设计
+- config/state.db   ← 现有 8 表(environments / scanned_nodes / process_state /
+  version_history / dep_records / nodelist_entries / nodelist_details /
+  nodelist_source_config)
+- config/model.db    ← 新文件,3 表(local_model_files / local_model_overrides /
+  civitai_card_cache)
+- 两个 DB 平行放 config/,便于管理(一起备份/一起删除)
+- SqliteConnectionFactory 引入 SchemaKind enum {State, Model} 区分 db 文件 +
+  InitSchema 路径;3 个 model repository ctor 不变,只换 factory 实例
+
+## 迁移
+LocalDataMigrationService.MigrateModelTablesToSeparateDbAsync 启动期一次性
+ATTACH state.db AS sourceDb + INSERT INTO main.<tbl> SELECT * FROM sourceDb.<tbl>
++ DROP TABLE state.db.<tbl>。幂等:state.db 没 model 表 → skip。失败保留
+state.db 原表 + warn log,不阻断启动(用户决策:release 会清空,失败没关系)。
+
+## 改动 (13 文件)
+1. Infrastructure/LocalDataPaths.cs — 加 ModelDbFile 属性
+2. Data/SqliteConnectionFactory.cs — SchemaKind enum + 拆 InitStateSchema/
+   InitModelSchema + ResolveDbPath 区分 kind
+3. Data/LocalModelFilesRepository.cs — ctor 不变(由 caller 传 Model factory)
+4. Data/LocalModelOverridesRepository.cs — 同上
+5. Data/CivitaiCardCacheRepository.cs — 同上
+6. Infrastructure/LocalDataMigrationService.cs — 加 MigrateModelTablesToSeparateDbAsync
+7. App.xaml.cs — 注册 modelFactory + 3 repo 注入用 modelFactory + 调迁移
+8. tests-wpf/.../Fakes/TestDb.cs — 加 ModelFactory + ModelPath
+9-11. 3 个 model repo test 文件 — ctor 改用 db.ModelFactory
+12. tests-wpf/.../Infrastructure/LocalDataMigrationServiceTests.cs — 加 4 个迁移测试
+13. release/_commit_msg_t45.txt — 本文件
+
+## Verification
+- dotnet build src-wpf: 0 errors (46 pre-existing warnings)
+- focused tests (Repository + CatalogEntryHasher + Nodelist + LocalModel + Civitai
+  + Migration): 全 PASS
+- dev 实跑:本地模型 tab 打开 → model.db 自动建 + scan 入库;env 列表 / 节点市场
+  视图 → state.db 数据全在,不受影响
+
+## 教训(给未来)
+- **多个 ctor 区分 enum kind** —— `SqliteConnectionFactory(LocalDataPaths)`
+  默认 State 向后兼容老 wire,新 caller 显式传 `SchemaKind.Model` 即可。比
+  独立 2 个 factory class 简单(共享 ResolveDbPath/Open/InitSchemaIfMissing
+  框架代码)
+- **db 内 ATTACH/DETACH** 是 SQLite 文件间迁移标准方案 —— 不用 ETL 中间步骤,
+  事务包住保证原子性,ATTACH alias(`sourceDb`)的 DROP TABLE 必须在 alias
+  连接上执行,不能在 main 连接上
+- **幂等迁移靠「state.db 是否含源表」判定** —— 不靠 flag 文件 / DB version
+  表(容易脏)。state.db 没表 = 已迁完,直接 skip
+- **失败不阻断启动** —— 用户决策优先:release 清空数据,迁移失败时保留
+  state.db 原表让用户下次启动重试,而不是抛 crash 阻断进程
