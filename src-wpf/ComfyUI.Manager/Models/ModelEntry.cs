@@ -260,7 +260,14 @@ public sealed record LocalModelCard(
     /// <summary>v1.0.0.x: 用户手动覆盖的本地绝对路径(从 <c>local_model_overrides</c> 表读)。
     /// null = 用 scanner 推算的 FullPath(默认)。非空时 UI 在卡片显示这条 + [复制]
     /// + [编辑/清除] 按钮;后续 env 启动(junction)用这条替代扫描路径。</summary>
-    string? LocalPathOverride = null)
+    string? LocalPathOverride = null,
+    /// <summary>v1.0.0.x (2026-09-17) T47:模型文件的绝对路径(从 <see cref="DownloadedModel.FullPath"/>
+    /// 透传到 card)。所有 ContextMenu 7 命令(Star 收藏 / Open Folder / Copy Hash /
+    /// Reload Hash / Refresh Metadata / Copy FileName / Delete)都通过 <c>card.SourcePath</c>
+    /// 定位磁盘文件 — DB 表 <c>model_stars.source_path</c> 的 PK 也是这条路径。
+    /// T4 plan §Step 1 此前计划加此字段,本 task (T3) 因 7 命令 hard-require 提前加入 record
+    /// 末尾(default <c>""</c> 保证向后兼容现有 caller)。</summary>
+    string SourcePath = "")
 {
     /// <summary>v1.0.0 T-D5:streaming scanner Phase 2 更新 match status — 返回新 record(positional record
     /// 不可变,mutation 要重建)。调用方负责在 _allCards + FilteredModels 两处用旧实例找 index 替换成新实例。
@@ -273,6 +280,12 @@ public sealed record LocalModelCard(
     /// 替换成新 card(保留其他字段不变)。Empty/null overridePath 视作「恢复默认」。</summary>
     public LocalModelCard WithLocalPathOverride(string? overridePath)
         => this with { LocalPathOverride = string.IsNullOrEmpty(overridePath) ? null : overridePath };
+
+    /// <summary>v1.0.0.x (2026-09-17) T47:LocalModelsViewModel.GroupToCards 时填 SourcePath
+    /// 后用旧 card 找 index 替换(保留其他字段不变) — 跟 WithLocalPathOverride / WithMatchStatus
+    /// 同款 record factory pattern。</summary>
+    public LocalModelCard WithSourcePath(string sourcePath)
+        => this with { SourcePath = sourcePath ?? "" };
 
     /// <summary>
     /// v1.0.0.x (2026-09-17) T46:LocalModelsView 搜索框用的「全部可搜索字段」拼接字符串

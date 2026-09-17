@@ -1,0 +1,39 @@
+feat(svc): T47 LocalModelOperations 7 commands + 17 tests
+
+LocalModelCard record 加 SourcePath 字段(T4 plan 提前到 T3,因 7 命令
+hard-require 绝对文件路径;default "" 保持向后兼容)。
+
+7 公共方法 (ToggleStar / CopyHash / OpenFolder / ReloadHash / RefreshMetadata /
+CopySourceUrl / CopyFileName / Delete) 全 try/catch → toast + log,不抛异常
+(避免 ContextMenu 残留)。
+
+3 测试 seam (ShowConfirmDialogOverride / OpenInExplorerOverride /
+SetClipboardTextOverride) 默认走真实 OS API,测试可 override 替换为 lambda。
+
+构造函数用 Func delegate 注入 hash + match lookup(brief 原计划用
+Substitute.For<ModelHasher> + Substitute.For<CivitaiMatcherOrchestrator>
+不可行 — ModelHasher 是 static class,CivitaiMatcherOrchestrator.MatchAsync
+是 sealed class 的非虚方法)。生产 wire 在 MainViewModel 注入:
+  ModelHasher.ComputeTensorOnlySha256 (static → method group)
+  civitaiOrchestrator.MatchAsync       (instance → method group)
+
+新增 (项目此前缺): ToastNotification 最小版 (4 级别 + UI 线程 dispatch)
++ IProgressDialogService 接口 + ProgressDialogService 实现。
+
+Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile 走 Recycle Bin,
+需 csproj 加 <Reference Include="Microsoft.VisualBasic" />。
+
+ReloadHash / RefreshMetadata / Delete 的 DB 写 + VM Refresh 留 TODO
+(T5/T6 wire) — 这是 design intent,不算桩函数。
+
+Pre-flight deviations (详 task-3-report.md):
+- Moq (项目 csproj 约定) 替代 NSubstitute (brief 用)
+- Func delegate 注入替代 Substitute.For<ModelHasher> (static 类不可 substitute)
+- Real CivitaiMatcherOrchestrator + mocked IModelMatcher[] 替代 Substitute.For<>
+  (sealed class 的非虚方法不可 substitute)
+- LocalModelCard.SourcePath 加在 record 末尾 default ""
+
+T4 plan §Step 1 调整:LocalModelCard 已含 SourcePath,T4 仅需加 FileSize +
+IsStarred + 2 factory + GroupToCards 透传 SourcePath (从 DownloadedModel.FullPath)。
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>

@@ -21,6 +21,13 @@
          不在 BCL 里 — brief 原以为 BCL 内,但实际 net5+ 都已分离为 nuget。包很小 ~110KB)。 -->
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
+  <!-- v1.0.0.x (2026-09-17) T47:Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile
+       用于 ContextMenu「删除到回收站」命令(走 Recycle Bin 而非 File.Delete 永久删除)。
+       .NET 8 SDK-style project 默认不引用 Microsoft.VisualBasic assembly,需显式 Reference。
+       替代方案(Win32 SHFileOperation P/Invoke)复杂 ~200 行,且 Windows API 行为差异大。 -->
+  <ItemGroup>
+    <Reference Include="Microsoft.VisualBasic" />
+  </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">
       <Generator>MSBuild:Compile</Generator>
