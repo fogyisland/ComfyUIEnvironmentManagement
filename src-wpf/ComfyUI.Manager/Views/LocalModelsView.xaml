@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:ComfyUI.Manager.ViewModels"
              xmlns:controls="clr-namespace:ComfyUI.Manager.Controls"
+             xmlns:views="clr-namespace:ComfyUI.Manager.Views.LocalModels"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
@@ -166,152 +167,22 @@
                 </StackPanel>
             </Border>
 
-            <!-- Card grid:VM.IsEmpty=false 时显示。 -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
-                <ItemsControl ItemsSource="{Binding FilteredModels, Mode=OneWay}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <!-- v1.0.0.x: 卡片 click → 选中(card → VM.SelectedCard) → toolbar「🔎 CivitAI 查询」
-                                 按钮 enable。Border 视觉选中态走 DataTrigger + ReferenceEquals MultiBinding
-                                 把 (card instance) vs (VM.SelectedCard) 比对 → 相等 → BorderBrush 加粗加深。
-                                 卡片本体仍是 Border,MouseLeftButtonDown 用 Bubble strategy — 子控件
-                                 (📋/📁 按钮)的 Click 事件先被 Button handle 不会 bubble 到这里,
-                                 点非按钮区才设 SelectedCard,符合用户预期。 -->
-                            <Border Width="540" Height="250" Margin="0,0,12,12"
-                                    Background="{DynamicResource SurfaceBrush}"
-                                    BorderBrush="Transparent" BorderThickness="1"
-                                    CornerRadius="6" Padding="16"
-                                    Cursor="Hand"
-                                    MouseLeftButtonDown="Card_Click"
-                                    Tag="{Binding}"
-                                    ContextMenu="{StaticResource LocalModelCardContextMenu}">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Style.Triggers>
-                                            <!-- v1.0.0.x: 选中态视觉 — BorderBrush 切到 PrimaryBrush
-                                                 + BorderThickness 加粗到 2。reference-equals 模式 —
-                                                 ApplyUserQueryToCard 走 in-place 替换记录选中态,
-                                                 GroupToCards rebuild 后 ReferenceEquals 失败(新 instance)
-                                                 → 默认不选中,符合"换 card list 后未点不选中"语义。 -->
-                                            <DataTrigger Value="True">
-                                                <DataTrigger.Binding>
-                                                    <MultiBinding Converter="{StaticResource ReferenceEquals}">
-                                                        <Binding />
-                                                        <Binding Path="DataContext.SelectedCard"
-                                                                 RelativeSource="{RelativeSource AncestorType=UserControl}" />
-                                                    </MultiBinding>
-                                                </DataTrigger.Binding>
-                                                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
-                                                <Setter Property="BorderThickness" Value="2" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <!-- 左:80x80 preview image OR kind badge fallback (v1.0.0 T10) -->
-                                    <Grid Grid.Column="0" Width="80" Height="80" Margin="0,0,12,0" VerticalAlignment="Top">
-                                        <!-- Image: 有 PreviewImagePath 时显示 -->
-                                        <Border CornerRadius="6"
-                                                Background="{DynamicResource SurfaceVariantBrush}"
-                                                Visibility="{Binding PreviewImagePath, Converter={StaticResource InverseNullToVisibility}}">
-                                            <Image Source="{Binding PreviewImagePath, Mode=OneWay}"
-                                                   Stretch="UniformToFill" />
-                                        </Border>
-                                        <!-- Kind badge: 无 PreviewImagePath 时显示 (T7 既有 badge fallback) -->
-                                        <Border Background="{Binding Kind, Converter={StaticResource ModelKindBadgeBrush}}"
-                                                CornerRadius="6"
-                                                Visibility="{Binding PreviewImagePath, Converter={StaticResource NullToVisibility}}">
-                                            <TextBlock Text="{Binding Kind, Mode=OneWay}"
-                                                       Foreground="{DynamicResource OnPrimaryBrush}"
-                                                       FontWeight="Bold" FontSize="11"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                        </Border>
-                                    </Grid>
-
-                                    <!-- 右:title + meta + lookup button (T11 加 button row, 卡片 height 220 → 250) -->
-                                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                                        <!-- v1.0.0.x (2026-09-17) T46i.2:绑 DisplayTitle 而非 Title —
-                                             优先 CivitAI 查到的真实 title(MatchedDetail.Title 非空时),
-                                             否则 fallback 到 scanner 写的本地子目录名。其它字段
-                                             (Kind / Source / VersionCount)保持 scanner 原始值。
-                                             跟 SearchableText 同样的 record 派生属性模式,non-INPC
-                                             靠 record `with` 替换 instance 自然刷新。 -->
-                                        <TextBlock Text="{Binding DisplayTitle, Mode=OneWay}"
-                                                   FontSize="15" FontWeight="Bold"
-                                                   TextWrapping="Wrap" MaxHeight="44" />
-                                        <TextBlock Foreground="Gray" FontSize="11" Margin="0,4,0,0">
-                                            <Run Text="📦 " />
-                                            <Run Text="{Binding VersionCount, Mode=OneWay}" />
-                                            <Run Text=" 个版本" />
-                                        </TextBlock>
-                                        <TextBlock Foreground="Gray" FontSize="11" Margin="0,2,0,0">
-                                            <Run Text="🌐 " />
-                                            <Run Text="{Binding Source, Mode=OneWay}" />
-                                        </TextBlock>
-                                        <TextBlock Foreground="Gray" FontSize="11" Margin="0,2,0,0">
-                                            <Run Text="📅 " />
-                                            <Run Text="{Binding LatestDownloadedAt, Mode=OneWay, StringFormat='{}{0:yyyy-MM-dd}', TargetNullValue='—'}" />
-                                        </TextBlock>
-                                        <!-- v1.0.0.x: 用户覆盖的本地路径(蓝色 badge) + 复制按钮 + 编辑按钮。
-                                             LocalPathOverride 非空时显示「✏ 覆盖中」badge 提示用户该卡走自定义路径;
-                                             路径文本 monospace + 横向滚动(text 过长时);📋 复制走 Clipboard;📁 编辑
-                                             弹 EditLocalPathDialog → VM.SetOverridePath → 写 SQLite + 重建 card。 -->
-                                        <Border Margin="0,4,0,0" Padding="4,2" CornerRadius="3"
-                                                Background="#E3F2FD"
-                                                Visibility="{Binding LocalPathOverride, Converter={StaticResource NullToVisibility}}"
-                                                HorizontalAlignment="Left">
-                                            <TextBlock FontSize="10" Foreground="#1976D2" FontWeight="SemiBold">
-                                                <Run Text="✏ 覆盖中"/>
-                                            </TextBlock>
-                                        </Border>
-                                        <DockPanel Margin="0,2,0,0">
-                                            <Button DockPanel.Dock="Right" Content="📋"
-                                                    Margin="4,0,0,0" Padding="6,1"
-                                                    ToolTip="复制本地路径到剪贴板"
-                                                    Click="CopyLocalPath_Click"
-                                                    Tag="{Binding}" />
-                                            <Button DockPanel.Dock="Right" Content="📁"
-                                                    Margin="2,0,0,0" Padding="6,1"
-                                                    ToolTip="编辑本地路径"
-                                                    Click="EditLocalPath_Click"
-                                                    Tag="{Binding}" />
-                                            <TextBlock Text="{Binding LocalPathOverride, Mode=OneWay}"
-                                                       FontFamily="Consolas" FontSize="10"
-                                                       Foreground="#555"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center"
-                                                       ToolTip="{Binding LocalPathOverride, Mode=OneWay}"/>
-                                        </DockPanel>
-                                        <!-- v1.0.0.x: 原 inline「🔍 查询 CivitAI」按钮已删除。
-                                             toolbar 上统一有「🔎 CivitAI 查询」按钮,选中卡片后启用 —
-                                             single source of truth,避免 inline button + toolbar button
-                                             两套 IsEnabled 路径不一致 + 每个卡片都铺按钮视觉冗余。
-                                             点击卡片 → code-behind 调 VM.SelectedCard = card → 视觉选中态。 -->
-                                    </StackPanel>
-                                    <!-- v1.0.0 T13-7:status dot — bottom-right of card。
-                                         MatchedDetail 非 null → 绿 / null → 灰。
-                                         Tooltip 显示 MatchSource enum 的人话描述。 -->
-                                    <Ellipse Width="10" Height="10" Margin="0,0,4,4"
-                                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                             Fill="{Binding MatchedDetail, Converter={StaticResource MatchStatusToBrush}}"
-                                             ToolTip="{Binding MatchSource, Converter={StaticResource MatchSourceToTooltip}}" />
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <!-- v1.0.0.x (2026-09-17) T47:ContentControl + ViewModeTemplateSelector 路由 3 视图
+                 (Cards / List / Thumbnails)。Cards 默认显示 — FallbackValue 给设计器 / 启动期 VM 未注入时用。
+                 Content="{Binding ActiveViewMode}" — T6 才加 ActiveViewMode INPC property,
+                 本 task 临时接受 binding 失败(显示默认),T6 会修。XAML 编译不报错(只是运行时 binding warning)。
+                 3 个 UserControl + selector 的 DataTemplate 在 Theme.xaml 全局注册(CardsViewTemplate /
+                 ListViewTemplate / ThumbnailsViewTemplate),DataType="{x:Type sys:Int32}" 让
+                 selector 拿 enum boxed Int32 路由。 -->
+            <ContentControl Content="{Binding ActiveViewMode, FallbackValue={x:Static views:ViewMode.Cards}}"
+                            Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
+                <ContentControl.ContentTemplateSelector>
+                    <views:ViewModeTemplateSelector
+                        CardsTemplate="{StaticResource CardsViewTemplate}"
+                        ListTemplate="{StaticResource ListViewTemplate}"
+                        ThumbnailsTemplate="{StaticResource ThumbnailsViewTemplate}" />
+                </ContentControl.ContentTemplateSelector>
+            </ContentControl>
         </Grid>
 
         <!-- v1.0.0.x #590:Console 面板抽取到 Controls/ConsolePanel.xaml — terminal 深灰底浅字风格。

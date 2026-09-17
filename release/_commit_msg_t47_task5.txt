@@ -1,0 +1,11 @@
+feat(view): T47 3-view mode (Cards/List/Thumbnails) + DataTemplateSelector
+
+CardsView 抽出当前 WrapPanel + ContextMenu + Star 角标(default view)。
+ListView 新 DataGrid 7 列(★/Kind/Title/Source/Size/Hash/CivitAI)。
+ThumbnailsView 新 ListBox + WrapPanel + 150px LocalPathToBitmapConverter
+(同步 Freeze,缺图走 placeholder 灰块)。
+ViewMode enum + ViewModeTemplateSelector 3 template 路由 +
+unknown item fallback to Cards。
+LocalModelsView 主体改 ContentControl.ContentTemplateSelector,
+3 DataTemplate 在 Theme.xaml。
+dev verify:启动 app + 看 Cards 默认 + 无 XAML compile error。
