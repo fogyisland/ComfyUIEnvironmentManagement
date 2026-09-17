@@ -109,6 +109,13 @@ public class Settings
     [JsonPropertyName("default_models_directory")]
     public string DefaultModelsDirectory { get; set; } = "";
     /// <summary>
+    /// v1.0.0.x (2026-09-17) T46:LocalModelsView toolbar 搜索框上次输入的字符串。
+    /// VM 在 ctor 末尾读这个还原,setter 写这个持久化(走 SettingsRepository.Save)。
+    /// 留空字符串 = 不启用搜索过滤,跟首次启动一致。
+    /// </summary>
+    [JsonPropertyName("local_models_filter")]
+    public string LocalModelsFilter { get; set; } = "";
+    /// <summary>
     /// v1.0.0.x (2026-08-29):Forge env 模型目录 per-type 覆盖(6 个 ComfyUI 风格
     /// 子目录:checkpoints / loras / vae / embeddings / hypernetworks / controlnet)。
     /// 任意字段非空 → <see cref="ProcessLauncher.BuildStartCommand"/> 把该
@@ -284,6 +291,9 @@ public class Settings
         target.LocalNodeDirectory = source.LocalNodeDirectory;
         target.LocalNodesDirectory = source.LocalNodesDirectory;
         target.DefaultModelsDirectory = source.DefaultModelsDirectory;
+        // v1.0.0.x (2026-09-17) T46:LocalModelsView 搜索框持久化字段 —
+        // 应用关闭重开,SettingsViewModel.SaveCommand 镜像后 user leaves 应用也能还原。
+        target.LocalModelsFilter = source.LocalModelsFilter;
         // v1.0.0.x:ForgePaths 子对象 — 6 个 nullable string 字段就地复制
         // (sub-object 引用共享,逐字段写更明确)。
         target.ForgePaths.CheckpointsDir = source.ForgePaths.CheckpointsDir;

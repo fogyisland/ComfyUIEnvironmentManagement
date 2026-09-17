@@ -4,8 +4,10 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using System.Windows.Threading;
 using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
@@ -52,6 +54,16 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     /// <summary>v1.0.0 T-D5:scanner streaming emit 的累加器 — Phase 1 一波填满,Phase 2 增量覆盖同 SourceId 行。
     /// Task.Run 完后 final 列表覆盖这里(streaming 可能有 race 覆盖错),作为 authoritative result。</summary>
     private readonly List<DownloadedModel> _streamedRaw = new();
+    // v1.0.0.x (2026-09-17) T46:SearchText 当前值(从 Settings 还原,setter 写回)。
+    private string _searchText = "";
+    // v1.0.0.x (2026-09-17) T46:1ms 防抖 DispatcherTimer handle(Stop/Dispose 由 handle 自己负责)。
+    private IDisposable? _filterTimerHandle;
+    // v1.0.0.x (2026-09-17) T46:防抖 timer 触发的 ApplyFilter 计数(测试 seam)。
+    // 生产路径不读这个 — ReloadAsync / chip 切换时 ApplyFilter 不算入。
+    private int _filterApplyCount;
+    // v1.0.0.x (2026-09-17) T46:test seam — 测试可注入即时触发的 fake timer,
+    // 验证连续赋值只触发 1 次 ApplyFilter。生产路径 = null,ctor lazy-new 真 DispatcherTimer。
+    internal Func<Action, TimeSpan, IDisposable>? FilterTimerFactory { get; set; }
 
     public ObservableCollection<LocalModelCard> FilteredModels { get; } = new();
     public ObservableCollection<KindChip> KindChips { get; } = new();
@@ -123,6 +135,64 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// v1.0.0.x (2026-09-17) T46:LocalModelsView toolbar 搜索框文本。
+    /// setter 立即写回 <see cref="Settings.LocalModelsFilter"/> 持久化,
+    /// 同时启 1ms 防抖 timer 重应用 filter(连续打字只触发 1 次 ApplyFilter)。
+    /// 空字符串 = 不过滤;非空 → <see cref="LocalModelCard.SearchableText"/> 用
+    /// OrdinalIgnoreCase Contains 匹配。
+    /// </summary>
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (_searchText == value) return;
+            _searchText = value ?? "";
+            PropertyChanged?.Invoke(this, new(nameof(SearchText)));
+            // 持久化到 Settings POCO —— 真正的 .inf disk 写由 SettingsViewModel.SaveCommand 周期触发
+            // (跟其他 settings 字段一致,不在每个 keystroke 都 Save 避免 IO 抖动)。
+            _settings.LocalModelsFilter = _searchText;
+            // 1ms 防抖:Stop 旧 timer + Start 新 timer → UI thread batching 多键连击成 1 次 ApplyFilter。
+            // 测试路径 TimerFactory 是 fake(同步 Tick),无需 Dispatcher。
+            _filterTimerHandle?.Dispose();
+            _filterTimerHandle = StartFilterTimer();
+        }
+    }
+
+    /// <summary>v1.0.0.x T46:测试用 — 注入一个 Action callback,每次 ApplyFilter 跑过
+    /// FilterPredicate 链尾部时被调用(用于测试"连续 10 次 SearchText 赋值只触发 1 次")。
+    /// 生产路径不调,保持 zero overhead。</summary>
+    internal Action? FilterAppliedCallback { get; set; }
+
+    /// <summary>v1.0.0.x T46:测试用 — 注入 Func,SearchText setter 启防抖 timer 时调它代替
+    /// 真实 DispatcherTimer。返回 IDisposable handle(setter 再被调时 Dispose 取消旧 timer)。
+    /// 生产路径 = null,ctor lazy-new 一个 DispatcherTimer。</summary>
+    private IDisposable StartFilterTimer()
+    {
+        Action onTick = ApplyFilter;
+        var factory = FilterTimerFactory;
+        if (factory is null)
+        {
+            // 生产路径:WPF DispatcherTimer 1ms 防抖(同 SplashViewModel.StartTimer 模式)。
+            var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1) };
+            t.Tick += (_, _) => onTick();
+            t.Start();
+            return new DispatcherTimerHandle(t);
+        }
+        // 测试路径:fake timer(factory 决定是立即 Tick 还是 Sleep 后 Tick)。
+        return factory(onTick, TimeSpan.FromMilliseconds(1));
+    }
+
+    /// <summary>DispatcherTimer 包装成 IDisposable,跟 <see cref="SplashViewModel"/>
+    /// 内部 DispatcherTimerHandle 同模式。</summary>
+    private sealed class DispatcherTimerHandle : IDisposable
+    {
+        private readonly DispatcherTimer _timer;
+        public DispatcherTimerHandle(DispatcherTimer timer) => _timer = timer;
+        public void Dispose() => _timer.Stop();
+    }
+
     public LocalModelsViewModel(
         Settings settings,
         ModelFilesystemScanner scanner,
@@ -178,6 +248,12 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                 _ = ExecuteLookupAsync(card);
             },
             canExecute: _ => IsLookupEnabledForSelectedCard);
+
+        // v1.0.0.x (2026-09-17) T46:从 Settings.LocalModelsFilter 还原上次搜索词(应用重开场景)。
+        // 空值时 = 首次启动 / 没搜过,SearchText 默认 "" — 全卡可见。
+        // 不在 ctor 里调用 ApplyFilter — FilteredModels 此时还空,filter 无意义;
+        // 由后续 ReloadAsync / LoadFromDb 重建 _allCards 时调用 ApplyFilter 自动套搜索过滤。
+        _searchText = settings.LocalModelsFilter ?? "";
 
         // v1.0.0.x: 「编辑本地路径」命令 — 点 [📁] 按钮时执行。
         // XAML 绑 EditLocalPathCommand,parameter = LocalModelCard。
@@ -581,11 +657,22 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
 
     private void ApplyFilter()
     {
+        // v1.0.0.x T46:SearchText + kind chip 双过滤(原 chip-only 逻辑)。
+        // FilteredModels.Clear() + Add 模式保留 — ObservableCollection 重建路径稳定,
+        // View 端 Clear-then-Add 不会闪。
         FilteredModels.Clear();
-        var src = _activeChip?.Kind is null
-            ? _allCards
-            : _allCards.Where(c => c.Kind == _activeChip!.Kind).ToList();
-        foreach (var c in src) FilteredModels.Add(c);
+        var search = _searchText;
+        var hasSearch = !string.IsNullOrEmpty(search);
+        var kindFilter = _activeChip?.Kind;
+        foreach (var c in _allCards)
+        {
+            if (kindFilter is not null && c.Kind != kindFilter) continue;
+            if (hasSearch && c.SearchableText.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            FilteredModels.Add(c);
+        }
+        // 防抖路径触发时计 1 次(RebuildCardsAndChips / chip 切换路径不算)。
+        Interlocked.Increment(ref _filterApplyCount);
+        FilterAppliedCallback?.Invoke();
     }
 
     // ===== v1.0.0 T11:CivitAI lookup integration =====

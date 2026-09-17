@@ -273,6 +273,44 @@ public sealed record LocalModelCard(
     /// 替换成新 card(保留其他字段不变)。Empty/null overridePath 视作「恢复默认」。</summary>
     public LocalModelCard WithLocalPathOverride(string? overridePath)
         => this with { LocalPathOverride = string.IsNullOrEmpty(overridePath) ? null : overridePath };
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-17) T46:LocalModelsView 搜索框用的「全部可搜索字段」拼接字符串
+    /// (参考 SwarmUI models.js:826 风格 — 不规范 Trim/标点,直接拼 + lowercase,
+    /// OrdinalIgnoreCase 配合 String.Contains 命中)。
+    ///
+    /// 拼接字段(按 spec §3.2):Name → SourceId(最近等价物)、Title、MatchedDetail 内的
+    /// Title/Username/Description/BaseModel/Tags、Source、Kind。
+    /// SubfolderName 在 LocalModelCard 不存在(是 DownloadedModel 字段),
+    /// Author 也不存在(走 MatchedDetail.Username 替代)。缺哪个跳哪个 — null/empty 自动忽略。
+    /// 派生属性:每次访问重算,单卡 < 1KB;1000 卡 < 1MB,WPF 字符串 interning 进一步降低。
+    /// </summary>
+    public string SearchableText
+    {
+        get
+        {
+            var parts = new List<string?>(8)
+            {
+                SourceId,
+                Title,
+                Source,
+                Kind.ToString(),
+            };
+            if (MatchedDetail is not null)
+            {
+                parts.Add(MatchedDetail.Title);
+                parts.Add(MatchedDetail.Username);
+                parts.Add(MatchedDetail.Description);
+                parts.Add(MatchedDetail.BaseModel);
+                if (MatchedDetail.Tags is { } tags)
+                {
+                    foreach (var t in tags) parts.Add(t);
+                }
+            }
+            return string.Join(" ", parts.Where(s => !string.IsNullOrEmpty(s)))
+                .ToLowerInvariant();
+        }
+    }
 }
 
 /// <summary>v0.6.20:meta.json sidecar 反序列化形状。
