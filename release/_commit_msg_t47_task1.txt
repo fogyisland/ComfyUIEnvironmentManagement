@@ -1,0 +1,6 @@
+feat(state): T47 model.db model_stars + model_settings tables
+
+2 张新表(model_stars Star 收藏 / model_settings UI 状态 K-V),
+老 DB CREATE IF NOT EXISTS 自动迁移,2 测试。
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>

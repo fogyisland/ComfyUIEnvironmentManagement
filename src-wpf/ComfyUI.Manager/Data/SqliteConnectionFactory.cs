@@ -424,6 +424,9 @@ public sealed class SqliteConnectionFactory
     /// v1.0.0.x T45:CREATE TABLE IF NOT EXISTS for model.db (3 表 + 1 索引)。
     /// 装本地模型 scan / override / CivitAI 缓存,纯用户机器本地缓存,不能作为 seed 跨用户分发。
     /// FK 全部移除(没有跨 db FK 概念),一致性靠 application-level 保证。
+    /// v1.0.0.x (2026-09-17) T47:追加 2 表 + 1 索引 ——
+    ///   • model_stars    (Star 收藏 PK source_path + idx 按 starred_at DESC 排序)
+    ///   • model_settings (UI 状态 K-V PK key)
     /// </summary>
     private static void InitModelSchema(SqliteConnection conn)
     {
@@ -478,6 +481,25 @@ public sealed class SqliteConnectionFactory
                 source_id TEXT PRIMARY KEY,
                 detail_json TEXT NOT NULL,
                 fetched_at TEXT NOT NULL
+            );
+
+            -- v1.0.0.x (2026-09-17) T47:Star 收藏持久化。PK = model card 的稳定
+            -- source_path(与 LocalModelCard.SourcePath 同源;Windows 路径在 SQLite 默认
+            -- BINARY collation 下大小写敏感,本项目接受这个行为 —— 用户复制路径时保持
+            -- 原样)。starred_at 用 datetime('now') 默认值,SortBy 走 idx_model_stars_at。
+            CREATE TABLE IF NOT EXISTS model_stars (
+                source_path TEXT PRIMARY KEY NOT NULL,
+                starred_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_model_stars_at ON model_stars(starred_at DESC);
+
+            -- v1.0.0.x (2026-09-17) T47:LocalModels UI 状态 K-V(view_mode / stars_only /
+            -- search)。key 命名约定 'localmodels.<setting>' 走 settings-style namespace。
+            -- updated_at 方便排查缓存与磁盘失同步;Set() 时刷新。
+            CREATE TABLE IF NOT EXISTS model_settings (
+                key        TEXT PRIMARY KEY NOT NULL,
+                value      TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             )";
         cmd.ExecuteNonQuery();
     }
