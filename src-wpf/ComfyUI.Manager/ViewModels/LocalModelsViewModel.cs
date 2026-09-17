@@ -189,7 +189,8 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
 
     /// <summary>
     /// v1.0.0.x (2026-09-17) T46:LocalModelsView toolbar 搜索框文本。
-    /// setter 立即写回 <see cref="Settings.LocalModelsFilter"/> 持久化,
+    /// setter 立即写回 model_settings.localmodels.search(由 <see cref="SearchFilterMigration.Key"/>
+    /// 定义)持久化,T46 → T47 迁移:不再写 <see cref="Settings.LocalModelsFilter"/>。
     /// 同时启 1ms 防抖 timer 重应用 filter(连续打字只触发 1 次 ApplyFilter)。
     /// 空字符串 = 不过滤;非空 → <see cref="LocalModelCard.SearchableText"/> 用
     /// OrdinalIgnoreCase Contains 匹配。
@@ -202,9 +203,9 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
             if (_searchText == value) return;
             _searchText = value ?? "";
             PropertyChanged?.Invoke(this, new(nameof(SearchText)));
-            // 持久化到 Settings POCO —— 真正的 .inf disk 写由 SettingsViewModel.SaveCommand 周期触发
-            // (跟其他 settings 字段一致,不在每个 keystroke 都 Save 避免 IO 抖动)。
-            _settings.LocalModelsFilter = _searchText;
+            // v1.0.0.x (2026-09-17) T47:持久化从 Settings POCO 改到 model_settings 表
+            // (迁移到独立 model.db,避免每次 keystroke 触发 SettingsViewModel.SaveCommand 写盘)。
+            _localModelsSettings?.Set(SearchFilterMigration.Key, _searchText);
             // 1ms 防抖:Stop 旧 timer + Start 新 timer → UI thread batching 多键连击成 1 次 ApplyFilter。
             // 测试路径 TimerFactory 是 fake(同步 Tick),无需 Dispatcher。
             _filterTimerHandle?.Dispose();
@@ -431,11 +432,20 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
             },
             canExecute: _ => IsLookupEnabledForSelectedCard);
 
-        // v1.0.0.x (2026-09-17) T46:从 Settings.LocalModelsFilter 还原上次搜索词(应用重开场景)。
-        // 空值时 = 首次启动 / 没搜过,SearchText 默认 "" — 全卡可见。
-        // 不在 ctor 里调用 ApplyFilter — FilteredModels 此时还空,filter 无意义;
+        // v1.0.0.x (2026-09-17) T47:启动时一次性把 T46 老 Settings.LocalModelsFilter 迁到
+        // model_settings.localmodels.search,然后从 model_settings 读搜索词。
+        // 全新用户(老 filter 为 null/空)= 直接从 model_settings 读(空 = 默认 "")。
+        SearchFilterMigration.Migrate(
+            _localModelsSettings!,
+            settings.LocalModelsFilter,
+            v => settings.LocalModelsFilter = v ?? "");
+        var persistedSearch = _localModelsSettings?.Get(SearchFilterMigration.Key);
+        if (!string.IsNullOrEmpty(persistedSearch))
+        {
+            _searchText = persistedSearch;
+        }
+        // 不在 ctor 里调用 ApplyFilter — _allCards 此时还空,filter 无意义;
         // 由后续 ReloadAsync / LoadFromDb 重建 _allCards 时调用 ApplyFilter 自动套搜索过滤。
-        _searchText = settings.LocalModelsFilter ?? "";
 
         // v1.0.0.x: 「编辑本地路径」命令 — 点 [📁] 按钮时执行。
         // XAML 绑 EditLocalPathCommand,parameter = LocalModelCard。

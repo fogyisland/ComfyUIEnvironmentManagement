@@ -112,6 +112,12 @@ public class Settings
     /// v1.0.0.x (2026-09-17) T46:LocalModelsView toolbar 搜索框上次输入的字符串。
     /// VM 在 ctor 末尾读这个还原,setter 写这个持久化(走 SettingsRepository.Save)。
     /// 留空字符串 = 不启用搜索过滤,跟首次启动一致。
+    ///
+    /// v1.0.0.x (2026-09-17) T47:[Obsolete 注释]此字段已迁移到
+    /// model_settings.localmodels.search (由 <see cref="Data.LocalModelSettingsRepository"/>
+    /// 持久化)。保留仅供 SettingsViewModel.SaveCommand 周期序列化兼容,实际写入 null
+    /// (由 SearchFilterMigration.Migrate 清空)。T46 老用户数据启动时自动迁移,
+    /// 无需手动操作。SearchText setter 不再写这个字段。
     /// </summary>
     [JsonPropertyName("local_models_filter")]
     public string LocalModelsFilter { get; set; } = "";

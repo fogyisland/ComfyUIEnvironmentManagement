@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
 using ComfyUI.Manager.ViewModels;
+using ComfyUI.Manager.Tests.Fakes;
 using Xunit;
 
 namespace ComfyUI.Manager.Tests.ViewModels;
@@ -13,13 +15,17 @@ namespace ComfyUI.Manager.Tests.ViewModels;
 /// v1.0.0.x T46 Task 3:LocalModelsViewModel.SearchText + LocalModelCard.SearchableText +
 /// 1ms DispatcherTimer 防抖 + String.Contains(OrdinalIgnoreCase) 全文搜索过滤。
 ///
+/// v1.0.0.x (2026-09-17) T47:SearchText 持久化目标从 Settings.LocalModelsFilter
+/// (POCO JSON)迁到 model_settings.localmodels.search(SQLite 表),由
+/// <see cref="LocalModelSettingsRepository"/> 接管。
+///
 /// 测试要点(per spec §3.1 / §3.2 / plan task 3):
 ///  - SearchText setter 触发 ApplyFilter(防抖 → 立即 ApplyFilter 测试通过 TimerFactory seam 同步触发)
 ///  - 空 SearchText → 全卡显示
 ///  - 大小写不敏感(OrdinalIgnoreCase)
 ///  - SearchableText 拼接 8 字段(实际可用的 SourceId/Title/MatchedDetail.*/Source/Kind)
 ///  - SearchableText 全 null/empty 不 crash 也不通过 filter("" 才显示全部)
-///  - SearchText 持久化到 Settings.LocalModelsFilter,新构造 VM 时还原
+///  - SearchText 持久化到 model_settings.localmodels.search,新构造 VM 时还原
 /// </summary>
 public sealed class LocalModelsViewModelSearchTests
 {
@@ -187,24 +193,35 @@ public sealed class LocalModelsViewModelSearchTests
     }
 
     [Fact]
-    public void SearchText_PersistsToSettingsLocalModelsFilter()
+    public void SearchText_PersistsToModelSettings()
     {
+        // v1.0.0.x (2026-09-17) T47:SearchText setter 现在写 model_settings 表
+        // (由 LocalModelSettingsRepository 持久化),不再写 Settings.LocalModelsFilter。
+        using var db = new TestDb();
         var settings = SettingsWith("Z:\\fake");
-        var vm = new LocalModelsViewModel(settings, ThreeCards());
+        var modelSettings = new LocalModelSettingsRepository(db.ModelFactory);
+        var vm = new LocalModelsViewModel(
+            settings, ThreeCards(), localModelsSettings: modelSettings);
 
         vm.SearchText = "anime";
 
-        Assert.Equal("anime", settings.LocalModelsFilter);
+        Assert.Equal("anime", modelSettings.Get(SearchFilterMigration.Key));
     }
 
     [Fact]
-    public void Constructor_RestoresLastSearchFromSettings()
+    public void Constructor_RestoresLastSearchFromModelSettings()
     {
-        // 应用关闭后重开:Settings.LocalModelsFilter 仍有上次的值 → VM.SearchText 立刻还原
+        // v1.0.0.x (2026-09-17) T47:VM ctor 从 model_settings 还原 SearchText(非
+        // Settings.LocalModelsFilter)。新构造 VM → 启动还原路径 → SearchText 立刻可见。
+        using var db = new TestDb();
         var settings = SettingsWith("Z:\\fake");
-        settings.LocalModelsFilter = "anime";
-
-        var vm = new LocalModelsViewModel(settings, ThreeCards());
+        var modelSettings = new LocalModelSettingsRepository(db.ModelFactory);
+        modelSettings.Set(SearchFilterMigration.Key, "anime");
+        var vm = new LocalModelsViewModel(
+            settings, ThreeCards(), localModelsSettings: modelSettings)
+        {
+            FilterTimerFactory = (action, _) => new FakeImmediateTimer(action),
+        };
         vm.ReloadAsync().GetAwaiter().GetResult();
 
         Assert.Equal("anime", vm.SearchText);
