@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using System.Windows.Input;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.ViewModels;
 
@@ -29,6 +30,18 @@ public sealed partial class LocalModelsView : UserControl
     // auto-scroll + hook/unhook 都在 UserControl 内部,View 只剩 close handler。
 
     private LocalModelsViewModel? _vm;
+
+    /// <summary>v1.0.0.x (2026-09-17) T46:toolbar 搜索框 ✕ 按钮点击 — 清空 SearchText + 重聚焦。
+    /// 直接设 VM.SearchText="" 触发 PropertyChanged → binding 写回 SearchBox.Text;
+    /// Focus 让用户连续输入不必再点一次输入框。MouseButtonEventArgs 因为 XAML 用 MouseLeftButtonUp。</summary>
+    private void OnClearSearchClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is LocalModelsViewModel vm)
+        {
+            vm.SearchText = "";
+        }
+        SearchBox.Focus();
+    }
 
     /// <summary>Console ✕ → 清空日志 + 设 _userHiddenConsole 让 panel 收起。
     /// 下次 Reload 会复位 _userHiddenConsole → panel 自动重新打开。</summary>

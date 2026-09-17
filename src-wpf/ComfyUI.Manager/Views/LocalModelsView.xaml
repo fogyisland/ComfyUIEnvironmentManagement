@@ -81,6 +81,29 @@
                             ToolTip="对当前选中的本地模型卡查询 CivitAI 详情(先点卡片选中)"
                             IsEnabled="{Binding IsLookupEnabledForSelectedCard}" />
                 </StackPanel>
+                <!-- v1.0.0.x (2026-09-17) T46:顶部搜索框 — 借鉴 SwarmUI UX。
+                     TextBox.Text 两-way binding 到 VM.SearchText (UpdateSourceTrigger=PropertyChanged:
+                     每键即触发 setter → 1ms DispatcherTimer 防抖 → ApplyFilter 重算 FilteredModels)。
+                     ✕ 清空按钮 Visibility 绑 SearchText — 非空时 Visible,空时 Collapsed
+                     (StringNotEmptyToVisibility 已在 Theme.xaml 全局注册)。
+                     placeholder 文本走 ToolTip(简洁;WPF TextBox 原生无 placeholder 跨平台 way)。 -->
+                <Border DockPanel.Dock="Left"
+                        Background="{DynamicResource SurfaceVariantBrush}"
+                        CornerRadius="4" Padding="8,2" Margin="0,0,12,0"
+                        VerticalAlignment="Center" MinWidth="240" MaxWidth="400">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="✕" Foreground="Gray"
+                                   Cursor="Hand" Margin="6,0,0,0" VerticalAlignment="Center"
+                                   FontSize="13" ToolTip="清空搜索"
+                                   MouseLeftButtonUp="OnClearSearchClick"
+                                   Visibility="{Binding SearchText, Converter={StaticResource StringNotEmptyToVisibility}}" />
+                        <TextBox x:Name="SearchBox" BorderThickness="0" Background="Transparent"
+                                 Foreground="{DynamicResource OnSurfaceBrush}"
+                                 VerticalAlignment="Center"
+                                 ToolTip="🔍 search models... (即时搜索,匹配 title/source/kind 等)"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+                    </DockPanel>
+                </Border>
                 <TextBlock Text="本地模型" FontSize="16" FontWeight="Bold"
                            VerticalAlignment="Center" Margin="0,0,12,0" />
                 <ItemsControl ItemsSource="{Binding KindChips, Mode=OneWay}">
