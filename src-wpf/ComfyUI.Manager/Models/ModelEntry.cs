@@ -311,6 +311,24 @@ public sealed record LocalModelCard(
                 .ToLowerInvariant();
         }
     }
+
+    /// <summary>
+    /// v1.0.0.x (2026-09-17) T46i.2:卡片显示用的 Title — 优先 CivitAI 查到的真实 title
+    /// (MatchedDetail.Title 非空时),否则回退到 scanner 写的本地子目录名(Title)。
+    /// 用户决策(2026-09-17):「仅 Title 换成 Civitai Title,其它不动」,所以其它字段
+    /// (Kind / Source / VersionCount / LatestDownloadedAt)仍显示 scanner 原始值。
+    /// 跟 SearchableText 同款派生属性:每次访问重算;record 不可变,Set 必然新 record
+    /// 替换 instance → DisplayTitle 自然刷新。null/empty/whitespace 视作 miss 走 fallback。
+    /// </summary>
+    public string DisplayTitle
+    {
+        get
+        {
+            var civitai = MatchedDetail?.Title;
+            if (!string.IsNullOrWhiteSpace(civitai)) return civitai;
+            return Title ?? "";
+        }
+    }
 }
 
 /// <summary>v0.6.20:meta.json sidecar 反序列化形状。

@@ -23,6 +23,13 @@
     -->
     <UserControl.Resources>
         <Style x:Key="KindChipRadioStyle" TargetType="RadioButton">
+            <!-- v1.0.0.x (2026-09-17) T46i.1 fix:KindChip 选中态给 3D 描边效果。
+                 之前 IsChecked=True 只切 Background=PrimaryBrush(Light 主题 #1C1B1F 深黑)
+                 → 用户反馈"纯黑 应该和按钮一样选中呈现三维效果"。
+                 修法:加 BorderThickness=1 + BorderBrush=OutlineBrush 让选中态有描边立体感。
+                 Background 改用 SurfaceVariantBrush(浅灰紫 #E7E0EC / 深灰 #49454F)避免纯黑。
+                 Foreground 保持 OnSurfaceBrush,语义对比不变。
+                 Unselected 透明 + MouseOver SurfaceVariantBrush 不变。 -->
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}" />
             <Setter Property="Padding" Value="10,4" />
@@ -31,7 +38,8 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                CornerRadius="12" Padding="{TemplateBinding Padding}">
+                                BorderBrush="Transparent" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -39,8 +47,9 @@
                                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceVariantBrush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnPrimaryBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceVariantBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource OutlineBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource OnSurfaceBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -231,7 +240,13 @@
 
                                     <!-- 右:title + meta + lookup button (T11 加 button row, 卡片 height 220 → 250) -->
                                     <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                                        <TextBlock Text="{Binding Title, Mode=OneWay}"
+                                        <!-- v1.0.0.x (2026-09-17) T46i.2:绑 DisplayTitle 而非 Title —
+                                             优先 CivitAI 查到的真实 title(MatchedDetail.Title 非空时),
+                                             否则 fallback 到 scanner 写的本地子目录名。其它字段
+                                             (Kind / Source / VersionCount)保持 scanner 原始值。
+                                             跟 SearchableText 同样的 record 派生属性模式,non-INPC
+                                             靠 record `with` 替换 instance 自然刷新。 -->
+                                        <TextBlock Text="{Binding DisplayTitle, Mode=OneWay}"
                                                    FontSize="15" FontWeight="Bold"
                                                    TextWrapping="Wrap" MaxHeight="44" />
                                         <TextBlock Foreground="Gray" FontSize="11" Margin="0,4,0,0">
