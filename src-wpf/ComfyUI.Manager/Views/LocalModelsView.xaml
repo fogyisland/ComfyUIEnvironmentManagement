@@ -189,7 +189,8 @@
                                     CornerRadius="6" Padding="16"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="Card_Click"
-                                    Tag="{Binding}">
+                                    Tag="{Binding}"
+                                    ContextMenu="{StaticResource LocalModelCardContextMenu}">
                                 <Border.Style>
                                     <Style TargetType="Border">
                                         <Style.Triggers>

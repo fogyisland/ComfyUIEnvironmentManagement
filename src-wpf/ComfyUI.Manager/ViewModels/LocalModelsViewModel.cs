@@ -39,6 +39,18 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     // 手动刷新 → ReloadAsync 走 mtime-based 增量 diff,新/改文件重 hash + 写库,删文件删行。
     // nullable 兼容(测试 ctor 不传 → LoadFromDbAsync 退化为空 placeholder,ReloadAsync 走旧全量扫)。
     private readonly LocalModelFilesRepository? _localModelFilesRepo;
+    // v1.0.0.x (2026-09-17) T47:7 ContextMenu 命令的 service 层(Star 收藏 / Copy Hash /
+    // Open Folder / Reload Hash / Refresh Metadata / Copy Source URL / Copy FileName / Delete)。
+    // nullable 兼容(老测试 ctor 不传 → 命令不 wire,VM 仍能 Render 卡 + ApplyFilter)。
+    private readonly LocalModelOperations? _ops;
+    // v1.0.0.x (2026-09-17) T47:Star 收藏 DAO — model_stars 表 PK = source_path。
+    // VM 启动时 GetAll() 一次性 load 到 _starredPaths HashSet(避免每次 ToggleStar 都打 DB)。
+    private readonly StarredModelsRepository? _stars;
+    // v1.0.0.x (2026-09-17) T47:已收藏 source_path 集合 — ToggleStarCommand 同步更新避免
+    // 跟 DB 不一致;LoadFromDb / GroupToCards 套用此集合设每张 card IsStarred 派生值。
+    // OrdinalIgnoreCase 匹配 DB collation(虽然项目接受 BINARY,但 Windows 路径大小写不敏感
+    // 用户的同一文件可能路径大小写略有不同 — ignore case 更稳)。
+    private readonly HashSet<string> _starredPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _lookupsInFlight = new();
     // v1.0.0.x: Toolbar「🔎 CivitAI 查询」选中目标。点 card → SelectedCard = card;
     // toolbar 按钮 IsEnabled 跟 SelectedCard 走;Source != "Local" / 选 null 时 disable。
@@ -93,6 +105,41 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
     /// 只对 Source="Local" 的卡可用(meta.json 卡已有 SourceUrl 直接 web 跳转,
     /// 按钮藏起来 + 命令 canExecute 返回 false)。</summary>
     public ICommand LookupCivitAiCommand => _lookupCivitAiCommand;
+
+    // ===== v1.0.0.x (2026-09-17) T47:7 ContextMenu 命令 wire 到 LocalModelOperations =====
+    // 8 命令(7 实际,1 算 dummies):每个 CommandParameter 走 ContextMenu 绑定的单 card。
+    // 全部走项目自有 non-generic RelayCommand — `card as LocalModelCard` cast pattern
+    // 跟 v1.0.0 EnvironmentListViewModel.StartCommand 同款(parameter 是 LocalModelCard 或 null)。
+    // _ops null(老测试 ctor 路径)→ 命令 execute lambda no-op,UI 仍能弹 ContextMenu 但点不响应。
+    /// <summary>v1.0.0.x T47:Star / 取消 Star。调 <c>LocalModelOperations.ToggleStar</c> →
+    /// DB 写 model_stars(INSERT/DELETE),返回 updated card → 替换 FilteredModels 里
+    /// 旧 instance → WPF 重渲染 card 视觉态(star badge 显示/隐藏)。</summary>
+    public ICommand ToggleStarCommand { get; private set; } = null!;
+
+    /// <summary>v1.0.0.x T47:复制 card.Hash 到剪贴板。Hash 为 null → toast warning 不报错。</summary>
+    public ICommand CopyHashCommand { get; private set; } = null!;
+
+    /// <summary>v1.0.0.x T47:explorer.exe /select 打开 card.SourcePath 所在文件夹。文件不存在 → toast warning。</summary>
+    public ICommand OpenFolderCommand { get; private set; } = null!;
+
+    /// <summary>v1.0.0.x T47:进度对话框 + 走 hashFunc 重算 SHA256(tensor-only fast path)。
+    /// 异步;DB 写 + VM Refresh 留 TODO(T5/T6 wire)。</summary>
+    public ICommand ReloadHashCommand { get; private set; } = null!;
+
+    /// <summary>v1.0.0.x T47:进度对话框 + 走 matchFunc 查 CivitAI metadata。异步;
+    /// DB 写 + VM Refresh 留 TODO(T5/T6 wire)。</summary>
+    public ICommand RefreshMetadataCommand { get; private set; } = null!;
+
+    /// <summary>v1.0.0.x T47:复制 https://civitai.com/models/{id} URL。MatchedDetail.Id 必须非 null。
+    /// XAML 端 IsEnabled 走 NotNullToBoolConverter 在 MatchedDetail=null 时灰显菜单项。</summary>
+    public ICommand CopySourceUrlCommand { get; private set; } = null!;
+
+    /// <summary>v1.0.0.x T47:复制 Path.GetFileName(card.SourcePath) 到剪贴板(仅文件名)。</summary>
+    public ICommand CopyFileNameCommand { get; private set; } = null!;
+
+    /// <summary>v1.0.0.x T47:MessageBox 确认 → Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile
+    /// 走回收站(可恢复)→ toast 反馈。同步;DB 清理留 TODO(T5/T6 wire)。</summary>
+    public ICommand DeleteCommand { get; private set; } = null!;
 
     /// <summary>v1.0.0.x: 用户点 card 时设这里(VM 唯一选中态)。toolbar 按钮 IsEnabled
     /// 依赖此属性。点击非 card 区域(null) → ClearSelectedCard。
@@ -202,7 +249,12 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         CivitaiMatcherOrchestrator? orchestrator = null,
         LocalModelOverridesRepository? overridesRepo = null,
         CivitaiCardCacheRepository? civitaiCacheRepo = null,
-        LocalModelFilesRepository? localModelFilesRepo = null)
+        LocalModelFilesRepository? localModelFilesRepo = null,
+        // v1.0.0.x (2026-09-17) T47:7 ContextMenu 命令 service 层 + Star 收藏 DAO。
+        // nullable 兼容老测试 ctor 路径(直接传 null 不 wire) — MainViewModel.ShowLocalModels
+        // 在 App 启动后通过 factory 注入。
+        LocalModelOperations? ops = null,
+        StarredModelsRepository? stars = null)
     {
         _settings = settings;
         _scanner = scanner;
@@ -216,6 +268,69 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
         _civitaiCacheRepo = civitaiCacheRepo;
         // v1.0.0.x: scan 结果 per-file cache repo(可为 null — 测试场景)。
         _localModelFilesRepo = localModelFilesRepo;
+        // v1.0.0.x T47:7 命令 service + Star 收藏 DAO。老 ctor 调用路径(_ops == null)
+        // → 命令 execute 是 no-op,UI 仍能弹 ContextMenu(只点不响应)。生产 MainViewModel
+        // 注入 factory 创建的 instance。
+        _ops = ops;
+        _stars = stars;
+        if (stars is not null)
+        {
+            try
+            {
+                // 一次性 load 所有 starred path,后续 ToggleStar / LoadFromDb 都用此 HashSet 比对,
+                // 避免每次 toggle 都打 DB(perf:1500+ 卡片场景下)。
+                foreach (var p in stars.GetAll()) _starredPaths.Add(p);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warn("local-models", $"Load starred paths failed: {ex.Message}");
+            }
+        }
+        // v1.0.0.x T47:7 ContextMenu 命令 wire。command parameter 走 `as LocalModelCard`
+        // cast 模式(项目自有 non-generic RelayCommand 限定) — null 时 no-op,符合 ContextMenu
+        // 关闭不报错 UX。
+        ToggleStarCommand = new RelayCommand(p =>
+        {
+            var card = p as LocalModelCard;
+            if (card is null || _ops is null) return;
+            var updated = _ops.ToggleStar(card);
+            // 同步 _starredPaths HashSet 保持跟 DB 一致,避免下次 LoadFromDb 误读
+            if (updated.IsStarred) _starredPaths.Add(updated.SourcePath);
+            else _starredPaths.Remove(updated.SourcePath);
+            // FilteredModels IndexOf 定位旧 instance → 替换成新(updated by WithIsStarred
+            // 隐式通过 ops.ToggleStar — 实际 ops.ToggleStar 当前返回原 card,见
+            // LocalModelOperations.cs:99-108;这里再 WithIsStarred 一次).
+            var idx = FilteredModels.IndexOf(card);
+            if (idx >= 0) FilteredModels[idx] = card.WithIsStarred(!card.IsStarred);
+        });
+        CopyHashCommand = new RelayCommand(p =>
+        {
+            if (p is LocalModelCard card && _ops is not null) _ops.CopyHash(card);
+        });
+        OpenFolderCommand = new RelayCommand(p =>
+        {
+            if (p is LocalModelCard card && _ops is not null) _ops.OpenFolder(card);
+        });
+        ReloadHashCommand = new RelayCommand(async p =>
+        {
+            if (p is LocalModelCard card && _ops is not null) await _ops.ReloadHashAsync(card, CancellationToken.None).ConfigureAwait(true);
+        });
+        RefreshMetadataCommand = new RelayCommand(async p =>
+        {
+            if (p is LocalModelCard card && _ops is not null) await _ops.RefreshMetadataAsync(card, CancellationToken.None).ConfigureAwait(true);
+        });
+        CopySourceUrlCommand = new RelayCommand(p =>
+        {
+            if (p is LocalModelCard card && _ops is not null) _ops.CopySourceUrl(card);
+        });
+        CopyFileNameCommand = new RelayCommand(p =>
+        {
+            if (p is LocalModelCard card && _ops is not null) _ops.CopyFileName(card);
+        });
+        DeleteCommand = new RelayCommand(p =>
+        {
+            if (p is LocalModelCard card && _ops is not null) _ops.Delete(card);
+        });
         // v1.0.0 Console panel:内部 sink 接收 scanner progress 行,推 ConsoleLog。
         // ctor 在 UI 线程跑 → Progress 捕获 UI SyncContext → Report 自动 marshal 回 UI 线程。
         _consoleSink = new Progress<string>(line =>
@@ -638,7 +753,18 @@ public sealed class LocalModelsViewModel : INotifyPropertyChanged
                     MatchedDetail: matchedDetail,
                     MatchSource: matchSource,
                     // v1.0.0.x: 用户覆盖的本地绝对路径(null = 用 scanner FullPath)。
-                    LocalPathOverride: string.IsNullOrEmpty(pathOverride) ? null : pathOverride);
+                    LocalPathOverride: string.IsNullOrEmpty(pathOverride) ? null : pathOverride,
+                    // v1.0.0.x (2026-09-17) T47:7 ContextMenu 命令定位磁盘文件用
+                    // (model_stars.source_path PK 也是此值)。latestRecord.FullPath 跟
+                    // SetLocalModelsViewModel 的 _streamedRaw 透传一致 — LoadFromDb 路径
+                    // 走 LocalModelFilesRepository.LoadAll() 反序列化也带 FullPath。
+                    SourcePath: latestRecord.FullPath ?? "",
+                    // v1.0.0.x (2026-09-17) T47:Star 收藏状态 — _starredPaths 由 ctor
+                    // 一次性 load 完毕,这里 O(1) HashSet lookup 设 IsStarred。OrdinalIgnoreCase
+                    // 跟 DB collation 略不一致(项目接受 BINARY — 见 SqliteConnectionFactory
+                    // :490 注释),但 Windows 路径大小写不敏感,HashSet OrdinalIgnoreCase 匹配
+                    // 跟用户复制粘贴路径习惯更稳。
+                    IsStarred: !string.IsNullOrEmpty(latestRecord.FullPath) && _starredPaths.Contains(latestRecord.FullPath));
             })
             .OrderByDescending(c => c.LatestDownloadedAt ?? DateTime.MinValue)
             .ToList();

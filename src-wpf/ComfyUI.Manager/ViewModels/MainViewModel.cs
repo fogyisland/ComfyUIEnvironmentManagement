@@ -207,6 +207,12 @@ public class MainViewModel : ViewModelBase
     private CivitaiHashCache? _civitaiHashCache;
     private CivitaiMatcherOrchestrator? _civitaiMatcherOrchestrator;
 
+    /// <summary>v1.0.0.x (2026-09-17) T47:App.xaml.cs 注入 LocalModelOperations 工厂时
+    /// 需要拿到 match orchestrator(method group 包装到 matchFunc)— 暴露 internal 让工厂
+    /// 闭包读字段。null = 未构造(CivitAI 在 Settings 中 disabled),RefreshMetadata 命令
+    /// 走 Func fallback 返回 null(等同 "未在 CivitAI 找到匹配")。</summary>
+    internal CivitaiMatcherOrchestrator? CivitaiMatcherOrchestrator => _civitaiMatcherOrchestrator;
+
     public ErrorBannerViewModel ErrorBanner { get; } = new();
     public StatusBarViewModel StatusBar { get; }
 
@@ -931,6 +937,16 @@ public class MainViewModel : ViewModelBase
     internal void SetLocalModelFilesRepoFactory(Func<LocalModelFilesRepository> factory)
         => _localModelFilesRepoFactory = factory;
 
+    // v1.0.0.x (2026-09-17) T47:7 ContextMenu 命令 service 工厂 + Star 收藏 DAO 工厂。
+    // App.xaml.cs 在 OnStartup 注入(_opsFactory = () => new LocalModelOperations(...))。
+    // nullable 兼容老测试 ctor 路径(直接传 null) — 不注入时 VM 7 命令是 no-op。
+    internal Func<LocalModelOperations>? _localModelOperationsFactory;
+    internal void SetLocalModelOperationsFactory(Func<LocalModelOperations> factory)
+        => _localModelOperationsFactory = factory;
+    internal Func<StarredModelsRepository>? _starredModelsRepoFactory;
+    internal void SetStarredModelsRepoFactory(Func<StarredModelsRepository> factory)
+        => _starredModelsRepoFactory = factory;
+
     private void ShowLocalModels()
     {
         CurrentSection = MainSection.LocalModels;
@@ -972,7 +988,12 @@ public class MainViewModel : ViewModelBase
                 _civitaiCacheRepoFactory?.Invoke(),
                 // v1.0.0.x: scan 结果 per-file cache repo — view 打开立即读 DB 出卡,
                 // 不再每次切 sidebar 都重跑 scanner。
-                _localModelFilesRepoFactory?.Invoke());
+                _localModelFilesRepoFactory?.Invoke(),
+                // v1.0.0.x (2026-09-17) T47:7 ContextMenu 命令 service 层 + Star 收藏 DAO。
+                // 工厂未注入(测试 ctor 路径)→ null → 命令 execute 是 no-op,UI 弹 ContextMenu
+                // 仍能弹但点不响应。生产 wire 见 App.xaml.cs OnStartup。
+                _localModelOperationsFactory?.Invoke(),
+                _starredModelsRepoFactory?.Invoke());
             _localModelsView = LocalModelsViewFactory is null
                 ? new LocalModelsView { DataContext = _localModelsViewModel }
                 : LocalModelsViewFactory(_localModelsViewModel);

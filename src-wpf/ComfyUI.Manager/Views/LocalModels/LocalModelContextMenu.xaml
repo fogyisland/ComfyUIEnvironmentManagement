@@ -1,0 +1,47 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:ComfyUI.Manager.Converters">
+
+    <!-- v1.0.0.x (2026-09-17) T47:非 null → true,用于 CopySourceUrl IsEnabled 灰显。
+         内联在 ResourceDictionary 里 — 单 converter 不需独立 key file,放 menu 资源
+         跟它服务的 menu 一起维护,read 路径跟 XAML 同一文件,grep 友好。 -->
+    <converters:NotNullToBoolConverter x:Key="NotNullToBool" />
+
+    <!-- v1.0.0.x (2026-09-17) T47:ContextMenu 抽到资源,3 视图(List/Grid/Card)复用同一份。
+         PlacementTarget.DataContext 是 card item,WPF 自动把 card 当 CommandParameter
+         (RelativeSource AncestorType=ItemsControl 走的是 ItemsControl.DataContext = VM,
+         不是 card)。CommandParameter 留空 → 走 ItemsControl DataContext 拿 card,跟
+         v1.0.0.x T11 toolbar LookupCivAiCommand 同款"无参 + VM 内部读 SelectedCard"模式:
+         这里也是 7 命令都从 VM 内部读 parameter,context menu 自身不传 card。
+         DataContext 自身(PlacementTarget.DataContext) = 单 card,CommandParameter 拿 card。-->
+    <ContextMenu x:Key="LocalModelCardContextMenu"
+                 DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+        <MenuItem Header="⭐ 收藏 / 取消收藏"
+                  Command="{Binding DataContext.ToggleStarCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}" />
+        <MenuItem Header="⧉ 复制 Hash"
+                  Command="{Binding DataContext.CopyHashCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}" />
+        <MenuItem Header="📂 打开所在文件夹"
+                  Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}" />
+        <MenuItem Header="🔄 重新计算 Hash"
+                  Command="{Binding DataContext.ReloadHashCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}" />
+        <MenuItem Header="📥 从 CivitAI 刷新元数据"
+                  Command="{Binding DataContext.RefreshMetadataCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}" />
+        <Separator />
+        <MenuItem Header="📋 复制 CivitAI 页面 URL"
+                  Command="{Binding DataContext.CopySourceUrlCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}"
+                  IsEnabled="{Binding MatchedDetail, Converter={StaticResource NotNullToBool}}" />
+        <MenuItem Header="🔍 复制文件名"
+                  Command="{Binding DataContext.CopyFileNameCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}" />
+        <Separator />
+        <MenuItem Header="🗑 删除(到回收站)"
+                  Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                  CommandParameter="{Binding}" />
+    </ContextMenu>
+</ResourceDictionary>

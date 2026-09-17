@@ -267,7 +267,17 @@ public sealed record LocalModelCard(
     /// 定位磁盘文件 — DB 表 <c>model_stars.source_path</c> 的 PK 也是这条路径。
     /// T4 plan §Step 1 此前计划加此字段,本 task (T3) 因 7 命令 hard-require 提前加入 record
     /// 末尾(default <c>""</c> 保证向后兼容现有 caller)。</summary>
-    string SourcePath = "")
+    string SourcePath = "",
+    /// <summary>v1.0.0.x (2026-09-17) T47:磁盘文件字节数(给 List 视图 Size 列显示)。
+    /// 当前从磁盘 stat 拿(scan 时填到 <see cref="DownloadedModel"/> 的扩展字段,GroupToCards
+    /// 透传)。Default 0(0 = unknown,UI 走 N/A)。</summary>
+    long FileSize = 0,
+    /// <summary>v1.0.0.x (2026-09-17) T47:Star 收藏状态 — VM 在 LoadFromDb 末尾根据
+    /// <c>StarredModelsRepository.GetAll()</c> 注入到每张 card。non-INPC(record 不可变,
+    /// ToggleStarCommand 通过 <c>with</c> 替换 instance 触发 WPF rebind)。
+    /// 派生字段所以用 Factory 模式 — <c>card.WithIsStarred(true/false)</c> 替换成新 record,
+    /// 旧 instance 走 FilteredModels IndexOf 定位替换。</summary>
+    bool IsStarred = false)
 {
     /// <summary>v1.0.0 T-D5:streaming scanner Phase 2 更新 match status — 返回新 record(positional record
     /// 不可变,mutation 要重建)。调用方负责在 _allCards + FilteredModels 两处用旧实例找 index 替换成新实例。
@@ -286,6 +296,18 @@ public sealed record LocalModelCard(
     /// 同款 record factory pattern。</summary>
     public LocalModelCard WithSourcePath(string sourcePath)
         => this with { SourcePath = sourcePath ?? "" };
+
+    /// <summary>v1.0.0.x (2026-09-17) T47:重新计算文件大小后用旧 card 找 index 替换。
+    /// 跟 <see cref="WithSourcePath"/> / <see cref="WithLocalPathOverride"/> 同款 record
+    /// factory pattern,record positional `with` 保证其他字段不变。</summary>
+    public LocalModelCard WithFileSize(long fileSize)
+        => this with { FileSize = fileSize };
+
+    /// <summary>v1.0.0.x (2026-09-17) T47:ToggleStarCommand 执行后用旧 card 找 index 替换,
+    /// 触发 FilteredModels ObservableCollection 重新渲染(non-INPC 走 reference replace)。
+    /// <c>_starredPaths</c> HashSet 在 VM 同步更新避免下次 LoadFromDb 又把它 flip 回去。</summary>
+    public LocalModelCard WithIsStarred(bool isStarred)
+        => this with { IsStarred = isStarred };
 
     /// <summary>
     /// v1.0.0.x (2026-09-17) T46:LocalModelsView 搜索框用的「全部可搜索字段」拼接字符串

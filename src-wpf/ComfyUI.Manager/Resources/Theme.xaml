@@ -14,6 +14,10 @@
          在 element content 中间),所以放最上面。 -->
     <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="pack://application:,,,/ComfyUI.Manager;component/Controls/BindablePasswordBox.xaml" />
+        <!-- v1.0.0.x (2026-09-17) T47:LocalModelCard ContextMenu 资源 dictionary
+             (9 项菜单 + 2 Separator + NotNullToBoolConverter)。
+             3 视图(List/Grid/Card)都引用 {StaticResource LocalModelCardContextMenu}。 -->
+        <ResourceDictionary Source="pack://application:,,,/ComfyUI.Manager;component/Views/LocalModels/LocalModelContextMenu.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
     <BooleanToVisibilityConverter x:Key="BoolToVisibility" />

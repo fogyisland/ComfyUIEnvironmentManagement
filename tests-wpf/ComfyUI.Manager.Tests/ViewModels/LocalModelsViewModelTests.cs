@@ -4,9 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.Civitai;
+using ComfyUI.Manager.Tests.Fakes;
 using ComfyUI.Manager.ViewModels;
+using Moq;
 using Xunit;
 
 namespace ComfyUI.Manager.Tests.ViewModels;
@@ -530,6 +534,94 @@ public sealed class LocalModelsViewModelTests
 
         Assert.True(vm.ReloadCommand.CanExecute(null));
     }
+
+    // -------- v1.0.0.x (2026-09-17) T47:ToggleStar 7 命令 wire + Star 持久化 tests --------
+
+    /// <summary>构造单 card VM,注入 LocalModelOperations(Star repo 走 real TestDb)。
+    /// LocalModelOperations 走 no-op hash/match Func,Toast 占位 debug 输出,Progress Moq 跳过。
+    /// 重要:repo shared TestDb 走 ModelFactory(TestDb 析构会清表,不影响并行测试隔离)。
+    /// </summary>
+    private static LocalModelsViewModel CreateVmWithOneCard(
+        TestDb db,
+        string sourcePath = @"D:\star_test_card.safetensors",
+        string sourceId = "star-test:1")
+    {
+        var stars = new StarredModelsRepository(db.ModelFactory);
+        var toast = new ToastNotification();
+        var progress = new Mock<IProgressDialogService>();
+        progress.Setup(p => p.ShowIndeterminate(It.IsAny<string>()))
+                .Returns(new NoopDisposableForTest());
+        Func<string, CancellationToken, string> hashFunc = (_, _) => "MOCK_HASH";
+        Func<DownloadedModel, CancellationToken, Task<MatchResult?>> matchFunc =
+            (_, _) => Task.FromResult<MatchResult?>(null);
+        var ops = new LocalModelOperations(toast, stars, hashFunc, matchFunc, progress.Object);
+
+        var fake = new FakeScanner
+        {
+            Entries = new List<DownloadedModel>
+            {
+                new()
+                {
+                    Title = "star-test",
+                    Kind = ModelKind.Checkpoint,
+                    Source = "Local",
+                    SourceId = sourceId,
+                    SourceVersionId = "v1",
+                    DownloadedAt = DateTime.Now,
+                    FullPath = sourcePath,
+                },
+            }
+        };
+        // v1.0.0.x T47:LocalModelOperations 跟 StarredModelsRepository 是新增 ctor 参数。
+        return new LocalModelsViewModel(
+            SettingsWith(@"Z:\fake"), fake, logger: null,
+            ops: ops, stars: stars);
+    }
+
+    [Fact]
+    public void ToggleStarCommand_UpdatesCardInPlace()
+    {
+        using var db = new TestDb();
+        var vm = CreateVmWithOneCard(db);
+        vm.ReloadAsync().GetAwaiter().GetResult();
+
+        var card = vm.FilteredModels[0];
+        Assert.False(card.IsStarred);
+        Assert.False(db.ModelFactory is null);  // db open sanity
+        var starsRepo = new StarredModelsRepository(db.ModelFactory);
+        Assert.False(starsRepo.IsStarred(card.SourcePath));
+
+        // act:调 ToggleStarCommand
+        vm.ToggleStarCommand.Execute(card);
+
+        // assert:FilteredModels[0] 实例被替换,IsStarred=true,DB 有 star
+        var updated = vm.FilteredModels[0];
+        Assert.True(updated.IsStarred);
+        Assert.True(starsRepo.IsStarred(updated.SourcePath));
+        Assert.Equal(card.SourcePath, updated.SourcePath);
+        Assert.Equal(card.Title, updated.Title);  // 其他字段不变
+    }
+
+    [Fact]
+    public void ToggleStarCommand_PersistsAcrossReload()
+    {
+        using var db = new TestDb();
+        var vm1 = CreateVmWithOneCard(db);
+        vm1.ReloadAsync().GetAwaiter().GetResult();
+        vm1.ToggleStarCommand.Execute(vm1.FilteredModels[0]);
+
+        // 新 VM 共享同一 TestDb → 走 LoadFromDb 应读回 IsStarred=true
+        var vm2 = CreateVmWithOneCard(db);
+        // vm2 没 ReloadAsync,需要手动 LoadFromDb(VM ctor 后不自动 reload)
+        // 但 vm2 没注入 _localModelFilesRepo,LoadFromDb() 返回 false。
+        // 替代:走 ReloadAsync 让 scanner 出 1 card,VM 内部 GroupToCards 注入 IsStarred
+        // (前提:LoadFromDbAsync 路径也注入 IsStarred — T47 task 关键路径)。
+        vm2.ReloadAsync().GetAwaiter().GetResult();
+
+        Assert.True(vm2.FilteredModels[0].IsStarred);
+    }
+
+    private sealed class NoopDisposableForTest : IDisposable { public void Dispose() { } }
 }
 
 internal sealed class FakeScanner : ModelFilesystemScanner

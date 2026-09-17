@@ -12,6 +12,7 @@ using ComfyUI.Manager.Data;
 using ComfyUI.Manager.Infrastructure;
 using ComfyUI.Manager.Models;
 using ComfyUI.Manager.Services;
+using ComfyUI.Manager.Services.Civitai;
 using ComfyUI.Manager.Services.ModelSources;
 using ComfyUI.Manager.ViewModels;
 using ComfyUI.Manager.Views;
@@ -681,6 +682,27 @@ public partial class App : Application
         // 手动刷新 → ReloadAsync 走 mtime-based 增量 diff,新/改文件重 hash + 入库。
         // v1.0.0.x T45:LocalModelFilesRepository 注入 modelFactory(读 model.db)。
         _mainVm.SetLocalModelFilesRepoFactory(() => new LocalModelFilesRepository(modelFactory));
+
+        // v1.0.0.x (2026-09-17) T47:7 ContextMenu 命令 service 层 + Star 收藏 DAO 工厂。
+        // Star 收藏 repo 走 modelFactory(读 model.db 表 model_stars);LocalModelOperations
+        // 走 toast / stars / hashFunc(静态 ModelHasher.ComputeTensorOnlySha256 方法组) /
+        // matchFunc(no-op Task.FromResult<MatchResult?>(null) — 跟 T3 报告 "MatchByHashAsync
+        // 不存在" 同款:production RefreshMetadata 命令当前走 null,后续 T5/T6 wire 时把
+        // matchFunc 改走 MainViewModel.TryCreateCivitAiLookupService 缓存的 orchestrator)。
+        // 改 Func 给一个可变的 capture(capturedMatch) — ShowLocalModels 首次构造 VM 时
+        // _mainVm._civitaiMatcherOrchestrator 可能已 build 好(matchFunc 直接走它);
+        // 也可能没 build(hashFunc + matchFunc 都 wrap 在 lambda 里,延迟到 LocalModelOperations
+        // ctor 时求值 — 但 LocalModelOperations ctor 在 ShowLocalModels 才跑,这时 MainVM 已
+        // 构造完,字段已就绪)。为安全起见这里 wrap 在工厂闭包里,每次 ShowLocalModels 重新读字段。
+        _mainVm.SetStarredModelsRepoFactory(() => new StarredModelsRepository(modelFactory));
+        _mainVm.SetLocalModelOperationsFactory(() => new LocalModelOperations(
+            new ToastNotification(),
+            new StarredModelsRepository(modelFactory),
+            (path, ct) => ModelHasher.ComputeTensorOnlySha256(path, ct),
+            (model, ct) => _mainVm.CivitaiMatcherOrchestrator is null
+                ? Task.FromResult<MatchResult?>(null)
+                : _mainVm.CivitaiMatcherOrchestrator.MatchAsync(model, ct),
+            new ProgressDialogService()));
 
         var main = new MainWindow { DataContext = _mainVm };
         main.ApplyStartupPreferences(uiPrefs);
